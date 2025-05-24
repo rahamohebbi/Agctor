@@ -1,4 +1,0 @@
-/Users/rahamohebbi/Projects/AGCTOR/obj/Debug/net8.0/AGCTOR.GeneratedMSBuildEditorConfig.editorconfig
-/Users/rahamohebbi/Projects/AGCTOR/obj/Debug/net8.0/AGCTOR.AssemblyInfoInputs.cache
-/Users/rahamohebbi/Projects/AGCTOR/obj/Debug/net8.0/AGCTOR.AssemblyInfo.cs
-/Users/rahamohebbi/Projects/AGCTOR/obj/Debug/net8.0/AGCTOR.csproj.CoreCompileInputs.cache
