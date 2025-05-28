@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Adapters;
+using AgctorSDK.Core.Agents;
 
 namespace AgctorSDK.Core.DependencyInjection
 {
@@ -33,6 +34,9 @@ namespace AgctorSDK.Core.DependencyInjection
             
             // Register the adapter factory for runtime switching
             services.AddSingleton<IActorRuntimeAdapterFactory, ActorRuntimeAdapterFactory>();
+            
+            // Register the agent factory for agent functionality
+            services.AddSingleton<IAgentFactory, AgentFactory>();
             
             // Configure options if provided
             if (configureOptions != null)
@@ -64,6 +68,9 @@ namespace AgctorSDK.Core.DependencyInjection
             
             // Register the adapter factory for runtime switching
             services.AddSingleton<IActorRuntimeAdapterFactory, ActorRuntimeAdapterFactory>();
+            
+            // Register the agent factory for agent functionality
+            services.AddSingleton<IAgentFactory, AgentFactory>();
             
             // Configure options if provided
             if (configureOptions != null)

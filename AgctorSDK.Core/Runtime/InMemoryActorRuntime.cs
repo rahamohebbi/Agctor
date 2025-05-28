@@ -189,44 +189,58 @@ namespace AgctorSDK.Core.Runtime
 
             LogTrace($"Spawning actor '{actorId}' of type '{typeof(T).Name}'");
 
-            // Create actor instance using reflection or factory
-            var actor = CreateActorInstance<T>(actorId);
-
-            // Create message queue for the actor
-            var messageQueue = Channel.CreateUnbounded<MessageEnvelope>();
-            var actorCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token);
-
-            // Start message processing task for the actor
-            var processingTask = ProcessActorMessagesAsync(actor, messageQueue.Reader, actorCancellationSource.Token);
-
-            // Create actor instance wrapper
-            var actorInstance = new ActorInstance(actor, messageQueue, processingTask, actorCancellationSource);
-
-            // Register the actor
-            if (!_actors.TryAdd(actorId, actorInstance))
-            {
-                actorCancellationSource.Cancel();
-                throw new InvalidOperationException($"Failed to register actor '{actorId}'");
-            }
-
             try
             {
-                // Initialize the actor
-                await actor.InitializeAsync(cancellationToken);
-                
-                LogTrace($"Actor '{actorId}' spawned and initialized successfully");
-                
-                // Fire event
-                ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, typeof(T).Name));
-                
-                return actor;
+                // Set initialization data in thread-local storage for agent setup
+                if (initializationData is AgctorSDK.Core.Agents.AgentInitializationData agentInitData)
+                {
+                    _currentInitializationData.Value = agentInitData;
+                }
+
+                // Create actor instance using reflection or factory
+                var actor = CreateActorInstance<T>(actorId);
+
+                // Create message queue for the actor
+                var messageQueue = Channel.CreateUnbounded<MessageEnvelope>();
+                var actorCancellationSource = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token);
+
+                // Start message processing task for the actor
+                var processingTask = ProcessActorMessagesAsync(actor, messageQueue.Reader, actorCancellationSource.Token);
+
+                // Create actor instance wrapper
+                var actorInstance = new ActorInstance(actor, messageQueue, processingTask, actorCancellationSource);
+
+                // Register the actor
+                if (!_actors.TryAdd(actorId, actorInstance))
+                {
+                    actorCancellationSource.Cancel();
+                    throw new InvalidOperationException($"Failed to register actor '{actorId}'");
+                }
+
+                try
+                {
+                    // Initialize the actor
+                    await actor.InitializeAsync(cancellationToken);
+                    
+                    LogTrace($"Actor '{actorId}' spawned and initialized successfully");
+                    
+                    // Fire event
+                    ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, typeof(T).Name));
+                    
+                    return actor;
+                }
+                catch
+                {
+                    // Cleanup on failure
+                    _actors.TryRemove(actorId, out _);
+                    actorCancellationSource.Cancel();
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                // Cleanup on failure
-                _actors.TryRemove(actorId, out _);
-                actorCancellationSource.Cancel();
-                throw;
+                // Clear thread-local initialization data
+                _currentInitializationData.Value = null;
             }
         }
 
@@ -451,7 +465,12 @@ namespace AgctorSDK.Core.Runtime
                 var constructor = typeof(T).GetConstructor(new[] { typeof(string) });
                 if (constructor != null)
                 {
-                    return (T)constructor.Invoke(new object[] { actorId });
+                    var instance = (T)constructor.Invoke(new object[] { actorId });
+                    
+                    // If this is an agent, set up additional properties
+                    SetupAgentIfNeeded(instance, actorId);
+                    
+                    return instance;
                 }
 
                 // Try parameterless constructor
@@ -459,12 +478,17 @@ namespace AgctorSDK.Core.Runtime
                 if (parameterlessConstructor != null)
                 {
                     var instance = (T)parameterlessConstructor.Invoke(null);
+                    
                     // Set ID via reflection if property exists
                     var idProperty = typeof(T).GetProperty("Id");
                     if (idProperty?.CanWrite == true)
                     {
                         idProperty.SetValue(instance, actorId);
                     }
+                    
+                    // If this is an agent, set up additional properties
+                    SetupAgentIfNeeded(instance, actorId);
+                    
                     return instance;
                 }
 
@@ -475,6 +499,45 @@ namespace AgctorSDK.Core.Runtime
                 throw new InvalidOperationException($"Failed to create actor instance of type {typeof(T).Name}: {ex.Message}", ex);
             }
         }
+
+        /// <summary>
+        /// Sets up agent-specific properties if the actor is an agent.
+        /// This includes setting the agent factory and parent agent ID from initialization data.
+        /// </summary>
+        private void SetupAgentIfNeeded<T>(T instance, string actorId) where T : class, IActor
+        {
+            // Check if this is an agent that needs additional setup
+            if (instance is AgctorSDK.Core.Agents.Agent agent)
+            {
+                // Get initialization data from the current spawn context
+                // In a more sophisticated implementation, this would be passed through the spawn context
+                var initData = GetCurrentInitializationData();
+                
+                if (initData?.AgentFactory != null)
+                {
+                    agent.SetAgentFactory(initData.AgentFactory);
+                }
+                
+                if (!string.IsNullOrEmpty(initData?.ParentAgentId))
+                {
+                    agent.SetParentAgentId(initData.ParentAgentId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the current initialization data for agent setup.
+        /// This is a simplified implementation - in production, this would be managed through proper context.
+        /// </summary>
+        private AgctorSDK.Core.Agents.AgentInitializationData? GetCurrentInitializationData()
+        {
+            // For now, we'll store this in a thread-local variable during spawn operations
+            // In a real implementation, this would be part of the spawn context
+            return _currentInitializationData.Value;
+        }
+
+        // Thread-local storage for initialization data during spawn operations
+        private readonly ThreadLocal<AgctorSDK.Core.Agents.AgentInitializationData?> _currentInitializationData = new();
 
         /// <summary>
         /// Processes messages for a specific actor in a dedicated task.
