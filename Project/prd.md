@@ -52,16 +52,16 @@
 ### F3: Agent-Based Prompt Processing
 *   **F3.1:** Create an `AgentFactory` using the initialized runtime.
 *   **F3.2:** Spawn a root `Agent` instance to handle the user's prompt.
-    *   _Comment:_ This agent orchestrates the processing of the given prompt.
+    *   _Comment:_ This agent orchestrates the processing of the given prompt. It may, in turn, spawn child agents, including specialized agents like a `HumanAgentAdapter` if it encounters a task requiring human intervention.
 *   **F3.3:** Assign a unique identifier to the root agent (e.g., `cli-root-{Guid}`).
 *   **F3.4:** Pass the user prompt to the root agent for processing.
 *   **F3.5:** Log the creation of the root agent and the initiation of prompt processing.
 
 ### F4: Monitoring and Feedback
 *   **F4.1:** Continuously monitor the status of the root agent.
-    *   _Comment:_ Polling occurs at defined intervals (e.g., 500ms).
-*   **F4.2:** Implement a configurable timeout for the prompt processing operation (e.g., 5 minutes).
-*   **F4.3:** Periodically log the agent's processing status, including current status and the number of child agents, for long-running operations (e.g., every 10 seconds).
+    *   _Comment:_ Polling occurs at defined intervals (e.g., 500ms). This includes monitoring agents that might be in a `WaitingForHumanInput` state.
+*   **F4.2:** Implement a configurable timeout for the prompt processing operation (e.g., 5 minutes). This timeout applies to the overall operation, including any human interaction steps.
+*   **F4.3:** Periodically log the agent's processing status, including current status (which might indicate waiting for human input) and the number of child agents, for long-running operations (e.g., every 10 seconds).
 
 ### F5: Result Output and Termination
 *   **F5.1:** Upon successful completion (`AgentStatus.Completed`):
@@ -92,6 +92,15 @@
     *   Illustrative examples of usage.
     *   A list of available runtimes (e.g., "InMemory", "Orleans", "Proto.Actor"), with a note about implementation status if applicable.
 
+### F8: Human Agent Fallback Interaction (New from prd-cli-001.md)
+*   **F8.1:** If an agent determines it cannot proceed and requires human input, it can invoke a special `HumanAgentAdapter`.
+*   **F8.2:** The CLI must clearly display the prompt or task description from the agent to the user in the terminal.
+*   **F8.3:** The CLI must wait for user input. Multiline input should be supported.
+    *   _Comment:_ Users can signal completion of their input (e.g., by pressing `Enter` on an empty line twice, or by typing a specific token like `::done`). The exact mechanism should be clearly communicated to the user.
+*   **F8.4:** The user's input is captured and returned to the requesting agent as a normal response, allowing the agent workflow to continue.
+*   **F8.5:** If the human interaction is part of a sub-task, the flow should be consistent with other sub-task completions.
+*   **F8.6:** Log the initiation and completion of human interaction phases.
+
 ## 5. Non-Functional Requirements
 
 *   **NFR1: Performance:**
@@ -100,7 +109,7 @@
     *   Processing timeout (current: 5 minutes) should be adequate for typical CLI use cases but also prevent indefinite hangs.
 *   **NFR2: Usability:**
     *   Command-line arguments must be clear and intuitive.
-    *   Console output must be informative, providing clear feedback on progress, success, or failure.
+    *   Console output must be informative, providing clear feedback on progress, success, or failure. This includes clear prompts for human input when required.
     *   Error messages must be user-friendly and actionable where possible.
     *   Comprehensive usage instructions must be easily accessible.
 *   **NFR3: Reliability:**
@@ -110,7 +119,7 @@
     *   The system should be designed to easily incorporate support for additional Agctor runtimes via the `IActorRuntimeAdapterFactory`.
     *   Code should be modular (e.g., separate methods for DI, runtime init, prompt processing) to facilitate maintenance and future enhancements.
 *   **NFR5: Logging:**
-    *   Sufficient logging (at `Information` level) must be implemented to trace execution flow and diagnose issues.
+    *   Sufficient logging (at `Information` level) must be implemented to trace execution flow and diagnose issues, including the delegation to and response from human agents.
 
 ## 6. Command-Line Interface (CLI) Specification
 
@@ -126,8 +135,8 @@
 
 *   **Invalid Arguments (e.g., missing prompt):** Display usage information and exit.
 *   **Runtime Not Available:** Display an error message listing valid runtimes and exit.
-*   **Agent Processing Failure:** Display a specific error message related to prompt processing failure.
-*   **Agent Processing Timeout:** Display a message indicating that the operation timed out.
+*   **Agent Processing Failure:** Display a specific error message related to prompt processing failure. This includes failures during or after human interaction.
+*   **Agent Processing Timeout:** Display a message indicating that the operation timed out. This can include scenarios where a human does not respond in time.
 *   **General/Unhandled Exceptions:** Display a generic error message and set a non-zero exit code.
 
 ## 8. Dependencies
@@ -146,4 +155,6 @@
 *   **Detailed Agent Error Reporting:** Enhance error messages to include more specific details from agent failures or exceptions within the agent system.
 *   **Full Runtime Support:** Complete and thoroughly test implementations for other advertised runtimes (e.g., "Orleans", "Proto.Actor").
 *   **Agent Initialization Parameters:** Allow passing additional structured data or configuration parameters to the root agent beyond the simple prompt string.
-*   **Verbosity Control:** Allow users to control log verbosity via a command-line flag (e.g., `-v`, `--verbose`). 
+*   **Verbosity Control:** Allow users to control log verbosity via a command-line flag (e.g., `-v`, `--verbose`).
+*   **Configurable Human Input:** Allow configuration of the human input termination method (e.g., special token, empty lines).
+*   **Human Interaction Timeout:** Specific timeout for the human interaction part of a task, potentially shorter than the overall agent processing timeout. 

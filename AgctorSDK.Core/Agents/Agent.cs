@@ -95,6 +95,13 @@ namespace AgctorSDK.Core.Agents
         public event EventHandler<SubtaskCompletedEventArgs>? SubtaskCompleted;
 
         /// <summary>
+        /// Gets the agent factory instance associated with this agent.
+        /// This is set by the runtime during agent initialization and used by the agent
+        /// to spawn child agents or interact with the runtime (e.g., HumanAgentAdapter).
+        /// </summary>
+        protected IAgentFactory? AgentFactory => _agentFactory;
+
+        /// <summary>
         /// Initializes a new instance of the Agent class.
         /// </summary>
         /// <param name="id">The unique identifier for this agent</param>
@@ -582,7 +589,7 @@ namespace AgctorSDK.Core.Agents
         /// <summary>
         /// Changes the agent status and fires the StatusChanged event.
         /// </summary>
-        private void ChangeAgentStatus(AgentStatus newStatus, string? reason = null)
+        protected void ChangeAgentStatus(AgentStatus newStatus, string? reason = null)
         {
             var previousStatus = _status;
             _status = newStatus;

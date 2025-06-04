@@ -141,6 +141,17 @@ namespace AgctorSDK.Core.Interfaces
         /// Useful for monitoring and debugging message flow.
         /// </summary>
         event EventHandler<MessageSentEventArgs>? MessageSent;
+
+        /// <summary>
+        /// New method for requesting human input, added for Human Agent Fallback (prd-cli-001.md).
+        /// The runtime adapter implementation is responsible for interacting with the user (e.g., via CLI).
+        /// </summary>
+        /// <param name="requestingAgentId">The ID of the agent requesting human input.</param>
+        /// <param name="prompt">The prompt or question to display to the human.</param>
+        /// <param name="instructions">Instructions for the human on how to submit their input (e.g., end token).</param>
+        /// <param name="cancellationToken">Token for cancelling the operation.</param>
+        /// <returns>A task containing the string input provided by the human.</returns>
+        Task<string> RequestHumanInputAsync(string requestingAgentId, string prompt, string instructions, CancellationToken cancellationToken = default);
     }
 
     /// <summary>

@@ -600,6 +600,53 @@ namespace AgctorSDK.Core.Runtime
             LogTrace($"Message processing ended for actor '{actor.Id}'");
         }
 
+        /// <summary>
+        /// Requests human input via the console.
+        /// Implements the CLI interaction specified in prd-cli-001.md.
+        /// </summary>
+        /// <param name="requestingAgentId">The ID of the agent requesting human input.</param>
+        /// <param name="prompt">The prompt or question to display to the human.</param>
+        /// <param name="instructions">Instructions for the human on how to submit their input (e.g., end token).</param>
+        /// <param name="cancellationToken">Token for cancelling the operation.</param>
+        /// <returns>A task containing the string input provided by the human.</returns>
+        public Task<string> RequestHumanInputAsync(string requestingAgentId, string prompt, string instructions, CancellationToken cancellationToken = default)
+        {
+            // Log the request for human input
+            Console.WriteLine($"[INFO] Agent {requestingAgentId} is requesting human input.");
+            Console.WriteLine($"[HUMAN INPUT PROMPT] {prompt}");
+            Console.WriteLine(instructions); // e.g., "Please enter your suggestion below (type \"::done\" on a new line to finish):"
+
+            var inputLines = new List<string>();
+            string? line;
+
+            // Read multiline input from the console
+            // Loop until "::done" is entered or cancellation is requested
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                line = Console.ReadLine();
+                if (line == "::done")
+                {
+                    break;
+                }
+                if (line != null)
+                {
+                    inputLines.Add(line);
+                }
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // Log cancellation and throw if requested
+                Console.WriteLine("[INFO] Human input request was cancelled.");
+                throw new OperationCanceledException(cancellationToken);
+            }
+
+            var humanResponse = string.Join(Environment.NewLine, inputLines);
+            // Log the received human input
+            Console.WriteLine($"[INFO] Human input received from user for agent {requestingAgentId}.");
+            return Task.FromResult(humanResponse);
+        }
+
         private void ThrowIfDisposed()
         {
             if (_isDisposed)

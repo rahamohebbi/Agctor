@@ -158,6 +158,17 @@ namespace AgctorSDK.Core.Tests.Interfaces
                 return Task.FromResult(mockStats.Object);
             }
 
+            public Task<string> RequestHumanInputAsync(string requestingAgentId, string prompt, string instructions, CancellationToken cancellationToken = default)
+            {
+                // For testing purposes, we can simulate different scenarios here if needed.
+                // For now, return a default or configurable response, or throw if a test expects failure.
+                if (prompt.Contains("throw_exception"))
+                {
+                    throw new InvalidOperationException("Test exception during human input");
+                }
+                return Task.FromResult("Default test human input");
+            }
+
             public void Dispose()
             {
                 IsInitialized = false;

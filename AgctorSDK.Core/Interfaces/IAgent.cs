@@ -114,6 +114,12 @@ namespace AgctorSDK.Core.Interfaces
         WaitingForSubtasks,
 
         /// <summary>
+        /// Agent is waiting for direct input from a human user.
+        /// Added for Human Agent Fallback feature (prd-cli-001.md).
+        /// </summary>
+        WaitingForHumanInput,
+
+        /// <summary>
         /// Agent has successfully completed its assigned prompt.
         /// </summary>
         Completed,

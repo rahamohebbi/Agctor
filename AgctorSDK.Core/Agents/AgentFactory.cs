@@ -234,6 +234,10 @@ namespace AgctorSDK.Core.Agents
             // Register the basic Agent type
             RegisterAgentType<Agent>("Agent");
             RegisterAgentType<Agent>("BasicAgent");
+
+            // Register the HumanAgentAdapter for human fallback (prd-cli-001.md)
+            RegisterAgentType<HumanAgentAdapter>("HumanAgentAdapter");
+            RegisterAgentType<HumanAgentAdapter>("human"); // Alias for easy spawning
         }
     }
 

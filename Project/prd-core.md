@@ -36,16 +36,18 @@
 *   **FC2.1:** Define an `IAgent` interface that extends `IActor`.
     *   **FC2.1.1:** Store the `CurrentPrompt` the agent is working on.
     *   **FC2.1.2:** Track `ParentAgentId` and a list of `ChildAgentIds` for hierarchical structures.
-    *   **FC2.1.3:** Expose agent-specific status (`AgentStatus` enum: `Idle`, `Working`, `WaitingForSubtasks`, `Completed`, `Failed`).
+    *   **FC2.1.3:** Expose agent-specific status (`AgentStatus` enum: `Idle`, `Working`, `WaitingForSubtasks`, `WaitingForHumanInput`, `Completed`, `Failed`).
+        *   _Comment:_ `WaitingForHumanInput` is a state where an agent has delegated a task to a human and is awaiting their response.
     *   **FC2.1.4:** Method to process a prompt: `ProcessPromptAsync(string prompt, CancellationToken cancellationToken)`.
     *   **FC2.1.5:** Method to assign subtasks to child agents: `AssignSubtaskAsync(string subtaskPrompt, string? agentType, CancellationToken cancellationToken)`, returning the child agent's ID.
+        *   _Comment:_ `agentType` can specify a standard agent type or a special type like "human" to invoke a `HumanAgentAdapter` for direct user interaction.
     *   **FC2.1.6:** Methods to handle subtask outcomes: `HandleSubtaskCompletionAsync(...)`, `HandleSubtaskFailureAsync(...)`.
     *   **FC2.1.7:** Provide events for agent status changes (`StatusChanged`), child agent spawning (`ChildAgentSpawned`), and subtask completion (`SubtaskCompleted`).
 
 ### FC3: Agent Factory (`IAgentFactory`)
 *   **FC3.1:** Define an `IAgentFactory` interface for creating and managing agents.
     *   **FC3.1.1:** Method to spawn new agents (generic `SpawnAgentAsync<TAgent>(...)` and by type name `SpawnAgentAsync(string agentTypeName, ...)`).
-        *   _Comment:_ Should handle agent creation, initialization, and readiness for prompt processing.
+        *   _Comment:_ Should handle agent creation, initialization, and readiness for prompt processing. This includes spawning specialized agents such as a `HumanAgentAdapter` if `agentTypeName` is "human" or a similar reserved keyword. The factory will rely on the `IActorRuntimeAdapter` to correctly instantiate and manage such agents.
     *   **FC3.1.2:** Method to retrieve existing agents (generic `GetAgentAsync<TAgent>(...)` and non-generic `GetAgentAsync(...)`).
     *   **FC3.1.3:** Method to stop and remove agents: `StopAgentAsync(...)`.
     *   **FC3.1.4:** Method to generate unique agent IDs: `GenerateAgentId(...)`.
@@ -69,7 +71,9 @@
 *   **FC5.1:** Define `IActorRuntimeAdapter` as the interface for pluggable actor runtime backends.
     *   **FC5.1.1:** Runtime management: `InitializeAsync(config)`, `ShutdownAsync()`, `IsInitialized` property.
     *   **FC5.1.2:** Actor lifecycle operations: `SpawnActorAsync<T>()`, `GetActorAsync<T>()`, `StopActorAsync()`.
+        *   _Comment:_ When spawning an actor that is a `HumanAgentAdapter` (e.g., type specified as "human"), the runtime adapter is responsible for setting up the necessary mechanisms for it to interact with the host environment (e.g., CLI for input/output).
     *   **FC5.1.3:** Messaging capabilities: `SendMessageAsync()` supporting fire-and-forget and request-response.
+        *   _Comment:_ For `HumanAgentAdapter` instances, the "message processing" involves direct user interaction rather than typical inter-actor messaging for receiving the task and providing the response.
     *   **FC5.1.4:** Monitoring capabilities: `GetActiveActorIdsAsync()`, `GetStatisticsAsync()`.
     *   **FC5.1.5:** Events for runtime monitoring: `ActorSpawned`, `ActorStopped`, `MessageSent`.
 
@@ -128,4 +132,5 @@
 *   Built-in support for more complex agent interaction patterns (e.g., sagas, distributed transactions).
 *   Enhanced observability features (e.g., distributed tracing integration).
 *   Tooling for visualizing agent hierarchies and message flows.
-*   Formalized versioning strategy for messages and agent contracts. 
+*   Formalized versioning strategy for messages and agent contracts.
+*   Definition of standard `agentType` names for common specialized agents like the `HumanAgentAdapter`. 

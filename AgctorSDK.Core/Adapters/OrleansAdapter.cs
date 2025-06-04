@@ -190,5 +190,20 @@ namespace AgctorSDK.Core.Adapters
             _isDisposed = true;
             GC.SuppressFinalize(this);
         }
+
+        /// <summary>
+        /// Requests human input. Not currently supported by the Orleans adapter placeholder.
+        /// </summary>
+        public Task<string> RequestHumanInputAsync(string requestingAgentId, string prompt, string instructions, CancellationToken cancellationToken = default)
+        {
+            LogWarning($"RequestHumanInputAsync called on OrleansAdapter for agent {requestingAgentId}, but it is not implemented.");
+            throw new NotImplementedException("Human input via CLI is not supported by the OrleansAdapter at this time. This adapter is a placeholder.");
+        }
+
+        // Placeholder for logging
+        private void LogWarning(string message)
+        {
+            Console.WriteLine($"[WARN] OrleansAdapter: {message}");
+        }
     }
 } 
