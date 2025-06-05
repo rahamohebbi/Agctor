@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorCLI", "AgctorCLI\Agct
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Core.Tests", "AgctorSDK.Core.Tests\AgctorSDK.Core.Tests.csproj", "{CE065716-E5B1-4534-9DC4-FC1A54A71DE0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntegrationTests", "AgctorSDK.Core.IntegrationTests\IntegrationTests.csproj", "{B5489EDF-E6BD-4F9B-807F-3758DB093C13}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{CE065716-E5B1-4534-9DC4-FC1A54A71DE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CE065716-E5B1-4534-9DC4-FC1A54A71DE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CE065716-E5B1-4534-9DC4-FC1A54A71DE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
