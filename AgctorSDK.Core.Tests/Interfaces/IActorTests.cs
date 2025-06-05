@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Messages;
 using Moq;
 using Xunit;
 
@@ -53,7 +54,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
                 return Task.CompletedTask;
             }
 
-            public Task ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+            public Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 
@@ -61,7 +62,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
                     throw new InvalidOperationException("Test exception during message processing");
 
                 LastReceivedMessage = envelope;
-                return Task.CompletedTask;
+                return Task.FromResult<IMessageEnvelope>(envelope);
             }
 
             public Task ShutdownAsync(CancellationToken cancellationToken = default)

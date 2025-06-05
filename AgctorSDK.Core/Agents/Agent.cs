@@ -174,12 +174,15 @@ namespace AgctorSDK.Core.Agents
         /// <param name="envelope">The message envelope containing the message and metadata</param>
         /// <param name="cancellationToken">Token for cancelling the operation</param>
         /// <returns>A task representing the asynchronous message processing operation</returns>
-        public virtual async Task ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+        public virtual async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
             if (envelope?.Payload == null)
             {
                 LogWarning("Received null or empty message envelope");
-                return;
+                // Need to return a valid IMessageEnvelope, even for an error or empty case.
+                // Creating a simple response or rethrowing might be options.
+                // For now, returning the original envelope if it's not null, or an error envelope.
+                return envelope ?? new MessageEnvelope("Error: Null envelope received", new DefaultMessageMetadata(Id, "unknown"));
             }
 
             LogInfo($"Received message: {envelope.Payload.GetType().Name}");
@@ -218,8 +221,13 @@ namespace AgctorSDK.Core.Agents
             catch (Exception ex)
             {
                 LogError($"Error processing message {envelope.Payload.GetType().Name}: {ex.Message}");
-                throw;
+                // Potentially return an error envelope
+                return new MessageEnvelope($"Error processing message: {ex.Message}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Metadata?.SenderId ?? "unknown"));
+                // Or rethrow if the interface/contract allows exceptions here to propagate.
+                // For now, returning an error envelope to satisfy Task<IMessageEnvelope>.
             }
+            // Return the original envelope as a default acknowledgment if no specific response was generated and no error occurred.
+            return envelope;
         }
 
         /// <summary>

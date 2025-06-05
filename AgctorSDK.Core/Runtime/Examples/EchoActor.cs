@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Messages;
 
 namespace AgctorSDK.Core.Runtime.Examples
 {
@@ -39,26 +40,27 @@ namespace AgctorSDK.Core.Runtime.Examples
             return Task.CompletedTask;
         }
 
-        public async Task ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+        public async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             
             _messageCount++;
-            
-            LogTrace($"EchoActor '{Id}' received message #{_messageCount}: '{envelope.Payload}' (Type: {envelope.Metadata.MessageType})");
+            string originalPayloadString = envelope.Payload?.ToString() ?? "null_payload";
+            LogTrace($"EchoActor '{Id}' received message #{_messageCount}: '{originalPayloadString}' (Type: {envelope.Metadata.MessageType})");
 
-            // Simulate some processing time
             await Task.Delay(10, cancellationToken);
 
-            // Handle different message types
+            object responsePayload;
             switch (envelope.Payload)
             {
                 case string textMessage:
                     LogTrace($"EchoActor '{Id}' echoing text message: '{textMessage}'");
+                    responsePayload = new EchoResponse(textMessage, Id, _messageCount);
                     break;
                     
                 case int numberMessage:
                     LogTrace($"EchoActor '{Id}' echoing number message: {numberMessage}");
+                    responsePayload = new EchoResponse(numberMessage.ToString(), Id, _messageCount);
                     break;
                     
                 case EchoRequest request:
@@ -67,14 +69,22 @@ namespace AgctorSDK.Core.Runtime.Examples
                     {
                         await Task.Delay(request.DelayMs, cancellationToken);
                     }
+                    responsePayload = new EchoResponse(request.Message, Id, _messageCount);
                     break;
                     
                 default:
                     LogTrace($"EchoActor '{Id}' received unknown message type: {envelope.Payload?.GetType().Name ?? "null"}");
+                    responsePayload = new EchoResponse($"Unknown message type: {originalPayloadString}", Id, _messageCount);
                     break;
             }
 
             LogTrace($"EchoActor '{Id}' finished processing message #{_messageCount}");
+            var responseMetadata = new DefaultMessageMetadata(
+                senderId: Id, 
+                receiverId: envelope.Metadata.SenderId,
+                correlationId: envelope.Metadata.CorrelationId
+            );
+            return new MessageEnvelope(responsePayload, responseMetadata, envelope.Id);
         }
 
         public async Task ShutdownAsync(CancellationToken cancellationToken = default)
@@ -85,7 +95,6 @@ namespace AgctorSDK.Core.Runtime.Examples
             
             ChangeState(ActorState.Stopping, "Shutdown initiated");
             
-            // Simulate cleanup work
             await Task.Delay(5, cancellationToken);
             
             ChangeState(ActorState.Stopped, "Shutdown completed");

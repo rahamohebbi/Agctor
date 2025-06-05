@@ -35,7 +35,7 @@ namespace AgctorSDK.Core.Interfaces
         /// <param name="envelope">The message envelope containing the message and metadata</param>
         /// <param name="cancellationToken">Token for cancelling the operation</param>
         /// <returns>A task representing the asynchronous message processing operation</returns>
-        Task ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default);
+        Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Initializes the actor when it's first created or activated.
