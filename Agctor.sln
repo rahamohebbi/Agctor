@@ -1,5 +1,4 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -9,7 +8,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorCLI", "AgctorCLI\Agct
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Core.Tests", "AgctorSDK.Core.Tests\AgctorSDK.Core.Tests.csproj", "{CE065716-E5B1-4534-9DC4-FC1A54A71DE0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntegrationTests", "AgctorSDK.Core.IntegrationTests\IntegrationTests.csproj", "{B5489EDF-E6BD-4F9B-807F-3758DB093C13}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Core.IntegrationTests", "AgctorSDK.Core.IntegrationTests\AgctorSDK.Core.IntegrationTests.csproj", "{B5489EDF-E6BD-4F9B-807F-3758DB093C13}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
