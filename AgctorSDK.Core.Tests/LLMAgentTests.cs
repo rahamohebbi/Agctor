@@ -78,14 +78,14 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
 
         public LLMAgentTests()
         {
-            _httpClient = CreateMockHttpClient(async (req, ct) => 
+            _httpClient = CreateMockHttpClient((req, ct) => 
             {
                 if (req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/tags"))
                 {
-                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                     {
                         Content = new StringContent("{ \"models\": [] }") 
-                    };
+                    });
                 }
                 var defaultOllamaResponse = new OllamaGenerateResponse
                 {
@@ -94,10 +94,10 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
                     Response = "Default test response from Ollama",
                     Done = true
                 };
-                return new HttpResponseMessage(HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(JsonSerializer.Serialize(defaultOllamaResponse))
-                };
+                });
             });
             _agent = new LLMAgent("test-agent-001", TestOllamaUrl, DefaultModel);
             InjectHttpClient(_agent, _httpClient);
@@ -113,13 +113,13 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
         [Fact]
         public async Task InitializeAsync_SetsStateToActive_EvenIfHttpCheckFails()
         {
-            var localHttpClient = CreateMockHttpClient(async (req, ct) => 
+            var localHttpClient = CreateMockHttpClient((req, ct) => 
             {
                  if (req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/tags"))
                  {
-                     return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
                  }
-                 return new HttpResponseMessage(HttpStatusCode.NotFound);
+                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
             });
             var localAgent = new LLMAgent("test-agent-init-fail", TestOllamaUrl, DefaultModel);
             InjectHttpClient(localAgent, localHttpClient);
@@ -140,7 +140,7 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
             string inputCorrelationId = "corr-mcp-123";
             var inputEnvelope = CreateTestInputEnvelope(_agent.Id, prompt, inputMessageId, correlationId: inputCorrelationId, messageType: "UserPrompt");
 
-            var localHttpClient = CreateMockHttpClient(async (req, ct) => 
+            var localHttpClient = CreateMockHttpClient((req, ct) => 
             {
                 if (req.Method == HttpMethod.Post && req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/generate"))
                 {
@@ -151,16 +151,16 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
                         Response = expectedResponseText,
                         Done = true
                     };
-                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                     {
                         Content = new StringContent(JsonSerializer.Serialize(ollamaResponse))
-                    };
+                    });
                 }
                 if (req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/tags"))
                 {
-                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") };
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") });
                 }
-                return new HttpResponseMessage(HttpStatusCode.NotFound);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
             });
             InjectHttpClient(_agent, localHttpClient);
 
@@ -214,16 +214,16 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
             var inputEnvelope = CreateTestInputEnvelope(_agent.Id, prompt, "req-api-error", correlationId: "corr-api-error");
             string apiErrorDetails = "{\"error\": \"model not found\"}";
 
-            var localHttpClient = CreateMockHttpClient(async (req, ct) => 
+            var localHttpClient = CreateMockHttpClient((req, ct) => 
             {
                  if (req.Method == HttpMethod.Post && req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/generate"))
                  {
-                     return new HttpResponseMessage(HttpStatusCode.NotFound) 
+                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound) 
                      {
                          Content = new StringContent(apiErrorDetails) 
-                     };
+                     });
                  }
-                 return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") };
+                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") });
             });
             InjectHttpClient(_agent, localHttpClient);
 
@@ -241,17 +241,17 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
             await _agent.InitializeAsync();
             var inputEnvelope = CreateTestInputEnvelope(_agent.Id, "prompt", "req-non-final", correlationId: "corr-non-final");
             
-            var localHttpClient = CreateMockHttpClient(async (req, ct) => 
+            var localHttpClient = CreateMockHttpClient((req, ct) => 
             {
                 if (req.Method == HttpMethod.Post && req.RequestUri != null && req.RequestUri.PathAndQuery.EndsWith("/api/generate"))
                 {
                     var ollamaResponse = new OllamaGenerateResponse { Done = false, Response = "partial..." }; // Non-final
-                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                     {
                         Content = new StringContent(JsonSerializer.Serialize(ollamaResponse))
-                    };
+                    });
                 }
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") };
+                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") });
             });
             InjectHttpClient(_agent, localHttpClient);
 
@@ -288,13 +288,13 @@ namespace AgctorSDK.Core.Tests // Corrected namespace
             await _agent.InitializeAsync();
             var inputEnvelope = CreateTestInputEnvelope(_agent.Id, "prompt", "req-json-ex", correlationId: "corr-json-ex");
 
-            var localHttpClient = CreateMockHttpClient(async (req, ct) => 
+            var localHttpClient = CreateMockHttpClient((req, ct) => 
             {
                 if (req.Method == HttpMethod.Post)
                 {
-                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("this is not json") };
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("this is not json") });
                 }
-                return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") };
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{ \"models\": [] }") });
             });
             InjectHttpClient(_agent, localHttpClient);
 

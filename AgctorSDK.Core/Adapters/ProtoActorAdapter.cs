@@ -14,7 +14,9 @@ namespace AgctorSDK.Core.Adapters
     public class ProtoActorAdapter : IActorRuntimeAdapter
     {
         private bool _isDisposed;
+#pragma warning disable CS0649 // Field is never assigned to
         private bool _isInitialized;
+#pragma warning restore CS0649
         private readonly Dictionary<string, object> _configuration = new();
 
         /// <summary>
@@ -40,17 +42,23 @@ namespace AgctorSDK.Core.Adapters
         /// <summary>
         /// Event raised when an actor is spawned in Proto.Actor.
         /// </summary>
+#pragma warning disable CS0067 // Event is never used
         public event EventHandler<ActorSpawnedEventArgs>? ActorSpawned;
+#pragma warning restore CS0067
 
         /// <summary>
         /// Event raised when an actor is stopped in Proto.Actor.
         /// </summary>
+#pragma warning disable CS0067 // Event is never used
         public event EventHandler<ActorStoppedEventArgs>? ActorStopped;
+#pragma warning restore CS0067
 
         /// <summary>
         /// Event raised when a message is sent through Proto.Actor.
         /// </summary>
+#pragma warning disable CS0067 // Event is never used
         public event EventHandler<MessageSentEventArgs>? MessageSent;
+#pragma warning restore CS0067
 
         /// <summary>
         /// Initializes the Proto.Actor runtime with the provided configuration.

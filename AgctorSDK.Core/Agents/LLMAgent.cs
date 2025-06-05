@@ -17,10 +17,10 @@ namespace AgctorSDK.Core.Agents
     public class OllamaGenerateRequest
     {
         [JsonPropertyName("model")]
-        public string Model { get; set; }
+        public string Model { get; set; } = default!;
 
         [JsonPropertyName("prompt")]
-        public string Prompt { get; set; }
+        public string Prompt { get; set; } = default!;
 
         [JsonPropertyName("stream")]
         public bool Stream { get; set; } = false; // We want a single response
@@ -29,13 +29,13 @@ namespace AgctorSDK.Core.Agents
     public class OllamaGenerateResponse
     {
         [JsonPropertyName("model")]
-        public string Model { get; set; }
+        public string Model { get; set; } = default!;
 
         [JsonPropertyName("created_at")]
         public DateTime CreatedAt { get; set; }
 
         [JsonPropertyName("response")]
-        public string Response { get; set; }
+        public string Response { get; set; } = default!;
 
         [JsonPropertyName("done")]
         public bool Done { get; set; }

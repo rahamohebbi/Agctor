@@ -104,5 +104,124 @@ namespace AgctorSDK.IntegrationTests
             Assert.AreEqual(ActorState.Active, agent.State, "Agent should be active after initialization attempt.");
             Console.WriteLine($"LLM Agent ({agentId}) initialized. Current state: {agent.State}. Ensure Ollama is accessible at {OllamaUrl} for this test to be meaningful.");
         }
+
+        [TestMethod]
+        [TestCategory("Integration")]
+        public async Task ReceiveAsync_InvalidPayload_ShouldReturnInvalidPromptError()
+        {
+            // Arrange
+            var agentId = "itest-invalid-payload";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            await agent.InitializeAsync();
+            Assert.AreEqual(ActorState.Active, agent.State);
+
+            var inputEnvelope = new MessageEnvelope(12345, null, "itest-002"); // Invalid payload type (not a string)
+
+            // Act
+            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
+
+            // Assert
+            Assert.IsNotNull(resultEnvelope);
+            Assert.AreEqual("InvalidPromptError", resultEnvelope.Headers["MessageType"]);
+            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Prompt must be a non-empty string"));
+        }
+
+        [TestMethod]
+        [TestCategory("Integration")]
+        public async Task ReceiveAsync_EmptyPrompt_ShouldReturnInvalidPromptError()
+        {
+            // Arrange
+            var agentId = "itest-empty-prompt";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            await agent.InitializeAsync();
+
+            var inputEnvelope = new MessageEnvelope(" ", null, "itest-003"); // Empty prompt
+
+            // Act
+            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
+
+            // Assert
+            Assert.IsNotNull(resultEnvelope);
+            Assert.AreEqual("InvalidPromptError", resultEnvelope.Headers["MessageType"]);
+            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Prompt must be a non-empty string"));
+        }
+        
+        [TestMethod]
+        [TestCategory("Integration")]
+        public async Task ReceiveAsync_AgentNotActive_ShouldReturnNotActiveError()
+        {
+            // Arrange
+            var agentId = "itest-not-active";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            // Don't initialize, or shut it down to make it not active.
+            await agent.ShutdownAsync(); 
+            Assert.AreNotEqual(ActorState.Active, agent.State);
+
+            var inputEnvelope = new MessageEnvelope("test prompt", null, "itest-004");
+
+            // Act
+            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
+
+            // Assert
+            Assert.IsNotNull(resultEnvelope);
+            Assert.AreEqual("AgentNotActiveError", resultEnvelope.Headers["MessageType"]);
+            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Agent not active"));
+        }
+
+        [TestMethod]
+        [TestCategory("Integration")]
+        public async Task ReceiveAsync_MissingSenderIdHeader_ShouldHandleGracefully()
+        {
+            // Arrange
+            var agentId = "itest-missing-header";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            await agent.InitializeAsync();
+
+            var headers = new Dictionary<string, string> { { "ReceiverId", agentId } }; // No SenderId
+            var inputEnvelope = new MessageEnvelope("Why is the sky blue?", null, "itest-005", headers);
+
+            // Act
+            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
+
+            // Assert
+            Assert.IsNotNull(resultEnvelope);
+            // Check that the response was sent back to "unknown"
+            Assert.AreEqual("unknown", resultEnvelope.Headers["ReceiverId"]);
+            // Check it is a valid LLM response otherwise
+            Assert.AreEqual("LLMResponse", resultEnvelope.Headers["MessageType"]);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(resultEnvelope.Payload as string));
+        }
+
+        [TestMethod]
+        [TestCategory("Integration")]
+        public async Task ReceiveAsync_WithCancellation_ShouldReturnTaskCanceledError()
+        {
+            // Arrange
+            var agentId = "itest-cancellation";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            await agent.InitializeAsync();
+            var cts = new CancellationTokenSource();
+            
+            var inputEnvelope = new MessageEnvelope("A very long prompt that takes time.", null, "itest-006");
+            IMessageEnvelope? resultEnvelope = null;
+            Exception? exception = null;
+
+            // Act
+            try
+            {
+                cts.Cancel(); // Cancel before the call
+                resultEnvelope = await agent.ReceiveAsync(inputEnvelope, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+
+            // Assert
+            Assert.IsNull(exception, "ReceiveAsync should handle cancellation gracefully and not throw an exception.");
+            Assert.IsNotNull(resultEnvelope, "Result envelope should not be null.");
+            Assert.AreEqual("TaskCanceledError", resultEnvelope?.Headers["MessageType"]);
+            Assert.IsTrue(resultEnvelope?.Payload.ToString().Contains("Task was canceled"));
+        }
     }
 } 

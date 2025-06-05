@@ -516,19 +516,22 @@ namespace AgctorSDK.Core.Tests.Runtime
         }
 
         [Fact]
-        public void Dispose_ShouldCleanupResources()
+        public async Task Dispose_ShouldCleanupResources()
         {
             // Arrange
-            var runtime = new InMemoryActorRuntime();
-            runtime.InitializeAsync(new Dictionary<string, object>()).Wait();
-            runtime.SpawnActorAsync<EchoActor>("test-actor").Wait();
+            await _runtime.InitializeAsync(new Dictionary<string, object>());
+            var actor = await _runtime.SpawnActorAsync<EchoActor>("test-actor");
+            await _runtime.SendMessageAsync(actor.Id, "test message");
 
             // Act
-            runtime.Dispose();
+            _runtime.Dispose();
 
-            // Assert - Should not throw and should be disposed
-            Assert.Throws<ObjectDisposedException>(() => 
-                runtime.InitializeAsync(new Dictionary<string, object>()).Wait());
+            // Assert
+            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await _runtime.GetActorAsync<EchoActor>("test-actor"));
+            // After disposal, sending should fail or be ignored.
+            var ex = await Record.ExceptionAsync(async () => await _runtime.SendMessageAsync("test-actor", "another message"));
+            Assert.True(ex is InvalidOperationException || ex is ObjectDisposedException, 
+                "Sending a message after Dispose should throw InvalidOperationException or ObjectDisposedException.");
         }
 
         [Fact]
