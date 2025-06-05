@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
+using System.Collections.Generic;
 
 namespace AgctorSDK.Core.Runtime.Examples
 {
@@ -46,7 +47,12 @@ namespace AgctorSDK.Core.Runtime.Examples
             
             _messageCount++;
             string originalPayloadString = envelope.Payload?.ToString() ?? "null_payload";
-            LogTrace($"EchoActor '{Id}' received message #{_messageCount}: '{originalPayloadString}' (Type: {envelope.Metadata.MessageType})");
+            string incomingMessageType = "UnknownType";
+            if (envelope.Headers?.TryGetValue("MessageType", out var mt) == true) 
+            {
+                incomingMessageType = mt;
+            }
+            LogTrace($"EchoActor '{Id}' received message #{_messageCount}: '{originalPayloadString}' (Type Header: {incomingMessageType})");
 
             await Task.Delay(10, cancellationToken);
 
@@ -79,12 +85,35 @@ namespace AgctorSDK.Core.Runtime.Examples
             }
 
             LogTrace($"EchoActor '{Id}' finished processing message #{_messageCount}");
-            var responseMetadata = new DefaultMessageMetadata(
-                senderId: Id, 
-                receiverId: envelope.Metadata.SenderId,
-                correlationId: envelope.Metadata.CorrelationId
+
+            // Prepare MCP-compliant response envelope
+            string? requestSenderId = null;
+            if (envelope.Headers?.TryGetValue("SenderId", out var sid) == true) requestSenderId = sid;
+
+            string? requestCorrelationId = null;
+            if (envelope.Metadata?.TryGetValue("CorrelationId", out var corrIdObj) == true && corrIdObj is string corrIdStr) requestCorrelationId = corrIdStr;
+
+            var responseMetadata = new Dictionary<string, object>
+            {
+                { "Timestamp", DateTimeOffset.UtcNow }
+            };
+            if (requestCorrelationId != null) responseMetadata["CorrelationId"] = requestCorrelationId;
+
+            var responseHeaders = new Dictionary<string, string>
+            {
+                { "SenderId", Id },
+                { "ReceiverId", requestSenderId ?? "unknown" }, // Default to unknown if not present
+                { "MessageType", "EchoResponse" }, // Specific message type for the response
+                { "Version", "1.0" }
+            };
+            
+            // Use the main MessageEnvelope from AgctorSDK.Core.Messages
+            return new AgctorSDK.Core.Messages.MessageEnvelope(
+                payload: responsePayload, 
+                metadata: responseMetadata, 
+                id: Guid.NewGuid().ToString(), // New unique ID for the response envelope
+                headers: responseHeaders
             );
-            return new MessageEnvelope(responsePayload, responseMetadata, envelope.Id);
         }
 
         public async Task ShutdownAsync(CancellationToken cancellationToken = default)

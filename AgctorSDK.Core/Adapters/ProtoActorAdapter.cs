@@ -116,7 +116,7 @@ namespace AgctorSDK.Core.Adapters
         /// <param name="headers">Optional custom headers for the message</param>
         /// <param name="cancellationToken">Token for cancelling the operation</param>
         /// <returns>A task representing the asynchronous send operation</returns>
-        public Task SendMessageAsync(string targetActorId, object message, string? senderId = null, IDictionary<string, object>? headers = null, CancellationToken cancellationToken = default)
+        public Task SendMessageAsync(string targetActorId, object message, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor message sending is not yet implemented. " +
                 "This will use Proto.Actor context.Send() for fire-and-forget messaging.");
@@ -134,7 +134,7 @@ namespace AgctorSDK.Core.Adapters
         /// <param name="headers">Optional custom headers for the message</param>
         /// <param name="cancellationToken">Token for cancelling the operation</param>
         /// <returns>A task containing the response from the target actor</returns>
-        public Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout, string? senderId = null, IDictionary<string, object>? headers = null, CancellationToken cancellationToken = default) where TResponse : class
+        public Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default) where TResponse : class
         {
             throw new NotImplementedException("Proto.Actor request-response messaging is not yet implemented. " +
                 "This will use Proto.Actor context.RequestAsync() with timeout handling.");

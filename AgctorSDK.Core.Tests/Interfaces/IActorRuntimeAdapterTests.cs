@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Events;
 using Moq;
 using Xunit;
 
@@ -33,7 +34,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
             public bool ShouldThrowOnSendMessage { get; set; }
             public List<string> SpawnedActorIds { get; } = new();
             public List<string> StoppedActorIds { get; } = new();
-            public List<(string targetId, object message)> SentMessages { get; } = new();
+            public List<(string targetId, object message, string? senderId, IDictionary<string, string>? headers)> SentMessages { get; } = new();
 
             public event EventHandler<ActorSpawnedEventArgs>? ActorSpawned;
             public event EventHandler<ActorStoppedEventArgs>? ActorStopped;
@@ -106,29 +107,73 @@ namespace AgctorSDK.Core.Tests.Interfaces
             }
 
             public Task SendMessageAsync(string targetActorId, object message, string? senderId = null, 
-                IDictionary<string, object>? headers = null, CancellationToken cancellationToken = default)
+                IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
             {
                 if (ShouldThrowOnSendMessage)
                     throw new InvalidOperationException("Test exception during message send");
 
-                SentMessages.Add((targetActorId, message));
+                SentMessages.Add((targetActorId, message, senderId, headers));
+                
+                // Construct mock headers/metadata for the event, reflecting what InMemoryActorRuntime would do
+                var eventHeaders = new Dictionary<string, string>(headers ?? new Dictionary<string, string>());
+                if (senderId != null) eventHeaders["SenderId"] = senderId;
+                eventHeaders["ReceiverId"] = targetActorId;
+                if (!eventHeaders.ContainsKey("MessageType")) eventHeaders["MessageType"] = message.GetType().Name;
+
                 MessageSent?.Invoke(this, new MessageSentEventArgs(
-                    Guid.NewGuid().ToString(), senderId, targetActorId, message.GetType().Name));
+                    Guid.NewGuid().ToString(), 
+                    senderId, 
+                    targetActorId, 
+                    eventHeaders["MessageType"] // MessageType from headers
+                ));
                 return Task.CompletedTask;
             }
 
             public Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout,
-                string? senderId = null, IDictionary<string, object>? headers = null, CancellationToken cancellationToken = default)
+                string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
                 where TResponse : class
             {
                 if (ShouldThrowOnSendMessage)
                     throw new InvalidOperationException("Test exception during message send");
 
-                SentMessages.Add((targetActorId, message));
-                MessageSent?.Invoke(this, new MessageSentEventArgs(
-                    Guid.NewGuid().ToString(), senderId, targetActorId, message.GetType().Name));
+                SentMessages.Add((targetActorId, message, senderId, headers));
+                
+                var eventHeaders = new Dictionary<string, string>(headers ?? new Dictionary<string, string>());
+                if (senderId != null) eventHeaders["SenderId"] = senderId;
+                eventHeaders["ReceiverId"] = targetActorId;
+                if (!eventHeaders.ContainsKey("MessageType")) eventHeaders["MessageType"] = message.GetType().Name;
 
-                // Return a default response for testing
+                MessageSent?.Invoke(this, new MessageSentEventArgs(
+                    Guid.NewGuid().ToString(), 
+                    senderId, 
+                    targetActorId, 
+                    eventHeaders["MessageType"]
+                ));
+
+                // For TResponse that is IMessageEnvelope, create a mock response envelope
+                if (typeof(TResponse) == typeof(IMessageEnvelope))
+                {
+                    var mockResponsePayload = "Mock response payload";
+                    var responseEnvelopeHeaders = new Dictionary<string, string>
+                    {
+                        {"SenderId", targetActorId}, // Actor is sender
+                        {"ReceiverId", senderId ?? "unknown"},
+                        {"MessageType", "MockResponse"}
+                    };
+                    var responseEnvelopeMetadata = new Dictionary<string, object>
+                    {
+                        {"Timestamp", DateTimeOffset.UtcNow}
+                    };
+                    if (eventHeaders.TryGetValue("CorrelationId", out var cId)) responseEnvelopeMetadata["CorrelationId"] = cId;
+                    
+                    var mockResponse = new Mock<IMessageEnvelope>();
+                    mockResponse.Setup(m => m.Id).Returns(Guid.NewGuid().ToString());
+                    mockResponse.Setup(m => m.Payload).Returns(mockResponsePayload);
+                    mockResponse.Setup(m => m.Headers).Returns(responseEnvelopeHeaders);
+                    mockResponse.Setup(m => m.Metadata).Returns(responseEnvelopeMetadata);
+                    return Task.FromResult(mockResponse.Object as TResponse)!;
+                }
+
                 return Task.FromResult(default(TResponse)!);
             }
 
@@ -309,45 +354,63 @@ namespace AgctorSDK.Core.Tests.Interfaces
         }
 
         [Fact]
-        public async Task SendMessageAsync_ShouldSendMessage()
+        public async Task SendMessageAsync_ShouldSendMessage_MCP()
         {
             // Arrange
             var adapter = new TestActorRuntimeAdapter();
             await adapter.InitializeAsync(new Dictionary<string, object>());
-            var targetActorId = "target-actor";
-            var message = "test message";
-            var senderId = "sender-actor";
-            var headers = new Dictionary<string, object> { { "header1", "value1" } };
-            MessageSentEventArgs? sentEvent = null;
-            adapter.MessageSent += (sender, args) => sentEvent = args;
+            var targetId = "actor-1";
+            var message = "Hello";
+            var senderId = "sender-A";
+            var headers = new Dictionary<string, string> { { "CustomHeader", "CustomValue" }, { "CorrelationId", "corr-1" } };
+            MessageSentEventArgs? receivedEvent = null;
+            adapter.MessageSent += (s, e) => receivedEvent = e;
 
             // Act
-            await adapter.SendMessageAsync(targetActorId, message, senderId, headers);
+            await adapter.SendMessageAsync(targetId, message, senderId, headers);
 
             // Assert
-            Assert.Contains((targetActorId, message), adapter.SentMessages);
-            Assert.NotNull(sentEvent);
-            Assert.Equal(senderId, sentEvent.SenderId);
-            Assert.Equal(targetActorId, sentEvent.ReceiverId);
-            Assert.Equal("String", sentEvent.MessageType);
+            Assert.Single(adapter.SentMessages);
+            var sentMsg = adapter.SentMessages.First();
+            Assert.Equal(targetId, sentMsg.targetId);
+            Assert.Equal(message, sentMsg.message);
+            Assert.Equal(senderId, sentMsg.senderId);
+            Assert.Equal(headers, sentMsg.headers);
+
+            Assert.NotNull(receivedEvent);
+            Assert.Equal(senderId, receivedEvent.SenderId);
+            Assert.Equal(targetId, receivedEvent.ReceiverId);
+            Assert.Equal("String", receivedEvent.MessageType); // Default from payload type
         }
 
         [Fact]
-        public async Task SendMessageAsync_WithResponse_ShouldReturnResponse()
+        public async Task SendMessageAsync_WithResponse_ShouldReturnResponse_MCP()
         {
             // Arrange
             var adapter = new TestActorRuntimeAdapter();
             await adapter.InitializeAsync(new Dictionary<string, object>());
-            var targetActorId = "target-actor";
-            var message = "test message";
-            var timeout = TimeSpan.FromSeconds(30);
+            var targetId = "actor-B";
+            var message = "Request for data";
+            var senderId = "sender-C";
+            var headers = new Dictionary<string, string> { { "Priority", "High" }, { "CorrelationId", "corr-2" } };
 
             // Act
-            var response = await adapter.SendMessageAsync<string>(targetActorId, message, timeout);
+            var response = await adapter.SendMessageAsync<IMessageEnvelope>(targetId, message, TimeSpan.FromSeconds(5), senderId, headers);
 
             // Assert
-            Assert.Null(response);
-            Assert.Contains((targetActorId, message), adapter.SentMessages);
+            Assert.Single(adapter.SentMessages);
+            var sentMsg = adapter.SentMessages.First();
+            Assert.Equal(targetId, sentMsg.targetId);
+            Assert.Equal(message, sentMsg.message);
+            Assert.Equal(senderId, sentMsg.senderId);
+            Assert.Equal(headers, sentMsg.headers);
+            
+            Assert.NotNull(response);
+            Assert.IsAssignableFrom<IMessageEnvelope>(response);
+            Assert.Equal("MockResponse", response.Headers["MessageType"]);
+            Assert.Equal(targetId, response.Headers["SenderId"]); // Actor is sender of response
+            Assert.Equal(senderId, response.Headers["ReceiverId"]);
+            Assert.Equal("corr-2", response.Metadata["CorrelationId"]); // Echoed CorrelationId
         }
 
         [Fact]
@@ -507,26 +570,23 @@ namespace AgctorSDK.Core.Tests.Interfaces
         }
 
         [Fact]
-        public void MessageSentEventArgs_ShouldSetPropertiesCorrectly()
+        public void MessageSentEventArgs_ShouldSetPropertiesCorrectly_MCP()
         {
             // Arrange
-            var messageId = "msg-123";
-            var senderId = "sender-actor";
-            var receiverId = "receiver-actor";
-            var messageType = "TestMessage";
-            var beforeTimestamp = DateTimeOffset.UtcNow;
+            var messageId = "msg-789";
+            var senderId = "sender-X";
+            var receiverId = "receiver-Y";
+            var messageType = "TestEvent"; // This is the value for MessageType header
 
             // Act
-            var eventArgs = new MessageSentEventArgs(messageId, senderId, receiverId, messageType);
-            var afterTimestamp = DateTimeOffset.UtcNow;
+            var args = new MessageSentEventArgs(messageId, senderId, receiverId, messageType);
 
             // Assert
-            Assert.Equal(messageId, eventArgs.MessageId);
-            Assert.Equal(senderId, eventArgs.SenderId);
-            Assert.Equal(receiverId, eventArgs.ReceiverId);
-            Assert.Equal(messageType, eventArgs.MessageType);
-            Assert.True(eventArgs.Timestamp >= beforeTimestamp);
-            Assert.True(eventArgs.Timestamp <= afterTimestamp);
+            Assert.Equal(messageId, args.MessageId);
+            Assert.Equal(senderId, args.SenderId);
+            Assert.Equal(receiverId, args.ReceiverId);
+            Assert.Equal(messageType, args.MessageType); // Convenience property
+            Assert.True(args.Timestamp <= DateTimeOffset.UtcNow && args.Timestamp > DateTimeOffset.UtcNow.AddSeconds(-1));
         }
     }
 } 

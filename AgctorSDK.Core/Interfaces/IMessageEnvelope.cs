@@ -21,16 +21,18 @@ namespace AgctorSDK.Core.Interfaces
         object Payload { get; }
 
         /// <summary>
-        /// Message metadata containing system-level information about the message.
-        /// Includes routing info, timestamps, sender/receiver details, etc.
+        /// A dictionary of key-value pairs for optional, application-specific, or contextual data.
+        /// This can include information such as priority, language, correlationId, timestamp, etc.
+        /// Conforms to the Model Context Protocol (MCP).
         /// </summary>
-        IMessageMetadata Metadata { get; }
+        IDictionary<string, object> Metadata { get; }
 
         /// <summary>
-        /// Custom headers for application-specific message properties.
-        /// Allows for extensible message attributes without modifying the core envelope structure.
+        /// Custom headers for routing information, message type, agent details, and other protocol-level information.
+        /// Keys and values are strings. Conforms to the Model Context Protocol (MCP).
+        /// Examples include 'content-type', 'agent', 'reply-to'.
         /// </summary>
-        IReadOnlyDictionary<string, object> Headers { get; }
+        IReadOnlyDictionary<string, string> Headers { get; }
 
         /// <summary>
         /// Creates a new message envelope with the same structure but different payload.
@@ -41,11 +43,35 @@ namespace AgctorSDK.Core.Interfaces
         IMessageEnvelope WithPayload(object newPayload);
 
         /// <summary>
-        /// Creates a new message envelope with additional or updated headers.
-        /// Preserves existing headers and adds/overwrites with the provided ones.
+        /// Creates a new message envelope with all existing headers replaced by the provided ones.
         /// </summary>
-        /// <param name="additionalHeaders">Headers to add or update</param>
-        /// <returns>A new message envelope with updated headers</returns>
-        IMessageEnvelope WithHeaders(IDictionary<string, object> additionalHeaders);
+        /// <param name="replacementHeaders">The complete set of new headers</param>
+        /// <returns>A new message envelope with the replaced headers</returns>
+        IMessageEnvelope WithHeaders(IDictionary<string, string> replacementHeaders);
+
+        /// <summary>
+        /// Creates a new message envelope with a specific header added or updated.
+        /// If the key already exists, its value is updated; otherwise, a new header is added.
+        /// </summary>
+        /// <param name="key">The header key</param>
+        /// <param name="value">The header value</param>
+        /// <returns>A new message envelope with the updated header</returns>
+        IMessageEnvelope WithHeader(string key, string value);
+
+        /// <summary>
+        /// Creates a new message envelope with all existing metadata replaced by the provided dictionary.
+        /// </summary>
+        /// <param name="replacementMetadata">The complete set of new metadata</param>
+        /// <returns>A new message envelope with the replaced metadata</returns>
+        IMessageEnvelope WithMetadata(IDictionary<string, object> replacementMetadata);
+
+        /// <summary>
+        /// Creates a new message envelope with a specific metadata entry added or updated.
+        /// If the key already exists, its value is updated; otherwise, a new entry is added.
+        /// </summary>
+        /// <param name="key">The metadata key</param>
+        /// <param name="value">The metadata value</param>
+        /// <returns>A new message envelope with the updated metadata entry</returns>
+        IMessageEnvelope WithMetadata(string key, object value);
     }
 } 

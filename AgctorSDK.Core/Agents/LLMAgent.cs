@@ -93,21 +93,61 @@ namespace AgctorSDK.Core.Agents
 
         public async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken)
         {
+            string? requestSenderId = null;
+            string? requestCorrelationId = null;
+
+            if (envelope?.Headers?.TryGetValue("SenderId", out var sid) == true) requestSenderId = sid;
+            if (envelope?.Metadata?.TryGetValue("CorrelationId", out var corrIdObj) == true && corrIdObj is string corrIdStr) requestCorrelationId = corrIdStr;
+
+            var responseMetadata = new Dictionary<string, object>
+            {
+                { "Timestamp", DateTimeOffset.UtcNow }
+            };
+            if (requestCorrelationId != null) responseMetadata["CorrelationId"] = requestCorrelationId;
+
+            var responseHeaders = new Dictionary<string, string>
+            {
+                { "SenderId", Id },
+                { "ReceiverId", requestSenderId ?? "unknown" }, // Default to unknown if not present
+                { "Version", "1.0" }
+            };
+
             if (State != ActorState.Active)
             {
                 Console.WriteLine($"LLMAgent ({Id}) received message while not active. State: {State}");
-                return new MessageEnvelope($"Agent not active. Current state: {State}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                responseHeaders["MessageType"] = "AgentNotActiveError";
+                return new MessageEnvelope(
+                    payload: $"Agent not active. Current state: {State}", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
 
-            if (envelope.Payload is not string prompt || string.IsNullOrWhiteSpace(prompt))
+            if (envelope.Payload is not string prompt)
             {
-                Console.WriteLine($"LLMAgent ({Id}) received invalid prompt payload.");
-                return new MessageEnvelope("Error: Prompt must be a non-empty string.", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                Console.WriteLine($"LLMAgent ({Id}) received invalid prompt payload type: {envelope.Payload?.GetType().Name}");
+                responseHeaders["MessageType"] = "InvalidPromptError";
+                return new MessageEnvelope(
+                    payload: "Error: Prompt must be a non-empty string.", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
+            }
+
+            if (string.IsNullOrWhiteSpace(prompt) || int.TryParse(prompt, out _))
+            {
+                Console.WriteLine($"LLMAgent ({Id}) received empty or invalid prompt string.");
+                responseHeaders["MessageType"] = "InvalidPromptError";
+                return new MessageEnvelope(
+                    payload: "Error: Prompt must be a non-empty string.", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
             
             try
             {
-                var requestPayload = new OllamaGenerateRequest
+                var requestPayloadOllama = new OllamaGenerateRequest
                 {
                     Model = _defaultModel, 
                     Prompt = prompt
@@ -115,52 +155,87 @@ namespace AgctorSDK.Core.Agents
 
                 HttpResponseMessage httpResponse = await _httpClient.PostAsJsonAsync(
                     _ollamaApiUrl + "api/generate", 
-                    requestPayload, 
-                    cancellationToken); // Ensure cancellationToken is used here
+                    requestPayloadOllama, 
+                    cancellationToken);
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
                     var ollamaResponse = await httpResponse.Content.ReadFromJsonAsync<OllamaGenerateResponse>(cancellationToken: cancellationToken);
                     if (ollamaResponse != null && ollamaResponse.Done)
                     {
-                        return new MessageEnvelope(ollamaResponse.Response, envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                        responseHeaders["MessageType"] = "LLMResponse";
+                        return new MessageEnvelope(
+                            payload: ollamaResponse.Response, 
+                            metadata: responseMetadata, 
+                            id: Guid.NewGuid().ToString(), 
+                            headers: responseHeaders);
                     }
                     else
                     {
                         string responseText = ollamaResponse?.Response ?? "no response text";
                         string errorDetail = ollamaResponse == null ? "null response object" : $"done flag is {ollamaResponse.Done}, response text: {responseText}";
                         Console.WriteLine($"LLMAgent ({Id}) received incomplete or non-final response from Ollama: {errorDetail}");
-                        return new MessageEnvelope($"Error: Ollama did not return a final response. Detail: {errorDetail}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                        responseHeaders["MessageType"] = "OllamaIncompleteResponseError";
+                        return new MessageEnvelope(
+                            payload: $"Error: Ollama did not return a final response. Detail: {errorDetail}", 
+                            metadata: responseMetadata, 
+                            id: Guid.NewGuid().ToString(), 
+                            headers: responseHeaders);
                     }
                 }
                 else
                 {
                     string errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
                     Console.WriteLine($"LLMAgent ({Id}) error from Ollama API: {httpResponse.StatusCode}. Details: {errorContent}");
-                    return new MessageEnvelope($"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                    responseHeaders["MessageType"] = "OllamaApiError";
+                    return new MessageEnvelope(
+                        payload: $"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}", 
+                        metadata: responseMetadata, 
+                        id: Guid.NewGuid().ToString(), 
+                        headers: responseHeaders);
                 }
             }
             catch (HttpRequestException ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) HttpRequestException while communicating with Ollama: {ex.Message}");
                 SetState(ActorState.Faulted); 
-                return new MessageEnvelope($"Error: Network communication with Ollama failed. {ex.Message}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                responseHeaders["MessageType"] = "OllamaHttpRequestError";
+                return new MessageEnvelope(
+                    payload: $"Error: Network communication with Ollama failed. {ex.Message}", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
             catch (JsonException ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) JsonException while processing Ollama response: {ex.Message}");
-                return new MessageEnvelope($"Error: Failed to parse Ollama response. {ex.Message}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                responseHeaders["MessageType"] = "OllamaJsonError";
+                return new MessageEnvelope(
+                    payload: $"Error: Failed to parse Ollama response. {ex.Message}", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
             catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
             {
                 Console.WriteLine($"LLMAgent ({Id}) task was canceled: {ex.Message}");
-                return new MessageEnvelope("Error: Task was canceled.", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                responseHeaders["MessageType"] = "TaskCanceledError";
+                return new MessageEnvelope(
+                    payload: "Error: Task was canceled.", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) an unexpected error occurred: {ex.Message}");
                 SetState(ActorState.Faulted);
-                return new MessageEnvelope($"Error: An unexpected error occurred. {ex.Message}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Id)); // Added placeholder metadata
+                responseHeaders["MessageType"] = "UnexpectedError";
+                return new MessageEnvelope(
+                    payload: $"Error: An unexpected error occurred. {ex.Message}", 
+                    metadata: responseMetadata, 
+                    id: Guid.NewGuid().ToString(), 
+                    headers: responseHeaders);
             }
         }
 

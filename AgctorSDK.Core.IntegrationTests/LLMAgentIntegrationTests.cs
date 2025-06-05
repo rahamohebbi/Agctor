@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces; // For ActorState, IMessageEnvelope
 using AgctorSDK.Core.Messages;   // For MessageEnvelope, DefaultMessageMetadata
 using AgctorSDK.Core.Agents; // For LLMAgent
+using System.Collections.Generic;
 
 namespace AgctorSDK.IntegrationTests
 {
@@ -31,7 +32,18 @@ namespace AgctorSDK.IntegrationTests
             Assert.AreEqual(ActorState.Active, agent.State, "Agent should be active after initialization.");
 
             var prompt = "Why is the sky blue? Answer in one short sentence.";
-            var inputEnvelope = new MessageEnvelope(prompt, new DefaultMessageMetadata(agentId, agentId, "itest-001"), "itest-001");
+            var headers = new Dictionary<string, string>
+            {
+                { "SenderId", "integration-tester" },
+                { "ReceiverId", agentId },
+                { "MessageType", "UserPrompt" }
+            };
+            var metadata = new Dictionary<string, object>
+            {
+                { "CorrelationId", "itest-001" },
+                { "Timestamp", DateTimeOffset.UtcNow }
+            };
+            var inputEnvelope = new MessageEnvelope(prompt, metadata, "itest-001", headers);
 
             IMessageEnvelope? resultEnvelope = null;
             Exception? exception = null;
@@ -54,7 +66,7 @@ namespace AgctorSDK.IntegrationTests
             
             Console.WriteLine($"LLM Agent ({agentId}) received payload: {resultEnvelope?.Payload}");
 
-            Assert.AreEqual(inputEnvelope.Id, resultEnvelope?.Id, "Response envelope ID should match request ID.");
+            Assert.AreEqual("itest-001", resultEnvelope?.Metadata["CorrelationId"]?.ToString(), "Response envelope CorrelationId should match request CorrelationId.");
             Assert.IsInstanceOfType(resultEnvelope?.Payload, typeof(string), "Payload should be a string.");
             
             string? responsePayload = resultEnvelope?.Payload as string;

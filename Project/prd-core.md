@@ -53,19 +53,44 @@
     *   **FC3.1.4:** Method to generate unique agent IDs: `GenerateAgentId(...)`.
     *   **FC3.1.5:** Expose the underlying `IActorRuntimeAdapter`.
 
-### FC4: Messages (`IMessageEnvelope`, `IMessageMetadata`)
-*   **FC4.1:** Define `IMessageEnvelope` for wrapping messages.
-    *   **FC4.1.1:** Include a unique `Id` for tracking.
-    *   **FC4.1.2:** Contain the message `Payload` (object).
-    *   **FC4.1.3:** Include `IMessageMetadata` for system-level information.
-    *   **FC4.1.4:** Support custom application-specific `Headers` (read-only dictionary).
-    *   **FC4.1.5:** Support immutable update operations (`WithPayload()`, `WithHeaders()`).
-*   **FC4.2:** Define `IMessageMetadata` for message system information.
-    *   **FC4.2.1:** Include routing info: `SenderId`, `ReceiverId`, `ReplyTo`.
-    *   **FC4.2.2:** Include timing info: `Timestamp`, `ExpiresAt`.
-    *   **FC4.2.3:** Include `CorrelationId` for linking messages.
-    *   **FC4.2.4:** Support message `Priority`.
-    *   **FC4.2.5:** Include type information: `MessageType`, `Version`.
+### FC4: Messages (`IMessageEnvelope` & MCP Compliance)
+    *   _Comment:_ This section aligns with the Model Context Protocol (MCP) as defined in `prd-core-mcp-002.md`.
+*   **FC4.1:** Define `IMessageEnvelope` for wrapping messages consistently with MCP.
+    *   **FC4.1.1:** `Id`: A unique string identifier for the message, crucial for traceability.
+    *   **FC4.1.2:** `Payload`: The actual content/data of the message.
+        *   The payload must be serializable. The default serialization format is JSON.
+        *   The system should be designed to allow for other serialization formats (e.g., Protobuf, binary) through a strategy pattern, ensuring flexibility for different use cases and performance requirements.
+    *   **FC4.1.3:** `Metadata`: A dictionary of key-value pairs (`IDictionary<string, object>`) for optional, application-specific, or contextual data. This can include information such as `priority`, `language`, `correlationId`, `timestamp`, `expiresAt`, or custom data relevant to the task.
+    *   **FC4.1.4:** `Headers`: A dictionary of key-value pairs (`IDictionary<string, string>`) for routing information, message type, agent details, and other protocol-level information. Examples include `content-type`, `agent` (originating or target agent type), `reply-to` (address for response), `senderId`, `receiverId`, `messageType`, and `version`.
+    *   **FC4.1.5:** The `IMessageEnvelope` should support immutable update patterns (e.g., `WithPayload(newPayload)`, `WithMetadata(key, value)`, `WithHeader(key, value)`) to facilitate safe message handling and modification.
+*   **FC4.2:** Message Envelope Handling and MCP Compliance Requirements.
+    *   **FC4.2.1:** All agents within the Agctor system must accept messages wrapped in the standard `IMessageEnvelope` and must also return their results or communications in the same envelope format.
+    *   **FC4.2.2:** Agent logic should be decoupled from the raw payload. Agents are expected to process the `IMessageEnvelope` structure, extracting payload and relevant information from `Metadata` and `Headers`.
+    *   **FC4.2.3:** Agents must utilize the `Headers` and/or `Metadata` fields to extract necessary context, such as task type, originating agent, routing directives, or content serialization format.
+    *   **FC4.2.4:** Incoming `IMessageEnvelope` instances should be validated against the MCP schema or structural definition. Malformed or non-compliant envelopes should be logged appropriately and may be rejected by the agent or runtime.
+    *   **FC4.2.5:** Actor runtime adapters (`IActorRuntimeAdapter`) and system gateways (e.g., CLI, external API endpoints) are responsible for ensuring that messages adhere to the MCP format. This includes wrapping outgoing messages from non-MCP sources into `IMessageEnvelope` and unwrapping incoming envelopes when interfacing with external systems that do not natively use MCP.
+*   **FC4.3:** Example MCP `MessageEnvelope`
+    ```json
+    {
+      "id": "msg-abc-123-xyz-789",
+      "payload": "{"taskDetail": "Generate a REST API specification in OpenAPI 3.0 for a user management service."}",
+      "metadata": {
+        "priority": "high",
+        "language": "json",
+        "correlationId": "corr-456",
+        "timestamp": "2023-10-26T10:30:00Z"
+      },
+      "headers": {
+        "content-type": "application/json",
+        "agent": "ApiSpecGeneratorAgent",
+        "reply-to": "OrchestratorAgent/instance-001",
+        "senderId": "TaskDispatcherAgent/instance-007",
+        "receiverId": "ApiSpecGeneratorAgent/instance-003",
+        "messageType": "GenerateApiSpec",
+        "version": "1.0"
+      }
+    }
+    ```
 
 ### FC5: Actor Runtime Adapter (`IActorRuntimeAdapter`)
 *   **FC5.1:** Define `IActorRuntimeAdapter` as the interface for pluggable actor runtime backends.

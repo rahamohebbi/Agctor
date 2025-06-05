@@ -140,12 +140,11 @@ namespace AgctorSDK.Core.Runtime.Examples
             await runtime.SendMessageAsync("complex-handler", complexRequest, "complex-sender");
 
             // Send message with custom headers
-            var headers = new Dictionary<string, object>
+            var headers = new Dictionary<string, string>
             {
                 { "Priority", "High" },
                 { "Source", "Demo" },
-                { "RequestId", Guid.NewGuid().ToString() },
-                { "Timestamp", DateTimeOffset.UtcNow }
+                { "RequestId", Guid.NewGuid().ToString() }
             };
 
             await runtime.SendMessageAsync("complex-handler", "Message with headers", "header-sender", headers);

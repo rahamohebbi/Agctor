@@ -176,16 +176,41 @@ namespace AgctorSDK.Core.Agents
         /// <returns>A task representing the asynchronous message processing operation</returns>
         public virtual async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
-            if (envelope?.Payload == null)
+            if (envelope == null)
             {
-                LogWarning("Received null or empty message envelope");
-                // Need to return a valid IMessageEnvelope, even for an error or empty case.
-                // Creating a simple response or rethrowing might be options.
-                // For now, returning the original envelope if it's not null, or an error envelope.
-                return envelope ?? new MessageEnvelope("Error: Null envelope received", new DefaultMessageMetadata(Id, "unknown"));
+                LogWarning("Received null message envelope.");
+                // Construct a valid error response according to MCP
+                var errorPayload = "Error: Null envelope received.";
+                var errorId = Guid.NewGuid().ToString();
+                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                var errorHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id }, // This agent is sending the error
+                    // ReceiverId might be unknown if envelope is null
+                    { "MessageType", "ErrorResponse" } 
+                };
+                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: errorId, headers: errorHeaders);
+            }
+            
+            if (envelope.Payload == null)
+            {   
+                LogWarning("Received message envelope with null payload.");
+                string originalSenderId = (envelope.Headers?.TryGetValue("SenderId", out var sid) == true ? sid : null) ?? "unknown";
+                var errorPayload = "Error: Null payload in received envelope.";
+                var errorId = envelope.Id ?? Guid.NewGuid().ToString(); // Try to use original Id
+                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                if (envelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true) { errorMetadata["CorrelationId"] = corrId; }
+
+                var errorHeaders = new Dictionary<string, string>
+                {
+                    { "SenderId", Id },
+                    { "ReceiverId", originalSenderId },
+                    { "MessageType", "ErrorResponse" }
+                };
+                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: errorId, headers: errorHeaders);
             }
 
-            LogInfo($"Received message: {envelope.Payload.GetType().Name}");
+            LogInfo($"Received message with payload type: {envelope.Payload.GetType().Name}. MessageId: {envelope.Id}");
 
             try
             {
@@ -220,14 +245,51 @@ namespace AgctorSDK.Core.Agents
             }
             catch (Exception ex)
             {
-                LogError($"Error processing message {envelope.Payload.GetType().Name}: {ex.Message}");
-                // Potentially return an error envelope
-                return new MessageEnvelope($"Error processing message: {ex.Message}", envelope.Id, new DefaultMessageMetadata(Id, envelope.Metadata?.SenderId ?? "unknown"));
-                // Or rethrow if the interface/contract allows exceptions here to propagate.
-                // For now, returning an error envelope to satisfy Task<IMessageEnvelope>.
+                LogError($"Error processing message {envelope.Payload.GetType().Name} (Id: {envelope.Id}): {ex.Message}");
+                string originalSenderId = (envelope.Headers?.TryGetValue("SenderId", out var sid) == true ? sid : null) ?? "unknown";
+                var errorPayload = $"Error processing message: {ex.Message}";
+                var errorId = envelope.Id; // Use original Id for context
+
+                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                if (envelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true) { errorMetadata["CorrelationId"] = corrId; }
+                
+                var errorHeaders = new Dictionary<string, string>
+                {
+                    { "SenderId", Id }, // This agent is the sender of the error message
+                    { "ReceiverId", originalSenderId }, // Send error back to original sender
+                    { "MessageType", "ErrorResponse" },
+                    { "OriginalMessageId", envelope.Id } // Custom header for tracing
+                };
+                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: Guid.NewGuid().ToString(), headers: errorHeaders);
             }
             // Return the original envelope as a default acknowledgment if no specific response was generated and no error occurred.
-            return envelope;
+            // This behavior might need review based on specific message contracts.
+            // For now, if a handler like ProcessPromptAsync is supposed to send its own response, 
+            // it should return null or a specific response envelope.
+            // If it returns void/Task, then this default return is an ACK.
+            // Let's assume for now that if a message is processed without error and doesn't generate a specific reply
+            // within this ReceiveAsync, we return an acknowledgement based on the original envelope.
+            
+            var ackMetadata = new Dictionary<string, object>(envelope.Metadata ?? new Dictionary<string, object>());
+            ackMetadata["ProcessedTimestamp"] = DateTimeOffset.UtcNow;
+            if (envelope.Metadata?.TryGetValue("CorrelationId", out var originalCorrId) == true)
+            {
+                ackMetadata["CorrelationId"] = originalCorrId; // Echo correlation ID
+            }
+
+            var ackHeaders = new Dictionary<string, string>(envelope.Headers ?? new Dictionary<string, string>());
+            // Swap sender/receiver for the ACK, or set new ones
+            string originalMsgSender = (envelope.Headers?.TryGetValue("SenderId", out var sId) == true ? sId : null) ?? "unknown";
+            ackHeaders["SenderId"] = Id; // This agent is sending the ACK
+            ackHeaders["ReceiverId"] = originalMsgSender; // Send ACK back to original sender
+            ackHeaders["MessageType"] = (envelope.Headers?.TryGetValue("MessageType", out var mt) == true ? mt : "UnknownType") + "_Ack";
+
+            return new MessageEnvelope(
+                payload: $"Successfully processed message of type {envelope.Payload.GetType().Name}", 
+                metadata: ackMetadata, 
+                id: Guid.NewGuid().ToString(), // New ID for the ACK envelope
+                headers: ackHeaders
+            );
         }
 
         /// <summary>
@@ -569,19 +631,59 @@ namespace AgctorSDK.Core.Agents
         /// <summary>
         /// Handles status request messages.
         /// </summary>
-        private async Task HandleStatusRequestAsync(GetAgentStatusMessage statusMsg, IMessageEnvelope envelope, CancellationToken cancellationToken)
+        private async Task HandleStatusRequestAsync(GetAgentStatusMessage statusMsg, IMessageEnvelope originalEnvelope, CancellationToken cancellationToken)
         {
-            var response = new AgentStatusResponse(
-                Id, 
-                Status, 
-                CurrentPrompt, 
-                ChildAgentIds.Count, 
-                $"Agent {Id} is {Status} (Depth: {_hierarchyDepth})"
-            );
+            LogInfo($"Handling status request from: {originalEnvelope.Headers?.FirstOrDefault(h => h.Key == "SenderId").Value ?? "unknown"}");
 
-            // In a real implementation, we would send this response back to the requesting agent
-            LogInfo($"Status requested by {statusMsg.RequestingAgentId}: {Status}");
-            await Task.CompletedTask;
+            string? originalSenderId = null;
+            if (originalEnvelope.Headers?.TryGetValue("SenderId", out var sid) == true)
+            {
+                originalSenderId = sid;
+            }
+
+            if (string.IsNullOrEmpty(originalSenderId))
+            {
+                LogWarning("Cannot respond to status request: SenderId not found in original envelope headers.");
+                return;
+            }
+
+            if (_agentFactory?.RuntimeAdapter == null)
+            {
+                LogError("Cannot send status response: AgentFactory or RuntimeAdapter is not available.");
+                return;
+            }
+
+            var responsePayload = new 
+            {
+                Status,
+                CurrentPrompt,
+                ChildAgentIds = ChildAgentIds.ToList(),
+                AgentId = Id
+            };
+            
+            var mcpMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+            if (originalEnvelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true)
+            {
+                mcpMetadata["CorrelationId"] = corrId; // Echo correlation ID
+            }
+
+            var mcpHeaders = new Dictionary<string, string>
+            {
+                { "SenderId", Id }, // This agent is the sender of the response
+                { "ReceiverId", originalSenderId }, // Send back to original sender
+                { "MessageType", responsePayload.GetType().Name },
+                { "Version", "1.0" }
+            };
+
+            try
+            {
+                await _agentFactory.RuntimeAdapter.SendMessageAsync(originalSenderId, responsePayload, Id, mcpHeaders, cancellationToken);
+                LogInfo($"Successfully sent status response to {originalSenderId}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to send status response to {originalSenderId}: {ex.Message}");
+            }
         }
 
         /// <summary>

@@ -136,14 +136,24 @@ namespace AgctorSDK.Core.Tests.Interfaces
             // Arrange
             var actor = new TestActor("test-actor-1");
             var mockEnvelope = new Mock<IMessageEnvelope>();
+            var headers = new Dictionary<string, string> { { "SenderId", "sender" } };
+            var metadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+
             mockEnvelope.Setup(e => e.Id).Returns("msg-123");
             mockEnvelope.Setup(e => e.Payload).Returns("test message");
+            mockEnvelope.Setup(e => e.Headers).Returns(new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(headers));
+            mockEnvelope.Setup(e => e.Metadata).Returns(new System.Collections.ObjectModel.ReadOnlyDictionary<string, object>(metadata));
 
             // Act
-            await actor.ReceiveAsync(mockEnvelope.Object);
+            var resultEnvelope = await actor.ReceiveAsync(mockEnvelope.Object);
 
             // Assert
-            Assert.Equal(mockEnvelope.Object, actor.LastReceivedMessage);
+            Assert.Same(mockEnvelope.Object, actor.LastReceivedMessage);
+            Assert.Same(mockEnvelope.Object, resultEnvelope); // TestActor just returns the same envelope
+            Assert.Equal("msg-123", resultEnvelope.Id);
+            Assert.Equal("test message", resultEnvelope.Payload);
+            Assert.Equal("sender", resultEnvelope.Headers["SenderId"]);
+            Assert.NotNull(resultEnvelope.Metadata["Timestamp"]);
         }
 
         [Fact]
