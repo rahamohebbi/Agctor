@@ -128,7 +128,12 @@ namespace AgctorSDK.Core.Runtime
             LogTrace("InMemoryActorRuntime shutdown completed");
         }
 
-        public async Task<T> SpawnActorAsync<T>(string actorId, object? initializationData = null, 
+        public Task<T> SpawnActorAsync<T>(string actorId, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
+        {
+            return SpawnActorAsync(actorId, (id) => CreateActorInstance<T>(id), initializationData, cancellationToken);
+        }
+
+        public async Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null,
             CancellationToken cancellationToken = default) where T : class, IActor
         {
             ThrowIfDisposed();
@@ -139,7 +144,7 @@ namespace AgctorSDK.Core.Runtime
                 throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
             }
 
-            var newActorInstance = CreateActorInstance<T>(actorId);
+            var newActorInstance = actorFactory(actorId);
 
             // Setup agent-specific properties before initialization
             if (newActorInstance is IAgent agent && initializationData is AgentInitializationData agentInitData)

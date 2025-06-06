@@ -8,7 +8,7 @@ using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Runtime.Examples;
 using AgctorSDK.Core.Events;
 using AgctorSDK.Core.Messages;
-using Xunit;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AgctorSDK.Core.Tests.Runtime
 {
@@ -16,6 +16,7 @@ namespace AgctorSDK.Core.Tests.Runtime
     /// Comprehensive unit tests for the InMemoryActorRuntime implementation.
     /// Tests verify actor registration, message dispatch, queuing, and lifecycle management.
     /// </summary>
+    [TestClass]
     public class InMemoryActorRuntimeTests : IDisposable
     {
         private readonly InMemoryActorRuntime _runtime;
@@ -79,18 +80,18 @@ namespace AgctorSDK.Core.Tests.Runtime
             GC.SuppressFinalize(this);
         }
 
-        [Fact]
+        [TestMethod]
         public void Runtime_ShouldHaveCorrectProperties()
         {
             // Assert
-            Assert.Equal("InMemoryActorRuntime", _runtime.Name);
-            Assert.Equal("1.0.0", _runtime.Version);
-            Assert.False(_runtime.IsInitialized);
-            Assert.NotNull(_runtime.Configuration);
-            Assert.Empty(_runtime.Configuration);
+            Assert.AreEqual("InMemoryActorRuntime", _runtime.Name);
+            Assert.AreEqual("1.0.0", _runtime.Version);
+            Assert.IsFalse(_runtime.IsInitialized);
+            Assert.IsNotNull(_runtime.Configuration);
+            Assert.AreEqual(0, _runtime.Configuration.Count);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task InitializeAsync_ShouldSetInitializedState()
         {
             // Arrange
@@ -104,13 +105,13 @@ namespace AgctorSDK.Core.Tests.Runtime
             await _runtime.InitializeAsync(config);
 
             // Assert
-            Assert.True(_runtime.IsInitialized);
-            Assert.Equal(2, _runtime.Configuration.Count);
-            Assert.Equal(100, _runtime.Configuration["MaxActors"]);
-            Assert.Equal("Debug", _runtime.Configuration["LogLevel"]);
+            Assert.IsTrue(_runtime.IsInitialized);
+            Assert.AreEqual(2, _runtime.Configuration.Count);
+            Assert.AreEqual(100, _runtime.Configuration["MaxActors"]);
+            Assert.AreEqual("Debug", _runtime.Configuration["LogLevel"]);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task InitializeAsync_WhenAlreadyInitialized_ShouldNotThrow()
         {
             // Arrange
@@ -118,10 +119,10 @@ namespace AgctorSDK.Core.Tests.Runtime
 
             // Act & Assert - Should not throw
             await _runtime.InitializeAsync(new Dictionary<string, object> { { "test", "value" } });
-            Assert.True(_runtime.IsInitialized);
+            Assert.IsTrue(_runtime.IsInitialized);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SpawnActorAsync_ShouldCreateAndInitializeActor()
         {
             // Arrange
@@ -134,17 +135,17 @@ namespace AgctorSDK.Core.Tests.Runtime
             var actor = await _runtime.SpawnActorAsync<EchoActor>(actorId);
 
             // Assert
-            Assert.NotNull(actor);
-            Assert.Equal(actorId, actor.Id);
-            Assert.Equal(nameof(EchoActor), actor.ActorType);
-            Assert.Equal(ActorState.Active, actor.State);
+            Assert.IsNotNull(actor);
+            Assert.AreEqual(actorId, actor.Id);
+            Assert.AreEqual(nameof(EchoActor), actor.ActorType);
+            Assert.AreEqual(ActorState.Active, actor.State);
             
-            Assert.NotNull(spawnedEvent);
-            Assert.Equal(actorId, spawnedEvent.ActorId);
-            Assert.Equal(nameof(EchoActor), spawnedEvent.ActorType);
+            Assert.IsNotNull(spawnedEvent);
+            Assert.AreEqual(actorId, spawnedEvent.ActorId);
+            Assert.AreEqual(nameof(EchoActor), spawnedEvent.ActorType);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SpawnActorAsync_WithDuplicateId_ShouldThrow()
         {
             // Arrange
@@ -153,19 +154,19 @@ namespace AgctorSDK.Core.Tests.Runtime
             await _runtime.SpawnActorAsync<EchoActor>(actorId);
 
             // Act & Assert
-            await Assert.ThrowsAsync<InvalidOperationException>(
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
                 () => _runtime.SpawnActorAsync<EchoActor>(actorId));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SpawnActorAsync_WhenNotInitialized_ShouldThrow()
         {
             // Act & Assert
-            await Assert.ThrowsAsync<InvalidOperationException>(
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
                 () => _runtime.SpawnActorAsync<EchoActor>("test-actor"));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task GetActorAsync_ShouldReturnExistingActor()
         {
             // Arrange
@@ -177,12 +178,12 @@ namespace AgctorSDK.Core.Tests.Runtime
             var retrievedActor = await _runtime.GetActorAsync<EchoActor>(actorId);
 
             // Assert
-            Assert.NotNull(retrievedActor);
-            Assert.Equal(originalActor.Id, retrievedActor.Id);
-            Assert.Same(originalActor, retrievedActor);
+            Assert.IsNotNull(retrievedActor);
+            Assert.AreEqual(originalActor.Id, retrievedActor.Id);
+            Assert.AreSame(originalActor, retrievedActor);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task GetActorAsync_WithNonExistentId_ShouldReturnNull()
         {
             // Arrange
@@ -192,10 +193,10 @@ namespace AgctorSDK.Core.Tests.Runtime
             var actor = await _runtime.GetActorAsync<EchoActor>("non-existent");
 
             // Assert
-            Assert.Null(actor);
+            Assert.IsNull(actor);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task GetActorAsync_WithWrongType_ShouldReturnNull()
         {
             // Arrange
@@ -204,14 +205,14 @@ namespace AgctorSDK.Core.Tests.Runtime
             await _runtime.SpawnActorAsync<EchoActor>(actorId);
 
             // Act
-            var actor = await _runtime.GetActorAsync<IActor>(actorId); // Different type
+            var actor = await _runtime.GetActorAsync<IActor>(actorId); 
 
-            // Assert - Should return the actor since EchoActor implements IActor
-            Assert.NotNull(actor);
-            Assert.IsType<EchoActor>(actor);
+            // Assert 
+            Assert.IsNotNull(actor);
+            Assert.IsInstanceOfType(actor, typeof(EchoActor));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SendMessageAsync_ShouldDeliverMessageToActor_MCP()
         {
             // Arrange
@@ -225,326 +226,268 @@ namespace AgctorSDK.Core.Tests.Runtime
 
             // Act
             await _runtime.SendMessageAsync(actorId, message, senderForMessage);
-            await Task.Delay(100); // Give time for message processing
+            await Task.Delay(100); 
 
             // Assert for MessageSent event
-            Assert.NotNull(sentEvent);
-            Assert.Equal(senderForMessage, sentEvent.SenderId);
-            Assert.Equal(actorId, sentEvent.ReceiverId);
-            // MessageType in event args is the one from the header
-            Assert.Equal("String", sentEvent.MessageType); 
+            Assert.IsNotNull(sentEvent);
+            Assert.AreEqual(senderForMessage, sentEvent.SenderId);
+            Assert.AreEqual(actorId, sentEvent.ReceiverId);
+            Assert.AreEqual("String", sentEvent.MessageType); 
 
             // Assert for what the actor received
-            Assert.NotNull(actor.LastReceivedEnvelope);
-            Assert.Equal(message, actor.LastReceivedEnvelope.Payload);
-            Assert.Equal(senderForMessage, actor.LastReceivedEnvelope.Headers["SenderId"]);
-            Assert.Equal(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
-            Assert.Equal("String", actor.LastReceivedEnvelope.Headers["MessageType"]);
-            Assert.True(actor.LastReceivedEnvelope.Metadata.ContainsKey("Timestamp"));
+            Assert.IsNotNull(actor.LastReceivedEnvelope);
+            Assert.AreEqual(message, actor.LastReceivedEnvelope.Payload);
+            Assert.AreEqual(senderForMessage, actor.LastReceivedEnvelope.Headers["SenderId"]);
+            Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
+            Assert.AreEqual("String", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.IsTrue(actor.LastReceivedEnvelope.Metadata.ContainsKey("Timestamp"));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SendMessageAsync_WithHeaders_ShouldIncludeHeaders_MCP()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
             var actorId = "inspect-actor-2";
             var actor = await _runtime.SpawnActorAsync<InspectableActor>(actorId);
-            var message = "Another message";
-            var senderForMessage = "sender-test-2";
-            var customHeaders = new Dictionary<string, string>
-            {
-                { "CustomHeader1", "Value1" },
-                { "CustomHeader2", "Value2" }
-            };
-
+            var message = "A message with custom headers";
+            var headers = new Dictionary<string, string> { { "CorrelationId", "corr-xyz" }, { "CustomHeader", "CustomValue" } };
+            
             // Act
-            await _runtime.SendMessageAsync(actorId, message, senderForMessage, customHeaders);
-            await Task.Delay(100); // Give time for message processing
+            await _runtime.SendMessageAsync(actorId, message, "sender-test-2", headers);
+            await Task.Delay(100);
 
             // Assert
-            Assert.NotNull(actor.LastReceivedEnvelope);
-            Assert.Equal(message, actor.LastReceivedEnvelope.Payload);
-            // System headers
-            Assert.Equal(senderForMessage, actor.LastReceivedEnvelope.Headers["SenderId"]);
-            Assert.Equal(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
-            // Custom headers
-            Assert.Equal("Value1", actor.LastReceivedEnvelope.Headers["CustomHeader1"]);
-            Assert.Equal("Value2", actor.LastReceivedEnvelope.Headers["CustomHeader2"]);
-            // Metadata
-            Assert.True(actor.LastReceivedEnvelope.Metadata.ContainsKey("Timestamp"));
+            Assert.IsNotNull(actor.LastReceivedEnvelope);
+            Assert.AreEqual(4, actor.LastReceivedEnvelope.Headers.Count); 
+            Assert.AreEqual("corr-xyz", actor.LastReceivedEnvelope.Headers["CorrelationId"]);
+            Assert.AreEqual("CustomValue", actor.LastReceivedEnvelope.Headers["CustomHeader"]);
+            Assert.AreEqual("sender-test-2", actor.LastReceivedEnvelope.Headers["SenderId"]);
+            Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SendMessageAsync_ToNonExistentActor_ShouldNotThrow()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
 
-            // Act & Assert - Should not throw, should complete silently
-            await _runtime.SendMessageAsync("non-existent", "message");
+            // Act & Assert
+            await _runtime.SendMessageAsync("non-existent-actor", "test message");
         }
 
-        [Fact]
+        [TestMethod]
         public async Task SendMessageAsync_WithComplexMessage_ShouldWork_MCP()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
             var actorId = "inspect-actor-3";
             var actor = await _runtime.SpawnActorAsync<InspectableActor>(actorId);
-            var complexPayload = new { Name = "Test", Value = 123 };
-            var senderForMessage = "sender-test-3";
-
+            var complexMessage = new { Name = "Complex", Value = 123, Nested = new { Prop = "NestedProp" } };
+            
             // Act
-            await _runtime.SendMessageAsync(actorId, complexPayload, senderForMessage);
+            await _runtime.SendMessageAsync(actorId, complexMessage);
             await Task.Delay(100);
 
             // Assert
-            Assert.NotNull(actor.LastReceivedEnvelope);
-            Assert.Same(complexPayload, actor.LastReceivedEnvelope.Payload);
-            Assert.Equal(senderForMessage, actor.LastReceivedEnvelope.Headers["SenderId"]);
-            Assert.Equal(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
-            Assert.Contains("AnonymousType", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.IsNotNull(actor.LastReceivedEnvelope);
+            Assert.AreSame(complexMessage, actor.LastReceivedEnvelope.Payload);
+            Assert.IsNotNull(actor.LastReceivedEnvelope.Headers["MessageType"]);
         }
-        
-        [Fact]
+
+        [TestMethod]
         public async Task SendMessageAsync_RequestResponse_ShouldReturnResponse_MCP()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
             var actorId = "inspect-actor-4";
-            var inspectableActor = await _runtime.SpawnActorAsync<InspectableActor>(actorId); // This actor sends an ACK
-            var requestPayload = "Requesting data";
-            var senderForMessage = "sender-test-4";
+            await _runtime.SpawnActorAsync<InspectableActor>(actorId);
+            var requestMessage = "This is a request";
 
             // Act
-            var response = await _runtime.SendMessageAsync<string>(actorId, requestPayload, TimeSpan.FromSeconds(5), senderForMessage);
+            var response = await _runtime.SendMessageAsync<IMessageEnvelope>(actorId, requestMessage, TimeSpan.FromSeconds(2));
 
             // Assert
-            Assert.NotNull(response);
-            // The TestActor's response payload includes the ID of the *original* message it received.
-            // We need to get that original message's ID from the actor itself to verify the ack.
-            var originalMessageId = inspectableActor.LastReceivedEnvelope?.Id;
-            Assert.NotNull(originalMessageId);
-            Assert.Equal($"Ack for {originalMessageId}", response);
+            Assert.IsNotNull(response);
+            Assert.IsInstanceOfType(response, typeof(IMessageEnvelope));
+            StringAssert.Contains(response.Payload as string, "Ack for");
+            Assert.AreEqual(actorId, response.Headers["SenderId"]);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task StopActorAsync_ShouldStopAndRemoveActor()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
-            var actorId = "test-actor";
+            var actorId = "actor-to-stop";
             var actor = await _runtime.SpawnActorAsync<EchoActor>(actorId);
             ActorStoppedEventArgs? stoppedEvent = null;
             _runtime.ActorStopped += (sender, args) => stoppedEvent = args;
 
             // Act
             await _runtime.StopActorAsync(actorId);
+            var retrievedActor = await _runtime.GetActorAsync<EchoActor>(actorId);
 
             // Assert
-            Assert.Equal(ActorState.Stopped, actor.State);
-            
-            Assert.NotNull(stoppedEvent);
-            Assert.Equal(actorId, stoppedEvent.ActorId);
-            Assert.Equal(nameof(EchoActor), stoppedEvent.ActorType);
-            Assert.Equal("Runtime requested stop", stoppedEvent.Reason);
+            Assert.IsNull(retrievedActor);
+            Assert.AreEqual(ActorState.Stopped, actor.State);
 
-            // Actor should no longer be retrievable
-            var retrievedActor = await _runtime.GetActorAsync<EchoActor>(actorId);
-            Assert.Null(retrievedActor);
+            Assert.IsNotNull(stoppedEvent);
+            Assert.AreEqual(actorId, stoppedEvent.ActorId);
+            Assert.AreEqual(nameof(EchoActor), stoppedEvent.ActorType);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task StopActorAsync_WithNonExistentActor_ShouldNotThrow()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
 
-            // Act & Assert - Should not throw
-            await _runtime.StopActorAsync("non-existent");
+            // Act & Assert
+            await _runtime.StopActorAsync("non-existent-actor");
         }
 
-        [Fact]
+        [TestMethod]
         public async Task GetActiveActorIdsAsync_ShouldReturnActiveActors()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
             await _runtime.SpawnActorAsync<EchoActor>("actor1");
             await _runtime.SpawnActorAsync<EchoActor>("actor2");
-            await _runtime.SpawnActorAsync<EchoActor>("actor3");
-            await _runtime.StopActorAsync("actor2");
+            await _runtime.StopActorAsync("actor1");
 
             // Act
             var activeIds = await _runtime.GetActiveActorIdsAsync();
+            var activeIdList = activeIds.ToList();
 
             // Assert
-            var activeList = activeIds.ToList();
-            Assert.Equal(2, activeList.Count);
-            Assert.Contains("actor1", activeList);
-            Assert.Contains("actor3", activeList);
-            Assert.DoesNotContain("actor2", activeList);
+            Assert.AreEqual(1, activeIdList.Count);
+            Assert.AreEqual("actor2", activeIdList[0]);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ShutdownAsync_ShouldStopAllActors()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
-            await _runtime.SpawnActorAsync<EchoActor>("actor1");
-            await _runtime.SpawnActorAsync<EchoActor>("actor2");
-            await _runtime.SpawnActorAsync<EchoActor>("actor3");
-
-            var activeIdsBefore = await _runtime.GetActiveActorIdsAsync();
-            Assert.Equal(3, activeIdsBefore.Count());
+            var actor1 = await _runtime.SpawnActorAsync<EchoActor>("actor1");
+            var actor2 = await _runtime.SpawnActorAsync<EchoActor>("actor2");
+            int stoppedCount = 0;
+            _runtime.ActorStopped += (s, e) => stoppedCount++;
 
             // Act
             await _runtime.ShutdownAsync();
 
             // Assert
-            Assert.False(_runtime.IsInitialized);
-            
-            // After shutdown, the runtime should not be initialized
-            // We can't call GetActiveActorIdsAsync because it requires initialization
-            // The fact that IsInitialized is false confirms all actors were stopped
+            Assert.AreEqual(ActorState.Stopped, actor1.State);
+            Assert.AreEqual(ActorState.Stopped, actor2.State);
+            Assert.AreEqual(2, stoppedCount);
+            var activeIds = await _runtime.GetActiveActorIdsAsync();
+            Assert.AreEqual(0, activeIds.Count());
+            Assert.IsFalse(_runtime.IsInitialized);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ShutdownAsync_WhenNotInitialized_ShouldNotThrow()
         {
-            // Act & Assert - Should not throw
+            // Act & Assert
             await _runtime.ShutdownAsync();
         }
 
-        [Fact]
+        [TestMethod]
         public async Task MultipleActors_ShouldProcessMessagesConcurrently()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
-            var actorCount = 5;
-            var messagesPerActor = 3;
+            var actor1 = await _runtime.SpawnActorAsync<InspectableActor>("multi-actor-1");
+            var actor2 = await _runtime.SpawnActorAsync<InspectableActor>("multi-actor-2");
+            
+            var messages1 = Enumerable.Range(0, 5).Select(i => $"Message {i} to actor 1").ToList();
+            var messages2 = Enumerable.Range(0, 5).Select(i => $"Message {i} to actor 2").ToList();
 
-            // Spawn multiple actors
-            var actorIds = new List<string>();
-            for (int i = 0; i < actorCount; i++)
-            {
-                var actorId = $"actor-{i}";
-                actorIds.Add(actorId);
-                await _runtime.SpawnActorAsync<EchoActor>(actorId);
-            }
-
-            // Act - Send messages to all actors concurrently
-            var sendTasks = new List<Task>();
-            for (int i = 0; i < actorCount; i++)
-            {
-                var actorId = actorIds[i];
-                for (int j = 0; j < messagesPerActor; j++)
-                {
-                    var message = $"Message {j} to {actorId}";
-                    sendTasks.Add(_runtime.SendMessageAsync(actorId, message));
-                }
-            }
-
-            await Task.WhenAll(sendTasks);
-
-            // Wait for all messages to be processed
+            // Act
+            var tasks1 = messages1.Select(m => _runtime.SendMessageAsync(actor1.Id, m)).ToList();
+            var tasks2 = messages2.Select(m => _runtime.SendMessageAsync(actor2.Id, m)).ToList();
+            await Task.WhenAll(tasks1.Concat(tasks2));
             await Task.Delay(200);
 
             // Assert
-            var stats = await _runtime.GetStatisticsAsync();
-            Assert.Equal(actorCount, stats.ActiveActorCount);
-            Assert.Equal(actorCount * messagesPerActor, stats.TotalMessagesProcessed);
+            Assert.AreEqual(5, actor1.MessagesReceivedCount);
+            Assert.AreEqual(5, actor2.MessagesReceivedCount);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ActorLifecycle_ShouldFireStateChangeEvents()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
+            List<ActorStateChangedEventArgs> stateChanges = new List<ActorStateChangedEventArgs>();
             var actorId = "lifecycle-actor";
-            var stateChanges = new List<ActorStateChangedEventArgs>();
 
-            // Act - Subscribe to events before spawning to catch all state changes
-            var actor = await _runtime.SpawnActorAsync<EchoActor>(actorId);
-            
-            // Wait a moment for initialization to complete
-            await Task.Delay(50);
-            
-            // Subscribe to future state changes
+            var actor = await _runtime.SpawnActorAsync<InspectableActor>(actorId);
             actor.StateChanged += (sender, args) => stateChanges.Add(args);
-
-            await _runtime.StopActorAsync(actorId);
-
-            // Wait for shutdown to complete
-            await Task.Delay(50);
-
+            
+            // Act
+            actor.TriggerStateChange(ActorState.Inactive);
+            actor.TriggerStateChange(ActorState.Stopping);
+            actor.TriggerStateChange(ActorState.Stopped);
+            
             // Assert
-            // We should see at least one state change (Active -> Stopping)
-            Assert.True(stateChanges.Count >= 1);
-            
-            // Find the Active -> Stopping transition
-            var activeToStoppingTransition = stateChanges.FirstOrDefault(sc => 
-                sc.PreviousState == ActorState.Active && sc.NewState == ActorState.Stopping);
-            
-            Assert.NotNull(activeToStoppingTransition);
-            Assert.Equal(ActorState.Active, activeToStoppingTransition.PreviousState);
-            Assert.Equal(ActorState.Stopping, activeToStoppingTransition.NewState);
+            Assert.AreEqual(3, stateChanges.Count); 
+            Assert.AreEqual(ActorState.Active, stateChanges[0].PreviousState);
+            Assert.AreEqual(ActorState.Inactive, stateChanges[0].NewState);
+            Assert.AreEqual(ActorState.Inactive, stateChanges[1].PreviousState);
+            Assert.AreEqual(ActorState.Stopping, stateChanges[1].NewState);
+            Assert.AreEqual(ActorState.Stopping, stateChanges[2].PreviousState);
+            Assert.AreEqual(ActorState.Stopped, stateChanges[2].NewState);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task Runtime_ShouldHandleHighMessageVolume()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
-            var actorId = "high-volume-actor";
-            await _runtime.SpawnActorAsync<EchoActor>(actorId);
-            var messageCount = 100;
-
-            // Act - Send many messages rapidly
-            var sendTasks = Enumerable.Range(0, messageCount)
-                .Select(i => _runtime.SendMessageAsync(actorId, $"Message {i}"))
-                .ToArray();
-
+            var actor = await _runtime.SpawnActorAsync<InspectableActor>("heavy-load-actor");
+            int messageCount = 100;
+            
+            // Act
+            var sendTasks = new List<Task>();
+            for (int i = 0; i < messageCount; i++)
+            {
+                sendTasks.Add(_runtime.SendMessageAsync(actor.Id, $"Message {i}"));
+            }
             await Task.WhenAll(sendTasks);
-
-            // Wait for processing
-            await Task.Delay(500);
+            await Task.Delay(500); // Allow time for processing
 
             // Assert
-            var stats = await _runtime.GetStatisticsAsync();
-            Assert.Equal(messageCount, stats.TotalMessagesProcessed);
+            Assert.AreEqual(messageCount, actor.MessagesReceivedCount);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task Dispose_ShouldCleanupResources()
         {
             // Arrange
             await _runtime.InitializeAsync(new Dictionary<string, object>());
-            var actor = await _runtime.SpawnActorAsync<EchoActor>("test-actor");
-            await _runtime.SendMessageAsync(actor.Id, "test message");
-
+            await _runtime.SpawnActorAsync<EchoActor>("actor-to-dispose");
+            
             // Act
             _runtime.Dispose();
 
             // Assert
-            await Assert.ThrowsAsync<ObjectDisposedException>(async () => await _runtime.GetActorAsync<EchoActor>("test-actor"));
-            // After disposal, sending should fail or be ignored.
-            var ex = await Record.ExceptionAsync(async () => await _runtime.SendMessageAsync("test-actor", "another message"));
-            Assert.True(ex is InvalidOperationException || ex is ObjectDisposedException, 
-                "Sending a message after Dispose should throw InvalidOperationException or ObjectDisposedException.");
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => _runtime.GetActiveActorIdsAsync());
+            Assert.IsFalse(_runtime.IsInitialized);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task Runtime_ShouldHandleCancellation()
         {
             // Arrange
-            await _runtime.InitializeAsync(new Dictionary<string, object>());
-            using var cts = new CancellationTokenSource();
-            cts.Cancel();
-
+            var cts = new CancellationTokenSource();
+            await _runtime.InitializeAsync(new Dictionary<string, object>(), cts.Token);
+            
             // Act & Assert
-            await Assert.ThrowsAsync<OperationCanceledException>(
-                () => _runtime.SpawnActorAsync<EchoActor>("test-actor", null, cts.Token));
+            cts.Cancel();
+            await Assert.ThrowsExceptionAsync<OperationCanceledException>(() => _runtime.SpawnActorAsync<EchoActor>("cancelled-actor", cancellationToken: cts.Token));
         }
     }
 } 

@@ -4,8 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
-using Xunit;
 
 namespace AgctorSDK.Core.Tests.Interfaces
 {
@@ -13,6 +13,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
     /// Unit tests for the IActor interface contract and behavior.
     /// Tests verify that actor implementations properly handle lifecycle and message processing.
     /// </summary>
+    [TestClass]
     public class IActorTests
     {
         /// <summary>
@@ -85,19 +86,19 @@ namespace AgctorSDK.Core.Tests.Interfaces
             }
         }
 
-        [Fact]
+        [TestMethod]
         public void Actor_ShouldHaveRequiredProperties()
         {
             // Arrange & Act
             var actor = new TestActor("test-actor-1", "TestActorType");
 
             // Assert
-            Assert.Equal("test-actor-1", actor.Id);
-            Assert.Equal("TestActorType", actor.ActorType);
-            Assert.Equal(ActorState.Initializing, actor.State);
+            Assert.AreEqual("test-actor-1", actor.Id);
+            Assert.AreEqual("TestActorType", actor.ActorType);
+            Assert.AreEqual(ActorState.Initializing, actor.State);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task InitializeAsync_ShouldChangeStateToActive()
         {
             // Arrange
@@ -109,15 +110,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             await actor.InitializeAsync();
 
             // Assert
-            Assert.True(actor.InitializeCalled);
-            Assert.Equal(ActorState.Active, actor.State);
-            Assert.NotNull(stateChangeArgs);
-            Assert.Equal(ActorState.Initializing, stateChangeArgs.PreviousState);
-            Assert.Equal(ActorState.Active, stateChangeArgs.NewState);
-            Assert.Equal("Initialized successfully", stateChangeArgs.Reason);
+            Assert.IsTrue(actor.InitializeCalled);
+            Assert.AreEqual(ActorState.Active, actor.State);
+            Assert.IsNotNull(stateChangeArgs);
+            Assert.AreEqual(ActorState.Initializing, stateChangeArgs.PreviousState);
+            Assert.AreEqual(ActorState.Active, stateChangeArgs.NewState);
+            Assert.AreEqual("Initialized successfully", stateChangeArgs.Reason);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task InitializeAsync_ShouldRespectCancellationToken()
         {
             // Arrange
@@ -126,11 +127,11 @@ namespace AgctorSDK.Core.Tests.Interfaces
             cts.Cancel();
 
             // Act & Assert
-            await Assert.ThrowsAsync<OperationCanceledException>(
+            await Assert.ThrowsExceptionAsync<OperationCanceledException>(
                 () => actor.InitializeAsync(cts.Token));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ReceiveAsync_ShouldProcessMessageEnvelope()
         {
             // Arrange
@@ -148,15 +149,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var resultEnvelope = await actor.ReceiveAsync(mockEnvelope.Object);
 
             // Assert
-            Assert.Same(mockEnvelope.Object, actor.LastReceivedMessage);
-            Assert.Same(mockEnvelope.Object, resultEnvelope); // TestActor just returns the same envelope
-            Assert.Equal("msg-123", resultEnvelope.Id);
-            Assert.Equal("test message", resultEnvelope.Payload);
-            Assert.Equal("sender", resultEnvelope.Headers["SenderId"]);
-            Assert.NotNull(resultEnvelope.Metadata["Timestamp"]);
+            Assert.AreSame(mockEnvelope.Object, actor.LastReceivedMessage);
+            Assert.AreSame(mockEnvelope.Object, resultEnvelope); // TestActor just returns the same envelope
+            Assert.AreEqual("msg-123", resultEnvelope.Id);
+            Assert.AreEqual("test message", resultEnvelope.Payload);
+            Assert.AreEqual("sender", resultEnvelope.Headers["SenderId"]);
+            Assert.IsNotNull(resultEnvelope.Metadata["Timestamp"]);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ReceiveAsync_ShouldHandleExceptions()
         {
             // Arrange
@@ -164,11 +165,11 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var mockEnvelope = new Mock<IMessageEnvelope>();
 
             // Act & Assert
-            await Assert.ThrowsAsync<InvalidOperationException>(
+            await Assert.ThrowsExceptionAsync<InvalidOperationException>(
                 () => actor.ReceiveAsync(mockEnvelope.Object));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ShutdownAsync_ShouldChangeStateToStopped()
         {
             // Arrange
@@ -181,15 +182,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             await actor.ShutdownAsync();
 
             // Assert
-            Assert.True(actor.ShutdownCalled);
-            Assert.Equal(ActorState.Stopped, actor.State);
-            Assert.NotNull(stateChangeArgs);
-            Assert.Equal(ActorState.Active, stateChangeArgs.PreviousState);
-            Assert.Equal(ActorState.Stopped, stateChangeArgs.NewState);
-            Assert.Equal("Shutdown completed", stateChangeArgs.Reason);
+            Assert.IsTrue(actor.ShutdownCalled);
+            Assert.AreEqual(ActorState.Stopped, actor.State);
+            Assert.IsNotNull(stateChangeArgs);
+            Assert.AreEqual(ActorState.Active, stateChangeArgs.PreviousState);
+            Assert.AreEqual(ActorState.Stopped, stateChangeArgs.NewState);
+            Assert.AreEqual("Shutdown completed", stateChangeArgs.Reason);
         }
 
-        [Fact]
+        [TestMethod]
         public async Task ShutdownAsync_ShouldRespectCancellationToken()
         {
             // Arrange
@@ -198,11 +199,11 @@ namespace AgctorSDK.Core.Tests.Interfaces
             cts.Cancel();
 
             // Act & Assert
-            await Assert.ThrowsAsync<OperationCanceledException>(
+            await Assert.ThrowsExceptionAsync<OperationCanceledException>(
                 () => actor.ShutdownAsync(cts.Token));
         }
 
-        [Fact]
+        [TestMethod]
         public async Task StateChanged_ShouldFireWhenStateChanges()
         {
             // Arrange
@@ -215,29 +216,29 @@ namespace AgctorSDK.Core.Tests.Interfaces
             await actor.ShutdownAsync();
 
             // Assert
-            Assert.Equal(2, stateChanges.Count);
+            Assert.AreEqual(2, stateChanges.Count);
             
             // First state change: Initializing -> Active
-            Assert.Equal(ActorState.Initializing, stateChanges[0].PreviousState);
-            Assert.Equal(ActorState.Active, stateChanges[0].NewState);
+            Assert.AreEqual(ActorState.Initializing, stateChanges[0].PreviousState);
+            Assert.AreEqual(ActorState.Active, stateChanges[0].NewState);
             
             // Second state change: Active -> Stopped
-            Assert.Equal(ActorState.Active, stateChanges[1].PreviousState);
-            Assert.Equal(ActorState.Stopped, stateChanges[1].NewState);
+            Assert.AreEqual(ActorState.Active, stateChanges[1].PreviousState);
+            Assert.AreEqual(ActorState.Stopped, stateChanges[1].NewState);
         }
 
-        [Theory]
-        [InlineData(ActorState.Initializing)]
-        [InlineData(ActorState.Active)]
-        [InlineData(ActorState.Inactive)]
-        [InlineData(ActorState.Stopping)]
-        [InlineData(ActorState.Stopped)]
-        [InlineData(ActorState.Faulted)]
+        [DataTestMethod]
+        [DataRow(ActorState.Initializing)]
+        [DataRow(ActorState.Active)]
+        [DataRow(ActorState.Inactive)]
+        [DataRow(ActorState.Stopping)]
+        [DataRow(ActorState.Stopped)]
+        [DataRow(ActorState.Faulted)]
         public void ActorState_ShouldSupportAllDefinedStates(ActorState expectedState)
         {
             // This test verifies that all enum values are properly defined
             // and can be used in actor implementations
-            Assert.True(Enum.IsDefined(typeof(ActorState), expectedState));
+            Assert.IsTrue(Enum.IsDefined(typeof(ActorState), expectedState));
         }
     }
 
@@ -245,9 +246,10 @@ namespace AgctorSDK.Core.Tests.Interfaces
     /// Unit tests for the ActorStateChangedEventArgs class.
     /// Tests verify proper event argument construction and properties.
     /// </summary>
+    [TestClass]
     public class ActorStateChangedEventArgsTests
     {
-        [Fact]
+        [TestMethod]
         public void Constructor_ShouldSetPropertiesCorrectly()
         {
             // Arrange
@@ -261,26 +263,26 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var afterTimestamp = DateTimeOffset.UtcNow;
 
             // Assert
-            Assert.Equal(previousState, eventArgs.PreviousState);
-            Assert.Equal(newState, eventArgs.NewState);
-            Assert.Equal(reason, eventArgs.Reason);
-            Assert.True(eventArgs.Timestamp >= beforeTimestamp);
-            Assert.True(eventArgs.Timestamp <= afterTimestamp);
+            Assert.AreEqual(previousState, eventArgs.PreviousState);
+            Assert.AreEqual(newState, eventArgs.NewState);
+            Assert.AreEqual(reason, eventArgs.Reason);
+            Assert.IsTrue(eventArgs.Timestamp >= beforeTimestamp);
+            Assert.IsTrue(eventArgs.Timestamp <= afterTimestamp);
         }
 
-        [Fact]
+        [TestMethod]
         public void Constructor_ShouldHandleNullReason()
         {
             // Arrange & Act
             var eventArgs = new ActorStateChangedEventArgs(ActorState.Active, ActorState.Stopped);
 
             // Assert
-            Assert.Null(eventArgs.Reason);
-            Assert.Equal(ActorState.Active, eventArgs.PreviousState);
-            Assert.Equal(ActorState.Stopped, eventArgs.NewState);
+            Assert.IsNull(eventArgs.Reason);
+            Assert.AreEqual(ActorState.Active, eventArgs.PreviousState);
+            Assert.AreEqual(ActorState.Stopped, eventArgs.NewState);
         }
 
-        [Fact]
+        [TestMethod]
         public void Timestamp_ShouldBeSetToCurrentUtcTime()
         {
             // Arrange
@@ -291,10 +293,10 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var afterCreation = DateTimeOffset.UtcNow;
 
             // Assert
-            Assert.True(eventArgs.Timestamp >= beforeCreation);
-            Assert.True(eventArgs.Timestamp <= afterCreation);
+            Assert.IsTrue(eventArgs.Timestamp >= beforeCreation);
+            Assert.IsTrue(eventArgs.Timestamp <= afterCreation);
             // DateTimeOffset preserves timezone information, so we check the offset instead
-            Assert.Equal(TimeSpan.Zero, eventArgs.Timestamp.Offset);
+            Assert.AreEqual(TimeSpan.Zero, eventArgs.Timestamp.Offset);
         }
     }
 } 

@@ -100,6 +100,11 @@ namespace AgctorSDK.Core.Adapters
                 "This will use Orleans grain factory to create and activate grains.");
         }
 
+        public Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
+        {
+            throw new NotImplementedException("Orleans grain spawning with a factory is not yet implemented.");
+        }
+
         /// <summary>
         /// Gets a reference to an existing Orleans grain by its ID.
         /// TODO: Implement Orleans grain reference retrieval.

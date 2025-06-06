@@ -58,12 +58,17 @@ namespace AgctorSDK.Core.Agents
         private readonly string _ollamaApiUrl;
         private readonly string _defaultModel;
 
-        public LLMAgent(string id, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+        public LLMAgent(string id, HttpClient httpClient, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
-            _httpClient = new HttpClient();
+            _httpClient = httpClient;
             _ollamaApiUrl = ollamaApiUrl.EndsWith("/") ? ollamaApiUrl : ollamaApiUrl + "/";
             _defaultModel = defaultModel;
+        }
+
+        public LLMAgent(string id, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+            : this(id, new HttpClient(), ollamaApiUrl, defaultModel)
+        {
         }
 
         public async Task InitializeAsync(CancellationToken cancellationToken = default) // Added CancellationToken

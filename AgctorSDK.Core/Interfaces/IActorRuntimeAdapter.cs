@@ -63,6 +63,18 @@ namespace AgctorSDK.Core.Interfaces
         Task<T> SpawnActorAsync<T>(string actorId, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor;
 
         /// <summary>
+        /// Spawns a new actor instance using a factory function.
+        /// The actor will be created and initialized before being returned.
+        /// </summary>
+        /// <typeparam name="T">The type of actor to spawn (must implement IActor)</typeparam>
+        /// <param name="actorId">Unique identifier for the new actor instance</param>
+        /// <param name="actorFactory">A function that creates an instance of the actor.</param>
+        /// <param name="initializationData">Optional data to pass to the actor during initialization</param>
+        /// <param name="cancellationToken">Token for cancelling the operation</param>
+        /// <returns>A task containing the spawned actor instance</returns>
+        Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor;
+
+        /// <summary>
         /// Gets a reference to an existing actor by its ID.
         /// Returns null if the actor doesn't exist or is not accessible.
         /// </summary>

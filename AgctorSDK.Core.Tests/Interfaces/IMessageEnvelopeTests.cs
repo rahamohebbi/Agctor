@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages; // Using the concrete implementation for some tests or as a reference
-using Xunit;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AgctorSDK.Core.Tests.Interfaces
 {
@@ -11,6 +11,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
     /// Unit tests for the IMessageEnvelope interface contract and behavior.
     /// Tests verify that message envelope implementations properly handle payload, metadata, and headers according to MCP.
     /// </summary>
+    [TestClass]
     public class IMessageEnvelopeTests
     {
         /// <summary>
@@ -70,7 +71,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
 
         // Removed CreateMockMetadata() as IMessageMetadata is gone.
 
-        [Fact]
+        [TestMethod]
         public void MessageEnvelope_ShouldHaveRequiredProperties_MCP()
         {
             // Arrange
@@ -84,15 +85,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var envelope = new AgctorSDK.Core.Messages.MessageEnvelope(payload, metadata, id, headers);
 
             // Assert
-            Assert.Equal(id, envelope.Id);
-            Assert.Equal(payload, envelope.Payload);
-            Assert.Equal(metadata.Count, envelope.Metadata.Count);
-            Assert.Equal(metadata["Timestamp"], envelope.Metadata["Timestamp"]);
-            Assert.Equal(headers.Count, envelope.Headers.Count);
-            Assert.Equal(headers["SenderId"], envelope.Headers["SenderId"]);
+            Assert.AreEqual(id, envelope.Id);
+            Assert.AreEqual(payload, envelope.Payload);
+            Assert.AreEqual(metadata.Count, envelope.Metadata.Count);
+            Assert.AreEqual(metadata["Timestamp"], envelope.Metadata["Timestamp"]);
+            Assert.AreEqual(headers.Count, envelope.Headers.Count);
+            Assert.AreEqual(headers["SenderId"], envelope.Headers["SenderId"]);
         }
 
-        [Fact]
+        [TestMethod]
         public void MessageEnvelope_ShouldHandleNullMetadataAndHeaders_MCP()
         {
             // Arrange
@@ -103,13 +104,13 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var envelope = new TestMessageEnvelope(id, payload, null, null);
 
             // Assert
-            Assert.NotNull(envelope.Metadata);
-            Assert.Empty(envelope.Metadata);
-            Assert.NotNull(envelope.Headers);
-            Assert.Empty(envelope.Headers);
+            Assert.IsNotNull(envelope.Metadata);
+            Assert.AreEqual(0, envelope.Metadata.Count);
+            Assert.IsNotNull(envelope.Headers);
+            Assert.AreEqual(0, envelope.Headers.Count);
         }
 
-        [Fact]
+        [TestMethod]
         public void WithPayload_ShouldCreateNewEnvelopeWithUpdatedPayload_MCP()
         {
             // Arrange
@@ -123,16 +124,16 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithPayload(newPayload);
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.Equal(originalEnvelope.Id, newEnvelope.Id);
-            Assert.Equal(newPayload, newEnvelope.Payload);
-            Assert.Equal(originalPayload, originalEnvelope.Payload); // Original should be unchanged
-            Assert.Equal(originalEnvelope.Metadata, newEnvelope.Metadata); // Collections should be equivalent by content if copied correctly
-            Assert.Equal(originalEnvelope.Headers, newEnvelope.Headers);   // Collections should be equivalent by content if copied correctly
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.AreEqual(originalEnvelope.Id, newEnvelope.Id);
+            Assert.AreEqual(newPayload, newEnvelope.Payload);
+            Assert.AreEqual(originalPayload, originalEnvelope.Payload); // Original should be unchanged
+            CollectionAssert.AreEqual(originalEnvelope.Metadata.ToList(), newEnvelope.Metadata.ToList()); // Collections should be equivalent by content if copied correctly
+            CollectionAssert.AreEqual(originalEnvelope.Headers.ToList(), newEnvelope.Headers.ToList());   // Collections should be equivalent by content if copied correctly
         }
 
 
-        [Fact]
+        [TestMethod]
         public void WithHeaders_ShouldReplaceAllHeaders_MCP()
         {
             // Arrange
@@ -148,23 +149,23 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithHeaders(replacementHeaders);
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.Equal(originalEnvelope.Id, newEnvelope.Id);
-            Assert.Equal(originalEnvelope.Payload, newEnvelope.Payload);
-            Assert.Equal(originalEnvelope.Metadata.Count, newEnvelope.Metadata.Count); // Metadata should be unchanged
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.AreEqual(originalEnvelope.Id, newEnvelope.Id);
+            Assert.AreEqual(originalEnvelope.Payload, newEnvelope.Payload);
+            Assert.AreEqual(originalEnvelope.Metadata.Count, newEnvelope.Metadata.Count); // Metadata should be unchanged
             
-            Assert.Equal(2, newEnvelope.Headers.Count); // Should only contain replacement headers
-            Assert.Equal("newValue", newEnvelope.Headers["newHeader"]);
-            Assert.Equal("updatedValue", newEnvelope.Headers["headerToReplace"]);
-            Assert.False(newEnvelope.Headers.ContainsKey("header1")); // Original header1 should be gone
+            Assert.AreEqual(2, newEnvelope.Headers.Count); // Should only contain replacement headers
+            Assert.AreEqual("newValue", newEnvelope.Headers["newHeader"]);
+            Assert.AreEqual("updatedValue", newEnvelope.Headers["headerToReplace"]);
+            Assert.IsFalse(newEnvelope.Headers.ContainsKey("header1")); // Original header1 should be gone
 
             // Original headers should be unchanged
-            Assert.Equal(2, originalEnvelope.Headers.Count);
-            Assert.Equal("value1", originalEnvelope.Headers["header1"]);
-            Assert.Equal("oldValue", originalEnvelope.Headers["headerToReplace"]);
+            Assert.AreEqual(2, originalEnvelope.Headers.Count);
+            Assert.AreEqual("value1", originalEnvelope.Headers["header1"]);
+            Assert.AreEqual("oldValue", originalEnvelope.Headers["headerToReplace"]);
         }
 
-        [Fact]
+        [TestMethod]
         public void WithHeaders_ShouldHandleNullReplacementHeaders_MCP()
         {
             // Arrange
@@ -175,15 +176,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithHeaders(null!); // Pass null for replacement
 
             // Assert
-            Assert.NotNull(newEnvelope.Headers); // Headers should be an empty dictionary, not null
-            Assert.Empty(newEnvelope.Headers);     // All original headers should be gone
+            Assert.IsNotNull(newEnvelope.Headers); // Headers should be an empty dictionary, not null
+            Assert.AreEqual(0, newEnvelope.Headers.Count);     // All original headers should be gone
 
             // Original headers should be unchanged
-            Assert.Single(originalEnvelope.Headers);
-            Assert.Equal("value1", originalEnvelope.Headers["header1"]);
+            Assert.AreEqual(1, originalEnvelope.Headers.Count);
+            Assert.AreEqual("value1", originalEnvelope.Headers["header1"]);
         }
 
-        [Fact]
+        [TestMethod]
         public void WithHeader_ShouldAddNewHeaderIfNotExists_MCP()
         {
             // Arrange
@@ -193,13 +194,13 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithHeader("newKey", "newValue");
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.True(newEnvelope.Headers.ContainsKey("newKey"));
-            Assert.Equal("newValue", newEnvelope.Headers["newKey"]);
-            Assert.Empty(originalEnvelope.Headers);
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.IsTrue(newEnvelope.Headers.ContainsKey("newKey"));
+            Assert.AreEqual("newValue", newEnvelope.Headers["newKey"]);
+            Assert.AreEqual(0, originalEnvelope.Headers.Count);
         }
 
-        [Fact]
+        [TestMethod]
         public void WithHeader_ShouldUpdateExistingHeader_MCP()
         {
             // Arrange
@@ -210,13 +211,13 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithHeader("existingKey", "updatedValue");
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.Equal("updatedValue", newEnvelope.Headers["existingKey"]);
-            Assert.Single(newEnvelope.Headers);
-            Assert.Equal("originalValue", originalEnvelope.Headers["existingKey"]); // Original unchanged
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.AreEqual("updatedValue", newEnvelope.Headers["existingKey"]);
+            Assert.AreEqual(1, newEnvelope.Headers.Count);
+            Assert.AreEqual("originalValue", originalEnvelope.Headers["existingKey"]); // Original unchanged
         }
 
-        [Fact]
+        [TestMethod]
         public void WithMetadata_ShouldReplaceAllMetadata_MCP()
         {
             // Arrange
@@ -228,14 +229,14 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithMetadata(replacementMetadata);
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.Equal(2, newEnvelope.Metadata.Count);
-            Assert.Equal("newVal", newEnvelope.Metadata["newMeta"]);
-            Assert.Equal("updatedVal", newEnvelope.Metadata["meta1"]);
-            Assert.Single(originalEnvelope.Metadata); // Original unchanged
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.AreEqual(2, newEnvelope.Metadata.Count);
+            Assert.AreEqual("newVal", newEnvelope.Metadata["newMeta"]);
+            Assert.AreEqual("updatedVal", newEnvelope.Metadata["meta1"]);
+            Assert.AreEqual(1, originalEnvelope.Metadata.Count); // Original unchanged
         }
         
-        [Fact]
+        [TestMethod]
         public void WithMetadata_ShouldHandleNullReplacementMetadata_MCP()
         {
             // Arrange
@@ -246,15 +247,15 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithMetadata(null!); // Pass null for replacement
 
             // Assert
-            Assert.NotNull(newEnvelope.Metadata); // Metadata should be an empty dictionary, not null
-            Assert.Empty(newEnvelope.Metadata);     // All original metadata should be gone
+            Assert.IsNotNull(newEnvelope.Metadata); // Metadata should be an empty dictionary, not null
+            Assert.AreEqual(0, newEnvelope.Metadata.Count);     // All original metadata should be gone
 
             // Original metadata should be unchanged
-            Assert.Single(originalEnvelope.Metadata);
-            Assert.Equal("val1", originalEnvelope.Metadata["meta1"]);
+            Assert.AreEqual(1, originalEnvelope.Metadata.Count);
+            Assert.AreEqual("val1", originalEnvelope.Metadata["meta1"]);
         }
 
-        [Fact]
+        [TestMethod]
         public void WithMetadata_ShouldAddNewEntryIfNotExists_MCP()
         {
             // Arrange
@@ -264,13 +265,13 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithMetadata("newKey", "newValue");
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.True(newEnvelope.Metadata.ContainsKey("newKey"));
-            Assert.Equal("newValue", newEnvelope.Metadata["newKey"]);
-            Assert.Empty(originalEnvelope.Metadata); // Original unchanged
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.IsTrue(newEnvelope.Metadata.ContainsKey("newKey"));
+            Assert.AreEqual("newValue", newEnvelope.Metadata["newKey"]);
+            Assert.AreEqual(0, originalEnvelope.Metadata.Count); // Original unchanged
         }
 
-        [Fact]
+        [TestMethod]
         public void WithMetadata_ShouldUpdateExistingEntry_MCP()
         {
             // Arrange
@@ -281,41 +282,41 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var newEnvelope = originalEnvelope.WithMetadata("existingKey", "updatedValue");
 
             // Assert
-            Assert.NotSame(originalEnvelope, newEnvelope);
-            Assert.Equal("updatedValue", newEnvelope.Metadata["existingKey"]);
-            Assert.Single(newEnvelope.Metadata);
-            Assert.Equal("originalValue", originalEnvelope.Metadata["existingKey"]); // Original unchanged
+            Assert.AreNotSame(originalEnvelope, newEnvelope);
+            Assert.AreEqual("updatedValue", newEnvelope.Metadata["existingKey"]);
+            Assert.AreEqual(1, newEnvelope.Metadata.Count);
+            Assert.AreEqual("originalValue", originalEnvelope.Metadata["existingKey"]); // Original unchanged
         }
 
-        [Theory]
-        [InlineData("")]
-        [InlineData("msg-123")]
-        [InlineData("very-long-message-id-with-special-characters-123-456-789")]
+        [DataTestMethod]
+        [DataRow("")]
+        [DataRow("msg-123")]
+        [DataRow("very-long-message-id-with-special-characters-123-456-789")]
         public void MessageEnvelope_ShouldSupportVariousIdFormats(string messageId)
         {
             // Arrange & Act
             var envelope = new TestMessageEnvelope(messageId, "payload");
 
             // Assert
-            Assert.Equal(messageId, envelope.Id);
+            Assert.AreEqual(messageId, envelope.Id);
         }
 
-        [Theory]
-        [InlineData("string payload")]
-        [InlineData(123)]
-        [InlineData(true)]
-        [InlineData(null)]
+        [DataTestMethod]
+        [DataRow("string payload")]
+        [DataRow(123)]
+        [DataRow(true)]
+        [DataRow(null)]
         public void MessageEnvelope_ShouldSupportVariousPayloadTypes(object payload)
         {
             // Arrange & Act
             var envelope = new TestMessageEnvelope("id", payload);
 
             // Assert
-            Assert.Equal(payload, envelope.Payload);
+            Assert.AreEqual(payload, envelope.Payload);
         }
 
         private class ComplexPayload { public string Data { get; set; } = string.Empty; public int Value { get; set; } }
-        [Fact]
+        [TestMethod]
         public void MessageEnvelope_ShouldSupportComplexPayloadTypes()
         {
             // Arrange
@@ -325,10 +326,14 @@ namespace AgctorSDK.Core.Tests.Interfaces
             var envelope = new TestMessageEnvelope("id", complexPayload);
 
             // Assert
-            Assert.Same(complexPayload, envelope.Payload);
+            Assert.IsInstanceOfType(envelope.Payload, typeof(ComplexPayload));
+            var retrievedPayload = envelope.Payload as ComplexPayload;
+            Assert.IsNotNull(retrievedPayload);
+            Assert.AreEqual("TestData", retrievedPayload.Data);
+            Assert.AreEqual(123, retrievedPayload.Value);
         }
 
-        [Fact]
+        [TestMethod]
         public void Headers_ShouldBeReadOnly_WhenAccessedViaInterfaceProperty_MCP()
         {
             // Arrange
@@ -340,12 +345,12 @@ namespace AgctorSDK.Core.Tests.Interfaces
             // We check if it throws if cast to a modifiable type and then modified.
             // This test depends on the concrete implementation's choice for the underlying collection.
             // AgctorSDK.Core.Messages.MessageEnvelope constructor makes a new Dictionary<string,string>() for Headers.
-            Assert.Throws<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Add("newKey", "newValue"));
-            Assert.Throws<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Clear());
-            Assert.Throws<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Remove("key"));
+            Assert.ThrowsException<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Add("newKey", "newValue"));
+            Assert.ThrowsException<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Clear());
+            Assert.ThrowsException<NotSupportedException>(() => ((IDictionary<string, string>)envelope.Headers).Remove("key"));
         }
         
-        [Fact]
+        [TestMethod]
         public void Metadata_IsModifiable_WhenAccessedViaInterfaceProperty_MCP()
         {
             // Arrange
@@ -354,12 +359,12 @@ namespace AgctorSDK.Core.Tests.Interfaces
 
             // Act
             var retrievedMetadata = envelope.Metadata; // IDictionary<string, object> is modifiable by definition
-            retrievedMetadata["newKey"] = "newValue";
+            retrievedMetadata.Add("newKey", "newValue");
             retrievedMetadata["key"] = "updatedValue";
 
             // Assert
-            Assert.Equal("newValue", envelope.Metadata["newKey"]);
-            Assert.Equal("updatedValue", envelope.Metadata["key"]);
+            Assert.AreEqual("newValue", envelope.Metadata["newKey"]);
+            Assert.AreEqual("updatedValue", envelope.Metadata["key"]);
             // This test also shows that the internal dictionary is returned directly by the property, not a copy.
             // This is consistent with IDictionary<TKey, TValue> properties.
         }

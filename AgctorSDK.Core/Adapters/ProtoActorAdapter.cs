@@ -100,6 +100,11 @@ namespace AgctorSDK.Core.Adapters
                 "This will use Proto.Actor Props and RootContext to spawn actors.");
         }
 
+        public Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
+        {
+            throw new NotImplementedException("Proto.Actor spawning with a factory is not yet implemented.");
+        }
+
         /// <summary>
         /// Gets a reference to an existing Proto.Actor by its ID.
         /// TODO: Implement Proto.Actor PID resolution and actor reference retrieval.
