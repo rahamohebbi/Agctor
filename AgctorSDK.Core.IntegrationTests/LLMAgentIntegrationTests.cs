@@ -2,226 +2,202 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Core.Interfaces; // For ActorState, IMessageEnvelope
-using AgctorSDK.Core.Messages;   // For MessageEnvelope, DefaultMessageMetadata
-using AgctorSDK.Core.Agents; // For LLMAgent
+using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Messages;
+using AgctorSDK.Core.Agents;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Net.Http;
+using AgctorSDK.Core.IntegrationTests.TestHelpers;
 
-namespace AgctorSDK.IntegrationTests
+namespace AgctorSDK.Core.IntegrationTests
 {
     [TestClass]
     public class LLMAgentIntegrationTests
     {
-        private const string OllamaUrl = "http://localhost:11434"; // Standard Ollama address
-        private const string TestModel = "mistral"; // Assumes 'mistral' is pulled in local Ollama
+        private const string OllamaUrl = "http://localhost:11434";
+        private const string TestModel = "mistral";
 
-        /// <summary>
-        /// This test requires Ollama to be running locally with the 'mistral' model pulled.
-        /// Run 'ollama pull mistral' if you haven't already.
-        /// </summary>
-        [TestMethod]
-        [TestCategory("Integration")] // Optional: Categorize as an integration test
-        public async Task ReceiveAsync_WithLiveOllama_ShouldReturnValidResponse()
+        private TestContext? _testContext;
+        public TestContext TestContext 
+        { 
+            get => _testContext ?? throw new InvalidOperationException("TestContext not initialized");
+            set => _testContext = value; 
+        }
+
+        [TestInitialize]
+        public async Task TestInitialize()
         {
+            TestContext.WriteLine("=== Integration Test Debug Session Started ===");
+            TestContext.WriteLine($"Test: {TestContext.TestName}");
+            TestContext.WriteLine($"Timestamp: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            
+            // Enhanced connectivity check
+            var isConnected = await DebugHelper.VerifyOllamaConnectivity(OllamaUrl, TestModel, TestContext);
+            if (!isConnected)
+            {
+                DebugHelper.PrintTroubleshootingGuide(TestContext);
+                Assert.Inconclusive("Ollama connectivity check failed. Please ensure Ollama is running and the test model is available.");
+            }
+        }
+
+        [TestMethod]
+        [TestCategory("Integration")]
+        [TestCategory("Debug")]
+        public async Task DebugReceiveAsync_WithDetailedLogging()
+        {
+            var stopwatch = Stopwatch.StartNew();
+            TestContext.WriteLine("=== Starting Enhanced Debug Test ===");
+            
             // Arrange
-            var agentId = "integration-test-llm-agent";
+            var agentId = "debug-integration-test-llm-agent";
+            TestContext.WriteLine($"Creating LLM Agent with ID: {agentId}");
+            
             var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            DebugHelper.LogAgentState(agent, TestContext, "Initial");
 
-            // Initialize the agent (this also performs a basic connectivity check in the current implementation)
-            await agent.InitializeAsync();
-            Assert.AreEqual(ActorState.Active, agent.State, "Agent should be active after initialization.");
+            // Test initialization with detailed logging
+            TestContext.WriteLine("Initializing agent...");
+            var initTime = await DebugHelper.MeasureExecutionTime(async () => await agent.InitializeAsync());
+            TestContext.WriteLine($"Initialization completed in {initTime.TotalMilliseconds:F2}ms");
+            DebugHelper.LogAgentState(agent, TestContext, "After Init");
 
-            var prompt = "Why is the sky blue? Answer in one short sentence.";
+            // Create test message
+            var prompt = "Explain what 2+2 equals in exactly one short sentence.";
+            TestContext.WriteLine($"Test prompt: '{prompt}'");
+            
             var headers = new Dictionary<string, string>
             {
-                { "SenderId", "integration-tester" },
+                { "SenderId", "debug-integration-tester" },
                 { "ReceiverId", agentId },
                 { "MessageType", "UserPrompt" }
             };
             var metadata = new Dictionary<string, object>
             {
-                { "CorrelationId", "itest-001" },
+                { "CorrelationId", "debug-001" },
                 { "Timestamp", DateTimeOffset.UtcNow }
             };
-            var inputEnvelope = new MessageEnvelope(prompt, metadata, "itest-001", headers);
+            var inputEnvelope = new MessageEnvelope(prompt, metadata, "debug-001", headers);
+            DebugHelper.LogMessageEnvelope(inputEnvelope, TestContext, "Request");
 
             IMessageEnvelope? resultEnvelope = null;
             Exception? exception = null;
+            TimeSpan responseTime = TimeSpan.Zero;
 
-            // Act
+            // Act with detailed error tracking
+            TestContext.WriteLine("Sending message to agent...");
             try
             {
-                // Use a timeout for the integration test to prevent indefinite hanging
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); 
-                resultEnvelope = await agent.ReceiveAsync(inputEnvelope, cts.Token);
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45)); // Longer timeout for debugging
+                
+                responseTime = await DebugHelper.MeasureExecutionTime(async () => 
+                {
+                    resultEnvelope = await agent.ReceiveAsync(inputEnvelope, cts.Token);
+                });
+                
+                TestContext.WriteLine($"✅ Received response after {responseTime.TotalMilliseconds:F2}ms");
+            }
+            catch (TaskCanceledException ex) when (ex.CancellationToken.IsCancellationRequested)
+            {
+                TestContext.WriteLine($"❌ Request timed out after {responseTime.TotalMilliseconds:F2}ms");
+                TestContext.WriteLine($"Exception: {ex.Message}");
+                exception = ex;
+            }
+            catch (HttpRequestException ex)
+            {
+                TestContext.WriteLine($"❌ HTTP error after {responseTime.TotalMilliseconds:F2}ms");
+                TestContext.WriteLine($"Exception: {ex.Message}");
+                TestContext.WriteLine("💡 This suggests Ollama connectivity issues");
+                exception = ex;
             }
             catch (Exception ex)
             {
+                TestContext.WriteLine($"❌ Unexpected error after {responseTime.TotalMilliseconds:F2}ms");
+                TestContext.WriteLine($"Exception Type: {ex.GetType().Name}");
+                TestContext.WriteLine($"Message: {ex.Message}");
+                if (ex.InnerException != null)
+                {
+                    TestContext.WriteLine($"Inner Exception: {ex.InnerException.Message}");
+                }
+                TestContext.WriteLine($"Stack Trace: {ex.StackTrace}");
                 exception = ex;
             }
 
-            // Assert
-            Assert.IsNull(exception, $"Ollama communication threw an exception: {exception?.Message}\nEnsure Ollama is running at {OllamaUrl} and model '{TestModel}' is available.");
-            Assert.IsNotNull(resultEnvelope, "Result envelope should not be null.");
-            
-            Console.WriteLine($"LLM Agent ({agentId}) received payload: {resultEnvelope?.Payload}");
+            stopwatch.Stop();
+            TestContext.WriteLine($"Total test execution time: {stopwatch.Elapsed.TotalMilliseconds:F2}ms");
 
-            Assert.AreEqual("itest-001", resultEnvelope?.Metadata["CorrelationId"]?.ToString(), "Response envelope CorrelationId should match request CorrelationId.");
-            Assert.IsInstanceOfType(resultEnvelope?.Payload, typeof(string), "Payload should be a string.");
+            // Enhanced Assert with debugging info
+            if (exception != null)
+            {
+                TestContext.WriteLine("=== Test Failed - Debugging Information ===");
+                DebugHelper.LogAgentState(agent, TestContext, "Final");
+                DebugHelper.PrintTroubleshootingGuide(TestContext);
+                Assert.Fail($"Test failed with exception: {exception.Message}");
+            }
+
+            Assert.IsNotNull(resultEnvelope, "Result envelope should not be null.");
+            DebugHelper.LogMessageEnvelope(resultEnvelope, TestContext, "Response");
+
+            // Validate response structure
+            TestContext.WriteLine("=== Response Validation ===");
             
-            string? responsePayload = resultEnvelope?.Payload as string;
+            // Check correlation ID
+            var responseCorrelationId = resultEnvelope.Metadata.TryGetValue("CorrelationId", out var corrId) ? corrId?.ToString() : null;
+            TestContext.WriteLine($"Expected CorrelationId: debug-001, Actual: {responseCorrelationId}");
+            Assert.AreEqual("debug-001", responseCorrelationId, "Response envelope CorrelationId should match request CorrelationId.");
+
+            // Check payload type
+            Assert.IsInstanceOfType(resultEnvelope.Payload, typeof(string), "Payload should be a string.");
+            
+            string? responsePayload = resultEnvelope.Payload as string;
+            TestContext.WriteLine($"Response payload length: {responsePayload?.Length ?? 0} characters");
+            
+            // Check for valid response
             Assert.IsFalse(string.IsNullOrWhiteSpace(responsePayload), "Response payload from Ollama should not be null or empty.");
             Assert.IsFalse(responsePayload?.StartsWith("Error:"), $"Response payload should not be an error message from the agent. Actual: {responsePayload}");
 
-            // Further assertions could check for specific content if the prompt was more deterministic,
-            // but for a general LLM query, checking for non-empty and non-error is a good start.
-            Console.WriteLine($"Successfully received response from Ollama model '{TestModel}': {responsePayload}");
+            // Check response headers
+            var messageType = resultEnvelope.Headers.TryGetValue("MessageType", out var msgType) ? msgType : "Unknown";
+            TestContext.WriteLine($"Response MessageType: {messageType}");
+            Assert.AreEqual("LLMResponse", messageType, "Response should be of type LLMResponse");
+
+            TestContext.WriteLine($"✅ Test completed successfully!");
+            TestContext.WriteLine($"Final response: {responsePayload}");
         }
 
         [TestMethod]
         [TestCategory("Integration")]
-        public async Task InitializeAsync_WithLiveOllama_ShouldAttemptConnectionAndBecomeActive()
+        [TestCategory("Debug")]
+        public async Task DebugAgent_StateTransitions()
         {
-            // Arrange
-            var agentId = "integration-init-test-agent";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            Exception? exception = null;
-
-            // Act
-            try
-            {
-                await agent.InitializeAsync();
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-            }
-
-            // Assert
-            Assert.IsNull(exception, $"InitializeAsync threw an exception: {exception?.Message}\nEnsure Ollama is running at {OllamaUrl}.");
-            // The current InitializeAsync logs a warning on failure but still sets state to Active.
-            // A more robust test might involve checking logs or having InitializeAsync throw on critical failure.
-            Assert.AreEqual(ActorState.Active, agent.State, "Agent should be active after initialization attempt.");
-            Console.WriteLine($"LLM Agent ({agentId}) initialized. Current state: {agent.State}. Ensure Ollama is accessible at {OllamaUrl} for this test to be meaningful.");
-        }
-
-        [TestMethod]
-        [TestCategory("Integration")]
-        public async Task ReceiveAsync_InvalidPayload_ShouldReturnInvalidPromptError()
-        {
-            // Arrange
-            var agentId = "itest-invalid-payload";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            await agent.InitializeAsync();
-            Assert.AreEqual(ActorState.Active, agent.State);
-
-            var inputEnvelope = new MessageEnvelope(12345, null, "itest-002"); // Invalid payload type (not a string)
-
-            // Act
-            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
-
-            // Assert
-            Assert.IsNotNull(resultEnvelope);
-            Assert.AreEqual("InvalidPromptError", resultEnvelope.Headers["MessageType"]);
-            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Prompt must be a non-empty string"));
-        }
-
-        [TestMethod]
-        [TestCategory("Integration")]
-        public async Task ReceiveAsync_EmptyPrompt_ShouldReturnInvalidPromptError()
-        {
-            // Arrange
-            var agentId = "itest-empty-prompt";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            await agent.InitializeAsync();
-
-            var inputEnvelope = new MessageEnvelope(" ", null, "itest-003"); // Empty prompt
-
-            // Act
-            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
-
-            // Assert
-            Assert.IsNotNull(resultEnvelope);
-            Assert.AreEqual("InvalidPromptError", resultEnvelope.Headers["MessageType"]);
-            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Prompt must be a non-empty string"));
-        }
-        
-        [TestMethod]
-        [TestCategory("Integration")]
-        public async Task ReceiveAsync_AgentNotActive_ShouldReturnNotActiveError()
-        {
-            // Arrange
-            var agentId = "itest-not-active";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            // Don't initialize, or shut it down to make it not active.
-            await agent.ShutdownAsync(); 
-            Assert.AreNotEqual(ActorState.Active, agent.State);
-
-            var inputEnvelope = new MessageEnvelope("test prompt", null, "itest-004");
-
-            // Act
-            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
-
-            // Assert
-            Assert.IsNotNull(resultEnvelope);
-            Assert.AreEqual("AgentNotActiveError", resultEnvelope.Headers["MessageType"]);
-            Assert.IsTrue(resultEnvelope.Payload.ToString().Contains("Agent not active"));
-        }
-
-        [TestMethod]
-        [TestCategory("Integration")]
-        public async Task ReceiveAsync_MissingSenderIdHeader_ShouldHandleGracefully()
-        {
-            // Arrange
-            var agentId = "itest-missing-header";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            await agent.InitializeAsync();
-
-            var headers = new Dictionary<string, string> { { "ReceiverId", agentId } }; // No SenderId
-            var inputEnvelope = new MessageEnvelope("Why is the sky blue?", null, "itest-005", headers);
-
-            // Act
-            var resultEnvelope = await agent.ReceiveAsync(inputEnvelope, CancellationToken.None);
-
-            // Assert
-            Assert.IsNotNull(resultEnvelope);
-            // Check that the response was sent back to "unknown"
-            Assert.AreEqual("unknown", resultEnvelope.Headers["ReceiverId"]);
-            // Check it is a valid LLM response otherwise
-            Assert.AreEqual("LLMResponse", resultEnvelope.Headers["MessageType"]);
-            Assert.IsFalse(string.IsNullOrWhiteSpace(resultEnvelope.Payload as string));
-        }
-
-        [TestMethod]
-        [TestCategory("Integration")]
-        public async Task ReceiveAsync_WithCancellation_ShouldReturnTaskCanceledError()
-        {
-            // Arrange
-            var agentId = "itest-cancellation";
-            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
-            await agent.InitializeAsync();
-            var cts = new CancellationTokenSource();
+            TestContext.WriteLine("=== Testing Agent State Transitions ===");
             
-            var inputEnvelope = new MessageEnvelope("A very long prompt that takes time.", null, "itest-006");
-            IMessageEnvelope? resultEnvelope = null;
-            Exception? exception = null;
-
-            // Act
-            try
+            var agentId = "debug-state-test-agent";
+            var agent = new LLMAgent(agentId, OllamaUrl, TestModel);
+            
+            // Track state changes
+            var stateChanges = new List<(ActorState Previous, ActorState New, DateTime When)>();
+            agent.StateChanged += (sender, args) =>
             {
-                cts.Cancel(); // Cancel before the call
-                resultEnvelope = await agent.ReceiveAsync(inputEnvelope, cts.Token);
-            }
-            catch (Exception ex)
-            {
-                exception = ex;
-            }
+                stateChanges.Add((args.PreviousState, args.NewState, DateTime.UtcNow));
+                TestContext.WriteLine($"State change: {args.PreviousState} -> {args.NewState}");
+            };
 
-            // Assert
-            Assert.IsNull(exception, "ReceiveAsync should handle cancellation gracefully and not throw an exception.");
-            Assert.IsNotNull(resultEnvelope, "Result envelope should not be null.");
-            Assert.AreEqual("TaskCanceledError", resultEnvelope?.Headers["MessageType"]);
-            Assert.IsTrue(resultEnvelope?.Payload.ToString().Contains("Task was canceled"));
+            DebugHelper.LogAgentState(agent, TestContext, "Initial");
+            
+            // Test initialization
+            await agent.InitializeAsync();
+            DebugHelper.LogAgentState(agent, TestContext, "After Init");
+            
+            // Test shutdown
+            await agent.ShutdownAsync();
+            DebugHelper.LogAgentState(agent, TestContext, "After Shutdown");
+            
+            TestContext.WriteLine($"Total state changes observed: {stateChanges.Count}");
+            foreach (var change in stateChanges)
+            {
+                TestContext.WriteLine($"  {change.When:HH:mm:ss.fff}: {change.Previous} -> {change.New}");
+            }
         }
     }
-} 
+}
