@@ -79,7 +79,7 @@ namespace AgctorSDK.Core.Agents
         /// <param name="agentId">Optional specific agent ID</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The spawned agent instance</returns>
-        public async Task<IAgent> SpawnAgentAsync(string agentTypeName, string prompt, string? parentAgentId = null, string? agentId = null, CancellationToken cancellationToken = default)
+        public virtual async Task<IAgent> SpawnAgentAsync(string agentTypeName, string prompt, string? parentAgentId = null, string? agentId = null, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(agentTypeName))
                 throw new ArgumentException("Agent type name cannot be null or empty", nameof(agentTypeName));
@@ -105,10 +105,10 @@ namespace AgctorSDK.Core.Agents
             };
 
             // Use reflection to call the generic SpawnActorAsync method
-            var method = _runtimeAdapter.GetType().GetMethod(nameof(IActorRuntimeAdapter.SpawnActorAsync));
+            var method = _runtimeAdapter.GetType().GetMethod(nameof(IActorRuntimeAdapter.SpawnActorAsync), new[] { typeof(string), typeof(object), typeof(CancellationToken) });
             var genericMethod = method!.MakeGenericMethod(agentType);
             
-            var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object[] { agentId, initData, cancellationToken })!;
+            var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { agentId, initData, cancellationToken })!;
             await task;
 
             // Get the result from the task

@@ -127,7 +127,22 @@ namespace AgctorSDK.Core.Interfaces
         /// <summary>
         /// Agent failed to complete its assigned prompt due to an error.
         /// </summary>
-        Failed
+        Failed,
+
+        /// <summary>
+        /// Agent is processing its assigned prompt.
+        /// </summary>
+        Processing,
+
+        /// <summary>
+        /// Agent is decomposing the task into subtasks.
+        /// </summary>
+        Decomposing,
+
+        /// <summary>
+        /// Agent is executing its assigned prompt.
+        /// </summary>
+        Executing
     }
 
     /// <summary>

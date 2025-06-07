@@ -527,107 +527,146 @@ namespace AgctorSDK.Core.Runtime
         private async Task ProcessActorMessagesAsync(IActor actor, ChannelReader<IMessageEnvelope> messageReader,
             CancellationToken cancellationToken)
         {
-            LogTrace($"Started message processing for actor '{actor.Id}' (Type: {actor.ActorType})");
-
+            string actorId = actor.Id;
+            string actorType = actor.ActorType;
+            LogTrace($"Started message processing loop for actor '{actorId}' (Type: {actorType})");
+            
+            int processedCount = 0;
+            
             try
             {
-                await foreach (var envelope in messageReader.ReadAllAsync(cancellationToken))
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        LogTrace($"Cancellation requested for actor '{actor.Id}' before processing message '{envelope.Id}'.");
-                        break;
-                    }
-
+                    IMessageEnvelope? envelope = null;
+                    bool hasMessage = false;
+                    
                     try
                     {
-                        string messageTypeDisplay = (envelope.Headers?.TryGetValue("MessageType", out var mt) == true ? mt : "UnknownType") ?? "UnknownType";
-                        LogTrace($"Processing message '{envelope.Id}' for actor '{actor.Id}' (MessageType Header: {messageTypeDisplay}, Payload Type: {envelope.Payload?.GetType().Name ?? "null"})");
-
-                        var startTime = DateTimeOffset.UtcNow;
-                        
-                        // Dispatch message to actor
-                        IMessageEnvelope responseEnvelope = await actor.ReceiveAsync(envelope, cancellationToken);
-                        
-                        var processingTime = DateTimeOffset.UtcNow - startTime;
-                        LogTrace($"Message '{envelope.Id}' processed by actor '{actor.Id}' in {processingTime.TotalMilliseconds:F2}ms");
-
-                        // Handle request-response for SendMessageAsync<TResponse>
-                        if (responseEnvelope?.Metadata?.TryGetValue("CorrelationId", out var correlationIdObj) == true && correlationIdObj is string correlationIdStr)
-                        {
-                           if (_pendingRequests.TryGetValue(correlationIdStr, out var tcs))
-                           {
-                               if (tcs.TrySetResult(responseEnvelope))
-                               {
-                                   LogTrace($"Successfully set result for CorrelationId '{correlationIdStr}' for actor '{actor.Id}'");
-                               }
-                               else
-                               {
-                                   LogTrace($"Failed to set result for CorrelationId '{correlationIdStr}' (TCS already completed?) for actor '{actor.Id}'");
-                               }
-                           }
-                           else
-                           {
-                               LogTrace($"No pending request found for CorrelationId '{correlationIdStr}' from actor '{actor.Id}'. Response might be late or unexpected.");
-                           }
-                        }
-                        else if (envelope.Metadata?.TryGetValue("CorrelationId", out correlationIdObj) == true && correlationIdObj is string originalCorrelationId)
-                        {
-                            // If the actor didn't set a CorrelationId in its response, but the original request had one,
-                            // and if IActor.ReceiveAsync is supposed to simply return an ack/modified envelope,
-                            // we might need to check the original envelope's CorrelationId for responses.
-                            // However, the current IActor.ReceiveAsync returns Task<IMessageEnvelope>, implying it crafts the response.
-                            // This else-if block is more for consideration.
-                            // For now, we strictly expect the actor's response envelope to carry the CorrelationId if it's a reply.
-                            LogTrace($"Actor '{actor.Id}' response for message '{envelope.Id}' did not contain 'CorrelationId' in its own Metadata, but original request might have had '{originalCorrelationId}'.");
-                        }
-
+                        hasMessage = await messageReader.WaitToReadAsync(cancellationToken);
                     }
-                    catch (OperationCanceledException oce) when (cancellationToken.IsCancellationRequested)
+                    catch (OperationCanceledException)
                     {
-                        LogTrace($"Message processing for actor '{actor.Id}' (MessageId: {envelope.Id}) was canceled: {oce.Message}");
-                        // If a CorrelationId exists for this message, cancel the TCS
-                        if (envelope.Metadata?.TryGetValue("CorrelationId", out var correlationIdObj) == true && correlationIdObj is string correlationIdStr)
+                        LogTrace($"Message wait for actor '{actorId}' was canceled.");
+                        break; // Exit loop on cancellation
+                    }
+                    catch (ChannelClosedException)
+                    {
+                        LogTrace($"Message channel for actor '{actorId}' was closed.");
+                        break; // Exit loop if channel closed
+                    }
+                    
+                    if (!hasMessage)
+                    {
+                        break; // Exit loop if no more messages available and channel closed
+                    }
+                    
+                    try
+                    {
+                        if (!messageReader.TryRead(out envelope))
                         {
-                           if (_pendingRequests.TryRemove(correlationIdStr, out var tcs))
-                           {
-                               tcs.TrySetCanceled(oce.CancellationToken);
-                           }
+                            continue; // Skip if no message was read (potentially due to race condition)
                         }
-                        break; 
+                        
+                        LogTrace($"Processing message ID '{envelope.Id}' for actor '{actorId}'. Headers: {string.Join(", ", envelope.Headers?.Select(h => $"{h.Key}={h.Value}") ?? Array.Empty<string>())}");
+                        
+                        string? senderId = null;
+                        if (envelope.Headers != null && envelope.Headers.TryGetValue("SenderId", out var sid))
+                        {
+                            senderId = sid;
+                        }
+                        
+                        string? correlationId = null;
+                        if (envelope.Metadata != null && envelope.Metadata.TryGetValue("CorrelationId", out var cid))
+                        {
+                            correlationId = cid?.ToString();
+                        }
+                        
+                        // Invoke the actor's message handler
+                        IMessageEnvelope? responseEnvelope = null;
+                        try
+                        {
+                            responseEnvelope = await actor.ReceiveAsync(envelope, cancellationToken);
+                            LogTrace($"Actor '{actorId}' processed message '{envelope.Id}' successfully.");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogTrace($"Error in actor '{actorId}' processing message '{envelope.Id}': {ex.Message}");
+                            
+                            // Create error response envelope
+                            var errorHeaders = new Dictionary<string, string>
+                            {
+                                ["SenderId"] = actorId,
+                                ["ReceiverId"] = senderId ?? "unknown",
+                                ["MessageType"] = "ErrorResponse",
+                                ["OriginalMessageId"] = envelope.Id ?? "unknown"
+                            };
+                            
+                            var errorMetadata = new Dictionary<string, object>
+                            {
+                                ["Timestamp"] = DateTimeOffset.UtcNow,
+                            };
+                            
+                            if (!string.IsNullOrEmpty(correlationId))
+                            {
+                                errorMetadata["CorrelationId"] = correlationId;
+                            }
+                            
+                            responseEnvelope = new MessageEnvelope(
+                                payload: ex,
+                                metadata: errorMetadata,
+                                id: Guid.NewGuid().ToString(),
+                                headers: errorHeaders
+                            );
+                        }
+                        
+                        // Handle request-response pattern
+                        if (!string.IsNullOrEmpty(correlationId) && _pendingRequests.TryGetValue(correlationId, out var tcs))
+                        {
+                            if (responseEnvelope != null)
+                            {
+                                LogTrace($"Setting response for correlation ID '{correlationId}' from actor '{actorId}'");
+                                tcs.TrySetResult(responseEnvelope);
+                            }
+                            else
+                            {
+                                LogTrace($"No response envelope provided for correlation ID '{correlationId}' from actor '{actorId}'");
+                                var noResponseErrorEnvelope = new MessageEnvelope(
+                                    payload: new InvalidOperationException($"Actor '{actorId}' did not provide a response"),
+                                    metadata: new Dictionary<string, object> { ["CorrelationId"] = correlationId, ["Timestamp"] = DateTimeOffset.UtcNow },
+                                    id: Guid.NewGuid().ToString(),
+                                    headers: new Dictionary<string, string>
+                                    {
+                                        ["SenderId"] = actorId,
+                                        ["ReceiverId"] = senderId ?? "unknown",
+                                        ["MessageType"] = "ErrorResponse",
+                                        ["OriginalMessageId"] = envelope.Id ?? "unknown"
+                                    }
+                                );
+                                tcs.TrySetResult(noResponseErrorEnvelope);
+                            }
+                        }
+                        
+                        processedCount++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        LogTrace($"Message processing for actor '{actorId}' was canceled during processing.");
+                        break; // Exit loop on cancellation
                     }
                     catch (Exception ex)
                     {
-                        // Unhandled exception in the message processing loop itself (not specific message handling)
-                        LogTrace($"Critical error in message processing loop for actor '{actor.Id}': {ex.Message}. Actor will stop.");
-                        // This actor instance is now likely corrupt.
+                        LogTrace($"Unexpected error processing message for actor '{actorId}': {ex.Message}");
+                        // Continue loop to process other messages in the queue
                     }
                 }
             }
-            catch (OperationCanceledException)
-            {
-                LogTrace($"Message processing loop for actor '{actor.Id}' was canceled.");
-            }
-            catch (ChannelClosedException)
-            {
-                LogTrace($"Message channel for actor '{actor.Id}' was closed. Exiting processing loop.");
-            }
             catch (Exception ex)
             {
-                // Unhandled exception in the message processing loop itself (not specific message handling)
-                LogTrace($"Critical error in message processing loop for actor '{actor.Id}': {ex.Message}. Actor will stop.");
-                // This actor instance is now likely corrupt.
+                LogTrace($"Fatal error in message processing loop for actor '{actorId}': {ex.Message}");
             }
             finally
             {
-                LogTrace($"Exiting message processing for actor '{actor.Id}'");
-                 // Ensure the actor's state reflects it's no longer processing, e.g., Inactive or Stopped.
-                if (actor.State == ActorState.Active && !cancellationToken.IsCancellationRequested)
-                {
-                    // If active and not explicitly cancelled, something else caused loop termination.
-                    // This might indicate an issue.
-                    LogTrace($"Actor '{actor.Id}' exited message loop while still Active and not explicitly cancelled.");
-                }
+                LogTrace($"Message processing loop for actor '{actorId}' terminated. Processed {processedCount} messages.");
             }
         }
         
@@ -684,8 +723,37 @@ namespace AgctorSDK.Core.Runtime
         // Simple logging to console for MVP. Replace with a proper logging framework.
         private void LogTrace(string message)
         {
-            // Replace with Microsoft.Extensions.Logging or similar
-            // Console.WriteLine($"[InMemoryActorRuntime][{DateTime.UtcNow:HH:mm:ss.fff}] {message}");
+            // In a production implementation, this would use a proper logging framework.
+            // For this MVP, just use Console.WriteLine for simplicity
+            
+            // Also log to TestContext if available (for integration tests)
+            try
+            {
+                var testContextType = Type.GetType("AgctorSDK.Core.IntegrationTests.TestHelpers.TestDependencies, AgctorSDK.Core.IntegrationTests");
+                if (testContextType != null)
+                {
+                    var testContextProperty = testContextType.GetProperty("TestContext");
+                    if (testContextProperty != null)
+                    {
+                        var testContext = testContextProperty.GetValue(null);
+                        if (testContext != null)
+                        {
+                            var writeLineMethod = testContext.GetType().GetMethod("WriteLine", new[] { typeof(string) });
+                            if (writeLineMethod != null)
+                            {
+                                writeLineMethod.Invoke(testContext, new[] { $"[RUNTIME] {message}" });
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore any errors in test logging
+            }
+            
+            var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
+            Console.WriteLine($"[{timestamp}] [InMemoryActorRuntime] {message}");
         }
     }
 

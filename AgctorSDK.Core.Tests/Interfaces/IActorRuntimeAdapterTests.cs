@@ -557,13 +557,14 @@ namespace AgctorSDK.Core.Tests.Interfaces
     // Helper classes for tests
     public class TestActor : IActor
     {
-        public string Id { get; }
+        public string Id { get; set; }
         public string ActorType => nameof(TestActor);
         public ActorState State { get; private set; } = ActorState.Initializing;
 
         public event EventHandler<ActorStateChangedEventArgs>? StateChanged;
 
         public TestActor(string id) { Id = id; }
+        public TestActor() { Id = string.Empty; }
 
         public Task InitializeAsync(CancellationToken cancellationToken = default)
         {

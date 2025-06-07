@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
+using System.Text.RegularExpressions;
+using AgctorSDK.Core.Tools.Models;
 
 namespace AgctorSDK.Core.Agents
 {
@@ -24,6 +26,10 @@ namespace AgctorSDK.Core.Agents
         private int _hierarchyDepth = 0; // Track depth to prevent infinite recursion
         private const int MAX_HIERARCHY_DEPTH = 3; // Maximum allowed depth
         private const int MAX_CHILD_AGENTS = 5; // Maximum children per agent
+
+        private Queue<string> _subtaskQueue = new Queue<string>();
+        private object? _lastSubtaskResult;
+        private readonly Dictionary<string, object> _subtaskResults = new Dictionary<string, object>();
 
         /// <summary>
         /// Unique identifier for this agent instance.
@@ -222,10 +228,21 @@ namespace AgctorSDK.Core.Agents
                         break;
 
                     case SubtaskCompletedMessage completedMsg:
-                        await HandleSubtaskCompletionAsync(completedMsg.ChildAgentId, completedMsg.Result, cancellationToken);
+                        LogInfo($"Received SubtaskCompletedMessage from child agent {completedMsg.ChildAgentId} with result type {completedMsg.Result?.GetType().Name ?? "null"}");
+                        try
+                        {
+                            await HandleSubtaskCompletionAsync(completedMsg.ChildAgentId, completedMsg.Result, cancellationToken);
+                            LogInfo($"Successfully handled subtask completion from child agent {completedMsg.ChildAgentId}");
+                        }
+                        catch (Exception ex)
+                        {
+                            LogError($"Error handling subtask completion: {ex.Message}");
+                            LogError($"Stack Trace: {ex.StackTrace}");
+                        }
                         break;
 
                     case SubtaskFailedMessage failedMsg:
+                        LogInfo($"Received SubtaskFailedMessage from child agent {failedMsg.ChildAgentId} with error: {failedMsg.Error.Message}");
                         await HandleSubtaskFailureAsync(failedMsg.ChildAgentId, failedMsg.Error, cancellationToken);
                         break;
 
@@ -306,7 +323,7 @@ namespace AgctorSDK.Core.Agents
             LogInfo($"Processing prompt: {prompt}");
             
             _currentPrompt = prompt;
-            ChangeAgentStatus(AgentStatus.Working, $"Processing prompt: {prompt}");
+            ChangeAgentStatus(AgentStatus.Idle, $"Processing prompt: {prompt}");
 
             try
             {
@@ -411,8 +428,17 @@ namespace AgctorSDK.Core.Agents
                 _childAgentIds.Remove(childAgentId);
             }
 
+            // Store the result for use in ProcessSubtaskResultAsync
+            _lastSubtaskResult = result;
+            _subtaskResults[childAgentId] = result;
+            
+            LogInfo($"Stored result from child agent {childAgentId} and preparing to process next subtask");
+
             // Process the result (override in derived classes for specific behavior)
             await ProcessSubtaskResultAsync(childAgentId, result, cancellationToken);
+            
+            // Note: We don't call ProcessNextSubtaskAsync directly here anymore because
+            // it's now handled within ProcessSubtaskResultAsync to avoid duplication
         }
 
         /// <summary>
@@ -475,54 +501,153 @@ namespace AgctorSDK.Core.Agents
         /// <returns>Task representing the processing operation</returns>
         protected virtual async Task ProcessPromptInternalAsync(string prompt, CancellationToken cancellationToken)
         {
-            // Basic implementation: simulate some work
-            LogInfo("Analyzing prompt for potential subtasks...");
-            await Task.Delay(100, cancellationToken); // Simulate processing time
-            
-            // Only decompose tasks if we're not at maximum depth and this is a complex task
-            if (_hierarchyDepth < MAX_HIERARCHY_DEPTH && ShouldDecomposeTask(prompt))
+            LogInfo($"Processing prompt: '{prompt}' (Depth: {HierarchyDepth})");
+            ChangeAgentStatus(AgentStatus.Processing, "Analyzing prompt");
+
+            if (ShouldDecomposeTask(prompt))
             {
-                LogInfo("Detected complex task requiring subtasks");
+                ChangeAgentStatus(AgentStatus.Decomposing, "Prompt requires decomposition into subtasks");
+                var subtaskPrompts = GenerateSubtasks(prompt);
+
+                if (subtaskPrompts.Count > MAX_CHILD_AGENTS)
+                {
+                    LogWarning($"Generated {subtaskPrompts.Count} subtasks, which exceeds the limit of {MAX_CHILD_AGENTS}. Truncating list.");
+                    subtaskPrompts = subtaskPrompts.Take(MAX_CHILD_AGENTS).ToList();
+                }
+
+                LogInfo($"Decomposed prompt into {subtaskPrompts.Count} subtasks.");
+                foreach (var subtask in subtaskPrompts)
+                {
+                    LogInfo($"Subtask: '{subtask}'");
+                }
                 
-                try
-                {
-                    // Create specific subtasks based on the prompt content
-                    var subtasks = GenerateSubtasks(prompt);
-                    
-                    if (subtasks.Count > 0)
-                    {
-                        LogInfo($"Generated {subtasks.Count} subtasks");
-                        
-                        // Spawn child agents for each subtask
-                        foreach (var subtask in subtasks)
-                        {
-                            await AssignSubtaskAsync(subtask, cancellationToken: cancellationToken);
-                        }
-                        
-                        ChangeAgentStatus(AgentStatus.WaitingForSubtasks, "Waiting for child agents to complete subtasks");
-                    }
-                    else
-                    {
-                        LogInfo("No subtasks generated, completing directly");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Error during task decomposition: {ex.Message}");
-                    // Continue with direct processing if decomposition fails
-                }
+                _subtaskQueue = new Queue<string>(subtaskPrompts);
+                _subtaskResults.Clear();
+                _lastSubtaskResult = null;
+                
+                ChangeAgentStatus(AgentStatus.WaitingForSubtasks, "Waiting for subtasks to complete");
+                await ProcessNextSubtaskAsync(cancellationToken);
             }
             else
             {
-                if (_hierarchyDepth >= MAX_HIERARCHY_DEPTH)
+                ChangeAgentStatus(AgentStatus.Executing, "Executing simple prompt");
+                // For a simple, non-decomposed task, we could potentially use an LLM directly here
+                // or decide it's a final answer. For now, we assume it's not a decomposed task.
+                LogInfo("Prompt does not require decomposition. Task considered complete for this agent.");
+                ChangeAgentStatus(AgentStatus.Completed, "Simple task finished");
+            }
+        }
+
+        protected virtual async Task ProcessNextSubtaskAsync(CancellationToken cancellationToken)
+        {
+            LogInfo($"Processing next subtask. Queue count: {_subtaskQueue.Count}");
+            
+            if (_subtaskQueue.Count == 0)
+            {
+                LogInfo("Subtask queue is empty. Plan execution complete.");
+                ChangeAgentStatus(AgentStatus.Completed, "All subtasks finished.");
+                return;
+            }
+
+            var subtaskPrompt = _subtaskQueue.Dequeue();
+            LogInfo($"Dequeued subtask: '{subtaskPrompt}'");
+            
+            var finalPrompt = subtaskPrompt;
+            var agentType = DetermineAgentType(subtaskPrompt);
+            LogInfo($"Determined agent type for subtask: {agentType}");
+
+            // Special handling for CodeEditorTool to forward content from previous step
+            if (agentType == "CodeEditorTool" && _lastSubtaskResult != null)
+            {
+                string content = null;
+                
+                // Extract content from previous result based on its type
+                if (_lastSubtaskResult is string stringResult)
                 {
-                    LogInfo($"Maximum depth ({MAX_HIERARCHY_DEPTH}) reached, processing directly");
+                    content = stringResult;
+                    LogInfo($"Using string result from previous step (length: {content.Length})");
+                }
+                else if (_lastSubtaskResult is ToolResult toolResult && toolResult.IsSuccess && toolResult.Output is string outputStr)
+                {
+                    content = outputStr;
+                    LogInfo($"Using tool result output from previous step (length: {content.Length})");
+                }
+                
+                if (content != null)
+                {
+                    // Extract path from the subtask prompt
+                    var pathMatch = System.Text.RegularExpressions.Regex.Match(subtaskPrompt, @"'([^']*)'|\""([^""]*)\""");
+                    var path = pathMatch.Success 
+                        ? (pathMatch.Groups[1].Success ? pathMatch.Groups[1].Value : pathMatch.Groups[2].Value) 
+                        : "output.txt";
+                    
+                    LogInfo($"Extracted path from subtask: '{path}'");
+                    
+                    // Escape quotes in content to prevent command injection
+                    var escapedContent = content.Replace("\"", "\\\"");
+                    
+                    // Construct the final tool request
+                    finalPrompt = $"WriteFile --path \"{path}\" --content \"{escapedContent}\"";
+                    LogInfo($"Constructed CodeEditorTool command: '{finalPrompt}'");
                 }
                 else
                 {
-                    LogInfo("Simple task completed directly");
+                    LogError($"Cannot execute CodeEditorTool task '{subtaskPrompt}' because the previous step's result could not be converted to usable content.");
+                    LogError($"Previous result was of type {_lastSubtaskResult?.GetType().Name ?? "null"}");
+                    ChangeAgentStatus(AgentStatus.Failed, "Missing content for file operation.");
+                    return;
                 }
             }
+            else if (agentType == "CodeEditorTool")
+            {
+                LogError($"Cannot execute CodeEditorTool task '{subtaskPrompt}' because there was no previous step result.");
+                ChangeAgentStatus(AgentStatus.Failed, "Missing content for file operation.");
+                return;
+            }
+
+            try
+            {
+                LogInfo($"Spawning agent of type '{agentType}' for subtask");
+                var childAgentId = await AssignSubtaskAsync(finalPrompt, agentType, cancellationToken);
+                LogInfo($"Spawned child agent '{childAgentId}' for subtask");
+                ChangeAgentStatus(AgentStatus.WaitingForSubtasks, $"Waiting for subtask execution by {childAgentId}");
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to spawn agent for subtask: {ex.Message}");
+                ChangeAgentStatus(AgentStatus.Failed, $"Failed to spawn agent: {ex.Message}");
+            }
+        }
+
+        protected virtual string DetermineAgentType(string subtaskPrompt)
+        {
+            var promptLower = subtaskPrompt.ToLower();
+            
+            // Check for code generation tasks
+            if (promptLower.Contains("write code") || 
+                promptLower.Contains("generate code") || 
+                promptLower.Contains("create code") ||
+                promptLower.Contains("write a hello world") ||
+                promptLower.Contains("program") && (promptLower.Contains("c#") || promptLower.Contains("python") || promptLower.Contains("javascript")))
+            {
+                LogInfo($"Determined LLMAgent is appropriate for coding task: '{subtaskPrompt}'");
+                return "LLMAgent";
+            }
+            
+            // Check for file operations
+            if (promptLower.Contains("save to a file") || 
+                promptLower.Contains("write to file") || 
+                promptLower.Contains("save it to") ||
+                promptLower.Contains("create file") ||
+                (promptLower.Contains("save") && promptLower.Contains(".cs")))
+            {
+                LogInfo($"Determined CodeEditorTool is appropriate for file operation: '{subtaskPrompt}'");
+                return "CodeEditorTool";
+            }
+            
+            // Default to standard agent for other types of tasks
+            LogInfo($"Using default Agent for general task: '{subtaskPrompt}'");
+            return "Agent";
         }
 
         /// <summary>
@@ -533,25 +658,9 @@ namespace AgctorSDK.Core.Agents
         /// <returns>True if the task should be decomposed</returns>
         protected virtual bool ShouldDecomposeTask(string prompt)
         {
-            var lowerPrompt = prompt.ToLowerInvariant();
-            
-            // Only decompose if this is a root agent (depth 0) and the prompt is complex
-            if (_hierarchyDepth > 0)
-            {
-                return false; // Child agents don't decompose further
-            }
-            
-            // Check for complex task indicators
-            var complexityIndicators = new[]
-            {
-                "analyze and report",
-                "comprehensive analysis",
-                "detailed study",
-                "full investigation",
-                "complete assessment"
-            };
-            
-            return complexityIndicators.Any(indicator => lowerPrompt.Contains(indicator));
+            var promptLower = prompt.ToLower();
+            var keywords = new[] { " and ", " then ", " after that " };
+            return keywords.Any(promptLower.Contains);
         }
 
         /// <summary>
@@ -563,31 +672,78 @@ namespace AgctorSDK.Core.Agents
         protected virtual List<string> GenerateSubtasks(string prompt)
         {
             var subtasks = new List<string>();
-            var lowerPrompt = prompt.ToLowerInvariant();
+            var promptLower = prompt.ToLower();
             
-            // Generate specific, non-recursive subtasks
-            if (lowerPrompt.Contains("market trends"))
+            // Check for complex tasks that involve coding and saving
+            if ((promptLower.Contains("write") || promptLower.Contains("create") || promptLower.Contains("generate")) 
+                && promptLower.Contains("save"))
             {
-                subtasks.Add("Collect current market data");
-                subtasks.Add("Identify key trend indicators");
-                subtasks.Add("Compile trend analysis summary");
-            }
-            else if (lowerPrompt.Contains("comprehensive report"))
-            {
-                subtasks.Add("Gather required data sources");
-                subtasks.Add("Perform data analysis");
-                subtasks.Add("Format final report");
-            }
-            else if (lowerPrompt.Contains("analyze") && lowerPrompt.Contains("report"))
-            {
-                // Generic analysis and reporting
-                subtasks.Add("Data collection phase");
-                subtasks.Add("Analysis execution");
-                subtasks.Add("Report generation");
+                // Split into code generation and file saving tasks
+                string codeTask = null;
+                string saveTask = null;
+                
+                if (promptLower.Contains("hello world") && promptLower.Contains("c#"))
+                {
+                    codeTask = "write a hello world c# console application";
+                    
+                    // Extract filename from the prompt
+                    if (promptLower.Contains("program.cs"))
+                    {
+                        saveTask = "save it to a file named 'program.cs'";
+                    }
+                    else if (promptLower.Contains(".cs"))
+                    {
+                        // Try to extract the filename using regex
+                        var match = System.Text.RegularExpressions.Regex.Match(prompt, @"['""]([^'""]+\.cs)['""]");
+                        var filename = match.Success ? match.Groups[1].Value : "output.cs";
+                        saveTask = $"save it to a file named '{filename}'";
+                    }
+                    else
+                    {
+                        saveTask = "save it to a file named 'program.cs'";
+                    }
+                }
+                else
+                {
+                    // Generic decomposition
+                    int saveIndex = promptLower.IndexOf("save");
+                    if (saveIndex > 10) // Ensure we have enough content for a meaningful split
+                    {
+                        codeTask = prompt.Substring(0, saveIndex).Trim();
+                        saveTask = prompt.Substring(saveIndex).Trim();
+                    }
+                    else
+                    {
+                        // Fallback to simple splitting by "and"
+                        var andParts = prompt.Split(new[] { " and " }, StringSplitOptions.RemoveEmptyEntries);
+                        if (andParts.Length > 1)
+                        {
+                            codeTask = andParts[0].Trim();
+                            saveTask = andParts[1].Trim();
+                        }
+                        else
+                        {
+                            // Can't decompose, just use the original prompt
+                            subtasks.Add(prompt);
+                            return subtasks;
+                        }
+                    }
+                }
+                
+                if (codeTask != null) subtasks.Add(codeTask);
+                if (saveTask != null) subtasks.Add(saveTask);
+                
+                return subtasks;
             }
             
-            // Limit the number of subtasks
-            return subtasks.Take(3).ToList();
+            // Default decomposition logic for other types of tasks
+            var separatorParts = prompt.Split(new[] { " and ", " then ", ". " }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var part in separatorParts)
+            {
+                subtasks.Add(part.Trim());
+            }
+            
+            return subtasks;
         }
 
         /// <summary>
@@ -599,16 +755,52 @@ namespace AgctorSDK.Core.Agents
         /// <returns>Task representing the processing operation</returns>
         protected virtual async Task ProcessSubtaskResultAsync(string childAgentId, object result, CancellationToken cancellationToken)
         {
-            LogInfo($"Processing result from child {childAgentId}: {result}");
+            LogInfo($"Processing result from completed subtask '{childAgentId}'. Result type: {result?.GetType().Name ?? "null"}");
             
-            // Check if all subtasks are complete
-            if (ChildAgentIds.Count == 0 && Status == AgentStatus.WaitingForSubtasks)
+            // Store the result for later use (already done in HandleSubtaskCompletionAsync)
+            
+            if (result is ToolResult toolResult)
             {
-                ChangeAgentStatus(AgentStatus.Completed, "All subtasks completed successfully");
-                LogInfo("All subtasks completed, agent work finished");
+                if (toolResult.IsSuccess)
+                {
+                    LogInfo($"Subtask {childAgentId} completed successfully with tool result: {toolResult.Output}");
+                    _lastSubtaskResult = toolResult.Output;
+                }
+                else
+                {
+                    LogError($"Subtask {childAgentId} failed with tool result error: {toolResult.Error}");
+                    _lastSubtaskResult = toolResult.Error;
+                    ChangeAgentStatus(AgentStatus.Failed, $"Subtask {childAgentId} failed: {toolResult.Error}");
+                }
+            }
+            else if (result is string stringResult)
+            {
+                LogInfo($"Subtask {childAgentId} completed with string result (length: {stringResult.Length})");
+                _lastSubtaskResult = stringResult;
+            }
+            else
+            {
+                LogInfo($"Subtask {childAgentId} completed with result of type {result?.GetType().Name ?? "null"}");
+                _lastSubtaskResult = result;
             }
             
-            await Task.CompletedTask;
+            // Continue to the next subtask if available
+            if (_subtaskQueue.Count > 0)
+            {
+                LogInfo($"Queue has {_subtaskQueue.Count} more subtasks. Processing next one from ProcessSubtaskResultAsync.");
+                await ProcessNextSubtaskAsync(cancellationToken);
+            }
+            else if (_childAgentIds.Count == 0)
+            {
+                // All subtasks are complete
+                LogInfo("All subtasks completed from ProcessSubtaskResultAsync.");
+                ChangeAgentStatus(AgentStatus.Completed, "All subtasks completed successfully");
+            }
+            else
+            {
+                LogInfo($"Waiting for {_childAgentIds.Count} child agents to complete.");
+                ChangeAgentStatus(AgentStatus.WaitingForSubtasks, $"Waiting for {_childAgentIds.Count} child agents to complete");
+            }
         }
 
         /// <summary>
