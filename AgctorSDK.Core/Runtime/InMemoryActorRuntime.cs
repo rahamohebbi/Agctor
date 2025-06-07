@@ -493,30 +493,9 @@ namespace AgctorSDK.Core.Runtime
                 // First, try the constructor that takes a string 'id', which is the convention for Agents.
                 return (T)Activator.CreateInstance(typeof(T), actorId)!;
             }
-            catch(MissingMethodException)
+            catch (MissingMethodException inner)
             {
-                try
-                {
-                    // If that fails, fall back to the parameterless constructor for other IActor implementations.
-                    var instance = Activator.CreateInstance<T>();
-                    if (string.IsNullOrEmpty(instance.Id))
-                    {
-                        // This is a potential issue. If an actor created with a parameterless ctor
-                        // doesn't set its own ID, it might violate assumptions.
-                        // For now, we log a warning. A stricter implementation might throw.
-                         LogTrace($"[WARN] Actor of type '{typeof(T).Name}' was created with a parameterless constructor but has a null/empty ID.");
-                    }
-                    return instance;
-                }
-                catch (Exception innerEx)
-                {
-                     throw new InvalidOperationException($"Could not create instance of actor type '{typeof(T).FullName}'. It must have a public constructor that takes a string 'id' or a parameterless constructor. See inner exception.", innerEx);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogTrace($"Failed to create instance of actor type '{typeof(T).FullName}' for ID '{actorId}': {ex.Message}");
-                throw new InvalidOperationException($"Could not create instance of actor type '{typeof(T).FullName}'. See inner exception for details.", ex);
+                throw new InvalidOperationException($"Could not create instance of actor type '{typeof(T).Name}'. It must have a public constructor that takes a string 'id'. See inner exception.", inner);
             }
         }
         

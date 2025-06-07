@@ -9,6 +9,8 @@ using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
+using System.IO;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
@@ -16,15 +18,9 @@ namespace AgctorSDK.Core.Tools.Implementations
     {
         private readonly IFileSystem _fileSystem;
 
-        public string? CurrentPrompt { get; private set; }
-        public string? ParentAgentId { get; private set; }
-        public IReadOnlyList<string> ChildAgentIds => new List<string>().AsReadOnly();
-        public AgentStatus Status { get; private set; }
-        public int HierarchyDepth { get; private set; }
-
-        public event EventHandler<AgentStatusChangedEventArgs>? StatusChanged;
-        public event EventHandler<ChildAgentSpawnedEventArgs>? ChildAgentSpawned;
-        public event EventHandler<SubtaskCompletedEventArgs>? SubtaskCompleted;
+        public CodeEditorTool(string id) : this(id, new DefaultFileSystem())
+        {
+        }
 
         public CodeEditorTool(string id, IFileSystem? fileSystem = null) : base(id)
         {
@@ -36,8 +32,6 @@ namespace AgctorSDK.Core.Tools.Implementations
             if (envelope.Payload is ProcessPromptMessage promptMsg)
             {
                 await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                
-                // Return a successful acknowledgment
                 return new MessageEnvelope(new ToolResult { IsSuccess = true });
             }
             else if (envelope.Payload is ToolRequest request)
@@ -46,124 +40,178 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new MessageEnvelope(result);
             }
 
-            // Call base for handling other message types
             return await base.ReceiveAsync(envelope, cancellationToken);
         }
 
         public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
         {
-            await base.ProcessPromptAsync(prompt, cancellationToken);
-            
-            try 
-            {
-                var toolRequest = ParsePromptToToolRequest(prompt);
-                var result = await Handle(toolRequest);
+            LogInfo($"CodeEditorTool processing prompt: {prompt}");
 
-                if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
+            try
+            {
+                var toolRequest = ParsePrompt(prompt);
+                LogInfo($"Parsed request: Operation={toolRequest.Operation}, Parameters={string.Join(", ", toolRequest.Parameters.Select(p => $"{p.Key}={p.Value}"))}");
+                
+                if (toolRequest.Operation == "Error")
                 {
-                    var completionMessage = new SubtaskCompletedMessage(Id, ParentAgentId, result);
-                    var envelope = new MessageEnvelope(completionMessage);
-                    await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
+                    LogError($"Error parsing tool request: {toolRequest.Parameters["Error"]}");
+                    await FinalizeTaskAsFailed(new Exception($"Failed to parse tool request: {toolRequest.Parameters["Error"]}"), cancellationToken);
+                    return;
                 }
+                
+                var result = await Handle(toolRequest);
+                LogInfo($"Tool execution result: IsSuccess={result.IsSuccess}, Output={result.Output}, Error={result.Error}");
+
+                if (!result.IsSuccess)
+                {
+                    LogError($"Tool execution failed: {result.Error}");
+                    await FinalizeTaskAsFailed(new Exception($"Tool execution failed: {result.Error}"), cancellationToken);
+                    return;
+                }
+
+                LogInfo("Tool execution succeeded, notifying parent agent");
+                await FinalizeTask(result, cancellationToken);
             }
             catch (Exception ex)
             {
                 LogError($"Error processing prompt: {ex.Message}");
-                
-                if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
-                {
-                    var failureMessage = new SubtaskFailedMessage(Id, ParentAgentId, new Exception($"Failed to process tool request: {ex.Message}"));
-                    var envelope = new MessageEnvelope(failureMessage);
-                    await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
-                }
+                await FinalizeTaskAsFailed(new Exception($"Failed to process tool request: {ex.Message}"), cancellationToken);
             }
         }
 
-        public virtual ToolRequest ParsePromptToToolRequest(string prompt)
+        public ToolRequest ParsePrompt(string prompt)
         {
-            // Extract command and parameters
-            var commandParts = new List<string>();
-            var inQuotes = false;
-            var currentPart = "";
+            LogInfo($"Parsing prompt for tool request: {prompt}");
             
-            for (int i = 0; i < prompt.Length; i++)
+            // First, extract the command line from the potentially verbose LLM output
+            var commandLineMatch = Regex.Match(prompt, @"(CodeEditorTool\s+\w+.*)");
+            if (!commandLineMatch.Success)
             {
-                var c = prompt[i];
-                
-                if (c == '"')
-                {
-                    inQuotes = !inQuotes;
-                }
-                else if (c == ' ' && !inQuotes)
-                {
-                    if (!string.IsNullOrEmpty(currentPart))
-                    {
-                        commandParts.Add(currentPart);
-                        currentPart = "";
-                    }
-                }
-                else
-                {
-                    currentPart += c;
-                }
-            }
-            
-            if (!string.IsNullOrEmpty(currentPart))
-            {
-                commandParts.Add(currentPart);
+                LogWarning($"Could not find command line in input: {prompt}");
+                return new ToolRequest { Operation = "Error", Parameters = new Dictionary<string, object> { { "Error", "Could not find command line in input" } } };
             }
 
-            if (commandParts.Count == 0)
+            string commandLine = commandLineMatch.Groups[1].Value.Trim();
+            LogInfo($"Found command line: {commandLine}");
+
+            // Now parse the command line
+            var match = Regex.Match(commandLine, @"CodeEditorTool\s+(\w+)(.*)");
+            if (!match.Success)
             {
-                return new ToolRequest { Operation = "Error", Parameters = new Dictionary<string, object> { { "Error", "Empty prompt" } } };
+                LogWarning($"Could not parse operation from command line: {commandLine}");
+                return new ToolRequest { Operation = "Error", Parameters = new Dictionary<string, object> { { "Error", "Could not parse operation from command line" } } };
             }
+
+            string operation = match.Groups[1].Value;
+            
+            // Parse parameters directly from the command line, not just the parameters part
+            var parameters = ParseParameters(commandLine);
+            
+            LogInfo($"Parsed request: Operation={operation}, Parameters={string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"))}");
 
             var request = new ToolRequest
             {
-                Operation = commandParts[0],
-                Parameters = new Dictionary<string, object>()
+                Operation = operation,
+                Parameters = parameters
             };
-
-            for (int i = 1; i < commandParts.Count; i++)
-            {
-                if (commandParts[i].StartsWith("--") && i + 1 < commandParts.Count)
-                {
-                    var key = commandParts[i].Substring(2); // Remove the -- prefix
-                    var value = commandParts[i + 1];
-                    request.Parameters[key] = value;
-                    i++; // Skip the value
-                }
-            }
 
             return request;
         }
 
-        public Task<string> AssignSubtaskAsync(string subtaskPrompt, string? agentType = null, CancellationToken cancellationToken = default)
+        private Dictionary<string, object> ParseParameters(string commandLine)
+        {
+            var parameters = new Dictionary<string, object>();
+
+            // First try to find the path parameter since it's easier to parse
+            var pathMatch = Regex.Match(commandLine, @"--path\s+(?:""([^""]*)""|([^\s--][^\s]*))");
+            if (pathMatch.Success)
+            {
+                string pathValue = pathMatch.Groups[1].Success ? pathMatch.Groups[1].Value : pathMatch.Groups[2].Value;
+                parameters["path"] = pathValue;
+            }
+
+            // Now for the content parameter which is trickier because it can contain escaped quotes
+            // Find where the --content parameter starts
+            int contentIndex = commandLine.IndexOf("--content");
+            if (contentIndex >= 0)
+            {
+                // Extract everything after --content (including potential whitespace)
+                string contentPart = commandLine.Substring(contentIndex + 9).Trim();
+                
+                // If the content starts with a quote, extract everything between the opening and closing quotes
+                if (contentPart.StartsWith("\""))
+                {
+                    // Skip the opening quote
+                    contentPart = contentPart.Substring(1);
+                    
+                    // Now build the content until we find the unescaped closing quote
+                    var contentBuilder = new System.Text.StringBuilder();
+                    bool foundClosingQuote = false;
+                    
+                    for (int i = 0; i < contentPart.Length; i++)
+                    {
+                        char c = contentPart[i];
+                        
+                        // Check for escape sequence
+                        if (c == '\\' && i + 1 < contentPart.Length)
+                        {
+                            // Include the escape character and the next character
+                            contentBuilder.Append(c);
+                            contentBuilder.Append(contentPart[i + 1]);
+                            i++; // Skip the next character since we've already included it
+                        }
+                        // Check for closing quote
+                        else if (c == '"')
+                        {
+                            foundClosingQuote = true;
+                            break;
+                        }
+                        // Regular character
+                        else
+                        {
+                            contentBuilder.Append(c);
+                        }
+                    }
+                    
+                    if (foundClosingQuote || contentBuilder.Length > 0)
+                    {
+                        string content = contentBuilder.ToString();
+                        // Further unescape any escaped quotes in the content
+                        content = content.Replace("\\\"", "\"").Replace("\\\\", "\\");
+                        parameters["content"] = content;
+                    }
+                }
+                // If not quoted, take the content until the next parameter or end of string
+                else
+                {
+                    var nextParamIndex = contentPart.IndexOf("--");
+                    if (nextParamIndex >= 0)
+                    {
+                        contentPart = contentPart.Substring(0, nextParamIndex).Trim();
+                    }
+                    
+                    parameters["content"] = contentPart;
+                }
+            }
+
+            // Log the extracted parameters
+            var paramString = string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"));
+            LogInfo($"Parsed parameters: {paramString}");
+
+            return parameters;
+        }
+
+        public override Task<string> AssignSubtaskAsync(string subtaskPrompt, string? agentType = null, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException("CodeEditorTool cannot assign subtasks.");
         }
 
-        public void SetAgentFactory(IAgentFactory agentFactory)
-        {
-            // This tool does not use an agent factory.
-        }
-
-        public void SetParentAgentId(string? parentAgentId)
-        {
-            ParentAgentId = parentAgentId;
-        }
-
-        public void SetHierarchyDepth(int depth)
-        {
-            HierarchyDepth = depth;
-        }
-
-        public async Task HandleSubtaskCompletionAsync(string childAgentId, object result, CancellationToken cancellationToken = default)
+        public override async Task HandleSubtaskCompletionAsync(string childAgentId, object result, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException("CodeEditorTool does not handle subtask completions.");
         }
 
-        public async Task HandleSubtaskFailureAsync(string childAgentId, Exception error, CancellationToken cancellationToken = default)
+        public override async Task HandleSubtaskFailureAsync(string childAgentId, Exception error, CancellationToken cancellationToken = default)
         {
             throw new NotSupportedException("CodeEditorTool does not handle subtask failures.");
         }
@@ -174,7 +222,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             {
                 return request.Operation switch
                 {
-                    "WriteFile" => await WriteFile(request.Parameters),
+                    "WriteFile" => await ExecuteWriteFileOperation(request.Parameters),
                     "InsertIntoFile" => await InsertIntoFile(request.Parameters),
                     "ReplaceInFile" => await ReplaceInFile(request.Parameters),
                     _ => new ToolResult { IsSuccess = false, Error = $"Unsupported operation: {request.Operation}" }
@@ -186,15 +234,72 @@ namespace AgctorSDK.Core.Tools.Implementations
             }
         }
 
-        private async Task<ToolResult> WriteFile(IDictionary<string, object> parameters)
+        private async Task<ToolResult> ExecuteWriteFileOperation(IDictionary<string, object> parameters)
         {
-            if (!parameters.TryGetValue("path", out var pathObj) || pathObj is not string path)
-                return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'path' parameter." };
-            if (!parameters.TryGetValue("content", out var contentObj) || contentObj is not string content)
-                return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'content' parameter." };
+            if (!parameters.TryGetValue("path", out var pathObj) || pathObj is not string filePath)
+            {
+                return new ToolResult
+                {
+                    IsSuccess = false,
+                    Error = "Path parameter is missing or invalid"
+                };
+            }
 
-            await _fileSystem.WriteAllTextAsync(path, content);
-            return new ToolResult { IsSuccess = true };
+            if (!parameters.TryGetValue("content", out var contentObj) || contentObj is not string content)
+            {
+                return new ToolResult
+                {
+                    IsSuccess = false,
+                    Error = "Content parameter is missing or invalid"
+                };
+            }
+
+            LogInfo($"Writing file to path: {filePath}");
+            LogInfo($"Content sample (first 100 chars): {content.Substring(0, Math.Min(100, content.Length))}");
+
+            try
+            {
+                // Ensure the directory exists
+                string? directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                // Remove any extra quotes that might have been added during parameter extraction
+                content = content.Trim();
+                if (content.StartsWith("\"") && content.EndsWith("\""))
+                {
+                    content = content.Substring(1, content.Length - 2);
+                }
+
+                // Clean up any remaining escaped quotes
+                content = content.Replace("\\\"", "\"").Replace("\"\"", "\"");
+                
+                LogInfo($"Final content to write (first 100 chars): {content.Substring(0, Math.Min(100, content.Length))}");
+
+                // Write the file
+                await File.WriteAllTextAsync(filePath, content);
+                
+                // Verify content was written correctly
+                string writtenContent = await File.ReadAllTextAsync(filePath);
+                LogInfo($"Content verification (first 100 chars): {writtenContent.Substring(0, Math.Min(100, writtenContent.Length))}");
+
+                return new ToolResult
+                {
+                    IsSuccess = true,
+                    Output = $"File written to {filePath}"
+                };
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error writing file: {ex.Message}");
+                return new ToolResult
+                {
+                    IsSuccess = false,
+                    Error = $"Error writing file: {ex.Message}"
+                };
+            }
         }
 
         private async Task<ToolResult> InsertIntoFile(IDictionary<string, object> parameters)

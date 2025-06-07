@@ -47,20 +47,19 @@ namespace AgctorSDK.Core.Agents
     /// LLMAgent that communicates with a local Ollama instance.
     /// As per PRD: prd-core-001.md
     /// </summary>
-    public class LLMAgent : IActor
+    public class LLMAgent : Agent // Inherit from Agent instead of IActor
     {
-        public string Id { get; private set; }
-        public string ActorType => "LLMAgent"; 
-        public ActorState State { get; private set; } = ActorState.Initializing;
-        public event EventHandler<ActorStateChangedEventArgs>? StateChanged; // Changed event type
-
         private readonly HttpClient _httpClient;
         private readonly string _ollamaApiUrl;
         private readonly string _defaultModel;
 
-        public LLMAgent(string id, HttpClient httpClient, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+        public LLMAgent(string id) : this(id, new HttpClient())
         {
-            Id = id ?? throw new ArgumentNullException(nameof(id));
+        }
+
+        public LLMAgent(string id, HttpClient httpClient, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+            : base(id)
+        {
             _httpClient = httpClient;
             _ollamaApiUrl = ollamaApiUrl.EndsWith("/") ? ollamaApiUrl : ollamaApiUrl + "/";
             _defaultModel = defaultModel;
@@ -71,12 +70,12 @@ namespace AgctorSDK.Core.Agents
         {
         }
 
-        public async Task InitializeAsync(CancellationToken cancellationToken = default) // Added CancellationToken
+        public override async Task InitializeAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 // Use cancellationToken if applicable for the GetAsync call
-                var response = await _httpClient.GetAsync(_ollamaApiUrl + "api/tags", cancellationToken); 
+                var response = await _httpClient.GetAsync(_ollamaApiUrl + "api/tags", cancellationToken);
                 if (!response.IsSuccessStatusCode)
                 {
                     Console.WriteLine($"Warning: LLMAgent ({Id}) could not connect to Ollama at {_ollamaApiUrl} during initialization. Status: {response.StatusCode}");
@@ -84,7 +83,7 @@ namespace AgctorSDK.Core.Agents
             }
             catch (HttpRequestException ex)
             {
-                 Console.WriteLine($"Warning: LLMAgent ({Id}) HttpRequestException during initialization for Ollama at {_ollamaApiUrl}: {ex.Message}");
+                Console.WriteLine($"Warning: LLMAgent ({Id}) HttpRequestException during initialization for Ollama at {_ollamaApiUrl}: {ex.Message}");
             }
             catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested) // Handle cancellation
             {
@@ -92,11 +91,10 @@ namespace AgctorSDK.Core.Agents
                 // Decide if state should change or rethrow, for now, it proceeds to Active or Faulted if it was before cancellation.
             }
 
-            SetState(ActorState.Active); 
-            // await Task.CompletedTask; // Not needed for async method that awaits
+            await base.InitializeAsync(cancellationToken);
         }
 
-        public async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken)
+        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken)
         {
             string? requestSenderId = null;
             string? requestCorrelationId = null;
@@ -122,9 +120,9 @@ namespace AgctorSDK.Core.Agents
                 Console.WriteLine($"LLMAgent ({Id}) received message while not active. State: {State}");
                 responseHeaders["MessageType"] = "AgentNotActiveError";
                 return new MessageEnvelope(
-                    payload: $"Agent not active. Current state: {State}", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: $"Agent not active. Current state: {State}",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
 
@@ -133,9 +131,9 @@ namespace AgctorSDK.Core.Agents
                 Console.WriteLine($"LLMAgent ({Id}) received invalid prompt payload type: {envelope.Payload?.GetType().Name}");
                 responseHeaders["MessageType"] = "InvalidPromptError";
                 return new MessageEnvelope(
-                    payload: "Error: Prompt must be a non-empty string.", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: "Error: Prompt must be a non-empty string.",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
 
@@ -144,23 +142,23 @@ namespace AgctorSDK.Core.Agents
                 Console.WriteLine($"LLMAgent ({Id}) received empty or invalid prompt string.");
                 responseHeaders["MessageType"] = "InvalidPromptError";
                 return new MessageEnvelope(
-                    payload: "Error: Prompt must be a non-empty string.", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: "Error: Prompt must be a non-empty string.",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
-            
+
             try
             {
                 var requestPayloadOllama = new OllamaGenerateRequest
                 {
-                    Model = _defaultModel, 
+                    Model = _defaultModel,
                     Prompt = prompt
                 };
 
                 HttpResponseMessage httpResponse = await _httpClient.PostAsJsonAsync(
-                    _ollamaApiUrl + "api/generate", 
-                    requestPayloadOllama, 
+                    _ollamaApiUrl + "api/generate",
+                    requestPayloadOllama,
                     cancellationToken);
 
                 if (httpResponse.IsSuccessStatusCode)
@@ -170,9 +168,9 @@ namespace AgctorSDK.Core.Agents
                     {
                         responseHeaders["MessageType"] = "LLMResponse";
                         return new MessageEnvelope(
-                            payload: ollamaResponse.Response, 
-                            metadata: responseMetadata, 
-                            id: Guid.NewGuid().ToString(), 
+                            payload: ollamaResponse.Response,
+                            metadata: responseMetadata,
+                            id: Guid.NewGuid().ToString(),
                             headers: responseHeaders);
                     }
                     else
@@ -182,9 +180,9 @@ namespace AgctorSDK.Core.Agents
                         Console.WriteLine($"LLMAgent ({Id}) received incomplete or non-final response from Ollama: {errorDetail}");
                         responseHeaders["MessageType"] = "OllamaIncompleteResponseError";
                         return new MessageEnvelope(
-                            payload: $"Error: Ollama did not return a final response. Detail: {errorDetail}", 
-                            metadata: responseMetadata, 
-                            id: Guid.NewGuid().ToString(), 
+                            payload: $"Error: Ollama did not return a final response. Detail: {errorDetail}",
+                            metadata: responseMetadata,
+                            id: Guid.NewGuid().ToString(),
                             headers: responseHeaders);
                     }
                 }
@@ -194,21 +192,21 @@ namespace AgctorSDK.Core.Agents
                     Console.WriteLine($"LLMAgent ({Id}) error from Ollama API: {httpResponse.StatusCode}. Details: {errorContent}");
                     responseHeaders["MessageType"] = "OllamaApiError";
                     return new MessageEnvelope(
-                        payload: $"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}", 
-                        metadata: responseMetadata, 
-                        id: Guid.NewGuid().ToString(), 
+                        payload: $"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}",
+                        metadata: responseMetadata,
+                        id: Guid.NewGuid().ToString(),
                         headers: responseHeaders);
                 }
             }
             catch (HttpRequestException ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) HttpRequestException while communicating with Ollama: {ex.Message}");
-                SetState(ActorState.Faulted); 
+                ChangeActorState(ActorState.Faulted);
                 responseHeaders["MessageType"] = "OllamaHttpRequestError";
                 return new MessageEnvelope(
-                    payload: $"Error: Network communication with Ollama failed. {ex.Message}", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: $"Error: Network communication with Ollama failed. {ex.Message}",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
             catch (JsonException ex)
@@ -216,9 +214,9 @@ namespace AgctorSDK.Core.Agents
                 Console.WriteLine($"LLMAgent ({Id}) JsonException while processing Ollama response: {ex.Message}");
                 responseHeaders["MessageType"] = "OllamaJsonError";
                 return new MessageEnvelope(
-                    payload: $"Error: Failed to parse Ollama response. {ex.Message}", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: $"Error: Failed to parse Ollama response. {ex.Message}",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
             catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
@@ -226,44 +224,86 @@ namespace AgctorSDK.Core.Agents
                 Console.WriteLine($"LLMAgent ({Id}) task was canceled: {ex.Message}");
                 responseHeaders["MessageType"] = "TaskCanceledError";
                 return new MessageEnvelope(
-                    payload: "Error: Task was canceled.", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: "Error: Task was canceled.",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) an unexpected error occurred: {ex.Message}");
-                SetState(ActorState.Faulted);
+                ChangeActorState(ActorState.Faulted);
                 responseHeaders["MessageType"] = "UnexpectedError";
                 return new MessageEnvelope(
-                    payload: $"Error: An unexpected error occurred. {ex.Message}", 
-                    metadata: responseMetadata, 
-                    id: Guid.NewGuid().ToString(), 
+                    payload: $"Error: An unexpected error occurred. {ex.Message}",
+                    metadata: responseMetadata,
+                    id: Guid.NewGuid().ToString(),
                     headers: responseHeaders);
             }
         }
 
-        public async Task ShutdownAsync(CancellationToken cancellationToken = default) // Added CancellationToken
+        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        {
+            LogInfo($"LLMAgent processing prompt: {prompt}");
+            ChangeAgentStatus(AgentStatus.Working, $"Processing prompt: {prompt}");
+
+            try
+            {
+                // Create a message envelope for the prompt to pass to ReceiveAsync
+                var promptEnvelope = new MessageEnvelope(prompt, new Dictionary<string, object>(), Id, new Dictionary<string, string>
+                {
+                    { "SenderId", ParentAgentId ?? "root" },
+                    { "ReceiverId", Id }
+                });
+
+                // Use ReceiveAsync to get the LLM's response
+                var resultEnvelope = await ReceiveAsync(promptEnvelope, cancellationToken);
+
+                if (resultEnvelope.Payload is string resultPayload && !resultPayload.StartsWith("Error:"))
+                {
+                    LogInfo($"LLM response received: {resultPayload}");
+
+                    // Check if the response is a tool call
+                    if (resultPayload.Contains("CodeEditorTool"))
+                    {
+                        await AssignSubtaskAsync(resultPayload, "CodeEditorTool", cancellationToken);
+                        ChangeAgentStatus(AgentStatus.WaitingForSubtasks, "Waiting for CodeEditorTool to complete.");
+                    }
+                    else
+                    {
+                        // If it's not a tool call, the task is considered complete
+                        ChangeAgentStatus(AgentStatus.Completed, "Prompt processed directly by LLM.");
+                        await FinalizeTask(resultPayload, cancellationToken);
+                    }
+                }
+                else
+                {
+                    var error = resultEnvelope.Payload as string ?? "Unknown error from LLM.";
+                    LogError($"Error processing prompt: {error}");
+                    ChangeAgentStatus(AgentStatus.Failed, error);
+                    await FinalizeTaskAsFailed(new Exception(error), cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"An unexpected error occurred in ProcessPromptAsync: {ex.Message}");
+                ChangeAgentStatus(AgentStatus.Failed, ex.Message);
+                await FinalizeTaskAsFailed(ex, cancellationToken);
+            }
+        }
+
+        public override async Task ShutdownAsync(CancellationToken cancellationToken = default)
         {
             // Handle cancellation if any long-running shutdown operations are added
-            if (cancellationToken.IsCancellationRequested) 
+            if (cancellationToken.IsCancellationRequested)
             {
                 Console.WriteLine($"LLMAgent ({Id}) ShutdownAsync was canceled.");
                 // Potentially throw OperationCanceledException or handle gracefully
                 cancellationToken.ThrowIfCancellationRequested();
             }
-            SetState(ActorState.Stopping);
-            SetState(ActorState.Stopped);
-            await Task.CompletedTask;
-        }
-
-        private void SetState(ActorState newState)
-        {
-            ActorState previousState = State;
-            if (previousState == newState) return;
-            State = newState;
-            StateChanged?.Invoke(this, new ActorStateChangedEventArgs(previousState, newState));
+            ChangeActorState(ActorState.Stopping);
+            ChangeActorState(ActorState.Stopped);
+            await base.ShutdownAsync(cancellationToken);
         }
     }
 

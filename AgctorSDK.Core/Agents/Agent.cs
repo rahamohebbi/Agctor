@@ -881,7 +881,7 @@ namespace AgctorSDK.Core.Agents
         /// <summary>
         /// Changes the actor state and fires the StateChanged event.
         /// </summary>
-        private void ChangeActorState(ActorState newState, string? reason = null)
+        protected void ChangeActorState(ActorState newState, string? reason = null)
         {
             var previousState = _actorState;
             _actorState = newState;
@@ -920,6 +920,38 @@ namespace AgctorSDK.Core.Agents
         protected virtual void LogError(string message)
         {
             Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] [ERROR] Agent {Id} (D{_hierarchyDepth}): {message}");
+        }
+
+        protected virtual async Task FinalizeTask(object result, CancellationToken cancellationToken)
+        {
+            LogInfo("Finalizing task and notifying parent.");
+            if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
+            {
+                var completionMessage = new SubtaskCompletedMessage(Id, ParentAgentId, result);
+                var envelope = new MessageEnvelope(completionMessage);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
+                LogInfo($"Sent subtask completion message to parent {ParentAgentId}.");
+            }
+            else
+            {
+                LogInfo("Task finalized, no parent to notify.");
+            }
+        }
+
+        protected virtual async Task FinalizeTaskAsFailed(Exception error, CancellationToken cancellationToken)
+        {
+            LogError($"Finalizing task as failed: {error.Message}");
+            if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
+            {
+                var failureMessage = new SubtaskFailedMessage(Id, ParentAgentId, error);
+                var envelope = new MessageEnvelope(failureMessage);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
+                LogInfo($"Sent subtask failure message to parent {ParentAgentId}.");
+            }
+            else
+            {
+                LogError("Task failed, no parent to notify.");
+            }
         }
     }
 } 
