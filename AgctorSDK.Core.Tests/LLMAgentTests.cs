@@ -29,6 +29,39 @@ namespace AgctorSDK.Core.Tests
         public void TestInitialize()
         {
             _httpMessageHandlerMock = new Mock<HttpMessageHandler>();
+            
+            // Set up default model list response for initialization
+            var modelListResponse = @"
+            {
+                ""models"": [
+                    {
+                        ""name"": ""test-model"",
+                        ""modified_at"": ""2023-12-10T03:22:32Z"",
+                        ""size"": 3791730107,
+                        ""digest"": ""1f7a10c6d300bdd1b562ef3a904179a5"",
+                        ""details"": {
+                            ""format"": ""gguf"",
+                            ""family"": ""llama"",
+                            ""families"": [""llama""],
+                            ""parameter_size"": ""7B"",
+                            ""quantization_level"": ""Q4_0""
+                        }
+                    }
+                ]
+            }";
+            
+            _httpMessageHandlerMock.Protected()
+                .Setup<Task<HttpResponseMessage>>(
+                    "SendAsync",
+                    ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.AbsolutePath.Contains("/api/tags")),
+                    ItExpr.IsAny<CancellationToken>()
+                )
+                .ReturnsAsync(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent(modelListResponse)
+                });
+            
             _httpClient = new HttpClient(_httpMessageHandlerMock.Object);
             _agent = new LLMAgent("test-llm-agent", _httpClient, DefaultBaseUrl, DefaultModel);
         }
@@ -44,7 +77,7 @@ namespace AgctorSDK.Core.Tests
             _httpMessageHandlerMock.Protected()
                 .Setup<Task<HttpResponseMessage>>(
                     "SendAsync",
-                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.AbsolutePath.Contains("/api/generate")),
                     ItExpr.IsAny<CancellationToken>()
                 )
                 .ReturnsAsync(new HttpResponseMessage
@@ -59,7 +92,7 @@ namespace AgctorSDK.Core.Tests
             _httpMessageHandlerMock.Protected()
                 .Setup<Task<HttpResponseMessage>>(
                     "SendAsync",
-                    ItExpr.IsAny<HttpRequestMessage>(),
+                    ItExpr.Is<HttpRequestMessage>(req => req.RequestUri.AbsolutePath.Contains("/api/generate")),
                     ItExpr.IsAny<CancellationToken>()
                 )
                 .ReturnsAsync(new HttpResponseMessage
@@ -72,8 +105,7 @@ namespace AgctorSDK.Core.Tests
         [TestMethod]
         public async Task InitializeAsync_ShouldSetStateToActive()
         {
-            // Arrange
-            SetupHttpMock_Success("irrelevant");
+            // Arrange - HTTP mock is set up in TestInitialize
 
             // Act
             await _agent.InitializeAsync();
@@ -86,8 +118,8 @@ namespace AgctorSDK.Core.Tests
         public async Task ReceiveAsync_SuccessfulPrompt_ReturnsResponse()
         {
             // Arrange
-            await _agent.InitializeAsync();
             SetupHttpMock_Success("Paris");
+            await _agent.InitializeAsync();
             var prompt = "What is the capital of France?";
             var envelope = new MessageEnvelope(prompt);
 
@@ -102,8 +134,8 @@ namespace AgctorSDK.Core.Tests
         public async Task ReceiveAsync_ApiError_ReturnsErrorEnvelope()
         {
             // Arrange
-            await _agent.InitializeAsync();
             SetupHttpMock_Error(HttpStatusCode.InternalServerError);
+            await _agent.InitializeAsync();
             var prompt = "A prompt that will fail.";
             var envelope = new MessageEnvelope(prompt);
 

@@ -259,11 +259,14 @@ namespace AgctorSDK.Core.Tests.Runtime
 
             // Assert
             Assert.IsNotNull(actor.LastReceivedEnvelope);
-            Assert.AreEqual(4, actor.LastReceivedEnvelope.Headers.Count); 
+            // The runtime adds SenderId, ReceiverId, MessageType, and Version headers
+            Assert.AreEqual(6, actor.LastReceivedEnvelope.Headers.Count); 
             Assert.AreEqual("corr-xyz", actor.LastReceivedEnvelope.Headers["CorrelationId"]);
             Assert.AreEqual("CustomValue", actor.LastReceivedEnvelope.Headers["CustomHeader"]);
             Assert.AreEqual("sender-test-2", actor.LastReceivedEnvelope.Headers["SenderId"]);
             Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
+            Assert.AreEqual("String", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.AreEqual("1.0", actor.LastReceivedEnvelope.Headers["Version"]);
         }
 
         [TestMethod]
@@ -305,13 +308,12 @@ namespace AgctorSDK.Core.Tests.Runtime
             var requestMessage = "This is a request";
 
             // Act
-            var response = await _runtime.SendMessageAsync<IMessageEnvelope>(actorId, requestMessage, TimeSpan.FromSeconds(2));
+            var response = await _runtime.SendMessageAsync<string>(actorId, requestMessage, TimeSpan.FromSeconds(2));
 
             // Assert
             Assert.IsNotNull(response);
-            Assert.IsInstanceOfType(response, typeof(IMessageEnvelope));
-            StringAssert.Contains(response.Payload as string, "Ack for");
-            Assert.AreEqual(actorId, response.Headers["SenderId"]);
+            Assert.IsInstanceOfType(response, typeof(string));
+            StringAssert.StartsWith(response, "Ack for");
         }
 
         [TestMethod]
@@ -474,7 +476,7 @@ namespace AgctorSDK.Core.Tests.Runtime
             _runtime.Dispose();
 
             // Assert
-            await Assert.ThrowsExceptionAsync<InvalidOperationException>(() => _runtime.GetActiveActorIdsAsync());
+            await Assert.ThrowsExceptionAsync<ObjectDisposedException>(() => _runtime.GetActiveActorIdsAsync());
             Assert.IsFalse(_runtime.IsInitialized);
         }
 

@@ -50,7 +50,9 @@ namespace AgctorSDK.Core.Agents
         /// <param name="cancellationToken">Token for cancelling the operation.</param>
         protected override async Task ProcessPromptInternalAsync(string prompt, CancellationToken cancellationToken)
         {
-            // The base Agent.ProcessPromptAsync sets CurrentPrompt and initial AgentStatus to Working.
+            // The base Agent.ProcessPromptAsync sets CurrentPrompt and initial AgentStatus to Idle.
+            // We need to set the status to Processing here before continuing
+            ChangeAgentStatus(AgentStatus.Processing, "Processing prompt");
             LogInfo($"'{Id}' starting to request human input for: \"{prompt}\"");
             
             try

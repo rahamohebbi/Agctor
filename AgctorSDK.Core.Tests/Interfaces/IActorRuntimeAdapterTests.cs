@@ -71,23 +71,33 @@ namespace AgctorSDK.Core.Tests.Interfaces
 
             public Task<T> SpawnActorAsync<T>(string actorId, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                
                 if (ShouldThrowOnSpawnActor)
-                    throw new InvalidOperationException("Test exception during actor spawn");
+                    throw new InvalidOperationException("Test exception during actor spawning");
 
                 SpawnedActorIds.Add(actorId);
                 
-                // Create a mock actor for testing
-                var mockActor = new Mock<T>();
-                if (mockActor.Object is IActor actor)
+                // Create a real TestActor instance for predictable behavior
+                T actor;
+                if (typeof(T) == typeof(TestActor)) 
                 {
+                    var testActor = new TestActor(actorId);
+                    actor = testActor as T;
+                }
+                else
+                {
+                    // Use Moq for other actor types
+                    var mockActor = new Mock<T>();
                     var actorMock = mockActor.As<IActor>();
                     actorMock.Setup(a => a.Id).Returns(actorId);
                     actorMock.Setup(a => a.ActorType).Returns(typeof(T).Name);
                     actorMock.Setup(a => a.State).Returns(ActorState.Active);
+                    actor = mockActor.Object;
                 }
 
                 ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, typeof(T).Name));
-                return Task.FromResult(mockActor.Object);
+                return Task.FromResult(actor);
             }
 
             public Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
@@ -99,15 +109,22 @@ namespace AgctorSDK.Core.Tests.Interfaces
             {
                 if (SpawnedActorIds.Contains(actorId) && !StoppedActorIds.Contains(actorId))
                 {
-                    var mockActor = new Mock<T>();
-                    if (mockActor.Object is IActor actor)
+                    // Create a real TestActor instance for predictable behavior
+                    if (typeof(T) == typeof(TestActor)) 
                     {
+                        var testActor = new TestActor(actorId);
+                        return Task.FromResult(testActor as T);
+                    }
+                    else
+                    {
+                        // Use Moq for other actor types
+                        var mockActor = new Mock<T>();
                         var actorMock = mockActor.As<IActor>();
                         actorMock.Setup(a => a.Id).Returns(actorId);
                         actorMock.Setup(a => a.ActorType).Returns(typeof(T).Name);
                         actorMock.Setup(a => a.State).Returns(ActorState.Active);
+                        return Task.FromResult<T?>(mockActor.Object);
                     }
-                    return Task.FromResult<T?>(mockActor.Object);
                 }
                 return Task.FromResult<T?>(null);
             }
