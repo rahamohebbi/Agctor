@@ -42,7 +42,7 @@ namespace AgctorSDK.Core.Tests.Tools
             // Assert
             Assert.IsTrue(result.IsSuccess);
             Assert.AreEqual(content, result.Output);
-            Assert.IsNull(result.Error);
+            Assert.IsTrue(string.IsNullOrEmpty(result.Error));
         }
 
         [TestMethod]

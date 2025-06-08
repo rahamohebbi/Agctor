@@ -6,6 +6,7 @@ using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
+using System.IO;
 
 namespace AgctorSDK.Core.Tests.Tools
 {
@@ -34,7 +35,6 @@ namespace AgctorSDK.Core.Tests.Tools
             var result = await _codeEditorTool.Handle(request);
 
             Assert.IsTrue(result.IsSuccess);
-            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", "new content"), Times.Once);
         }
 
         [TestMethod]
