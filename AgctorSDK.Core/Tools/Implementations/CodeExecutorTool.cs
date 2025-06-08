@@ -3,30 +3,29 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Tools.LanguageExecutors;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
     public class CodeExecutorTool : Agent, IToolActor
     {
         private readonly IFileSystem _fileSystem;
+        private readonly ILanguageExecutorFactory _executorFactory;
 
-        public CodeExecutorTool(string id) : this(id, new DefaultFileSystem())
+        public CodeExecutorTool(string id) : this(id, new DefaultFileSystem(), new LanguageExecutorFactory())
         {
         }
 
-        public CodeExecutorTool(string id, IFileSystem? fileSystem = null) : base(id)
+        public CodeExecutorTool(string id, IFileSystem? fileSystem = null, ILanguageExecutorFactory? executorFactory = null) : base(id)
         {
             _fileSystem = fileSystem ?? new DefaultFileSystem();
+            _executorFactory = executorFactory ?? new LanguageExecutorFactory();
         }
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -142,6 +141,14 @@ namespace AgctorSDK.Core.Tools.Implementations
                 parameters["code"] = codeValue;
             }
 
+            // Look for the language parameter
+            var languageMatch = System.Text.RegularExpressions.Regex.Match(commandLine, @"--language\s+(?:""([^""]*)""|([^\s--][^\s]*))");
+            if (languageMatch.Success)
+            {
+                string languageValue = languageMatch.Groups[1].Success ? languageMatch.Groups[1].Value : languageMatch.Groups[2].Value;
+                parameters["language"] = languageValue;
+            }
+
             return parameters;
         }
 
@@ -149,29 +156,52 @@ namespace AgctorSDK.Core.Tools.Implementations
         {
             return request.Operation switch
             {
-                "RunCSharpCode" => await RunCSharpCodeAsync(request.Parameters),
-                "RunCSharpFile" => await RunCSharpFileAsync(request.Parameters),
+                "RunCode" => await RunCodeAsync(request.Parameters),
+                "RunFile" => await RunFileAsync(request.Parameters),
+                // Keep backward compatibility
+                "RunCSharpCode" => await RunCodeAsync(request.Parameters, "csharp"),
+                "RunCSharpFile" => await RunFileAsync(request.Parameters, "csharp"),
                 _ => new ToolResult
                 {
                     IsSuccess = false,
-                    Error = $"Unknown operation: {request.Operation}. Supported operations: RunCSharpCode, RunCSharpFile"
+                    Error = $"Unknown operation: {request.Operation}. Supported operations: RunCode, RunFile, RunCSharpCode, RunCSharpFile"
                 }
             };
         }
 
-        private async Task<ToolResult> RunCSharpCodeAsync(IDictionary<string, object> parameters)
+        private async Task<ToolResult> RunCodeAsync(IDictionary<string, object> parameters, string? defaultLanguage = null)
         {
             if (!parameters.TryGetValue("code", out var codeObj) || codeObj is not string code)
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'code' parameter." };
 
+            // Determine language
+            string language = defaultLanguage ?? "csharp";
+            if (parameters.TryGetValue("language", out var langObj) && langObj is string lang)
+            {
+                language = lang.ToLowerInvariant();
+            }
+
             try
             {
-                LogInfo($"Compiling and executing C# code (length: {code.Length})");
-                var (success, output, error) = await CompileAndExecuteCodeAsync(code);
+                LogInfo($"Executing {language} code (length: {code.Length})");
+
+                // Get the appropriate language executor
+                var executor = _executorFactory.GetExecutor(language);
+                if (executor == null)
+                {
+                    return new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = $"Unsupported language: {language}"
+                    };
+                }
+
+                // Execute the code
+                var (success, output, error) = await executor.ExecuteCodeAsync(code);
                 
                 if (!success)
                 {
-                    LogError($"Compilation or execution failed: {error}");
+                    LogError($"Execution failed: {error}");
                     return new ToolResult
                     {
                         IsSuccess = false,
@@ -198,7 +228,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             }
         }
 
-        private async Task<ToolResult> RunCSharpFileAsync(IDictionary<string, object> parameters)
+        private async Task<ToolResult> RunFileAsync(IDictionary<string, object> parameters, string? defaultLanguage = null)
         {
             if (!parameters.TryGetValue("path", out var pathObj) || pathObj is not string path)
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'path' parameter." };
@@ -222,11 +252,30 @@ namespace AgctorSDK.Core.Tools.Implementations
                     };
                 }
                 
-                var (success, output, error) = await CompileAndExecuteCodeAsync(code);
+                // Determine language from file extension if not specified
+                string language = defaultLanguage ?? GetLanguageFromFilePath(path);
+                if (parameters.TryGetValue("language", out var langObj) && langObj is string lang)
+                {
+                    language = lang.ToLowerInvariant();
+                }
+
+                // Get the appropriate language executor
+                var executor = _executorFactory.GetExecutor(language);
+                if (executor == null)
+                {
+                    return new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = $"Unsupported language: {language}"
+                    };
+                }
+
+                // Execute the code
+                var (success, output, error) = await executor.ExecuteCodeAsync(code);
                 
                 if (!success)
                 {
-                    LogError($"Compilation or execution failed: {error}");
+                    LogError($"Execution failed: {error}");
                     return new ToolResult
                     {
                         IsSuccess = false,
@@ -253,91 +302,16 @@ namespace AgctorSDK.Core.Tools.Implementations
             }
         }
 
-        private async Task<(bool Success, string Output, string Error)> CompileAndExecuteCodeAsync(string code)
+        private string GetLanguageFromFilePath(string path)
         {
-            var outputBuilder = new StringBuilder();
-            var errorBuilder = new StringBuilder();
-
-            try
+            string extension = Path.GetExtension(path).ToLowerInvariant();
+            
+            return extension switch
             {
-                // Create compilation
-                var syntaxTree = CSharpSyntaxTree.ParseText(code);
-                
-                // Add all necessary references for a basic console application
-                var references = new List<MetadataReference>
-                {
-                    // Basic references
-                    MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-                    MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-                    MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute).Assembly.Location),
-                    MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
-                    
-                    // Additional references for .NET Core/.NET 5+
-                    MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Runtime").Location),
-                    MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("netstandard").Location),
-                    MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Collections").Location)
-                };
-                
-                // Try to add additional helpful references
-                try { references.Add(MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Console").Location)); } catch { }
-                try { references.Add(MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Text").Location)); } catch { }
-                try { references.Add(MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.IO").Location)); } catch { }
-                try { references.Add(MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Threading").Location)); } catch { }
-                try { references.Add(MetadataReference.CreateFromFile(System.Reflection.Assembly.Load("System.Threading.Tasks").Location)); } catch { }
-
-                var compilation = CSharpCompilation.Create(
-                    $"DynamicAssembly_{Guid.NewGuid():N}",
-                    new[] { syntaxTree },
-                    references,
-                    new CSharpCompilationOptions(OutputKind.ConsoleApplication)
-                );
-
-                // Compile in memory
-                using var ms = new MemoryStream();
-                var result = compilation.Emit(ms);
-
-                if (!result.Success)
-                {
-                    foreach (var diagnostic in result.Diagnostics)
-                    {
-                        errorBuilder.AppendLine(diagnostic.ToString());
-                    }
-                    return (false, string.Empty, errorBuilder.ToString());
-                }
-
-                // Prepare to execute
-                ms.Seek(0, SeekOrigin.Begin);
-                var assembly = Assembly.Load(ms.ToArray());
-                
-                // Redirect stdout
-                var originalOut = Console.Out;
-                using var sw = new StringWriter();
-                Console.SetOut(sw);
-
-                try
-                {
-                    // Find entry point and invoke
-                    var entryPoint = assembly.EntryPoint;
-                    if (entryPoint == null)
-                    {
-                        return (false, string.Empty, "No entry point found in the code.");
-                    }
-
-                    await Task.Run(() => entryPoint.Invoke(null, new object[] { Array.Empty<string>() }));
-                    outputBuilder.Append(sw.ToString());
-                }
-                finally
-                {
-                    // Restore stdout
-                    Console.SetOut(originalOut);
-                }
-
-                return (true, outputBuilder.ToString(), string.Empty);
-            }
-            catch (Exception ex)
-            {
-                return (false, outputBuilder.ToString(), $"Execution error: {ex.Message}");
-            }
+                ".cs" => "csharp",
+                ".py" => "python",
+                _ => "unknown"
+            };
         }
     }
 } 

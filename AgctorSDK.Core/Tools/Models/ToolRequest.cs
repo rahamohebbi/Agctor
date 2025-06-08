@@ -10,6 +10,8 @@ namespace AgctorSDK.Core.Tools.Models
 
         public ToolRequest()
         {
+            ToolName = string.Empty;
+            Operation = string.Empty;
             Parameters = new Dictionary<string, object>();
         }
     }
