@@ -8,6 +8,8 @@ using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Runtime.Examples;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.DependencyInjection;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Utils.ErrorHandling;
 
 namespace AgctorSDK.Core
 {
@@ -19,7 +21,11 @@ namespace AgctorSDK.Core
     {
         static async Task Main(string[] args)
         {
-            Console.WriteLine("=== Agctor Adapter Pattern Demo ===\n");
+            // Initialize the logging system
+            Utils.Logging.LoggerFactory.SetDefaultMinLevel(Utils.Logging.LogLevel.Debug);
+            var logger = Utils.Logging.LoggerFactory.CreateLogger("Program");
+            
+            logger.Info("=== Agctor Adapter Pattern Demo ===\n");
             
             Console.WriteLine("Choose demo to run:");
             Console.WriteLine("1. Basic Demo (InMemory Runtime)");
@@ -28,7 +34,7 @@ namespace AgctorSDK.Core
             Console.WriteLine("4. Runtime Switching Demo");
             Console.WriteLine("5. Comprehensive Demo");
             Console.WriteLine("6. Performance Test");
-            Console.WriteLine("Enter choice (1-6): ");
+            Console.Write("Enter choice (1-6): ");
             
             var choice = Console.ReadLine();
             
@@ -89,7 +95,7 @@ namespace AgctorSDK.Core
 
             // Configure services with dependency injection
             var services = new ServiceCollection();
-            services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information));
+            services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information));
             
             // Register Agctor services with InMemory as default
             services.AddAgctor(options =>
@@ -152,7 +158,7 @@ namespace AgctorSDK.Core
             Console.WriteLine("=== Runtime Switching Demo ===\n");
 
             var services = new ServiceCollection();
-            services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+            services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning));
             services.AddAgctor();
 
             var serviceProvider = services.BuildServiceProvider();
@@ -245,7 +251,7 @@ namespace AgctorSDK.Core
             try
             {
                 var services = new ServiceCollection();
-                services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+                services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning));
                 configureServices(services);
 
                 var serviceProvider = services.BuildServiceProvider();

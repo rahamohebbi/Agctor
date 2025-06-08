@@ -7,6 +7,8 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using System.Text.RegularExpressions;
 using AgctorSDK.Core.Tools.Models;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Utils.ErrorHandling;
 
 namespace AgctorSDK.Core.Agents
 {
@@ -111,9 +113,11 @@ namespace AgctorSDK.Core.Agents
         /// Initializes a new instance of the Agent class.
         /// </summary>
         /// <param name="id">The unique identifier for this agent</param>
-        public Agent(string id)
+        /// <param name="serviceProvider">Optional service provider for dependency injection</param>
+        public Agent(string id, IServiceProvider? serviceProvider = null)
         {
             Id = id ?? throw new ArgumentNullException(nameof(id));
+            InitializeLoggingServices(serviceProvider);
         }
 
         /// <summary>
@@ -123,6 +127,7 @@ namespace AgctorSDK.Core.Agents
         public Agent()
         {
             // ID will be set during initialization
+            InitializeLoggingServices();
         }
 
         /// <summary>
@@ -236,14 +241,41 @@ namespace AgctorSDK.Core.Agents
                         }
                         catch (Exception ex)
                         {
-                            LogError($"Error handling subtask completion: {ex.Message}");
-                            LogError($"Stack Trace: {ex.StackTrace}");
+                            // Use error handler middleware
+                            var errorContext = await ErrorHandler.HandleErrorAsync(
+                                ex, 
+                                Id, 
+                                envelope);
+                                
+                            if (!errorContext.IsHandled)
+                            {
+                                LogError($"Error handling subtask completion: {ex.Message}");
+                                LogError($"Stack Trace: {ex.StackTrace}");
+                            }
                         }
                         break;
 
                     case SubtaskFailedMessage failedMsg:
                         LogInfo($"Received SubtaskFailedMessage from child agent {failedMsg.ChildAgentId} with error: {failedMsg.Error.Message}");
-                        await HandleSubtaskFailureAsync(failedMsg.ChildAgentId, failedMsg.Error, cancellationToken);
+                        try
+                        {
+                            await HandleSubtaskFailureAsync(failedMsg.ChildAgentId, failedMsg.Error, cancellationToken);
+                            LogInfo($"Successfully handled subtask failure from child agent {failedMsg.ChildAgentId}");
+                        }
+                        catch (Exception ex)
+                        {
+                            // Use error handler middleware
+                            var errorContext = await ErrorHandler.HandleErrorAsync(
+                                ex, 
+                                Id, 
+                                envelope);
+                                
+                            if (!errorContext.IsHandled)
+                            {
+                                LogError($"Error handling subtask failure: {ex.Message}");
+                                LogError($"Stack Trace: {ex.StackTrace}");
+                            }
+                        }
                         break;
 
                     case GetAgentStatusMessage statusMsg:
@@ -262,22 +294,17 @@ namespace AgctorSDK.Core.Agents
             }
             catch (Exception ex)
             {
-                LogError($"Error processing message {envelope.Payload.GetType().Name} (Id: {envelope.Id}): {ex.Message}");
-                string originalSenderId = (envelope.Headers?.TryGetValue("SenderId", out var sid) == true ? sid : null) ?? "unknown";
-                var errorPayload = $"Error processing message: {ex.Message}";
-                var errorId = envelope.Id; // Use original Id for context
-
-                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
-                if (envelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true) { errorMetadata["CorrelationId"] = corrId; }
+                // Use error handler middleware for centralized error handling
+                var errorContext = await ErrorHandler.HandleErrorAsync(ex, Id, envelope);
                 
-                var errorHeaders = new Dictionary<string, string>
+                // Create and return appropriate error response
+                if (errorContext.Result is IMessageEnvelope errorResponse)
                 {
-                    { "SenderId", Id }, // This agent is the sender of the error message
-                    { "ReceiverId", originalSenderId }, // Send error back to original sender
-                    { "MessageType", "ErrorResponse" },
-                    { "OriginalMessageId", envelope.Id } // Custom header for tracing
-                };
-                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: Guid.NewGuid().ToString(), headers: errorHeaders);
+                    return errorResponse;
+                }
+                
+                // Fall back to standard error response if middleware didn't create one
+                return Utils.ErrorHandling.ErrorHandlingMiddleware.CreateErrorResponse(ex, Id, envelope);
             }
             // Return the original envelope as a default acknowledgment if no specific response was generated and no error occurred.
             // This behavior might need review based on specific message contracts.
@@ -899,11 +926,42 @@ namespace AgctorSDK.Core.Agents
         }
 
         /// <summary>
+        /// Gets or sets the logger for this agent.
+        /// </summary>
+        protected IAgctorLogger Logger { get; private set; }
+
+        /// <summary>
+        /// Gets or sets the error handling middleware for this agent.
+        /// </summary>
+        protected ErrorHandlingMiddleware ErrorHandler { get; private set; }
+
+        /// <summary>
+        /// Initializes the logger and error handler.
+        /// </summary>
+        protected virtual void InitializeLoggingServices(IServiceProvider? serviceProvider = null)
+        {
+            // Use DI if available, otherwise create directly
+            if (serviceProvider != null)
+            {
+                Logger = serviceProvider.GetService(typeof(IAgctorLogger)) as IAgctorLogger 
+                    ?? Utils.Logging.LoggerFactory.CreateLogger($"Agent:{Id}");
+                
+                ErrorHandler = serviceProvider.GetService(typeof(ErrorHandlingMiddleware)) as ErrorHandlingMiddleware
+                    ?? new ErrorHandlingMiddleware(Logger);
+            }
+            else
+            {
+                Logger = Utils.Logging.LoggerFactory.CreateLogger($"Agent:{Id}");
+                ErrorHandler = new ErrorHandlingMiddleware(Logger);
+            }
+        }
+
+        /// <summary>
         /// Logs an informational message.
         /// </summary>
         protected virtual void LogInfo(string message)
         {
-            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] [INFO] Agent {Id} (D{_hierarchyDepth}): {message}");
+            Logger?.Info("(D{0}) {1}", _hierarchyDepth, message);
         }
 
         /// <summary>
@@ -911,7 +969,7 @@ namespace AgctorSDK.Core.Agents
         /// </summary>
         protected virtual void LogWarning(string message)
         {
-            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] [WARN] Agent {Id} (D{_hierarchyDepth}): {message}");
+            Logger?.Warning("(D{0}) {1}", _hierarchyDepth, message);
         }
 
         /// <summary>
@@ -919,7 +977,7 @@ namespace AgctorSDK.Core.Agents
         /// </summary>
         protected virtual void LogError(string message)
         {
-            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] [ERROR] Agent {Id} (D{_hierarchyDepth}): {message}");
+            Logger?.Error("(D{0}) {1}", _hierarchyDepth, message);
         }
 
         protected virtual async Task FinalizeTask(object result, CancellationToken cancellationToken)

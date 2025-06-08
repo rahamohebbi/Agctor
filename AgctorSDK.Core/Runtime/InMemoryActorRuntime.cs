@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Utils.ErrorHandling;
 
 namespace AgctorSDK.Core.Runtime
 {
@@ -22,6 +24,20 @@ namespace AgctorSDK.Core.Runtime
         private readonly Dictionary<string, object> _configuration = new();
         private readonly object _lockObject = new();
         private readonly CancellationTokenSource _shutdownTokenSource = new();
+        private readonly IAgctorLogger _logger;
+        private readonly ErrorHandlingMiddleware _errorHandler;
+        
+        public InMemoryActorRuntime()
+        {
+            _logger = Utils.Logging.LoggerFactory.CreateLogger("InMemoryActorRuntime");
+            _errorHandler = new ErrorHandlingMiddleware(_logger);
+        }
+        
+        public InMemoryActorRuntime(IAgctorLogger logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _errorHandler = new ErrorHandlingMiddleware(_logger);
+        }
         
         private bool _isInitialized;
         private bool _isDisposed;
@@ -470,7 +486,11 @@ namespace AgctorSDK.Core.Runtime
                     }
                     catch(Exception ex)
                     {
-                        LogTrace($"Exception during Dispose/Shutdown: {ex.Message}");
+                        LogError(ex, "Exception during Dispose/Shutdown");
+                        
+                        // Use error handling middleware
+                        _errorHandler.HandleErrorAsync(ex, "Runtime", null)
+                            .ConfigureAwait(false).GetAwaiter().GetResult();
                     }
                 }
                 _shutdownTokenSource.Dispose();
@@ -569,33 +589,46 @@ namespace AgctorSDK.Core.Runtime
                         }
                         catch (Exception ex)
                         {
-                            LogTrace($"Error in actor '{actorId}' processing message '{envelope.Id}': {ex.Message}");
+                            // Use error handler middleware for centralized error handling
+                            LogError(ex, $"Error in actor '{actorId}' processing message '{envelope.Id}'");
                             
-                            // Create error response envelope
-                            var errorHeaders = new Dictionary<string, string>
-                            {
-                                ["SenderId"] = actorId,
-                                ["ReceiverId"] = senderId ?? "unknown",
-                                ["MessageType"] = "ErrorResponse",
-                                ["OriginalMessageId"] = envelope.Id ?? "unknown"
-                            };
+                            // Create error context and process through middleware
+                            var errorContext = await _errorHandler.HandleErrorAsync(ex, actorId, envelope);
                             
-                            var errorMetadata = new Dictionary<string, object>
+                            // Create or use error response envelope
+                            if (errorContext.Result is IMessageEnvelope errorEnvelope)
                             {
-                                ["Timestamp"] = DateTimeOffset.UtcNow,
-                            };
-                            
-                            if (!string.IsNullOrEmpty(correlationId))
-                            {
-                                errorMetadata["CorrelationId"] = correlationId;
+                                responseEnvelope = errorEnvelope;
                             }
-                            
-                            responseEnvelope = new MessageEnvelope(
-                                payload: ex,
-                                metadata: errorMetadata,
-                                id: Guid.NewGuid().ToString(),
-                                headers: errorHeaders
-                            );
+                            else
+                            {
+                                // Create standard error response
+                                var errorHeaders = new Dictionary<string, string>
+                                {
+                                    ["SenderId"] = actorId,
+                                    ["ReceiverId"] = senderId ?? "unknown",
+                                    ["MessageType"] = "ErrorResponse",
+                                    ["OriginalMessageId"] = envelope.Id ?? "unknown"
+                                };
+                                
+                                var errorMetadata = new Dictionary<string, object>
+                                {
+                                    ["Timestamp"] = DateTimeOffset.UtcNow,
+                                    ["ExceptionType"] = ex.GetType().Name
+                                };
+                                
+                                if (!string.IsNullOrEmpty(correlationId))
+                                {
+                                    errorMetadata["CorrelationId"] = correlationId;
+                                }
+                                
+                                responseEnvelope = new MessageEnvelope(
+                                    payload: $"Error: {ex.Message}",
+                                    metadata: errorMetadata,
+                                    id: Guid.NewGuid().ToString(),
+                                    headers: errorHeaders
+                                );
+                            }
                         }
                         
                         // Handle request-response pattern
@@ -634,14 +667,39 @@ namespace AgctorSDK.Core.Runtime
                     }
                     catch (Exception ex)
                     {
-                        LogTrace($"Unexpected error processing message for actor '{actorId}': {ex.Message}");
+                        // Log and handle unexpected errors in message processing
+                        LogError(ex, $"Unexpected error processing message for actor '{actorId}'");
+                        
+                        // Use error handling middleware
+                        await _errorHandler.HandleErrorAsync(ex, $"Runtime:{actorId}", envelope);
+                        
                         // Continue loop to process other messages in the queue
                     }
                 }
             }
             catch (Exception ex)
             {
-                LogTrace($"Fatal error in message processing loop for actor '{actorId}': {ex.Message}");
+                // Log fatal errors in the actor's message loop
+                LogError(ex, $"Fatal error in message processing loop for actor '{actorId}'");
+                
+                // Use error handling middleware for fatal errors
+                await _errorHandler.HandleErrorAsync(ex, $"Runtime:{actorId}", null);
+                
+                // Actor state should be marked as faulted
+                if (actor is Agent baseAgent)
+                {
+                    try
+                    {
+                        // Try to change actor state to faulted
+                        typeof(Agent).GetMethod("ChangeActorState", 
+                            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                            ?.Invoke(baseAgent, new object[] { ActorState.Faulted, $"Fatal error: {ex.Message}" });
+                    }
+                    catch
+                    {
+                        // Ignore errors in reflection-based state change
+                    }
+                }
             }
             finally
             {
@@ -699,11 +757,10 @@ namespace AgctorSDK.Core.Runtime
             }
         }
         
-        // Simple logging to console for MVP. Replace with a proper logging framework.
+        // Use our logger for all logging
         private void LogTrace(string message)
         {
-            // In a production implementation, this would use a proper logging framework.
-            // For this MVP, just use Console.WriteLine for simplicity
+            _logger.Trace(message);
             
             // Also log to TestContext if available (for integration tests)
             try
@@ -730,9 +787,26 @@ namespace AgctorSDK.Core.Runtime
             {
                 // Ignore any errors in test logging
             }
-            
-            var timestamp = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            Console.WriteLine($"[{timestamp}] [InMemoryActorRuntime] {message}");
+        }
+        
+        private void LogInfo(string message)
+        {
+            _logger.Info(message);
+        }
+        
+        private void LogWarning(string message)
+        {
+            _logger.Warning(message);
+        }
+        
+        private void LogError(string message)
+        {
+            _logger.Error(message);
+        }
+        
+        private void LogError(Exception ex, string message)
+        {
+            _logger.Error(ex, message);
         }
     }
 

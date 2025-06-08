@@ -79,7 +79,7 @@ namespace AgctorCLI
             services.AddLogging(builder => 
             {
                 builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Information);
+                builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Information);
             });
 
             // Register Agctor services with the specified runtime
