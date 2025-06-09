@@ -1,185 +1,199 @@
-# Error Handling and Logging in Agctor SDK
+# AgctorSDK Logging System
 
-This document describes the error handling and logging functionality implemented in the Agctor SDK.
+This directory contains a configurable logging system for the AgctorSDK, offering flexible logging options with support for console and file outputs, log rotation, compression, and archiving.
 
-## Logging
+## Key Features
 
-The logging system provides a consistent way to log messages across the Agctor SDK components. It is designed to be extensible and configurable.
+- Multiple log outputs (console, file)
+- Configurable log levels and formatting
+- Log file rotation based on size, time periods (hourly, daily, weekly, monthly)
+- Automatic log cleanup with configurable retention policies
+- Log compression and archiving
+- Background processing for high-volume logging
+- Hierarchical archive organization
 
-### Components
+## Usage Examples
 
-- `IAgctorLogger`: Interface that defines the logging API with methods for different log levels (Trace, Debug, Info, Warning, Error, Critical).
-- `ConsoleLogger`: Implementation that logs messages to the console with color-coding based on log level.
-- `FileLogger`: Implementation that logs messages to files with configurable rotation and cleanup.
-- `LoggerFactory`: Factory for creating logger instances with specified categories and log levels.
-- `ILoggerProvider`: Interface for logger providers to support extensibility.
-
-### Usage
+### Basic Usage
 
 ```csharp
-// Get a logger instance for a specific category
+// Get a logger with default settings (console output)
 var logger = LoggerFactory.CreateLogger("MyComponent");
 
-// Log messages at different levels
-logger.Trace("Detailed trace information");
-logger.Debug("Debug information");
-logger.Info("General information");
+// Log at different levels
+logger.Debug("Debug message");
+logger.Info("Information: {0}", "Some info");
 logger.Warning("Warning message");
-logger.Error("Error message");
-logger.Error(exception, "Error with exception");
-logger.Critical("Critical error message");
-logger.Critical(exception, "Critical error with exception");
+logger.Error(exception, "An error occurred");
 ```
 
-### Configuration
-
-Global log level and other settings can be configured through the `LoggerFactory`:
+### File Logging with Daily Rotation
 
 ```csharp
-// Set minimum log level for all loggers
-LoggerFactory.SetDefaultMinLevel(LogLevel.Debug);
-
-// Configure timestamp inclusion
-LoggerFactory.SetIncludeTimestamps(true);
-
-// Add a file logger
-LoggerFactory.AddFileLogger(new FileLoggerOptions
-{
-    LogDirectory = "logs",
-    FileName = "agctor-{date}.log",
-    RotationStrategy = RotationStrategy.Daily,
-    MaxDaysToKeep = 30,
-    MaxLogFiles = 50
-});
-
-// Use multiple loggers simultaneously
-var consoleProvider = new ConsoleLoggerProvider(LogLevel.Info, true);
-var fileProvider = new FileLoggerProvider(new FileLoggerOptions
-{
-    LogDirectory = "logs",
-    FileName = "errors-{date}.log",
-    RotationStrategy = RotationStrategy.Size,
-    MaxFileSizeBytes = 5 * 1024 * 1024 // 5MB
-}, LogLevel.Error); // Only log errors and above to this file
-
-LoggerFactory.AddProvider(consoleProvider);
-LoggerFactory.AddProvider(fileProvider);
-
-// Messages will be sent to all configured providers
-var logger = LoggerFactory.CreateLogger("MyComponent");
-logger.Info("This goes to console only");
-logger.Error("This goes to both console and file");
-```
-
-### File Logger Options
-
-The `FileLogger` supports various configuration options:
-
-- **Log Directory**: Where log files are stored
-- **Filename Pattern**: Supports `{date}` and `{category}` placeholders
-- **Rotation Strategy**: None, Size, Daily, or Hourly
-- **Size Limits**: Maximum file size (for size-based rotation)
-- **Retention Policy**: Maximum days to keep logs and maximum number of log files
-
-Example:
-
-```csharp
+// Configure file logger with daily rotation
 var options = new FileLoggerOptions
 {
-    LogDirectory = "logs/system",
-    FileName = "{category}-{date}.log",
-    UseTimestampInFilename = true,
+    LogDirectory = "logs",
+    FileName = "app-{date}.log",
     RotationStrategy = RotationStrategy.Daily,
-    MaxDaysToKeep = 90,
+    MaxDaysToKeep = 30,
     MaxLogFiles = 100
+};
+
+// Add file logger to the factory
+LoggerFactory.AddFileLogger(options);
+
+// Create a logger
+var logger = LoggerFactory.CreateLogger("MyComponent");
+logger.Info("Application started");
+```
+
+### Advanced Log Rotation and Compression
+
+```csharp
+// Configure size-based rotation with compression
+var options = new FileLoggerOptions
+{
+    LogDirectory = "logs/app",
+    FileName = "app-{category}-{date}.log",
+    RotationStrategy = RotationStrategy.Size,
+    MaxFileSizeBytes = 10 * 1024 * 1024, // 10 MB
+    CompressionStrategy = CompressionStrategy.OnRotation,
+    ArchiveDirectoryStructure = ArchiveDirectoryStructure.ByYearMonth,
+    MaxTotalSizeBytes = 1024 * 1024 * 1024, // 1 GB total storage
+    UseBackgroundWorker = true // Process logs in background thread
 };
 
 LoggerFactory.AddFileLogger(options);
 ```
 
-## Error Handling
-
-The error handling system provides a centralized way to handle errors across the Agctor SDK components. It includes middleware for processing errors through a pipeline of handlers.
-
-### Components
-
-- `ErrorHandlingMiddleware`: Middleware that processes errors through a pipeline of handlers.
-- `ErrorContext`: Context information for error handling, including the exception, source, and original message.
-- `ErrorHandlingDelegate`: Delegate type for error handling functions.
-
-### Usage
+### Multiple Log Files with Different Configurations
 
 ```csharp
-// Create error handling middleware
-var errorHandler = new ErrorHandlingMiddleware(logger);
-
-// Add custom error handlers
-errorHandler.Use((context, next) =>
+// Debug logs (all levels, hourly rotation, short retention)
+var debugOptions = new FileLoggerOptions
 {
-    // Log all errors
-    logger.Error(context.Exception, $"Error in {context.Source}: {context.Exception.Message}");
-    
-    // Continue to next handler
-    return next(context);
-});
+    LogDirectory = "logs/debug",
+    FileName = "debug-{date}.log",
+    RotationStrategy = RotationStrategy.Hourly,
+    MaxDaysToKeep = 2,
+    CompressionStrategy = CompressionStrategy.OnCleanup
+};
 
-// Add specialized handlers
-errorHandler.Use((context, next) =>
+// Production logs (warnings and above, daily rotation, longer retention)
+var prodOptions = new FileLoggerOptions
 {
-    // Handle specific exception types
-    if (context.Exception is OperationCanceledException)
-    {
-        logger.Info($"Operation cancelled: {context.Source}");
-        return Task.CompletedTask;
-    }
-    
-    // Continue to next handler
-    return next(context);
-});
+    LogDirectory = "logs/prod",
+    FileName = "prod-{date}.log",
+    RotationStrategy = RotationStrategy.Daily,
+    MaxDaysToKeep = 90,
+    CompressionStrategy = CompressionStrategy.OnRotation,
+    ArchiveDirectoryStructure = ArchiveDirectoryStructure.ByYear
+};
 
-// Handle an error
-await errorHandler.HandleErrorAsync(new ErrorContext
-{
-    Exception = exception,
-    Source = "MyComponent",
-    Message = "Failed to process request"
-});
+// Add both loggers with different thresholds
+LoggerFactory.AddFileLogger(debugOptions, LogLevel.Trace);
+LoggerFactory.AddFileLogger(prodOptions, LogLevel.Warning);
+
+// Create a logger that writes to both files based on level
+var logger = LoggerFactory.CreateLogger("MyComponent");
 ```
 
-## Extensibility
+## Configuration Options
 
-The logging and error handling systems are designed to be extensible:
+### Log Levels
 
-- Implement `IAgctorLogger` to create custom loggers
-- Implement `ILoggerProvider` to create custom logger providers
-- Add custom error handlers to the middleware pipeline
+- `Trace`: Detailed debugging information
+- `Debug`: Debugging information
+- `Info`: General information
+- `Warning`: Warning conditions
+- `Error`: Error conditions
+- `Critical`: Critical conditions
 
-This enables integration with external logging frameworks and custom error handling logic.
+### Rotation Strategies
 
-## Integration with Dependency Injection
+- `None`: No rotation, use a single file
+- `Size`: Rotate when file reaches a specific size
+- `Daily`: Create a new file each day
+- `Hourly`: Create a new file each hour
+- `Weekly`: Create a new file each week
+- `Monthly`: Create a new file each month
 
-Both logging and error handling components are integrated with the dependency injection system:
+### Compression Strategies
+
+- `None`: Don't compress log files
+- `OnRotation`: Compress files when they are rotated
+- `OnCleanup`: Compress files during scheduled cleanup
+
+### Archive Directory Structure
+
+- `Flat`: Store all archives in a single directory
+- `ByYear`: Organize archives by year (archives/2023/)
+- `ByYearMonth`: Organize archives by year and month (archives/2023/01/)
+
+### Filename Pattern Placeholders
+
+- `{date}`: Current date (format depends on rotation strategy)
+- `{time}`: Current time (HH-mm-ss)
+- `{category}`: Logger category name
+- `{pid}`: Process ID
+
+## Advanced Features
+
+### Background Processing
+
+For high-volume logging scenarios, enable background processing to avoid blocking the application:
 
 ```csharp
-// Register logging and error handling services
-services.AddSingleton<IAgctorLogger>(sp => 
+var options = new FileLoggerOptions
 {
-    var options = sp.GetService<IOptions<AgctorOptions>>()?.Value;
-    var minLevel = options?.EnableDetailedLogging == true ? LogLevel.Trace : LogLevel.Info;
-    return LoggerFactory.CreateLogger("Agctor", minLevel);
-});
-
-services.AddSingleton<ErrorHandlingMiddleware>();
+    UseBackgroundWorker = true,
+    MaxQueueSize = 100000 // Queue size before dropping messages
+};
 ```
 
-## Best Practices
+### Scheduled Cleanup
 
-1. **Use appropriate log levels**: Use Trace and Debug for detailed information, Info for general progress, Warning for potential issues, Error for actual errors, and Critical for system-threatening issues.
+Configure a specific time for log cleanup operations:
 
-2. **Include context in error handling**: Always provide the source component and relevant message context when handling errors.
+```csharp
+var options = new FileLoggerOptions
+{
+    CleanupTime = new TimeSpan(3, 0, 0) // Run cleanup at 3 AM
+};
+```
 
-3. **Create specific error responses**: When responding to errors, include relevant information to help diagnose and resolve the issue.
+### Log Statistics
 
-4. **Log exceptions with stack traces**: When logging exceptions, include the exception object to capture stack traces and inner exceptions.
+Include statistics about log counts when files are rotated:
 
-5. **Handle errors at appropriate levels**: Handle errors at the level where they can be properly addressed, escalating only when necessary. 
+```csharp
+var options = new FileLoggerOptions
+{
+    IncludeStatisticsOnRotation = true
+};
+```
+
+## Dependency Injection Support
+
+The logging system can be integrated with Microsoft's dependency injection container. See `Examples.cs` for detailed integration examples.
+
+## Performance Considerations
+
+- Use `UseBackgroundWorker = true` for high-volume logging
+- Consider using `Size` rotation for unpredictable log volumes
+- For resource-constrained environments, set appropriate `MaxTotalSizeBytes`
+- Monitor the log directory size when using extensive archiving
+
+## Implementation Details
+
+The logging system consists of the following key components:
+
+- `IAgctorLogger`: Interface for logging
+- `LoggerFactory`: Central factory for creating loggers
+- `FileLogger`: File-based logger with rotation support
+- `ConsoleLogger`: Console-based logger
+- `FileLoggerOptions`: Configuration for file logging
+- Various supporting classes and enums
+
+For more examples, see the `Examples.cs` file. 
