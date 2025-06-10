@@ -128,6 +128,86 @@ namespace AgctorSDK.Core.DependencyInjection
         {
             return services.AddAgctor<ProtoActorAdapter>(configureOptions);
         }
+
+        /// <summary>
+        /// Decorates a registered service with a decorator of the same service type.
+        /// </summary>
+        /// <typeparam name="TService">The type of the service being decorated.</typeparam>
+        /// <param name="services">The service collection.</param>
+        /// <param name="decorator">A function that creates the decorator using the original service and service provider.</param>
+        /// <returns>The service collection for chaining.</returns>
+        public static IServiceCollection Decorate<TService>(
+            this IServiceCollection services,
+            Func<TService, IServiceProvider, TService> decorator)
+            where TService : class
+        {
+            // Find the existing registration
+            var serviceDescriptor = services.FindServiceDescriptor<TService>();
+            if (serviceDescriptor == null)
+            {
+                throw new InvalidOperationException($"Service of type {typeof(TService).Name} is not registered.");
+            }
+
+            // Create a new descriptor with the decorator
+            var decoratedDescriptor = new ServiceDescriptor(
+                serviceDescriptor.ServiceType,
+                sp =>
+                {
+                    // Resolve the original service
+                    var original = GetOriginalService<TService>(sp, serviceDescriptor);
+                    // Apply the decorator
+                    return decorator(original, sp);
+                },
+                serviceDescriptor.Lifetime);
+
+            // Replace the original registration with the decorated one
+            services.Remove(serviceDescriptor);
+            services.Add(decoratedDescriptor);
+
+            return services;
+        }
+
+        /// <summary>
+        /// Finds the first service descriptor for the specified service type.
+        /// </summary>
+        private static ServiceDescriptor? FindServiceDescriptor<TService>(this IServiceCollection services)
+            where TService : class
+        {
+            foreach (var descriptor in services)
+            {
+                if (descriptor.ServiceType == typeof(TService))
+                {
+                    return descriptor;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the original service instance from the service descriptor.
+        /// </summary>
+        private static TService GetOriginalService<TService>(IServiceProvider serviceProvider, ServiceDescriptor descriptor)
+            where TService : class
+        {
+            // Handle different kinds of registrations
+            if (descriptor.ImplementationInstance != null)
+            {
+                return (TService)descriptor.ImplementationInstance;
+            }
+
+            if (descriptor.ImplementationFactory != null)
+            {
+                return (TService)descriptor.ImplementationFactory(serviceProvider);
+            }
+
+            if (descriptor.ImplementationType != null)
+            {
+                return (TService)ActivatorUtilities.CreateInstance(serviceProvider, descriptor.ImplementationType);
+            }
+
+            throw new InvalidOperationException("Could not get the original service instance.");
+        }
     }
 
     /// <summary>

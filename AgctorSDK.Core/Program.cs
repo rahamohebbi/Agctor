@@ -10,6 +10,7 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
+using AgctorSDK.Core.Utils.ActivityTracking;
 
 namespace AgctorSDK.Core
 {
@@ -34,7 +35,8 @@ namespace AgctorSDK.Core
             Console.WriteLine("4. Runtime Switching Demo");
             Console.WriteLine("5. Comprehensive Demo");
             Console.WriteLine("6. Performance Test");
-            Console.Write("Enter choice (1-6): ");
+            Console.WriteLine("7. Activity Tracking Demo");
+            Console.Write("Enter choice (1-7): ");
             
             var choice = Console.ReadLine();
             
@@ -57,6 +59,9 @@ namespace AgctorSDK.Core
                     break;
                 case "6":
                     await RuntimeDemo.RunPerformanceTestAsync();
+                    break;
+                case "7":
+                    await ActivityTrackingDemo.RunActivityTrackingDemoAsync();
                     break;
                 default:
                     Console.WriteLine("Invalid choice, running adapter pattern demo...");
