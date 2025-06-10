@@ -39,7 +39,7 @@ namespace AgctorSDK.Core.Tests
         }
         
         [Fact]
-        public void LanguageExecutorFactory_ShouldHandleVariantNames()
+        public void LanguageExecutorFactory_ShouldHandleLanguageAliases()
         {
             // Arrange
             var factory = new LanguageExecutorFactory();
@@ -47,9 +47,15 @@ namespace AgctorSDK.Core.Tests
             // Act & Assert
             var csharpExecutor = factory.GetExecutor("c#");
             Xunit.Assert.NotNull(csharpExecutor);
+            Xunit.Assert.Equal("csharp", csharpExecutor.Language);
             
-            var pythonExecutor = factory.GetExecutor("python3");
+            var pythonExecutor = factory.GetExecutor("py");
             Xunit.Assert.NotNull(pythonExecutor);
+            Xunit.Assert.Equal("python", pythonExecutor.Language);
+            
+            var python3Executor = factory.GetExecutor("python3");
+            Xunit.Assert.NotNull(python3Executor);
+            Xunit.Assert.Equal("python", python3Executor.Language);
         }
         
         [Fact]
@@ -80,6 +86,12 @@ namespace AgctorSDK.Core.Tests
             var rubyExecutor = factory.GetExecutor("ruby");
             Xunit.Assert.NotNull(rubyExecutor);
             Xunit.Assert.Equal("ruby", rubyExecutor.Language);
+            
+            // Test that aliases work for custom executors too
+            factory.RegisterLanguageAlias("rb", "ruby");
+            var rbExecutor = factory.GetExecutor("rb");
+            Xunit.Assert.NotNull(rbExecutor);
+            Xunit.Assert.Equal("ruby", rbExecutor.Language);
         }
         
         // A simple mock executor for testing the factory
