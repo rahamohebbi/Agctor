@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+every time a major feature if added or modified. build all the projects then run unit tests followed by integration tests.
