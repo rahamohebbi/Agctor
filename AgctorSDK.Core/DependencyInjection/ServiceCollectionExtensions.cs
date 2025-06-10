@@ -8,6 +8,7 @@ using AgctorSDK.Core.Adapters;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
+using AgctorSDK.Core.Utils.Observability.Metrics;
 
 namespace AgctorSDK.Core.DependencyInjection
 {
@@ -207,6 +208,49 @@ namespace AgctorSDK.Core.DependencyInjection
             }
 
             throw new InvalidOperationException("Could not get the original service instance.");
+        }
+
+        /// <summary>
+        /// Enables metrics collection for the Agctor system.
+        /// Registers the necessary services and decorators for collecting system metrics.
+        /// </summary>
+        /// <param name="services">The service collection to add services to</param>
+        /// <param name="meterName">Optional custom meter name for the metrics collector</param>
+        /// <returns>The service collection for method chaining</returns>
+        public static IServiceCollection AddAgctorWithMetrics(this IServiceCollection services, string meterName = "AgctorSDK.Core")
+        {
+            // Add the base Agctor services
+            services.AddAgctor();
+            
+            // Add metrics collection
+            services.AddAgctorMetrics(meterName);
+            
+            // Enable runtime metrics
+            services.AddActorRuntimeMetrics();
+            
+            return services;
+        }
+        
+        /// <summary>
+        /// Enables metrics collection for a specific Agctor runtime.
+        /// </summary>
+        /// <typeparam name="TAdapter">The type of adapter to use as default</typeparam>
+        /// <param name="services">The service collection to add services to</param>
+        /// <param name="meterName">Optional custom meter name for the metrics collector</param>
+        /// <returns>The service collection for method chaining</returns>
+        public static IServiceCollection AddAgctorWithMetrics<TAdapter>(this IServiceCollection services, string meterName = "AgctorSDK.Core")
+            where TAdapter : class, IActorRuntimeAdapter
+        {
+            // Add the base Agctor services with the specified adapter
+            services.AddAgctor<TAdapter>();
+            
+            // Add metrics collection
+            services.AddAgctorMetrics(meterName);
+            
+            // Enable runtime metrics
+            services.AddActorRuntimeMetrics();
+            
+            return services;
         }
     }
 
