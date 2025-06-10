@@ -104,7 +104,9 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
                 }
             }
             
-            return actor;
+            // Use null-forgiving operator since the interface contract guarantees this should never be null
+            // The internal adapter is responsible for not returning null
+            return actor!;
         }
 
         /// <inheritdoc />
@@ -128,7 +130,9 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
                 }
             }
             
-            return actor;
+            // Use null-forgiving operator since the interface contract guarantees this should never be null
+            // The internal adapter is responsible for not returning null
+            return actor!;
         }
 
         /// <inheritdoc />
