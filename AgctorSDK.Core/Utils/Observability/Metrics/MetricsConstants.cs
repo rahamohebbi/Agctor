@@ -45,6 +45,20 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
         }
         
         /// <summary>
+        /// Tool-specific metrics related to tool execution.
+        /// </summary>
+        public static class Tools
+        {
+            private const string ToolsPrefix = Prefix + "tools_";
+            
+            // Tool execution metrics
+            public const string ToolExecutionTime = ToolsPrefix + "execution_time_ms";
+            public const string ToolInvocations = ToolsPrefix + "invocations_total";
+            public const string ToolSuccessRate = ToolsPrefix + "success_rate";
+            public const string ToolFailures = ToolsPrefix + "failures_total";
+        }
+        
+        /// <summary>
         /// Tag names used to categorize metrics.
         /// </summary>
         public static class Tags
@@ -52,6 +66,7 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
             // Actor-related tags
             public const string ActorType = "actor_type";
             public const string ActorId = "actor_id";
+            public const string ActorCategory = "actor_category";
             
             // Message-related tags
             public const string MessageType = "message_type";
@@ -59,6 +74,10 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
             
             // Runtime-related tags
             public const string Runtime = "runtime_type";
+            
+            // Tool-related tags
+            public const string ToolName = "tool_name";
+            public const string ToolOperation = "tool_operation";
         }
     }
 } 
