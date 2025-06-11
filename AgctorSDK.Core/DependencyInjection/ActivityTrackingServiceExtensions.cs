@@ -146,6 +146,27 @@ namespace AgctorSDK.Core.DependencyInjection
         /// Gets or sets the OTLP endpoint URL.
         /// </summary>
         public string OtlpEndpoint { get; set; } = "http://localhost:4317";
+        
+        /// <summary>
+        /// Gets or sets whether to export traces to Jaeger.
+        /// </summary>
+        public bool EnableJaegerExporter { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the Jaeger agent host.
+        /// </summary>
+        public string JaegerAgentHost { get; set; } = "localhost";
+        
+        /// <summary>
+        /// Gets or sets the Jaeger agent port.
+        /// </summary>
+        public int JaegerAgentPort { get; set; } = 6831;
+        
+        /// <summary>
+        /// Gets or sets the Jaeger collector HTTP endpoint URL.
+        /// When specified, this will be used instead of the agent host/port.
+        /// </summary>
+        public string? JaegerCollectorEndpoint { get; set; }
     }
 
     /// <summary>

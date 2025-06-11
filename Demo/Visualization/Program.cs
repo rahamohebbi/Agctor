@@ -1,115 +1,160 @@
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Text;
-using System.Text.Json;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using AgctorSDK.Core.DependencyInjection;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Utils.Observability.Visualization;
+using AgctorSDK.Core.Utils.ActivityTracking;
+using AgctorSDK.Core.Utils.ActivityTracking.OpenTelemetry;
 
 namespace Agctor.Demo.Visualization
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            // Setup logger
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddLogging(builder =>
+            // Setup dependency injection
+            var services = new ServiceCollection();
+            
+            // Add logger
+            var logger = LoggerFactory.CreateLogger("Visualization");
+            services.AddSingleton<IAgctorLogger>(logger);
+            
+            // Add basic Agctor services for the agent factory
+            services.AddAgctor(options =>
             {
-                builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Debug);
+                options.DefaultRuntime = "InMemory";
+                options.MaxConcurrentMessages = 100;
+                options.EnableDetailedLogging = true;
+                options.Environment = "Visualization";
             });
-
-            var serviceProvider = serviceCollection.BuildServiceProvider();
-            var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
-
-            logger.LogInformation("Starting Agctor Visualization Demo");
-
-            // Create sample agent hierarchy data
-            var agentHierarchy = CreateSampleAgentHierarchy();
-            var messageFlowData = CreateSampleMessageFlow();
-
-            // Generate visualizations
-            string hierarchyDiagram = GenerateAgentHierarchyMermaidDiagram(agentHierarchy);
-            string messageFlowDiagram = GenerateMessageFlowMermaidDiagram(messageFlowData);
-
-            // Output diagrams to console
+            
+            // Configure OpenTelemetry with Jaeger
+            services.AddAgctorOpenTelemetryTracking(options => 
+            {
+                options.SourceName = "Agctor.Visualization";
+                options.EnableJaegerExporter = true;
+                options.JaegerAgentHost = "localhost";
+                options.JaegerAgentPort = 6831;
+                
+                // Add a warning about potential connectivity issues
+                Console.WriteLine("Note: If the application hangs here, it might be because Jaeger is not accessible.");
+                Console.WriteLine("Press Ctrl+C to exit if it takes too long.");
+            });
+            
+            // Register visualization options
+            var visualizationOptions = new VisualizationOptions
+            {
+                TraceViewerType = TraceViewerType.Jaeger,
+                JaegerBaseUrl = "http://localhost:16686"
+            };
+            services.AddSingleton(visualizationOptions);
+            
+            // Register visualization service
+            services.AddSingleton<IVisualizationService>(sp => new VisualizationService(
+                null!, // No agent registry needed for demo
+                sp.GetRequiredService<IActivityTracker>(),
+                logger,
+                visualizationOptions
+            ));
+            
+            var serviceProvider = services.BuildServiceProvider();
+            
+            // Get the required services
+            var visualizationService = serviceProvider.GetRequiredService<IVisualizationService>();
+            var activityTracker = serviceProvider.GetRequiredService<IActivityTracker>();
+            
+            logger.Info("Starting Agctor Visualization Demo");
+            
+            // Create a real trace with activities
+            string traceId;
+            using (var rootActivity = activityTracker.StartActivity("CoordinateTask"))
+            {
+                rootActivity.SetAttribute("agent-id", "root-agent-001");
+                rootActivity.SetAttribute("agent-type", "Coordinator");
+                rootActivity.SetAttribute("description", "Root agent coordinating tasks");
+                
+                // Child agent 1 activity
+                using (var child1Activity = activityTracker.StartActivity("ProcessData"))
+                {
+                    child1Activity.SetAttribute("agent-id", "child-agent-001");
+                    child1Activity.SetAttribute("agent-type", "Processor");
+                    child1Activity.SetAttribute("description", "Process data");
+                    
+                    // Simulate work
+                    await Task.Delay(150);
+                    
+                    // Grandchild activity
+                    using (var grandchildActivity = activityTracker.StartActivity("FormatResults"))
+                    {
+                        grandchildActivity.SetAttribute("agent-id", "grandchild-agent-001");
+                        grandchildActivity.SetAttribute("agent-type", "Formatter");
+                        grandchildActivity.SetAttribute("description", "Format results");
+                        
+                        // Simulate work
+                        await Task.Delay(75);
+                        
+                        grandchildActivity.SetStatus(ActivityStatus.Ok, "Formatting completed");
+                    }
+                    
+                    child1Activity.SetStatus(ActivityStatus.Ok, "Processing completed");
+                }
+                
+                // Child agent 2 activity
+                using (var child2Activity = activityTracker.StartActivity("GenerateReport"))
+                {
+                    child2Activity.SetAttribute("agent-id", "child-agent-002");
+                    child2Activity.SetAttribute("agent-type", "Generator");
+                    child2Activity.SetAttribute("description", "Generate report");
+                    
+                    // Simulate work
+                    await Task.Delay(120);
+                    
+                    child2Activity.SetStatus(ActivityStatus.Ok, "Report generated");
+                }
+                
+                rootActivity.SetStatus(ActivityStatus.Ok, "Task coordination completed");
+                
+                // Extract the trace ID
+                var context = activityTracker.ExtractContext();
+                if (context.TryGetValue("trace-id", out var tid))
+                {
+                    traceId = tid;
+                }
+                else
+                {
+                    // Fall back to a known trace ID if extraction fails
+                    traceId = "6525672aa63d82161156e2f2e0e393cd";
+                }
+            }
+            
+            // Allow time for the trace to be exported to Jaeger
+            await Task.Delay(1000);
+            
+            // Create sample visualizations
+            string hierarchyDiagram = GenerateAgentHierarchyDiagram();
             Console.WriteLine("\nAgent Hierarchy Diagram (Mermaid format):");
             Console.WriteLine(hierarchyDiagram);
-
+            
+            string messageFlowDiagram = GenerateMessageFlowDiagram();
             Console.WriteLine("\nMessage Flow Diagram (Mermaid format):");
             Console.WriteLine(messageFlowDiagram);
-
-            // Generate HTML visualization
-            string html = GenerateVisualizationHtml(hierarchyDiagram, messageFlowDiagram);
             
-            // Save HTML to file
-            string htmlFile = "visualization_demo.html";
-            File.WriteAllText(htmlFile, html);
+            // Generate HTML with the visualizations
+            string html = GenerateVisualizationHtml(hierarchyDiagram, messageFlowDiagram, traceId);
+            System.IO.File.WriteAllText("visualization_demo.html", html);
             
-            logger.LogInformation($"Visualization HTML saved to: {htmlFile}");
-            logger.LogInformation("Open this file in a web browser to see the visualizations");
-
+            logger.Info("Visualization HTML saved to: visualization_demo.html");
+            logger.Info("Open this file in a web browser to see the visualizations");
+            
             // If Jaeger is running, show how to access the trace
-            string traceId = "6525672aa63d82161156e2f2e0e393cd"; // Real trace ID from Jaeger
             string jaegerUrl = $"http://localhost:16686/trace/{traceId}";
-            logger.LogInformation($"If Jaeger is running, you can view traces at: {jaegerUrl}");
+            logger.Info($"If Jaeger is running, you can view traces at: {jaegerUrl}");
         }
 
-        private static AgentHierarchy CreateSampleAgentHierarchy()
-        {
-            return new AgentHierarchy
-            {
-                RootAgent = new Agent
-                {
-                    Id = "root-agent-001",
-                    Type = "Coordinator",
-                    Description = "Root agent coordinating tasks",
-                    Children = new List<Agent>
-                    {
-                        new Agent
-                        {
-                            Id = "child-agent-001",
-                            Type = "Processor",
-                            Description = "Process data",
-                            Children = new List<Agent>
-                            {
-                                new Agent
-                                {
-                                    Id = "grandchild-agent-001",
-                                    Type = "Formatter",
-                                    Description = "Format results",
-                                    Children = new List<Agent>()
-                                }
-                            }
-                        },
-                        new Agent
-                        {
-                            Id = "child-agent-002",
-                            Type = "Generator",
-                            Description = "Generate report",
-                            Children = new List<Agent>()
-                        }
-                    }
-                }
-            };
-        }
-
-        private static List<MessageFlow> CreateSampleMessageFlow()
-        {
-            return new List<MessageFlow>
-            {
-                new MessageFlow { From = "root-agent-001", To = "child-agent-001", Message = "Process data", Duration = 150 },
-                new MessageFlow { From = "root-agent-001", To = "child-agent-002", Message = "Generate report", Duration = 120 },
-                new MessageFlow { From = "child-agent-001", To = "grandchild-agent-001", Message = "Format results", Duration = 75 },
-                new MessageFlow { From = "grandchild-agent-001", To = "child-agent-001", Message = "Return formatted data", IsReply = true },
-                new MessageFlow { From = "child-agent-001", To = "root-agent-001", Message = "Return processed data", IsReply = true },
-                new MessageFlow { From = "child-agent-002", To = "root-agent-001", Message = "Return generated report", IsReply = true }
-            };
-        }
-
-        private static string GenerateAgentHierarchyMermaidDiagram(AgentHierarchy hierarchy)
+        private static string GenerateAgentHierarchyDiagram()
         {
             var sb = new StringBuilder();
             
@@ -165,7 +210,7 @@ namespace Agctor.Demo.Visualization
             }
         }
 
-        private static string GenerateMessageFlowMermaidDiagram(List<MessageFlow> messageFlows)
+        private static string GenerateMessageFlowDiagram()
         {
             var sb = new StringBuilder();
             var participantMap = new Dictionary<string, string>();
@@ -236,7 +281,7 @@ namespace Agctor.Demo.Visualization
             return participantId;
         }
 
-        private static string GenerateVisualizationHtml(string hierarchyDiagram, string messageFlowDiagram)
+        private static string GenerateVisualizationHtml(string hierarchyDiagram, string messageFlowDiagram, string traceId)
         {
             var sb = new StringBuilder();
             
@@ -261,7 +306,8 @@ namespace Agctor.Demo.Visualization
             
             // Add Jaeger link with valid hexadecimal trace ID
             sb.AppendLine("    <div class=\"viz-links\">");
-            sb.AppendLine("      <a href=\"http://localhost:16686/trace/6525672aa63d82161156e2f2e0e393cd\" target=\"_blank\">View Trace in Jaeger</a>");
+            sb.AppendLine("      <a href=\"http://localhost:16686/trace/" + traceId + "\" target=\"_blank\">View Trace in Jaeger</a>");
+            sb.AppendLine("      <p><em>This link leads to actual trace data in Jaeger from the activities performed in this demo.</em></p>");
             sb.AppendLine("    </div>");
             
             // Add agent hierarchy visualization

@@ -47,6 +47,28 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.OpenTelemetry
                             opts.Endpoint = new Uri(options.OtlpEndpoint);
                         });
                     }
+                    
+                    if (options.EnableJaegerExporter)
+                    {
+                        builder.AddJaegerExporter(opts =>
+                        {
+                            if (!string.IsNullOrEmpty(options.JaegerCollectorEndpoint))
+                            {
+                                // Use HTTP collector endpoint if specified
+                                opts.AgentHost = null;
+                                opts.AgentPort = 0;
+                                opts.Endpoint = new Uri(options.JaegerCollectorEndpoint);
+                                Console.WriteLine($"Using Jaeger HTTP collector endpoint: {options.JaegerCollectorEndpoint}");
+                            }
+                            else
+                            {
+                                // Use UDP agent endpoint (default)
+                                opts.AgentHost = options.JaegerAgentHost;
+                                opts.AgentPort = options.JaegerAgentPort;
+                                Console.WriteLine($"Using Jaeger UDP agent: {options.JaegerAgentHost}:{options.JaegerAgentPort}");
+                            }
+                        });
+                    }
                 });
 
             // Register a TracerProvider for the ActivityTracker to use
