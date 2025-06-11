@@ -2,11 +2,17 @@ using System;
 using System.Threading.Tasks;
 using System.IO;
 using System.Text;
+using System.Threading;
+using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.Observability.Visualization;
+using AgctorSDK.Core.Utils.ActivityTracking;
+using AgctorSDK.Core.Utils.ActivityTracking.Logger;
+using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Messages;
 
 namespace AgctorSDK.VisualizationExample
 {
@@ -66,7 +72,7 @@ namespace AgctorSDK.VisualizationExample
             string html = "<div class=\"agctor-visualization\">";
             
             // Add Jaeger link if Jaeger is running
-            string mockTraceId = "trace-123";
+            string mockTraceId = "6525672aa63d82161156e2f2e0e393cd"; // Using a real trace ID from Jaeger
             html += "<div class=\"viz-links\">";
             html += $"<a href=\"{visualizationService.GetTraceViewerUrl(mockTraceId)}\" target=\"_blank\">View Trace in External Viewer</a>";
             html += "</div>";
@@ -118,6 +124,16 @@ namespace AgctorSDK.VisualizationExample
             // 1. Setup DI container with Agctor services including visualization
             var services = new ServiceCollection();
             
+            // Add logger
+            services.AddSingleton<IAgctorLogger>(LoggerFactory.CreateLogger("VisualizationExample"));
+            
+            // Add agent registry (required by VisualizationService)
+            services.AddSingleton<IAgentRegistry, AgctorSDK.Core.Registry.InMemoryAgentRegistry>();
+            
+            // Add activity tracker (required by VisualizationService)
+            services.AddSingleton<IActivityTracker>(sp => 
+                new LoggerActivityTracker(sp.GetRequiredService<IAgctorLogger>()));
+            
             // Add Agctor core services
             services.AddAgctor(options =>
             {
@@ -127,26 +143,58 @@ namespace AgctorSDK.VisualizationExample
                 options.Environment = "VisualizationExample";
             });
             
-            // Add visualization services with Jaeger configuration
-            AgctorSDK.Core.DependencyInjection.ObservabilityServiceExtensions.AddAgctorVisualization(services, options => 
+            // Create visualization options
+            var visualizationOptions = new VisualizationOptions
             {
-                options.TraceViewerType = TraceViewerType.Jaeger;
-                options.JaegerBaseUrl = "http://localhost:16686";
-                options.ZipkinBaseUrl = "http://localhost:9411";
-            });
+                TraceViewerType = TraceViewerType.Jaeger,
+                JaegerBaseUrl = "http://localhost:16686",
+                ZipkinBaseUrl = "http://localhost:9411"
+            };
+            
+            // Register visualization options
+            services.AddSingleton(visualizationOptions);
+            
+            // Register visualization service directly
+            services.AddSingleton<IVisualizationService>(sp => new VisualizationService(
+                sp.GetRequiredService<IAgentRegistry>(),
+                sp.GetRequiredService<IActivityTracker>(),
+                sp.GetRequiredService<IAgctorLogger>(),
+                visualizationOptions
+            ));
             
             var serviceProvider = services.BuildServiceProvider();
             
             // 2. Get the visualization service
             var visualizationService = serviceProvider.GetRequiredService<IVisualizationService>();
-            var logger = LoggerFactory.CreateLogger("VisualizationExample");
+            var logger = serviceProvider.GetRequiredService<IAgctorLogger>();
+            
+            // Get the agent registry to populate with mock agents
+            var agentRegistry = serviceProvider.GetRequiredService<IAgentRegistry>();
+            
+            // Create and register mock agents to demonstrate hierarchy visualization
+            var rootAgentId = "root-agent-123";
+            var childAgent1Id = "child-agent-1";
+            var childAgent2Id = "child-agent-2";
+            var grandchildAgentId = "grandchild-agent-1";
+            
+            // Create mock agents
+            var rootAgent = new MockAgent(rootAgentId, "Root Coordinator", null);
+            var childAgent1 = new MockAgent(childAgent1Id, "Data Processor", rootAgentId);
+            var childAgent2 = new MockAgent(childAgent2Id, "Report Generator", rootAgentId);
+            var grandchildAgent = new MockAgent(grandchildAgentId, "Format Processor", childAgent1Id);
+            
+            // Register the agents
+            agentRegistry.RegisterAgentAsync(rootAgent).GetAwaiter().GetResult();
+            agentRegistry.RegisterAgentAsync(childAgent1).GetAwaiter().GetResult();
+            agentRegistry.RegisterAgentAsync(childAgent2).GetAwaiter().GetResult();
+            agentRegistry.RegisterAgentAsync(grandchildAgent).GetAwaiter().GetResult();
+            
+            // Add children to parent agents
+            rootAgent.AddChild(childAgent1Id);
+            rootAgent.AddChild(childAgent2Id);
+            childAgent1.AddChild(grandchildAgentId);
             
             // 3. Generate visualizations
-            
-            // In a real application, you would get the root agent ID from your agent registry
-            // For this example, we'll use a dummy ID
-            var rootAgentId = "root-agent-123";
-            
             try
             {
                 // Generate agent hierarchy visualization
@@ -156,8 +204,8 @@ namespace AgctorSDK.VisualizationExample
                 Console.WriteLine(hierarchyDiagram);
                 
                 // In a real application, you would get the trace ID from your activity tracker
-                // For this example, we'll use a dummy trace ID
-                var traceId = "trace-123";
+                // For this example, we'll use a real trace ID from Jaeger
+                var traceId = "6525672aa63d82161156e2f2e0e393cd";
                 
                 // Generate message flow visualization
                 logger.Info($"Generating message flow visualization for trace: {traceId}");
@@ -238,6 +286,105 @@ namespace AgctorSDK.VisualizationExample
             sb.AppendLine("child2-->>root: Return generated report");
             
             return sb.ToString();
+        }
+    }
+    
+    /// <summary>
+    /// A simple mock implementation of IAgent for demonstration purposes.
+    /// </summary>
+    public class MockAgent : IAgent
+    {
+        private readonly List<string> _childIds = new List<string>();
+        private readonly string _name;
+        private readonly string _description;
+        private IAgentFactory? _agentFactory;
+        
+        public MockAgent(string id, string description, string? parentId)
+        {
+            Id = id;
+            _name = id;
+            _description = description;
+            ParentAgentId = parentId;
+        }
+        
+        public string Id { get; }
+        public AgentStatus Status => AgentStatus.Idle;
+        public string ActorType => "MockAgent";
+        public ActorState State => ActorState.Active;
+        public string? CurrentPrompt => null;
+        public string? ParentAgentId { get; private set; }
+        public IReadOnlyList<string> ChildAgentIds => _childIds.AsReadOnly();
+        public string? Name => _name;
+        public string? Description => _description;
+        
+        public void AddChild(string childId)
+        {
+            if (!_childIds.Contains(childId))
+            {
+                _childIds.Add(childId);
+                ChildAgentSpawned?.Invoke(this, new ChildAgentSpawnedEventArgs(childId, Id, "MockAgent", "MockAgent"));
+            }
+        }
+        
+        // Event handlers
+        public event EventHandler<AgentStatusChangedEventArgs>? StatusChanged;
+        public event EventHandler<SubtaskCompletedEventArgs>? SubtaskCompleted;
+        public event EventHandler<ActorStateChangedEventArgs>? StateChanged;
+        public event EventHandler<ChildAgentSpawnedEventArgs>? ChildAgentSpawned;
+        
+        // IAgent method implementations
+        public Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+        {
+            // Just return the envelope as is for this mock implementation
+            return Task.FromResult(envelope);
+        }
+        
+        public Task InitializeAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+        
+        public Task<bool> TryExecuteAsync(string code, object? context = null, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(true);
+        }
+        
+        public Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+        
+        public Task<string> AssignSubtaskAsync(string subtask, string? childId = null, CancellationToken cancellationToken = default)
+        {
+            // Generate a fake subtask ID
+            var subtaskId = $"subtask-{Guid.NewGuid().ToString().Substring(0, 8)}";
+            return Task.FromResult(subtaskId);
+        }
+        
+        public Task HandleSubtaskCompletionAsync(string subtaskId, object result, CancellationToken cancellationToken = default)
+        {
+            SubtaskCompleted?.Invoke(this, new SubtaskCompletedEventArgs(subtaskId, Id, result));
+            return Task.CompletedTask;
+        }
+        
+        public Task HandleSubtaskFailureAsync(string subtaskId, Exception exception, CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
+        }
+        
+        public void SetAgentFactory(IAgentFactory agentFactory)
+        {
+            _agentFactory = agentFactory;
+        }
+        
+        public void SetParentAgentId(string? parentAgentId)
+        {
+            ParentAgentId = parentAgentId;
+        }
+        
+        public Task ShutdownAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.CompletedTask;
         }
     }
 } 

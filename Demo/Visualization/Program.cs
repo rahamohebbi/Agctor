@@ -52,7 +52,7 @@ namespace Agctor.Demo.Visualization
             logger.LogInformation("Open this file in a web browser to see the visualizations");
 
             // If Jaeger is running, show how to access the trace
-            string traceId = "1a2b3c4d5e6f7890";
+            string traceId = "6525672aa63d82161156e2f2e0e393cd"; // Real trace ID from Jaeger
             string jaegerUrl = $"http://localhost:16686/trace/{traceId}";
             logger.LogInformation($"If Jaeger is running, you can view traces at: {jaegerUrl}");
         }
@@ -261,7 +261,7 @@ namespace Agctor.Demo.Visualization
             
             // Add Jaeger link with valid hexadecimal trace ID
             sb.AppendLine("    <div class=\"viz-links\">");
-            sb.AppendLine("      <a href=\"http://localhost:16686/trace/1a2b3c4d5e6f7890\" target=\"_blank\">View Trace in Jaeger</a>");
+            sb.AppendLine("      <a href=\"http://localhost:16686/trace/6525672aa63d82161156e2f2e0e393cd\" target=\"_blank\">View Trace in Jaeger</a>");
             sb.AppendLine("    </div>");
             
             // Add agent hierarchy visualization

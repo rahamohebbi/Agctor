@@ -1,0 +1,94 @@
+<!DOCTYPE html><html><head><title>Agctor Visualization Example</title><script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+<style>
+    .agctor-visualization {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        margin: 20px 0;
+        padding: 15px;
+        border: 1px solid #e0e0e0;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+    }
+    
+    .viz-links {
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .viz-links a {
+        color: #0066cc;
+        text-decoration: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        background-color: #f0f0f0;
+    }
+    
+    .viz-links a:hover {
+        background-color: #e0e0e0;
+    }
+    
+    .viz-section {
+        margin-top: 15px;
+    }
+    
+    .viz-section h3 {
+        margin: 0 0 10px 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+    
+    .viz-error {
+        color: #cc0000;
+        padding: 10px;
+        background-color: #ffeeee;
+        border-radius: 3px;
+    }
+    
+    .mermaid {
+        font-size: 14px;
+        background-color: white;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #e0e0e0;
+        overflow: auto;
+    }
+</style></head><body><h1>Agctor Visualization Example</h1><div class="agctor-visualization">
+<div class="viz-links">
+<a href="http://localhost:16686/trace/6525672aa63d82161156e2f2e0e393cd" target="_blank">View Trace in External Viewer</a>
+</div>
+<div class="viz-section">
+<h3>Agent Hierarchy</h3>
+<div class="mermaid">
+graph TD
+root_agent_123["root-agent-123<br/>MockAgent<br/>Root Coordinator"]
+child_agent_2["child-agent-2<br/>MockAgent<br/>Report Generator"]
+child_agent_1["child-agent-1<br/>MockAgent<br/>Data Processor"]
+grandchild_agent_1["grandchild-agent-1<br/>MockAgent<br/>Format Processor"]
+root_agent_123 --> child_agent_2
+root_agent_123 --> child_agent_1
+child_agent_1 --> grandchild_agent_1
+classDef root fill:#f96,stroke:#333,stroke-width:2px
+classDef agent fill:#bbf,stroke:#333,stroke-width:1px
+class root_agent_123 root
+class child_agent_2 agent
+class child_agent_1 agent
+class grandchild_agent_1 agent
+
+</div>
+</div>
+<div class="viz-section">
+<h3>Message Flow</h3>
+<div class="mermaid">
+sequenceDiagram
+participant root as "Root Agent"
+participant child as "Child Agent"
+participant tool as "External Tool"
+root->>child: Process task
+child->>tool: Call external service
+tool->>child: Service response
+child->>root: Task result
+
+</div>
+</div>
+</div>
+</body></html>
