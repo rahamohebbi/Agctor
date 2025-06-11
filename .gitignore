@@ -57,3 +57,8 @@ Thumbs.db
 *.user
 *.userosscache
 *.sln.docstates
+
+# Demo files
+Demo/**/*.html
+Demo/Visualization/*.html
+Demo/VisualizationExample/*.html
