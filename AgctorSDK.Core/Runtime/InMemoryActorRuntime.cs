@@ -212,6 +212,48 @@ namespace AgctorSDK.Core.Runtime
             return newActorInstance;
         }
 
+        public async Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotInitialized();
+
+            if (actor == null)
+            {
+                throw new ArgumentNullException(nameof(actor));
+            }
+
+            string actorId = actor.Id;
+            
+            if (string.IsNullOrEmpty(actorId))
+            {
+                throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actor));
+            }
+
+            var messageQueue = Channel.CreateUnbounded<IMessageEnvelope>(new UnboundedChannelOptions
+            {
+                SingleReader = true, // Each actor has its own processing loop
+                SingleWriter = false // Multiple senders can write to the queue
+            });
+            
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownTokenSource.Token, cancellationToken);
+            var processingTask = ProcessActorMessagesAsync(actor, messageQueue.Reader, cts.Token);
+
+            var actorInstanceContainer = new ActorInstance(actor, messageQueue, processingTask, cts);
+
+            if (!_actors.TryAdd(actorId, actorInstanceContainer))
+            {
+                // Actor might have been added by another thread, or Stop has been called.
+                // Clean up resources for this attempt.
+                cts.Cancel(); 
+                await processingTask.ContinueWith(_ => { /* Observe task completion/exceptions */ }, TaskScheduler.Default);
+                actor.ShutdownAsync(CancellationToken.None).ConfigureAwait(false).GetAwaiter().GetResult(); // Best effort
+                throw new InvalidOperationException($"Failed to add actor '{actorId}' to collection. It might already exist or runtime is shutting down.");
+            }
+            
+            LogTrace($"Registered actor '{actorId}' of type '{actor.GetType().Name}'");
+            ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, actor.GetType().Name));
+        }
+
         public Task<T?> GetActorAsync<T>(string actorId, CancellationToken cancellationToken = default) where T : class, IActor
         {
             ThrowIfDisposed();

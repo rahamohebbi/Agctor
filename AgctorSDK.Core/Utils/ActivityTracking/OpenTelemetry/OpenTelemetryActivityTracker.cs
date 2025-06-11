@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+using AgctorSDK.Core.Utils.Observability.Visualization;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
 
@@ -74,6 +76,19 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.OpenTelemetry
                 context["trace-flags"] = Activity.Current.ActivityTraceFlags.ToString();
             }
             return context;
+        }
+        
+        /// <inheritdoc/>
+        public Task<IEnumerable<IActivity>> GetTraceActivitiesAsync(string traceId)
+        {
+            // In a real implementation, this would query the OpenTelemetry trace provider 
+            // or backend (like Jaeger or Zipkin) to get all activities in the trace.
+            // For now, we'll return an empty collection as this requires backend integration.
+            
+            // Note: A real implementation would connect to the trace backend API 
+            // and retrieve the spans for the given trace ID.
+            
+            return Task.FromResult<IEnumerable<IActivity>>(new List<IActivity>());
         }
     }
 } 

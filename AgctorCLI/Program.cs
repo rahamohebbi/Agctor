@@ -6,6 +6,8 @@ using Microsoft.Extensions.Logging;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Registry;
 
 namespace AgctorCLI
 {
@@ -146,8 +148,22 @@ namespace AgctorCLI
         {
             logger.LogInformation("🤖 Creating root agent for prompt processing...");
             
+            // Create service provider for dependency injection
+            var services = new ServiceCollection();
+            services.AddSingleton<IActorRuntimeAdapter>(runtime);
+            var serviceProvider = services.BuildServiceProvider();
+            
             // Create agent factory for spawning and managing agents
-            var agentFactory = new AgentFactory(runtime);
+            var fileLogger = new FileLogger("cli-agent", new FileLoggerOptions(), AgctorSDK.Core.Utils.Logging.LogLevel.Info);
+            var agentRegistry = new InMemoryAgentRegistry();
+            var agentLogger = new AgctorFileLogger(fileLogger);
+            
+            // Create agent factory with all required dependencies
+            var agentFactory = new AgentFactory(
+                runtime, 
+                serviceProvider, 
+                agentLogger, 
+                agentRegistry);
             
             // Spawn a root agent with the user's prompt
             var rootAgent = await agentFactory.SpawnAgentAsync<Agent>(

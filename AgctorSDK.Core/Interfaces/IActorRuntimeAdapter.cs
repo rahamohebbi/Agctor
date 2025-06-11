@@ -75,6 +75,15 @@ namespace AgctorSDK.Core.Interfaces
         Task<T> SpawnActorAsync<T>(string actorId, Func<string, T> actorFactory, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor;
 
         /// <summary>
+        /// Registers an existing actor instance with the runtime.
+        /// Used when an actor has been created manually and needs to be registered with the runtime.
+        /// </summary>
+        /// <param name="actor">The actor instance to register</param>
+        /// <param name="cancellationToken">Token for cancelling the operation</param>
+        /// <returns>A task representing the asynchronous registration operation</returns>
+        Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Gets a reference to an existing actor by its ID.
         /// Returns null if the actor doesn't exist or is not accessible.
         /// </summary>

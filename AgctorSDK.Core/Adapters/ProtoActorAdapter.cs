@@ -106,6 +106,19 @@ namespace AgctorSDK.Core.Adapters
         }
 
         /// <summary>
+        /// Registers an existing actor instance with the Proto.Actor runtime.
+        /// TODO: Implement Proto.Actor registration logic.
+        /// </summary>
+        /// <param name="actor">The actor instance to register</param>
+        /// <param name="cancellationToken">Token for cancelling the operation</param>
+        /// <returns>A task representing the asynchronous registration operation</returns>
+        public Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException("Proto.Actor registration is not yet implemented. " +
+                "This will register an existing actor instance with the Proto.Actor runtime.");
+        }
+
+        /// <summary>
         /// Gets a reference to an existing Proto.Actor by its ID.
         /// TODO: Implement Proto.Actor PID resolution and actor reference retrieval.
         /// </summary>

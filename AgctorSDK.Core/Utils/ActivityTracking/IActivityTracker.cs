@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using AgctorSDK.Core.Utils.Observability.Visualization;
 
 namespace AgctorSDK.Core.Utils.ActivityTracking
 {
@@ -30,6 +32,13 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         /// </summary>
         /// <returns>A dictionary containing the current activity context.</returns>
         IDictionary<string, string> ExtractContext();
+
+        /// <summary>
+        /// Gets activities for a specific trace.
+        /// </summary>
+        /// <param name="traceId">The trace ID to retrieve activities for.</param>
+        /// <returns>Collection of activities in the trace.</returns>
+        Task<IEnumerable<IActivity>> GetTraceActivitiesAsync(string traceId);
     }
 
     /// <summary>
@@ -37,7 +46,25 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
     /// </summary>
     public enum ActivityStatus
     {
+        InProgress,
         Ok,
-        Error
+        Error,
+        Completed
+    }
+
+    /// <summary>
+    /// Context information for an activity.
+    /// </summary>
+    public class ActivityContext
+    {
+        /// <summary>
+        /// Gets or sets the trace ID.
+        /// </summary>
+        public string TraceId { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Gets or sets the span ID.
+        /// </summary>
+        public string SpanId { get; set; } = string.Empty;
     }
 } 

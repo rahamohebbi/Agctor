@@ -34,6 +34,18 @@ namespace AgctorSDK.Core.Interfaces
         /// Indicates whether the agent is idle, working, completed, or failed.
         /// </summary>
         AgentStatus Status { get; }
+        
+        /// <summary>
+        /// The display name of the agent.
+        /// This is used for visualization purposes.
+        /// </summary>
+        string? Name { get; }
+        
+        /// <summary>
+        /// A description of the agent's purpose or function.
+        /// This is used for visualization purposes.
+        /// </summary>
+        string? Description { get; }
 
         /// <summary>
         /// Processes a new prompt and begins working on the assigned task.
@@ -73,6 +85,20 @@ namespace AgctorSDK.Core.Interfaces
         /// <param name="cancellationToken">Token for cancelling the operation</param>
         /// <returns>A task representing the asynchronous subtask failure handling</returns>
         Task HandleSubtaskFailureAsync(string childAgentId, Exception error, CancellationToken cancellationToken = default);
+        
+        /// <summary>
+        /// Sets the agent factory for this agent.
+        /// This allows the agent to spawn child agents for subtasks.
+        /// </summary>
+        /// <param name="agentFactory">The agent factory instance</param>
+        void SetAgentFactory(IAgentFactory agentFactory);
+        
+        /// <summary>
+        /// Sets the parent agent ID for this agent.
+        /// This establishes the agent hierarchy for task decomposition.
+        /// </summary>
+        /// <param name="parentAgentId">The ID of the parent agent</param>
+        void SetParentAgentId(string? parentAgentId);
 
         /// <summary>
         /// Event raised when the agent's status changes.

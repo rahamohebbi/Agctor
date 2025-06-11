@@ -226,7 +226,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
                 return Task.FromResult(mockStats.Object);
             }
 
-            public Task<string> RequestHumanInputAsync(string requestingAgentId, string prompt, string instructions, CancellationToken cancellationToken = default)
+            public Task<string> RequestHumanInputAsync(string prompt, string actorId, string conversationId, CancellationToken cancellationToken = default)
             {
                 // For testing purposes, we can simulate different scenarios here if needed.
                 // For now, return a default or configurable response, or throw if a test expects failure.
@@ -235,6 +235,21 @@ namespace AgctorSDK.Core.Tests.Interfaces
                     throw new InvalidOperationException("Test exception during human input");
                 }
                 return Task.FromResult("Default test human input");
+            }
+
+            public Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
+            {
+                if (actor == null)
+                    throw new ArgumentNullException(nameof(actor));
+                
+                // Add the actor to spawned actors if not already there
+                if (!SpawnedActorIds.Contains(actor.Id))
+                {
+                    SpawnedActorIds.Add(actor.Id);
+                    ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actor.Id, actor.ActorType));
+                }
+                
+                return Task.CompletedTask;
             }
 
             public void Dispose()

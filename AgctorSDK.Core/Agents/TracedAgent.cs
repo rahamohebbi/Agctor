@@ -48,6 +48,53 @@ namespace AgctorSDK.Core.Agents
 
         /// <inheritdoc/>
         public IReadOnlyList<string> ChildAgentIds => _innerAgent.ChildAgentIds;
+        
+        /// <inheritdoc/>
+        public string? Name => _innerAgent.Name;
+        
+        /// <inheritdoc/>
+        public string? Description => $"Traced: {_innerAgent.Description}";
+        
+        /// <inheritdoc/>
+        public void SetAgentFactory(IAgentFactory agentFactory)
+        {
+            using var activity = _activityTracker.StartActivity("Agent.SetAgentFactory");
+            activity.SetAttribute("agent.id", Id);
+            activity.SetAttribute("agent.type", ActorType);
+            
+            try
+            {
+                _innerAgent.SetAgentFactory(agentFactory);
+                activity.SetStatus(ActivityStatus.Ok);
+            }
+            catch (Exception ex)
+            {
+                activity.SetStatus(ActivityStatus.Error);
+                activity.RecordException(ex);
+                throw;
+            }
+        }
+        
+        /// <inheritdoc/>
+        public void SetParentAgentId(string? parentAgentId)
+        {
+            using var activity = _activityTracker.StartActivity("Agent.SetParentAgentId");
+            activity.SetAttribute("agent.id", Id);
+            activity.SetAttribute("agent.type", ActorType);
+            activity.SetAttribute("parent.id", parentAgentId ?? "null");
+            
+            try
+            {
+                _innerAgent.SetParentAgentId(parentAgentId);
+                activity.SetStatus(ActivityStatus.Ok);
+            }
+            catch (Exception ex)
+            {
+                activity.SetStatus(ActivityStatus.Error);
+                activity.RecordException(ex);
+                throw;
+            }
+        }
 
         /// <inheritdoc/>
         public event EventHandler<AgentStatusChangedEventArgs>? StatusChanged

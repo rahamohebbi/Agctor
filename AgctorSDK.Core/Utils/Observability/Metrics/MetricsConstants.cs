@@ -34,6 +34,8 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
             public const string ActorShutdownTime = CorePrefix + "actor_shutdown_time_ms";
             public const string ActorStopTime = CorePrefix + "actor_stop_time_ms";
             public const string ActorLookups = CorePrefix + "actor_lookups_total";
+            public const string ActorRegistrationTime = CorePrefix + "actor_registration_time_ms";
+            public const string ActorsRegistered = CorePrefix + "actors_registered_total";
             
             // Runtime metrics
             public const string RuntimeInitializationTime = CorePrefix + "runtime_initialization_time_ms";

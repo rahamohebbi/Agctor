@@ -42,14 +42,14 @@ namespace AgctorSDK.Core.Tests.Agents
             adapter.StatusChanged += (s, e) => statusChanges.Add(e.NewStatus);
 
             _mockRuntimeAdapter
-                .Setup(r => r.RequestHumanInputAsync(adapter.Id, prompt, "Please enter your response below. Type '::done' on a new line to finish.", It.IsAny<CancellationToken>()))
+                .Setup(r => r.RequestHumanInputAsync(prompt, adapter.Id, "Please enter your response below. Type '::done' on a new line to finish.", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(expectedResponse);
 
             // Act
             await adapter.ProcessPromptAsync(prompt, CancellationToken.None);
 
             // Assert
-            _mockRuntimeAdapter.Verify(r => r.RequestHumanInputAsync(adapter.Id, prompt, "Please enter your response below. Type '::done' on a new line to finish.", It.IsAny<CancellationToken>()), Times.Once);
+            _mockRuntimeAdapter.Verify(r => r.RequestHumanInputAsync(prompt, adapter.Id, "Please enter your response below. Type '::done' on a new line to finish.", It.IsAny<CancellationToken>()), Times.Once);
             Assert.AreEqual(expectedResponse, adapter.HumanResponse);
             Assert.AreEqual(AgentStatus.Completed, adapter.Status); 
 

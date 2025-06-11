@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -11,11 +12,26 @@ using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.IntegrationTests.TestHelpers;
+using AgctorSDK.Core.IntegrationTests.Helpers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AgctorSDK.Core.IntegrationTests.Agents
 {
+    // Simple service provider for tests
+    public class TestServiceProvider : IServiceProvider
+    {
+        public object GetService(Type serviceType)
+        {
+            if (serviceType == typeof(IAgctorLogger))
+                return new AgctorConsoleLogger();
+            
+            return null;
+        }
+    }
+
     // A simple agent to orchestrate the workflow.
     public class OrchestratorAgent : BaseActor
     {
@@ -76,7 +92,13 @@ namespace AgctorSDK.Core.IntegrationTests.Agents
         {
             _runtime = new InMemoryActorRuntime();
             _runtime.InitializeAsync(new Dictionary<string, object>()).Wait();
-            _agentFactory = new AgentFactory(_runtime);
+            
+            // Create necessary dependencies for AgentFactory
+            var serviceProvider = new TestServiceProvider();
+            var logger = new MockAgctorLogger();
+            var agentRegistry = new InMemoryAgentRegistry();
+            
+            _agentFactory = new AgentFactory(_runtime, serviceProvider, logger, agentRegistry);
         }
 
         [TestMethod]

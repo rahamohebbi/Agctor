@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
+using System.Linq;
 using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Utils.Observability.Visualization;
 
 namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
 {
@@ -70,6 +73,18 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
                 context["activity-id"] = ActivityStack.Peek().Id;
             }
             return context;
+        }
+        
+        /// <inheritdoc/>
+        public Task<IEnumerable<IActivity>> GetTraceActivitiesAsync(string traceId)
+        {
+            _logger.Info($"GetTraceActivitiesAsync called for traceId: {traceId}");
+            
+            // In a real implementation, this would retrieve activities from a log storage
+            // For now, we return an empty collection as this is a simple logger-based implementation
+            _logger.Warning("GetTraceActivitiesAsync is not fully implemented in LoggerActivityTracker");
+            
+            return Task.FromResult<IEnumerable<IActivity>>(new List<IActivity>());
         }
 
         /// <summary>

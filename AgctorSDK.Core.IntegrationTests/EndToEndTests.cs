@@ -15,9 +15,24 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Registry;
+using AgctorSDK.Core.IntegrationTests.Helpers;
 
 namespace AgctorSDK.Core.IntegrationTests
 {
+    // Simple service provider for tests
+    public class TestServiceProvider : IServiceProvider
+    {
+        public object GetService(Type serviceType)
+        {
+            if (serviceType == typeof(IAgctorLogger))
+                return new AgctorConsoleLogger();
+            
+            return null;
+        }
+    }
+
     [TestClass]
     public class EndToEndTests
     {
@@ -62,8 +77,13 @@ namespace AgctorSDK.Core.IntegrationTests
             var runtime = new InMemoryActorRuntime();
             await runtime.InitializeAsync(new Dictionary<string, object>(), CancellationToken.None);
 
+            // Create necessary dependencies for AgentFactory
+            var serviceProvider = new TestServiceProvider();
+            var logger = new MockAgctorLogger();
+            var agentRegistry = new InMemoryAgentRegistry();
+
             // Use the real AgentFactory
-            var agentFactory = new AgentFactory(runtime);
+            var agentFactory = new AgentFactory(runtime, serviceProvider, logger, agentRegistry);
 
             TestContext.WriteLine("Registering agent types...");
             agentFactory.RegisterAgentType<CodeEditorTool>();

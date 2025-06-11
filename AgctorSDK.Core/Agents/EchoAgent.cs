@@ -16,6 +16,7 @@ namespace AgctorSDK.Core.Agents
         private AgentStatus _status;
         private ActorState _state;
         private readonly List<string> _childAgentIds;
+        private IAgentFactory? _agentFactory;
         
         /// <summary>
         /// Initializes a new instance of the EchoAgent class.
@@ -49,10 +50,16 @@ namespace AgctorSDK.Core.Agents
         public string? CurrentPrompt { get; private set; }
 
         /// <inheritdoc/>
-        public string? ParentAgentId { get; set; }
+        public string? ParentAgentId { get; private set; }
 
         /// <inheritdoc/>
         public IReadOnlyList<string> ChildAgentIds => _childAgentIds.AsReadOnly();
+        
+        /// <inheritdoc/>
+        public string? Name => $"Echo-{Id}";
+        
+        /// <inheritdoc/>
+        public string? Description => "A simple echo agent that returns received messages";
 
         /// <inheritdoc/>
         public event EventHandler<AgentStatusChangedEventArgs>? StatusChanged;
@@ -65,6 +72,20 @@ namespace AgctorSDK.Core.Agents
 
         /// <inheritdoc/>
         public event EventHandler<ActorStateChangedEventArgs>? StateChanged;
+        
+        /// <inheritdoc/>
+        public void SetAgentFactory(IAgentFactory agentFactory)
+        {
+            _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
+            _logger.Info($"Agent {Id} factory set");
+        }
+        
+        /// <inheritdoc/>
+        public void SetParentAgentId(string? parentAgentId)
+        {
+            ParentAgentId = parentAgentId;
+            _logger.Info($"Agent {Id} parent set to {parentAgentId ?? "none"}");
+        }
 
         /// <inheritdoc/>
         public Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)

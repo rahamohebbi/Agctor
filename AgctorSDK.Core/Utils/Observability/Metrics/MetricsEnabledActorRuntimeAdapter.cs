@@ -136,6 +136,31 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
         }
 
         /// <inheritdoc />
+        public async Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
+        {
+            using var timer = _metricsCollector.TimeOperation(
+                MetricsConstants.Core.ActorRegistrationTime,
+                new KeyValuePair<string, object>(MetricsConstants.Tags.Runtime, Name),
+                new KeyValuePair<string, object>(MetricsConstants.Tags.ActorType, actor.GetType().Name)
+            );
+            
+            // Wrap the actor with metrics if it's not already wrapped
+            if (actor is not null && actor is not MetricsEnabledActor)
+            {
+                actor = new MetricsEnabledActor(actor, _metricsCollector);
+            }
+            
+            await _innerAdapter.RegisterActorAsync(actor, cancellationToken);
+            
+            _metricsCollector.IncrementCounter(
+                MetricsConstants.Core.ActorsRegistered,
+                1,
+                new KeyValuePair<string, object>(MetricsConstants.Tags.Runtime, Name),
+                new KeyValuePair<string, object>(MetricsConstants.Tags.ActorType, actor.GetType().Name)
+            );
+        }
+
+        /// <inheritdoc />
         public Task<T?> GetActorAsync<T>(string actorId, CancellationToken cancellationToken = default) where T : class, IActor
         {
             _metricsCollector.IncrementCounter(

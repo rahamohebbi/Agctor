@@ -81,6 +81,16 @@ namespace AgctorSDK.Core.Agents
         /// Gets the current hierarchy depth of this agent.
         /// </summary>
         public int HierarchyDepth => _hierarchyDepth;
+        
+        /// <summary>
+        /// The display name of the agent.
+        /// </summary>
+        public virtual string? Name => $"Agent-{Id}";
+        
+        /// <summary>
+        /// A description of the agent's purpose or function.
+        /// </summary>
+        public virtual string? Description => $"Agent of type {ActorType}";
 
         /// <summary>
         /// Event raised when the actor's state changes.
@@ -198,142 +208,161 @@ namespace AgctorSDK.Core.Agents
                 { 
                     { "SenderId", Id }, // This agent is sending the error
                     // ReceiverId might be unknown if envelope is null
-                    { "MessageType", "ErrorResponse" } 
+                    { "MessageId", errorId },
+                    { "MessageType", "Error" },
+                    { "ContentType", "text/plain" }
                 };
-                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: errorId, headers: errorHeaders);
+                return new MessageEnvelope(errorPayload, errorMetadata, null, errorHeaders);
             }
-            
-            if (envelope.Payload == null)
-            {   
-                LogWarning("Received message envelope with null payload.");
-                string originalSenderId = (envelope.Headers?.TryGetValue("SenderId", out var sid) == true ? sid : null) ?? "unknown";
-                var errorPayload = "Error: Null payload in received envelope.";
-                var errorId = envelope.Id ?? Guid.NewGuid().ToString(); // Try to use original Id
-                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
-                if (envelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true) { errorMetadata["CorrelationId"] = corrId; }
-
-                var errorHeaders = new Dictionary<string, string>
-                {
-                    { "SenderId", Id },
-                    { "ReceiverId", originalSenderId },
-                    { "MessageType", "ErrorResponse" }
-                };
-                return new MessageEnvelope(payload: errorPayload, metadata: errorMetadata, id: errorId, headers: errorHeaders);
-            }
-
-            LogInfo($"Received message with payload type: {envelope.Payload.GetType().Name}. MessageId: {envelope.Id}");
 
             try
             {
-                // Handle different message types
-                switch (envelope.Payload)
+                var message = envelope.Payload;
+                var headers = envelope.Headers;
+                
+                LogInfo($"Received message: {envelope.Headers.GetValueOrDefault("MessageType", "Unknown")}");
+                
+                // Status request
+                if (message is GetAgentStatusMessage statusMsg)
                 {
-                    case ProcessPromptMessage promptMsg:
-                        await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                        break;
-
-                    case SubtaskCompletedMessage completedMsg:
-                        LogInfo($"Received SubtaskCompletedMessage from child agent {completedMsg.ChildAgentId} with result type {completedMsg.Result?.GetType().Name ?? "null"}");
-                        try
-                        {
-                            await HandleSubtaskCompletionAsync(completedMsg.ChildAgentId, completedMsg.Result, cancellationToken);
-                            LogInfo($"Successfully handled subtask completion from child agent {completedMsg.ChildAgentId}");
-                        }
-                        catch (Exception ex)
-                        {
-                            // Use error handler middleware
-                            var errorContext = await ErrorHandler.HandleErrorAsync(
-                                ex, 
-                                Id, 
-                                envelope);
-                                
-                            if (!errorContext.IsHandled)
-                            {
-                                LogError($"Error handling subtask completion: {ex.Message}");
-                                LogError($"Stack Trace: {ex.StackTrace}");
-                            }
-                        }
-                        break;
-
-                    case SubtaskFailedMessage failedMsg:
-                        LogInfo($"Received SubtaskFailedMessage from child agent {failedMsg.ChildAgentId} with error: {failedMsg.Error.Message}");
-                        try
-                        {
-                            await HandleSubtaskFailureAsync(failedMsg.ChildAgentId, failedMsg.Error, cancellationToken);
-                            LogInfo($"Successfully handled subtask failure from child agent {failedMsg.ChildAgentId}");
-                        }
-                        catch (Exception ex)
-                        {
-                            // Use error handler middleware
-                            var errorContext = await ErrorHandler.HandleErrorAsync(
-                                ex, 
-                                Id, 
-                                envelope);
-                                
-                            if (!errorContext.IsHandled)
-                            {
-                                LogError($"Error handling subtask failure: {ex.Message}");
-                                LogError($"Stack Trace: {ex.StackTrace}");
-                            }
-                        }
-                        break;
-
-                    case GetAgentStatusMessage statusMsg:
-                        await HandleStatusRequestAsync(statusMsg, envelope, cancellationToken);
-                        break;
-
-                    case StopAgentMessage stopMsg:
-                        LogInfo($"Received stop request: {stopMsg.Reason}");
-                        await ShutdownAsync(cancellationToken);
-                        break;
-
-                    default:
-                        LogWarning($"Unknown message type: {envelope.Payload.GetType().Name}");
-                        break;
+                    return await HandleStatusRequestAsync(statusMsg, envelope, cancellationToken);
                 }
+                
+                // If we have a prompt message, process it as a prompt
+                if (envelope.Headers.TryGetValue("MessageType", out var messageType) && 
+                    messageType == "Prompt" &&
+                    message is string promptText)
+                {
+                    await ProcessPromptAsync(promptText, cancellationToken);
+                    
+                    // Return a simple acknowledgment
+                    var ackPayload = $"Prompt accepted. Agent {Id} is processing.";
+                    var ackId = Guid.NewGuid().ToString();
+                    var ackMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                    var ackHeaders = new Dictionary<string, string> 
+                    { 
+                        { "SenderId", Id },
+                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                        { "MessageId", ackId },
+                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                        { "MessageType", "Acknowledgment" },
+                        { "ContentType", "text/plain" }
+                    };
+                    return new MessageEnvelope(ackPayload, ackMetadata, ackId, ackHeaders);
+                }
+                
+                // Handle subtask assignment
+                if (envelope.Headers.TryGetValue("MessageType", out var msgType) && 
+                    msgType == "SubtaskAssignment" &&
+                    message is string subtaskPrompt)
+                {
+                    string subtaskId = await AssignSubtaskAsync(subtaskPrompt, null, cancellationToken);
+                    
+                    // Return the ID of the created subtask
+                    var subtaskPayload = subtaskId;
+                    var subtaskReplyId = Guid.NewGuid().ToString();
+                    var subtaskMetadata = new Dictionary<string, object> 
+                    { 
+                        { "Timestamp", DateTimeOffset.UtcNow },
+                        { "SubtaskId", subtaskId }
+                    };
+                    var subtaskHeaders = new Dictionary<string, string> 
+                    { 
+                        { "SenderId", Id },
+                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                        { "MessageId", subtaskReplyId },
+                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                        { "MessageType", "SubtaskCreated" },
+                        { "ContentType", "text/plain" }
+                    };
+                    return new MessageEnvelope(subtaskPayload, subtaskMetadata, subtaskReplyId, subtaskHeaders);
+                }
+                
+                // Handle subtask completion notification
+                if (envelope.Headers.TryGetValue("MessageType", out var completionMsgType) && 
+                    completionMsgType == "SubtaskCompleted" &&
+                    envelope.Headers.TryGetValue("SubtaskId", out var childId))
+                {
+                    await HandleSubtaskCompletionAsync(childId, message, cancellationToken);
+                    
+                    // Return acknowledgment
+                    var completionAckPayload = $"Subtask completion acknowledged for {childId}";
+                    var completionAckId = Guid.NewGuid().ToString();
+                    var completionAckMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                    var completionAckHeaders = new Dictionary<string, string> 
+                    { 
+                        { "SenderId", Id },
+                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                        { "MessageId", completionAckId },
+                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                        { "MessageType", "Acknowledgment" },
+                        { "ContentType", "text/plain" }
+                    };
+                    return new MessageEnvelope(completionAckPayload, completionAckMetadata, completionAckId, completionAckHeaders);
+                }
+                
+                // Handle subtask failure notification
+                if (envelope.Headers.TryGetValue("MessageType", out var failureMsgType) && 
+                    failureMsgType == "SubtaskFailed" &&
+                    envelope.Headers.TryGetValue("SubtaskId", out var failedChildId) &&
+                    message is Exception error)
+                {
+                    await HandleSubtaskFailureAsync(failedChildId, error, cancellationToken);
+                    
+                    // Return acknowledgment
+                    var failureAckPayload = $"Subtask failure acknowledged for {failedChildId}";
+                    var failureAckId = Guid.NewGuid().ToString();
+                    var failureAckMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                    var failureAckHeaders = new Dictionary<string, string> 
+                    { 
+                        { "SenderId", Id },
+                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                        { "MessageId", failureAckId },
+                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                        { "MessageType", "Acknowledgment" },
+                        { "ContentType", "text/plain" }
+                    };
+                    return new MessageEnvelope(failureAckPayload, failureAckMetadata, failureAckId, failureAckHeaders);
+                }
+                
+                // Default response for unhandled message types
+                var defaultPayload = $"Message received by agent {Id}, but no specific handler was found for this message type.";
+                var defaultId = Guid.NewGuid().ToString();
+                var defaultMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                var defaultHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id },
+                    { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                    { "MessageId", defaultId },
+                    { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                    { "MessageType", "Reply" },
+                    { "ContentType", "text/plain" }
+                };
+                return new MessageEnvelope(defaultPayload, defaultMetadata, defaultId, defaultHeaders);
             }
             catch (Exception ex)
             {
-                // Use error handler middleware for centralized error handling
-                var errorContext = await ErrorHandler.HandleErrorAsync(ex, Id, envelope);
+                LogError($"Error processing message: {ex.Message}");
                 
-                // Create and return appropriate error response
-                if (errorContext.Result is IMessageEnvelope errorResponse)
-                {
-                    return errorResponse;
-                }
-                
-                // Fall back to standard error response if middleware didn't create one
-                return Utils.ErrorHandling.ErrorHandlingMiddleware.CreateErrorResponse(ex, Id, envelope);
+                // Return error response
+                var errorPayload = $"Error processing message: {ex.Message}";
+                var errorId = Guid.NewGuid().ToString();
+                var errorMetadata = new Dictionary<string, object> 
+                { 
+                    { "Timestamp", DateTimeOffset.UtcNow },
+                    { "Exception", ex.ToString() }
+                };
+                var errorHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id },
+                    { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
+                    { "MessageId", errorId },
+                    { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
+                    { "MessageType", "Error" },
+                    { "ContentType", "text/plain" }
+                };
+                return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
-            // Return the original envelope as a default acknowledgment if no specific response was generated and no error occurred.
-            // This behavior might need review based on specific message contracts.
-            // For now, if a handler like ProcessPromptAsync is supposed to send its own response, 
-            // it should return null or a specific response envelope.
-            // If it returns void/Task, then this default return is an ACK.
-            // Let's assume for now that if a message is processed without error and doesn't generate a specific reply
-            // within this ReceiveAsync, we return an acknowledgement based on the original envelope.
-            
-            var ackMetadata = new Dictionary<string, object>(envelope.Metadata ?? new Dictionary<string, object>());
-            ackMetadata["ProcessedTimestamp"] = DateTimeOffset.UtcNow;
-            if (envelope.Metadata?.TryGetValue("CorrelationId", out var originalCorrId) == true)
-            {
-                ackMetadata["CorrelationId"] = originalCorrId; // Echo correlation ID
-            }
-
-            var ackHeaders = new Dictionary<string, string>(envelope.Headers ?? new Dictionary<string, string>());
-            // Swap sender/receiver for the ACK, or set new ones
-            string originalMsgSender = (envelope.Headers?.TryGetValue("SenderId", out var sId) == true ? sId : null) ?? "unknown";
-            ackHeaders["SenderId"] = Id; // This agent is sending the ACK
-            ackHeaders["ReceiverId"] = originalMsgSender; // Send ACK back to original sender
-            ackHeaders["MessageType"] = (envelope.Headers?.TryGetValue("MessageType", out var mt) == true ? mt : "UnknownType") + "_Ack";
-
-            return new MessageEnvelope(
-                payload: $"Successfully processed message of type {envelope.Payload.GetType().Name}", 
-                metadata: ackMetadata, 
-                id: Guid.NewGuid().ToString(), // New ID for the ACK envelope
-                headers: ackHeaders
-            );
         }
 
         /// <summary>
@@ -850,7 +879,7 @@ namespace AgctorSDK.Core.Agents
         /// <summary>
         /// Handles status request messages.
         /// </summary>
-        private async Task HandleStatusRequestAsync(GetAgentStatusMessage statusMsg, IMessageEnvelope originalEnvelope, CancellationToken cancellationToken)
+        private async Task<IMessageEnvelope> HandleStatusRequestAsync(GetAgentStatusMessage statusMsg, IMessageEnvelope originalEnvelope, CancellationToken cancellationToken)
         {
             LogInfo($"Handling status request from: {originalEnvelope.Headers?.FirstOrDefault(h => h.Key == "SenderId").Value ?? "unknown"}");
 
@@ -863,13 +892,34 @@ namespace AgctorSDK.Core.Agents
             if (string.IsNullOrEmpty(originalSenderId))
             {
                 LogWarning("Cannot respond to status request: SenderId not found in original envelope headers.");
-                return;
+                var errorPayload = "Error: Cannot respond to status request - missing sender ID.";
+                var errorId = Guid.NewGuid().ToString();
+                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                var errorHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id },
+                    { "MessageId", errorId },
+                    { "MessageType", "Error" },
+                    { "ContentType", "text/plain" }
+                };
+                return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
 
             if (_agentFactory?.RuntimeAdapter == null)
             {
                 LogError("Cannot send status response: AgentFactory or RuntimeAdapter is not available.");
-                return;
+                var errorPayload = "Error: Cannot respond to status request - missing runtime adapter.";
+                var errorId = Guid.NewGuid().ToString();
+                var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
+                var errorHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id },
+                    { "ReceiverId", originalSenderId },
+                    { "MessageId", errorId },
+                    { "MessageType", "Error" },
+                    { "ContentType", "text/plain" }
+                };
+                return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
 
             var responsePayload = new 
@@ -886,22 +936,48 @@ namespace AgctorSDK.Core.Agents
                 mcpMetadata["CorrelationId"] = corrId; // Echo correlation ID
             }
 
+            var messageId = Guid.NewGuid().ToString();
             var mcpHeaders = new Dictionary<string, string>
             {
                 { "SenderId", Id }, // This agent is the sender of the response
                 { "ReceiverId", originalSenderId }, // Send back to original sender
-                { "MessageType", responsePayload.GetType().Name },
-                { "Version", "1.0" }
+                { "MessageId", messageId },
+                { "InReplyTo", originalEnvelope.Headers.GetValueOrDefault("MessageId", "") },
+                { "MessageType", "AgentStatusResponse" },
+                { "ContentType", "application/json" }
             };
 
             try
             {
+                // Also send the response via the runtime for asynchronous processing
                 await _agentFactory.RuntimeAdapter.SendMessageAsync(originalSenderId, responsePayload, Id, mcpHeaders, cancellationToken);
                 LogInfo($"Successfully sent status response to {originalSenderId}");
+                
+                // Return an immediate acknowledgment
+                return new MessageEnvelope(responsePayload, mcpMetadata, messageId, mcpHeaders);
             }
             catch (Exception ex)
             {
                 LogError($"Failed to send status response to {originalSenderId}: {ex.Message}");
+                
+                // Return error response
+                var errorPayload = $"Error sending status: {ex.Message}";
+                var errorId = Guid.NewGuid().ToString();
+                var errorMetadata = new Dictionary<string, object> 
+                { 
+                    { "Timestamp", DateTimeOffset.UtcNow },
+                    { "Exception", ex.ToString() }
+                };
+                var errorHeaders = new Dictionary<string, string> 
+                { 
+                    { "SenderId", Id },
+                    { "ReceiverId", originalSenderId },
+                    { "MessageId", errorId },
+                    { "InReplyTo", originalEnvelope.Headers.GetValueOrDefault("MessageId", "") },
+                    { "MessageType", "Error" },
+                    { "ContentType", "text/plain" }
+                };
+                return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
         }
 
@@ -986,8 +1062,17 @@ namespace AgctorSDK.Core.Agents
             if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
             {
                 var completionMessage = new SubtaskCompletedMessage(Id, ParentAgentId, result);
-                var envelope = new MessageEnvelope(completionMessage);
-                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
+                var messageId = Guid.NewGuid().ToString();
+                var headers = new Dictionary<string, string>
+                {
+                    { "SenderId", Id },
+                    { "ReceiverId", ParentAgentId },
+                    { "MessageId", messageId },
+                    { "MessageType", "SubtaskCompleted" },
+                    { "SubtaskId", Id }
+                };
+                var envelope = new MessageEnvelope(completionMessage, null, messageId, headers);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, Id, null, cancellationToken);
                 LogInfo($"Sent subtask completion message to parent {ParentAgentId}.");
             }
             else
@@ -1002,8 +1087,17 @@ namespace AgctorSDK.Core.Agents
             if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
             {
                 var failureMessage = new SubtaskFailedMessage(Id, ParentAgentId, error);
-                var envelope = new MessageEnvelope(failureMessage);
-                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, cancellationToken: cancellationToken);
+                var messageId = Guid.NewGuid().ToString();
+                var headers = new Dictionary<string, string>
+                {
+                    { "SenderId", Id },
+                    { "ReceiverId", ParentAgentId },
+                    { "MessageId", messageId },
+                    { "MessageType", "SubtaskFailed" },
+                    { "SubtaskId", Id }
+                };
+                var envelope = new MessageEnvelope(failureMessage, null, messageId, headers);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, Id, null, cancellationToken);
                 LogInfo($"Sent subtask failure message to parent {ParentAgentId}.");
             }
             else

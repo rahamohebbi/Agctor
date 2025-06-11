@@ -106,6 +106,19 @@ namespace AgctorSDK.Core.Adapters
         }
 
         /// <summary>
+        /// Registers an existing actor instance with the Orleans runtime.
+        /// TODO: Implement Orleans grain registration logic.
+        /// </summary>
+        /// <param name="actor">The actor instance to register</param>
+        /// <param name="cancellationToken">Token for cancelling the operation</param>
+        /// <returns>A task representing the asynchronous registration operation</returns>
+        public Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException("Orleans actor registration is not yet implemented. " +
+                "This will register an existing actor instance with the Orleans runtime.");
+        }
+
+        /// <summary>
         /// Gets a reference to an existing Orleans grain by its ID.
         /// TODO: Implement Orleans grain reference retrieval.
         /// </summary>

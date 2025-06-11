@@ -1,14 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Utils.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Core.Agents
 {
     /// <summary>
-    /// Factory implementation for creating and managing agent instances.
-    /// Uses the underlying actor runtime adapter to spawn agents and provides agent-specific functionality.
+    /// Default implementation of the agent factory for creating agent instances.
     /// </summary>
     public class AgentFactory : IAgentFactory
     {
@@ -16,6 +19,43 @@ namespace AgctorSDK.Core.Agents
         private readonly Dictionary<string, Type> _agentTypes;
         private static readonly object _lockObject = new();
         private static int _agentCounter = 0;
+        private readonly IServiceProvider _serviceProvider;
+        private readonly IAgctorLogger _logger;
+        private readonly IAgentRegistry _agentRegistry;
+
+        /// <summary>
+        /// Initializes a new instance of the AgentFactory class.
+        /// </summary>
+        /// <param name="runtimeAdapter">The actor runtime adapter to use for spawning agents</param>
+        /// <param name="serviceProvider">The service provider for dependency resolution</param>
+        /// <param name="logger">Logger for diagnostic information</param>
+        /// <param name="agentRegistry">Registry for tracking agent instances</param>
+        /// <param name="options">Optional agent type options</param>
+        public AgentFactory(
+            IActorRuntimeAdapter runtimeAdapter,
+            IServiceProvider serviceProvider,
+            IAgctorLogger logger,
+            IAgentRegistry agentRegistry,
+            IOptions<AgentTypeOptions>? options = null)
+        {
+            _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
+            _agentTypes = new Dictionary<string, Type>();
+            
+            // Register default agent types
+            RegisterAgentType<Agent>();
+            
+            // Register agent types from options if provided
+            if (options?.Value != null)
+            {
+                foreach (var (typeName, agentType) in options.Value.AgentTypes)
+                {
+                    _agentTypes[typeName] = agentType;
+                }
+            }
+        }
 
         /// <summary>
         /// Gets the underlying actor runtime adapter used by this factory.
@@ -23,16 +63,144 @@ namespace AgctorSDK.Core.Agents
         public IActorRuntimeAdapter RuntimeAdapter => _runtimeAdapter;
 
         /// <summary>
-        /// Initializes a new instance of the AgentFactory.
+        /// Stops an agent by ID.
         /// </summary>
-        /// <param name="runtimeAdapter">The actor runtime adapter to use for spawning agents</param>
-        public AgentFactory(IActorRuntimeAdapter runtimeAdapter)
+        /// <param name="agentId">The ID of the agent to stop</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public Task StopAgentAsync(string agentId, CancellationToken cancellationToken = default)
         {
-            _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
-            _agentTypes = new Dictionary<string, Type>();
+            if (string.IsNullOrEmpty(agentId))
+            {
+                throw new ArgumentException("Agent ID cannot be null or empty", nameof(agentId));
+            }
+
+            _logger.Info($"Stopping agent {agentId}");
+            return _runtimeAdapter.StopActorAsync(agentId, cancellationToken);
+        }
+
+        /// <summary>
+        /// Gets the available agent types registered with this factory.
+        /// </summary>
+        /// <returns>Collection of registered agent type names</returns>
+        public IEnumerable<string> GetAvailableAgentTypes()
+        {
+            return _agentTypes.Keys;
+        }
+
+        /// <summary>
+        /// Registers an agent type with the factory.
+        /// </summary>
+        /// <typeparam name="T">The agent type to register</typeparam>
+        /// <param name="typeName">Optional custom type name</param>
+        public void RegisterAgentType<T>(string? typeName = null) where T : IAgent
+        {
+            typeName ??= typeof(T).Name;
+            _agentTypes[typeName] = typeof(T);
+        }
+
+        /// <summary>
+        /// Generates a unique agent ID for new agent instances.
+        /// </summary>
+        /// <param name="agentTypeName">The agent type name</param>
+        /// <param name="parentAgentId">Optional parent agent ID</param>
+        /// <returns>A unique agent ID</returns>
+        public string GenerateAgentId(string agentTypeName, string? parentAgentId = null)
+        {
+            lock (_lockObject)
+            {
+                _agentCounter++;
+                
+                var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
+                var baseId = $"{agentTypeName}-{timestamp}-{_agentCounter:D4}";
+                
+                if (!string.IsNullOrWhiteSpace(parentAgentId))
+                {
+                    return $"{parentAgentId}.{baseId}";
+                }
+                
+                return baseId;
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<IAgent> SpawnAgentAsync(
+            string agentType,
+            string? initialPrompt = null,
+            string? parentAgentId = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(agentType))
+            {
+                throw new ArgumentException("Agent type cannot be null or empty", nameof(agentType));
+            }
+
+            _logger.Info($"Spawning agent of type {agentType}");
+
+            // Generate a unique agent ID
+            string agentId = GenerateAgentId(agentType, parentAgentId);
             
-            // Register default agent types
-            RegisterDefaultAgentTypes();
+            // Get the agent type
+            if (!_agentTypes.TryGetValue(agentType, out var type))
+            {
+                throw new InvalidOperationException($"Agent type {agentType} not registered");
+            }
+
+            try
+            {
+                // Create the agent instance
+                var agent = CreateAgentInstance(type, agentId);
+
+                // Configure the agent
+                agent.SetAgentFactory(this);
+                agent.SetParentAgentId(parentAgentId);
+
+                // Register the agent with the runtime
+                await _runtimeAdapter.RegisterActorAsync(agent, cancellationToken);
+                
+                // Register the agent with our registry
+                await _agentRegistry.RegisterAgentAsync(agent);
+
+                // Initialize the agent
+                await agent.InitializeAsync(cancellationToken);
+
+                // Process the initial prompt if provided
+                if (!string.IsNullOrEmpty(initialPrompt))
+                {
+                    await agent.ProcessPromptAsync(initialPrompt, cancellationToken);
+                }
+
+                return agent;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Failed to spawn agent of type {agentType}: {ex.Message}");
+                throw;
+            }
+        }
+
+        private IAgent CreateAgentInstance(Type agentType, string agentId)
+        {
+            // Try to find a constructor with an ID parameter
+            var constructorWithId = agentType.GetConstructor(new[] { typeof(string) });
+            if (constructorWithId != null)
+            {
+                return (IAgent)Activator.CreateInstance(agentType, agentId)!;
+            }
+
+            // Try to create using the default constructor and set the ID via reflection
+            var agent = (IAgent)ActivatorUtilities.CreateInstance(_serviceProvider, agentType);
+            var idProperty = agentType.GetProperty("Id");
+            if (idProperty != null && idProperty.CanWrite)
+            {
+                idProperty.SetValue(agent, agentId);
+            }
+            else
+            {
+                _logger.Warning($"Could not set ID for agent of type {agentType.Name}");
+            }
+
+            return agent;
         }
 
         /// <summary>
@@ -149,95 +317,6 @@ namespace AgctorSDK.Core.Agents
                 throw new ArgumentException("Agent ID cannot be null or empty", nameof(agentId));
 
             return await _runtimeAdapter.GetActorAsync<IAgent>(agentId, cancellationToken);
-        }
-
-        /// <summary>
-        /// Stops and removes an agent from the runtime.
-        /// </summary>
-        /// <param name="agentId">The agent ID</param>
-        /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Task representing the stop operation</returns>
-        public async Task StopAgentAsync(string agentId, CancellationToken cancellationToken = default)
-        {
-            if (string.IsNullOrWhiteSpace(agentId))
-                throw new ArgumentException("Agent ID cannot be null or empty", nameof(agentId));
-
-            await _runtimeAdapter.StopActorAsync(agentId, cancellationToken);
-        }
-
-        /// <summary>
-        /// Generates a unique agent ID for new agent instances.
-        /// </summary>
-        /// <param name="agentTypeName">The agent type name</param>
-        /// <param name="parentAgentId">Optional parent agent ID</param>
-        /// <returns>A unique agent ID</returns>
-        public string GenerateAgentId(string agentTypeName, string? parentAgentId = null)
-        {
-            lock (_lockObject)
-            {
-                _agentCounter++;
-                
-                var timestamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss");
-                var baseId = $"{agentTypeName}-{timestamp}-{_agentCounter:D4}";
-                
-                if (!string.IsNullOrWhiteSpace(parentAgentId))
-                {
-                    return $"{parentAgentId}.{baseId}";
-                }
-                
-                return baseId;
-            }
-        }
-
-        /// <summary>
-        /// Registers an agent type with the factory for dynamic spawning.
-        /// </summary>
-        /// <typeparam name="TAgent">The agent type to register</typeparam>
-        /// <param name="typeName">Optional custom type name (uses class name if not provided)</param>
-        public void RegisterAgentType<TAgent>(string? typeName = null) where TAgent : class, IAgent
-        {
-            typeName ??= typeof(TAgent).Name;
-            _agentTypes[typeName] = typeof(TAgent);
-        }
-
-        /// <summary>
-        /// Registers an agent type with the factory for dynamic spawning.
-        /// </summary>
-        /// <param name="agentType">The agent type to register</param>
-        /// <param name="typeName">Optional custom type name (uses class name if not provided)</param>
-        public void RegisterAgentType(Type agentType, string? typeName = null)
-        {
-            if (agentType == null)
-                throw new ArgumentNullException(nameof(agentType));
-
-            if (!typeof(IAgent).IsAssignableFrom(agentType))
-                throw new ArgumentException($"Type {agentType.Name} must implement IAgent", nameof(agentType));
-
-            typeName ??= agentType.Name;
-            _agentTypes[typeName] = agentType;
-        }
-
-        /// <summary>
-        /// Gets all registered agent type names.
-        /// </summary>
-        /// <returns>Collection of registered agent type names</returns>
-        public IEnumerable<string> GetRegisteredAgentTypes()
-        {
-            return _agentTypes.Keys;
-        }
-
-        /// <summary>
-        /// Registers default agent types that are available by default.
-        /// </summary>
-        private void RegisterDefaultAgentTypes()
-        {
-            // Register the basic Agent type
-            RegisterAgentType<Agent>("Agent");
-            RegisterAgentType<Agent>("BasicAgent");
-
-            // Register the HumanAgentAdapter for human fallback (prd-cli-001.md)
-            RegisterAgentType<HumanAgentAdapter>("HumanAgentAdapter");
-            RegisterAgentType<HumanAgentAdapter>("human"); // Alias for easy spawning
         }
     }
 

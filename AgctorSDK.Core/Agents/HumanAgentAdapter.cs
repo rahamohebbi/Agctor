@@ -76,7 +76,7 @@ namespace AgctorSDK.Core.Agents
                 
                 // Request human input via the runtime adapter.
                 // The runtime adapter (e.g., InMemoryActorRuntime) will handle the actual CLI interaction.
-                string humanInputText = await runtimeAdapter.RequestHumanInputAsync(Id, prompt, instructions, cancellationToken);
+                string humanInputText = await runtimeAdapter.RequestHumanInputAsync(prompt, Id, instructions, cancellationToken);
                 
                 // Store the received input as the agent's result.
                 HumanResponse = humanInputText; 
