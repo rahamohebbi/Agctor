@@ -1,9 +1,10 @@
-﻿
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Visualization", "Visualization\Visualization.csproj", "{55CA9E28-A63C-44D4-A84D-93C8FBEC715E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgentNetworkVisualization", "AgentNetworkVisualization\AgentNetworkVisualization.csproj", "{673C8E46-C9A8-4FDC-BA64-ADCB3A6F53AD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,5 +19,9 @@ Global
 		{55CA9E28-A63C-44D4-A84D-93C8FBEC715E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{55CA9E28-A63C-44D4-A84D-93C8FBEC715E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{55CA9E28-A63C-44D4-A84D-93C8FBEC715E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{673C8E46-C9A8-4FDC-BA64-ADCB3A6F53AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{673C8E46-C9A8-4FDC-BA64-ADCB3A6F53AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{673C8E46-C9A8-4FDC-BA64-ADCB3A6F53AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{673C8E46-C9A8-4FDC-BA64-ADCB3A6F53AD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
