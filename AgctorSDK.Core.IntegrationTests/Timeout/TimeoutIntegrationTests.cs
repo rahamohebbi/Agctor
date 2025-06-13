@@ -197,11 +197,15 @@ namespace AgctorSDK.Core.IntegrationTests.Timeout
                 Func<CancellationToken, Task<T>> operation,
                 ITimeoutPolicy timeoutPolicy)
             {
+                // Call the extension method explicitly with required parameters
                 return await this.ExecuteWithTimeoutAsync(
                     timeoutSupervisor,
                     operationId,
                     operation,
-                    timeoutPolicy);
+                    taskComplexity: 1,
+                    timeoutPolicy: timeoutPolicy,
+                    timeoutBudget: null,
+                    cancellationToken: CancellationToken.None);
             }
 
             /// <summary>

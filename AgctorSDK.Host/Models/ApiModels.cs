@@ -232,4 +232,57 @@ namespace AgctorSDK.Host.Models
         /// </summary>
         public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
     }
+
+    public record BatchToolRequest(
+        List<BatchToolItem> Tools,
+        bool ExecuteInParallel = false
+    );
+
+    public record BatchToolItem(
+        string ToolId,
+        Dictionary<string, object> Parameters
+    );
+
+    public record BatchToolResponse(
+        bool Success,
+        List<BatchToolResult> Results,
+        TimeSpan TotalExecutionTime
+    );
+
+    public record BatchToolResult(
+        string ToolId,
+        bool Success,
+        object? Result,
+        string? ErrorMessage,
+        TimeSpan ExecutionTime
+    );
+
+    // New models for agent creation
+    public record AgentCreationRequest(
+        string AgentId,
+        string AgentType,
+        Dictionary<string, object>? Configuration = null,
+        string? ParentAgentId = null
+    );
+
+    public record AgentCreationResponse(
+        bool Success,
+        string? AgentId,
+        string? AgentType,
+        string? ErrorMessage
+    );
+
+    // New models for scenario setup
+    public record ScenarioSetupRequest(
+        string ScenarioName,
+        Dictionary<string, object>? Parameters = null
+    );
+
+    public record ScenarioSetupResponse(
+        bool Success,
+        string ScenarioName,
+        List<string> CreatedAgentIds,
+        Dictionary<string, string> AgentRoles,
+        string? ErrorMessage
+    );
 } 

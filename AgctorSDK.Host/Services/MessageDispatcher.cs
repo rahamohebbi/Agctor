@@ -76,21 +76,40 @@ namespace AgctorSDK.Host.Services
                 var envelope = CreateMessageEnvelope(request);
                 var senderId = request.SenderId ?? "http-api";
 
-                // Send message through Actor Model
-                var messageId = envelope.Id;
-                await _runtimeAdapter.SendMessageAsync(
+                // Send message and wait for response (request-response pattern)
+                var timeout = TimeSpan.FromSeconds(30); // Increased timeout for LLM responses
+                _logger.LogInformation("Sending request-response message to agent {AgentId} with {TimeoutSeconds}s timeout", agentId, timeout.TotalSeconds);
+                
+                var response = await _runtimeAdapter.SendMessageAsync<string>(
                     targetActorId: agentId,
                     message: envelope.Payload,
+                    timeout: timeout,
                     senderId: senderId,
                     headers: envelope.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
                     cancellationToken: cancellationToken);
 
-                _logger.LogInformation("Message {MessageId} successfully sent to agent {AgentId}", messageId, agentId);
+                _logger.LogInformation("Received response from agent {AgentId}. Response: {ResponseType}", agentId, response?.GetType().Name ?? "null");
+
+                // The response is now the payload directly
+                var responseData = response;
+                var isError = false; // If we got a string response, it's successful (errors would throw exceptions)
 
                 return new MessageResponse
                 {
-                    MessageId = messageId,
-                    Status = MessageStatus.Success
+                    MessageId = envelope.Id,
+                    Status = isError ? MessageStatus.Failed : MessageStatus.Success,
+                    ResponseData = responseData,
+                    ErrorMessage = isError ? responseData?.ToString() : null
+                };
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("Message sending to agent {AgentId} timed out", agentId);
+                return new MessageResponse
+                {
+                    MessageId = Guid.NewGuid().ToString(),
+                    Status = MessageStatus.Failed,
+                    ErrorMessage = "Agent response timed out"
                 };
             }
             catch (OperationCanceledException)
@@ -101,6 +120,16 @@ namespace AgctorSDK.Host.Services
                     MessageId = Guid.NewGuid().ToString(),
                     Status = MessageStatus.Failed,
                     ErrorMessage = "Operation was cancelled"
+                };
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Target actor") && ex.Message.Contains("not found"))
+            {
+                _logger.LogWarning("Agent {AgentId} not found in actor runtime: {Message}", agentId, ex.Message);
+                return new MessageResponse
+                {
+                    MessageId = Guid.NewGuid().ToString(),
+                    Status = MessageStatus.AgentNotFound,
+                    ErrorMessage = $"Agent '{agentId}' not found in actor runtime"
                 };
             }
             catch (Exception ex)
@@ -169,6 +198,16 @@ namespace AgctorSDK.Host.Services
                     ErrorMessage = "Operation was cancelled"
                 };
             }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Target actor") && ex.Message.Contains("not found"))
+            {
+                _logger.LogWarning("Agent {AgentId} not found in actor runtime: {Message}", agentId, ex.Message);
+                return new MessageResponse
+                {
+                    MessageId = envelope.Id,
+                    Status = MessageStatus.AgentNotFound,
+                    ErrorMessage = $"Agent '{agentId}' not found in actor runtime"
+                };
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to send message envelope to agent {AgentId}", agentId);
@@ -220,9 +259,27 @@ namespace AgctorSDK.Host.Services
                 }
             }
 
+            // Convert payload to appropriate type
+            // If it's a JsonElement (from HTTP JSON deserialization), extract the actual value
+            object payload = request.Payload;
+            if (request.Payload is System.Text.Json.JsonElement jsonElement)
+            {
+                payload = jsonElement.ValueKind switch
+                {
+                    System.Text.Json.JsonValueKind.String => jsonElement.GetString()!,
+                    System.Text.Json.JsonValueKind.Number when jsonElement.TryGetInt32(out var intValue) => intValue,
+                    System.Text.Json.JsonValueKind.Number when jsonElement.TryGetDouble(out var doubleValue) => doubleValue,
+                    System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonValueKind.Null => null!,
+                    System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Array => jsonElement.GetRawText(),
+                    _ => jsonElement.ToString()
+                };
+            }
+
             return new MessageEnvelope(
                 id: Guid.NewGuid().ToString(),
-                payload: request.Payload,
+                payload: payload,
                 metadata: metadata,
                 headers: headers);
         }

@@ -1,6 +1,8 @@
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Registry;
+using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Mcp;
 
@@ -18,12 +20,23 @@ builder.Services.AddSwaggerGen(c =>
     });
     
     // Enable XML documentation for better Swagger docs
+    // Commented out for now as XML file might not exist
+    /*
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
     {
         c.IncludeXmlComments(xmlPath);
     }
+    */
+});
+
+// Configure agent types
+builder.Services.Configure<AgentTypeOptions>(options =>
+{
+    options.RegisterAgentType("Agent", typeof(Agent));
+    options.RegisterAgentType("LLMAgent", typeof(LLMAgent));
+    options.RegisterAgentType("CodeExecutorTool", typeof(CodeExecutorTool));
 });
 
 // Register AGCTOR Core services
@@ -33,6 +46,9 @@ builder.Services.AddAgctor();
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
+
+// Register scenario services
+builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 
 // Register MCP services as hosted services
 builder.Services.AddHostedService<McpListener>();
@@ -50,15 +66,28 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Initialize the actor runtime before starting the application
+Console.WriteLine("🔧 Initializing Actor Runtime...");
+var runtime = app.Services.GetRequiredService<IActorRuntimeAdapter>();
+await runtime.InitializeAsync(new Dictionary<string, object>
+{
+    ["Environment"] = app.Environment.EnvironmentName,
+    ["MaxConcurrentMessages"] = 1000,
+    ["DefaultTimeoutMs"] = 30000
+});
+Console.WriteLine("✅ Actor Runtime initialized successfully");
+
 // Configure the HTTP request pipeline
+// Enable Swagger in all environments for API documentation
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "AGCTOR Host API v1");
+    c.RoutePrefix = "swagger";
+});
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "AGCTOR Host API v1");
-        c.RoutePrefix = "swagger";
-    });
     app.UseCors("AllowAll");
 }
 
@@ -67,7 +96,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 Console.WriteLine("🚀 AGCTOR Host starting...");
-Console.WriteLine($"📊 Swagger UI available at: {(app.Environment.IsDevelopment() ? "https://localhost:5001/swagger" : "N/A")}");
+Console.WriteLine("📊 Swagger UI available at: http://localhost:5000/swagger");
 Console.WriteLine("🔌 MCP listener will start on TCP port 8080");
 
 app.Run();

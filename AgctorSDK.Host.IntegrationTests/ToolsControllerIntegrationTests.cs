@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Controllers;
 using AgctorSDK.Host.Services;
@@ -16,10 +17,22 @@ namespace AgctorSDK.Host.IntegrationTests
     {
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
+        private static int _portCounter = 9080; // Different base port from AgentsController
 
         public ToolsControllerIntegrationTests(WebApplicationFactory<Program> factory)
         {
-            _factory = factory;
+            _factory = factory.WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureAppConfiguration((context, config) =>
+                {
+                    // Use a unique port for each test to avoid conflicts
+                    var uniquePort = Interlocked.Increment(ref _portCounter);
+                    config.AddInMemoryCollection(new[]
+                    {
+                        new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                    });
+                });
+            });
             _client = _factory.CreateClient();
         }
 
@@ -160,13 +173,13 @@ namespace AgctorSDK.Host.IntegrationTests
         {
             // Arrange
             var toolId = "file-system";
-            var request = new ToolInvocationRequest
-            {
-                Parameters = null!
-            };
+            
+            // Create request with explicit null parameters
+            var jsonContent = """{"parameters": null, "timeoutSeconds": 10}""";
+            var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
 
             // Act
-            var response = await _client.PostAsJsonAsync($"/api/tools/{toolId}/invoke", request);
+            var response = await _client.PostAsync($"/api/tools/{toolId}/invoke", content);
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -360,7 +373,7 @@ namespace AgctorSDK.Host.IntegrationTests
             
             var results = batchResponse!.ToList();
             results[0].Status.Should().Be(ToolExecutionStatus.Success);
-            results[1].Status.Should().Be(ToolExecutionStatus.Failed); // Non-existent tool
+            results[1].Status.Should().Be(ToolExecutionStatus.ToolNotFound); // Non-existent tool
         }
 
         [Fact]

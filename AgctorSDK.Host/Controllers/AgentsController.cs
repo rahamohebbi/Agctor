@@ -1,5 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Tools;
+using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 
@@ -16,15 +19,18 @@ namespace AgctorSDK.Host.Controllers
     {
         private readonly IMessageDispatcher _messageDispatcher;
         private readonly IAgentRegistry _agentRegistry;
+        private readonly IAgentFactory _agentFactory;
         private readonly ILogger<AgentsController> _logger;
 
         public AgentsController(
             IMessageDispatcher messageDispatcher,
             IAgentRegistry agentRegistry,
+            IAgentFactory agentFactory,
             ILogger<AgentsController> logger)
         {
             _messageDispatcher = messageDispatcher ?? throw new ArgumentNullException(nameof(messageDispatcher));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
+            _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -220,6 +226,96 @@ namespace AgctorSDK.Host.Controllers
         }
 
         /// <summary>
+        /// Creates a new agent in the system.
+        /// </summary>
+        /// <param name="request">The agent creation request</param>
+        /// <param name="cancellationToken">Cancellation token for the operation</param>
+        /// <returns>Response indicating agent creation status</returns>
+        /// <response code="201">Agent was successfully created</response>
+        /// <response code="400">Invalid request format or parameters</response>
+        /// <response code="409">Agent with the same ID already exists</response>
+        /// <response code="500">Internal server error occurred</response>
+        [HttpPost]
+        [ProducesResponseType(typeof(AgentCreationResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<AgentCreationResponse>> CreateAgentAsync(
+            [FromBody] AgentCreationRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("Creating agent {AgentId} of type {AgentType}", request.AgentId, request.AgentType);
+
+            try
+            {
+                // Validate input
+                if (string.IsNullOrWhiteSpace(request.AgentId))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "INVALID_AGENT_ID",
+                        Message = "Agent ID cannot be null or empty"
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.AgentType))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "INVALID_AGENT_TYPE",
+                        Message = "Agent type cannot be null or empty"
+                    });
+                }
+
+                // Check if agent already exists
+                var existingAgent = await _agentRegistry.GetAgentByIdAsync(request.AgentId);
+                if (existingAgent != null)
+                {
+                    return Conflict(new ErrorResponse
+                    {
+                        Code = "AGENT_ALREADY_EXISTS",
+                        Message = $"Agent with ID '{request.AgentId}' already exists"
+                    });
+                }
+
+                // Create the agent
+                var agent = await CreateAgentByTypeAsync(request.AgentId, request.AgentType, request.Configuration);
+                
+                // Register the agent
+                await _agentRegistry.RegisterAgentAsync(agent);
+
+                _logger.LogInformation("Successfully created agent {AgentId} of type {AgentType}", request.AgentId, request.AgentType);
+
+                var response = new AgentCreationResponse(
+                    Success: true,
+                    AgentId: request.AgentId,
+                    AgentType: request.AgentType,
+                    ErrorMessage: null
+                );
+
+                return Created($"/api/agents/{request.AgentId}", response);
+            }
+            catch (ArgumentException ex)
+            {
+                _logger.LogWarning(ex, "Invalid agent type {AgentType}", request.AgentType);
+                return BadRequest(new ErrorResponse
+                {
+                    Code = "INVALID_AGENT_TYPE",
+                    Message = ex.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating agent {AgentId}", request.AgentId);
+                return StatusCode(500, new ErrorResponse
+                {
+                    Code = "INTERNAL_ERROR",
+                    Message = "An internal error occurred while creating the agent"
+                });
+            }
+        }
+
+        /// <summary>
         /// Gets the health status of the agent system.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for the operation</param>
@@ -261,6 +357,53 @@ namespace AgctorSDK.Host.Controllers
                     Message = "Health check failed"
                 });
             }
+        }
+
+        /// <summary>
+        /// Helper method to create agents by type.
+        /// </summary>
+        /// <param name="agentId">The unique ID for the agent</param>
+        /// <param name="agentType">The type of agent to create</param>
+        /// <param name="configuration">Optional configuration for the agent</param>
+        /// <returns>The created agent instance</returns>
+        private async Task<IAgent> CreateAgentByTypeAsync(string agentId, string agentType, Dictionary<string, object>? configuration)
+        {
+            // Extract prompt from configuration or use default
+            var prompt = "Default agent prompt";
+            string? parentAgentId = null;
+
+            if (configuration != null)
+            {
+                if (configuration.TryGetValue("prompt", out var promptValue) && promptValue is string promptStr)
+                {
+                    prompt = promptStr;
+                }
+                if (configuration.TryGetValue("parentAgentId", out var parentValue) && parentValue is string parentStr)
+                {
+                    parentAgentId = parentStr;
+                }
+            }
+
+            // Create the appropriate agent based on type using SpawnAgentAsync
+            IAgent agent = agentType switch
+            {
+                "RootAgent" => await _agentFactory.SpawnAgentAsync<Agent>(prompt, parentAgentId, agentId),
+                "Agent" => await _agentFactory.SpawnAgentAsync<Agent>(prompt, parentAgentId, agentId),
+                "LLMAgent" => await _agentFactory.SpawnAgentAsync<LLMAgent>(prompt, parentAgentId, agentId),
+                "CodeExecutorTool" => await _agentFactory.SpawnAgentAsync<CodeExecutorTool>(prompt, parentAgentId, agentId),
+                "CodeEditorTool" => await _agentFactory.SpawnAgentAsync<CodeEditorTool>(prompt, parentAgentId, agentId),
+                _ => throw new ArgumentException($"Unknown agent type: {agentType}")
+            };
+
+            // Apply additional configuration if provided
+            if (configuration != null && configuration.Count > 0)
+            {
+                // In a full implementation, you'd apply agent-specific configuration
+                _logger.LogInformation("Configuration provided for agent {AgentId}: {Configuration}", 
+                    agentId, string.Join(", ", configuration.Keys));
+            }
+
+            return agent;
         }
 
         /// <summary>

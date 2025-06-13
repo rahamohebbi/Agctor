@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.Host.Models;
 
@@ -16,11 +17,13 @@ namespace AgctorSDK.Host.IntegrationTests
     public class McpIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
     {
         private readonly WebApplicationFactory<Program> _factory;
-        private readonly int _mcpPort = 8081; // Use different port to avoid conflicts
+        private static int _portCounter = 10080; // Different base port from other test classes
+        private readonly int _mcpPort;
         private TcpClient? _testClient;
 
         public McpIntegrationTests(WebApplicationFactory<Program> factory)
         {
+            _mcpPort = Interlocked.Increment(ref _portCounter);
             _factory = factory;
         }
 
@@ -29,11 +32,17 @@ namespace AgctorSDK.Host.IntegrationTests
             // Start the web application with custom MCP port
             _ = _factory.WithWebHostBuilder(builder =>
             {
+                builder.ConfigureAppConfiguration((context, config) =>
+                {
+                    config.AddInMemoryCollection(new[]
+                    {
+                        new KeyValuePair<string, string?>("Mcp:Port", _mcpPort.ToString())
+                    });
+                });
                 builder.ConfigureServices(services =>
                 {
                     services.Configure<HostOptions>(opts => opts.ShutdownTimeout = TimeSpan.FromSeconds(45));
                 });
-                builder.UseSetting("Mcp:Port", _mcpPort.ToString());
             }).CreateClient();
 
             // Give the MCP listener time to start
