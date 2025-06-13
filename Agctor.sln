@@ -10,6 +10,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Core.Tests", "Agc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Core.IntegrationTests", "AgctorSDK.Core.IntegrationTests\AgctorSDK.Core.IntegrationTests.csproj", "{B5489EDF-E6BD-4F9B-807F-3758DB093C13}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Host", "AgctorSDK.Host\AgctorSDK.Host.csproj", "{A8B9C3D2-E1F0-4567-8901-234567890ABC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Host.IntegrationTests", "AgctorSDK.Host.IntegrationTests\AgctorSDK.Host.IntegrationTests.csproj", "{C9D8E3F4-G5H6-7890-1234-567890ABCDEF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,5 +39,13 @@ Global
 		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B5489EDF-E6BD-4F9B-807F-3758DB093C13}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A8B9C3D2-E1F0-4567-8901-234567890ABC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8B9C3D2-E1F0-4567-8901-234567890ABC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8B9C3D2-E1F0-4567-8901-234567890ABC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A8B9C3D2-E1F0-4567-8901-234567890ABC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C9D8E3F4-G5H6-7890-1234-567890ABCDEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C9D8E3F4-G5H6-7890-1234-567890ABCDEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C9D8E3F4-G5H6-7890-1234-567890ABCDEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C9D8E3F4-G5H6-7890-1234-567890ABCDEF}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
