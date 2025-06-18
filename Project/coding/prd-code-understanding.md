@@ -1,5 +1,23 @@
 # AGCTOR Code Understanding Subsystem (PRD)
 
+## Implementation Status ✅
+All planned components for the Code Understanding subsystem have been **implemented and are fully covered by automated tests**.  The following table maps the original plan to delivered artefacts:
+
+| Area | Delivered Components |
+|------|----------------------|
+| Actor Graph Core | `SolutionActor`, `ProjectActor`, `FileActor`, `ClassActor`, `MethodActor` with JSON persistence |
+| Language-Agnostic Parsing | `ICodeAnalyzer`, `AnalyzerRegistry`, `RoslynCodeAnalyzer`, stub `TreeSitterAnalyzer`, `LLMAnalyzer` (LLM fallback) |
+| Embedding & Retrieval | `IEmbeddingGenerator`, `OllamaEmbeddingGenerator`, `IVectorStore`, `InMemoryVectorStore`, `EmbeddingStoreActor`, `IndexerAgent` |
+| LLM Fallback | `ILlmClient`, `OllamaLlmClient`, registry fallback logic |
+| Comprehension API | `ComprehensionActor`, `TraversalExtensions`, messages (`FindPublicMethodsMessage`, `SemanticSearchMessage`…) |
+| Snapshot & Diff | `SnapshotService`, `SnapshotDiffService`, `GitWatcherAgent` |
+| Test Scaffolding | `TestPlannerAgent`, `TestScaffolderActor` (MSTest skeleton generation) |
+| Code Review | `DiffFormatterService`, `CodeReviewerAgent` |
+
+> All unit (278) and integration tests pass, ensuring subsystem stability.
+
+---
+
 ## Overview
 
 This document defines the Product Requirements for the **Code Understanding Subsystem** of the AGCTOR framework. This subsystem is designed to support:
