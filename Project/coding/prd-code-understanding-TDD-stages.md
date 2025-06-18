@@ -103,10 +103,51 @@ This document breaks the AGCTOR Code Understanding Subsystem into stages for inc
 
 ---
 
-## 🔄 Optional Add-ons (After Core)
-- 🔁 Snapshot diff & Git watcher agent
-- 🧪 Inject test scaffolding agent
-- 🧠 LLM CodeReviewer agent
+## 📦 Stage 7: Snapshot Diff & Git Watcher Agent
+
+### ✅ Tests to Write First
+- ✅ Can detect file changes using Git
+- ✅ Can generate actor graph snapshot before and after change
+- ✅ Can compute structural diffs (added/removed methods or classes)
+- ✅ Can detect embedding drift between two snapshots
+
+### 🔨 Tasks
+- Implement `GitWatcherAgent` to monitor code changes
+- Implement `SnapshotService` to serialize actor graph
+- Implement `DiffService` to compare snapshots
+- Trigger re-index or re-analysis on detected diffs
+
+---
+
+## 📦 Stage 8: Inject Test Scaffolding Agent
+
+### ✅ Tests to Write First
+- ✅ Can analyze method and plan test strategy
+- ✅ Can generate unit test skeletons for common scenarios
+- ✅ Can identify untested public methods
+- ✅ Generated test compiles and runs
+
+### 🔨 Tasks
+- Implement `TestPlannerAgent` to analyze structure
+- Implement `TestScaffolderActor` to write test code
+- Use metadata from actor graph or LLM fallback to derive behavior
+- Support configuration for xUnit/NUnit/MSTest
+
+---
+
+## 📦 Stage 9: LLM CodeReviewer Agent
+
+### ✅ Tests to Write First
+- ✅ Can generate code review from diff
+- ✅ Summarizes changes with pros/cons
+- ✅ Flags risky changes or missing tests
+- ✅ Supports inline suggestions and scorecards
+
+### 🔨 Tasks
+- Implement `CodeReviewAgent` with LLM integration
+- Build `DiffFormatterService` to produce input prompts
+- Add scoring rubric (readability, test coverage, duplication)
+- Optional: GitHub/GitLab integration for posting reviews
 
 ---
 
