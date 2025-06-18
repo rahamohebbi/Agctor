@@ -4,6 +4,7 @@ using AgctorSDK.CodeGraph.Analyzers;
 using AgctorSDK.CodeGraph.Analyzers.Roslyn;
 using AgctorSDK.CodeGraph.Analyzers.Stubs;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using AgctorSDK.CodeGraph.Llm;
 
 namespace AgctorSDK.CodeGraph.Tests.Analyzers
 {
@@ -18,7 +19,7 @@ namespace AgctorSDK.CodeGraph.Tests.Analyzers
             _registry = new AnalyzerRegistry();
             _registry.RegisterAnalyzer(new RoslynCodeAnalyzer());
             _registry.RegisterAnalyzer(new TreeSitterAnalyzer());
-            _registry.RegisterAnalyzer(new LLMAnalyzer());
+            _registry.RegisterAnalyzer(new LLMAnalyzer(new StubLlmClient("{}")));
         }
 
         [TestMethod]
@@ -41,6 +42,15 @@ namespace AgctorSDK.CodeGraph.Tests.Analyzers
         public void Registry_ShouldContainAllRegisteredLanguages()
         {
             CollectionAssert.AreEquivalent(new[] { "csharp", "python", "llm-fallback" }, _registry.RegisteredLanguages.ToList());
+        }
+
+        static ILlmClient StubLlmClient(string resp) => new LocalStub(resp);
+
+        class LocalStub : ILlmClient
+        {
+            private readonly string _r;
+            public LocalStub(string r) => _r = r;
+            public Task<string> CompleteAsync(string prompt, AgctorSDK.CodeGraph.Llm.LlmOptions? options = null) => Task.FromResult(_r);
         }
     }
 } 

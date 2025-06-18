@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using AgctorSDK.CodeGraph.Analyzers.Abstractions;
+using AgctorSDK.CodeGraph.Llm;
 
 namespace AgctorSDK.CodeGraph.Analyzers
 {
@@ -14,6 +15,7 @@ namespace AgctorSDK.CodeGraph.Analyzers
     {
         private readonly ConcurrentDictionary<string, ICodeAnalyzer> _languageMap = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, string> _extensionToLanguage = new(StringComparer.OrdinalIgnoreCase);
+        private ICodeAnalyzer? _fallback; // analyzer registered for "*"
 
         /// <summary>
         /// Registers the specified <paramref name="analyzer"/> with its declared language and file extensions.
@@ -24,7 +26,15 @@ namespace AgctorSDK.CodeGraph.Analyzers
             _languageMap[analyzer.Language] = analyzer;
             foreach (var ext in analyzer.SupportedFileExtensions)
             {
-                _extensionToLanguage[ext.StartsWith('.') ? ext : "." + ext] = analyzer.Language;
+                if (ext == "*")
+                {
+                    _fallback = analyzer;
+                }
+                else
+                {
+                    var norm = ext.StartsWith('.') ? ext.ToLowerInvariant() : "." + ext.ToLowerInvariant();
+                    _extensionToLanguage[norm] = analyzer.Language;
+                }
             }
         }
 
@@ -41,13 +51,23 @@ namespace AgctorSDK.CodeGraph.Analyzers
         /// </summary>
         public ICodeAnalyzer? GetAnalyzerForExtension(string extension)
         {
-            if (!_extensionToLanguage.TryGetValue(extension, out var language)) return null;
-            return GetAnalyzerForLanguage(language);
+            if (_extensionToLanguage.TryGetValue(extension, out var language))
+            {
+                return GetAnalyzerForLanguage(language);
+            }
+
+            return _fallback;
         }
 
         /// <summary>
         /// Returns names of all registered languages.
         /// </summary>
         public IReadOnlyCollection<string> RegisteredLanguages => _languageMap.Keys.ToList();
+
+        public void EnableLlmFallback(ILlmClient llmClient)
+        {
+            var analyzer = new AgctorSDK.CodeGraph.Analyzers.Stubs.LLMAnalyzer(llmClient);
+            RegisterAnalyzer(analyzer);
+        }
     }
 } 
