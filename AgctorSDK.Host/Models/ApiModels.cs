@@ -12,8 +12,7 @@ namespace AgctorSDK.Host.Models
         /// The message payload/content to be sent to the agent.
         /// Can be any JSON-serializable object.
         /// </summary>
-        [Required]
-        public object Payload { get; set; } = null!;
+        public object? Payload { get; set; }
 
         /// <summary>
         /// Optional metadata dictionary for additional context.
@@ -138,8 +137,7 @@ namespace AgctorSDK.Host.Models
         /// Parameters required for tool execution.
         /// The structure depends on the specific tool being invoked.
         /// </summary>
-        [Required]
-        public Dictionary<string, object> Parameters { get; set; } = null!;
+        public Dictionary<string, object>? Parameters { get; set; }
 
         /// <summary>
         /// Optional execution context or metadata.

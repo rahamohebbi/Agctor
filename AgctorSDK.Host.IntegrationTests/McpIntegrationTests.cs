@@ -7,6 +7,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Configuration;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.Host.Models;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Buffers.Binary;
+using System.IO;
 
 namespace AgctorSDK.Host.IntegrationTests
 {
@@ -17,42 +21,62 @@ namespace AgctorSDK.Host.IntegrationTests
     public class McpIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
     {
         private readonly WebApplicationFactory<Program> _factory;
-        private static int _portCounter = 10080; // Different base port from other test classes
-        private readonly int _mcpPort;
+        private WebApplicationFactory<Program>? _serverFactory;
+        private static int _portCounter = 10080; // Legacy counter, unused in dynamic mode but kept for uniqueness fallback
+        private int _mcpPort;
         private TcpClient? _testClient;
 
         public McpIntegrationTests(WebApplicationFactory<Program> factory)
         {
-            _mcpPort = Interlocked.Increment(ref _portCounter);
+            // Initially unknown; will be resolved after host starts
+            _mcpPort = 0;
             _factory = factory;
         }
 
         public async Task InitializeAsync()
         {
             // Start the web application with custom MCP port
-            _ = _factory.WithWebHostBuilder(builder =>
+            _serverFactory = _factory.WithWebHostBuilder(builder =>
             {
                 builder.ConfigureAppConfiguration((context, config) =>
                 {
+                    // Request an ephemeral port
                     config.AddInMemoryCollection(new[]
                     {
-                        new KeyValuePair<string, string?>("Mcp:Port", _mcpPort.ToString())
+                        new KeyValuePair<string, string?>("Mcp:Port", "0")
                     });
                 });
+
                 builder.ConfigureServices(services =>
                 {
                     services.Configure<HostOptions>(opts => opts.ShutdownTimeout = TimeSpan.FromSeconds(45));
                 });
-            }).CreateClient();
+            });
 
-            // Give the MCP listener time to start
-            await Task.Delay(2000);
+            _ = _serverFactory.CreateClient();
+
+            // Resolve the actual port chosen by the listener
+            var endpointInfo = _serverFactory.Services.GetRequiredService<AgctorSDK.Host.Models.McpEndpointInfo>();
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (endpointInfo.Port == 0 && sw.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                await Task.Delay(100);
+            }
+
+            if (endpointInfo.Port == 0)
+            {
+                throw new InvalidOperationException("MCP listener did not expose a bound port within timeout");
+            }
+
+            _mcpPort = endpointInfo.Port;
         }
 
         public async Task DisposeAsync()
         {
             _testClient?.Close();
             _testClient?.Dispose();
+            _serverFactory?.Dispose();
             await Task.CompletedTask;
         }
 
@@ -109,13 +133,9 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for response
-            var buffer = new byte[4096];
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().NotBeNullOrEmpty();
             
             var response = JsonSerializer.Deserialize<MessageResponse>(responseJson.Trim(), new JsonSerializerOptions
@@ -146,13 +166,9 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for error response
-            var buffer = new byte[4096];
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().Contain("Error");
         }
 
@@ -183,13 +199,9 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for error response
-            var buffer = new byte[4096];
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().Contain("TargetAgent is required");
         }
 
@@ -220,13 +232,9 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for error response
-            var buffer = new byte[4096];
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().Contain("Payload is required");
         }
 
@@ -268,14 +276,9 @@ namespace AgctorSDK.Host.IntegrationTests
 
             // Assert - Read all responses
             var responses = new List<string>();
-            var buffer = new byte[4096];
-            
             for (int i = 0; i < 3; i++)
             {
-                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                bytesRead.Should().BeGreaterThan(0);
-                
-                var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                var responseJson = await ReadFrameWithTimeout(stream);
                 responses.Add(responseJson.Trim());
             }
 
@@ -321,10 +324,7 @@ namespace AgctorSDK.Host.IntegrationTests
                         await stream.FlushAsync();
 
                         // Read response
-                        var buffer = new byte[4096];
-                        var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                        
-                        bytesRead.Should().BeGreaterThan(0);
+                        var _ = await ReadFrameWithTimeout(stream);
                     }));
                 }
 
@@ -408,16 +408,11 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for response
-            var buffer = new byte[4096];
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().NotBeNullOrEmpty();
             
-            // The message should be processed successfully (metadata is preserved internally)
             var response = JsonSerializer.Deserialize<MessageResponse>(responseJson.Trim(), new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -461,13 +456,9 @@ namespace AgctorSDK.Host.IntegrationTests
             await stream.FlushAsync();
 
             // Wait for response
-            var buffer = new byte[8192]; // Larger buffer for response
-            var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
+            var responseJson = await ReadFrameWithTimeout(stream);
 
             // Assert
-            bytesRead.Should().BeGreaterThan(0);
-            
-            var responseJson = Encoding.UTF8.GetString(buffer, 0, bytesRead);
             responseJson.Should().NotBeNullOrEmpty();
             
             var response = JsonSerializer.Deserialize<MessageResponse>(responseJson.Trim(), new JsonSerializerOptions
@@ -478,6 +469,36 @@ namespace AgctorSDK.Host.IntegrationTests
 
             response.Should().NotBeNull();
             response!.MessageId.Should().Be(mcpMessage.Id);
+        }
+
+        private static async Task<string> ReadFrameWithTimeout(NetworkStream stream, int timeoutMs = 5000)
+        {
+            using var cts = new CancellationTokenSource(timeoutMs);
+
+            // Read exactly 4 bytes for length
+            var lenBuf = new byte[4];
+            await ReadExactAsync(stream, lenBuf, cts.Token);
+            var length = BinaryPrimitives.ReadInt32BigEndian(lenBuf);
+
+            if (length <= 0 || length > 1_000_000) // basic sanity check (1 MB max)
+                throw new InvalidOperationException($"Invalid frame length {length}");
+
+            var payload = new byte[length];
+            await ReadExactAsync(stream, payload, cts.Token);
+
+            return Encoding.UTF8.GetString(payload);
+        }
+
+        private static async Task ReadExactAsync(NetworkStream stream, byte[] buffer, CancellationToken ct)
+        {
+            int offset = 0;
+            while (offset < buffer.Length)
+            {
+                int read = await stream.ReadAsync(buffer, offset, buffer.Length - offset, ct);
+                if (read == 0)
+                    throw new EndOfStreamException("Stream closed before reading expected bytes");
+                offset += read;
+            }
         }
     }
 } 

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Agents\AgctorSDK.Agents.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Tools\AgctorSDK.Tools.csproj" />
+  </ItemGroup>
+</Project> 

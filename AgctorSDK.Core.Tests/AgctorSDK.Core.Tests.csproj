@@ -21,6 +21,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Agents\AgctorSDK.Agents.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Tools\AgctorSDK.Tools.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Extensions\AgctorSDK.Extensions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="VisualizationLayerDemo.cs" />
   </ItemGroup>
 
 </Project>

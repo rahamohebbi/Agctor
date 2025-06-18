@@ -2,9 +2,11 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Linq;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Host.Services;
+using AgctorSDK.Host.Models;
 
 namespace AgctorSDK.Host.Mcp
 {
@@ -18,8 +20,10 @@ namespace AgctorSDK.Host.Mcp
         private readonly IMessageDispatcher _messageDispatcher;
         private readonly ILogger<McpListener> _logger;
         private readonly IConfiguration _configuration;
+        private readonly McpEndpointInfo _endpointInfo;
         private TcpListener? _tcpListener;
         private readonly List<McpClientConnection> _activeConnections = new();
+        private readonly object _connectionLock = new();
 
         // Default configuration
         private const int DefaultPort = 8080;
@@ -28,11 +32,13 @@ namespace AgctorSDK.Host.Mcp
         public McpListener(
             IMessageDispatcher messageDispatcher,
             ILogger<McpListener> logger,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            McpEndpointInfo endpointInfo)
         {
             _messageDispatcher = messageDispatcher ?? throw new ArgumentNullException(nameof(messageDispatcher));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _endpointInfo = endpointInfo ?? throw new ArgumentNullException(nameof(endpointInfo));
         }
 
         /// <summary>
@@ -45,14 +51,20 @@ namespace AgctorSDK.Host.Mcp
 
             try
             {
-                // Get configuration
+                // Get configuration (log values for diagnostics)
                 var port = _configuration.GetValue<int>("Mcp:Port", DefaultPort);
                 var host = _configuration.GetValue<string>("Mcp:Host") ?? DefaultHost;
+
+                _logger.LogDebug("MCP listener resolved configuration Host={Host} Port={Port}", host, port);
 
                 // Start TCP listener
                 var ipAddress = IPAddress.Parse(host);
                 _tcpListener = new TcpListener(ipAddress, port);
                 _tcpListener.Start();
+
+                // Store the real bound endpoint so integration tests can discover it
+                _endpointInfo.Host = host;
+                _endpointInfo.Port = ((_tcpListener.LocalEndpoint as System.Net.IPEndPoint)?.Port) ?? port;
 
                 _logger.LogInformation("MCP listener started on {Host}:{Port}", host, port);
 
@@ -67,7 +79,10 @@ namespace AgctorSDK.Host.Mcp
 
                         // Handle each client connection independently (Actor Model isolation)
                         var clientConnection = new McpClientConnection(tcpClient, _messageDispatcher, _logger);
-                        _activeConnections.Add(clientConnection);
+                        lock (_connectionLock)
+                        {
+                            _activeConnections.Add(clientConnection);
+                        }
 
                         // Start handling the client in the background
                         _ = Task.Run(async () => await HandleClientAsync(clientConnection, stoppingToken), stoppingToken);
@@ -112,7 +127,10 @@ namespace AgctorSDK.Host.Mcp
             }
             finally
             {
-                _activeConnections.Remove(clientConnection);
+                lock (_connectionLock)
+                {
+                    _activeConnections.Remove(clientConnection);
+                }
                 clientConnection.Dispose();
             }
         }
@@ -122,9 +140,17 @@ namespace AgctorSDK.Host.Mcp
         /// </summary>
         private async Task CleanupConnectionsAsync()
         {
-            var cleanupTasks = _activeConnections.Select(conn => Task.Run(() => conn.Dispose()));
+            List<McpClientConnection> snapshot;
+            lock (_connectionLock)
+            {
+                snapshot = _activeConnections.ToList();
+                _activeConnections.Clear();
+            }
+
+            if (snapshot.Count == 0) return;
+
+            var cleanupTasks = snapshot.Select(conn => Task.Run(() => conn.Dispose()));
             await Task.WhenAll(cleanupTasks);
-            _activeConnections.Clear();
         }
 
         /// <summary>
@@ -202,12 +228,32 @@ namespace AgctorSDK.Host.Mcp
         /// </summary>
         private async Task ProcessCompleteMessages(StringBuilder messageBuffer, CancellationToken cancellationToken)
         {
-            var messages = messageBuffer.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            
-            for (int i = 0; i < messages.Length - 1; i++) // Process all complete messages
+            // Continuously look for a newline character ("\n") which delimits the end of one MCP JSON message.
+            // Everything before the newline is considered a complete message, anything after (without a newline) is kept
+            // in the buffer until more data arrives. This avoids the off-by-one error we had previously where the last
+            // legitimate message was skipped if the buffer ended with a newline.
+
+            while (true)
             {
-                var messageJson = messages[i].Trim();
-                if (string.IsNullOrEmpty(messageJson)) continue;
+                var bufferString = messageBuffer.ToString();
+                var newlineIndex = bufferString.IndexOf('\n');
+
+                if (newlineIndex == -1)
+                {
+                    // No complete message yet
+                    return;
+                }
+
+                // Extract the complete message (without the newline)
+                var messageJson = bufferString.Substring(0, newlineIndex).Trim();
+
+                // Remove the processed part from the buffer (including the newline character)
+                messageBuffer.Remove(0, newlineIndex + 1);
+
+                if (string.IsNullOrEmpty(messageJson))
+                {
+                    continue; // Ignore empty lines
+                }
 
                 try
                 {
@@ -218,13 +264,6 @@ namespace AgctorSDK.Host.Mcp
                     _logger.LogError(ex, "Error processing MCP message from client {ClientId}: {Message}", Id, messageJson);
                     await SendErrorResponse($"Error processing message: {ex.Message}");
                 }
-            }
-
-            // Keep the last incomplete message in the buffer
-            if (messages.Length > 0)
-            {
-                messageBuffer.Clear();
-                messageBuffer.Append(messages[^1]);
             }
         }
 
@@ -334,8 +373,12 @@ namespace AgctorSDK.Host.Mcp
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 });
 
-                var responseBytes = Encoding.UTF8.GetBytes(responseJson + "\n");
-                await _stream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                // Length-prefixed framing: 4-byte big-endian length followed by UTF-8 payload
+                var payloadBytes = Encoding.UTF8.GetBytes(responseJson);
+                byte[] lenBuf = new byte[4];
+                System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(lenBuf, payloadBytes.Length);
+                await _stream.WriteAsync(lenBuf, 0, lenBuf.Length);
+                await _stream.WriteAsync(payloadBytes, 0, payloadBytes.Length);
                 await _stream.FlushAsync();
 
                 _logger.LogDebug("Sent response to MCP client {ClientId}", Id);

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <OutputType>Exe</OutputType>
+    <OutputType>Library</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +27,26 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.6.0" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics" Version="8.0.0" />
     <PackageReference Include="Scrutor" Version="4.2.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Agents\**\*.cs" />
+    <Compile Remove="Tools\Implementations\**\*.cs" />
+    <Compile Remove="Tools\LanguageExecutors\**\*.cs" />
+    <Compile Remove="Tools\TracedToolActor.cs" />
+    <Compile Remove="DependencyInjection\AgentServiceExtensions.cs" />
+    <Compile Remove="DependencyInjection\ServiceCollectionExtensions.cs" />
+    <Compile Remove="DependencyInjection\ActivityTrackingServiceExtensions.cs" />
+    <Compile Remove="DependencyInjection\CoreServiceExtensions.cs" />
+    <Compile Remove="Utils\ActivityTracking\ActivityTrackingDemo.cs" />
+    <Compile Remove="Utils\Observability\Visualization\VisualizationDemo.cs" />
+    <Compile Remove="Program.cs" />
+    <Compile Remove="Runtime\Examples\RuntimeDemo.cs" />
+    <Compile Remove="DependencyInjection\ActorRuntimeAdapterFactory.cs" />
+    <Compile Remove="Runtime\InMemoryActorRuntime.cs" />
+    <Compile Remove="Utils\ActivityTracking\OpenTelemetry\OpenTelemetryConfiguration.cs" />
+    <Compile Remove="Options\AgctorOptions.cs" />
+    <Compile Remove="Options\OpenTelemetryOptions.cs" />
   </ItemGroup>
 
 </Project>

@@ -61,7 +61,16 @@ namespace AgctorSDK.Host.Controllers
                     });
                 }
 
-                if (request?.Parameters == null || request.Parameters.Count == 0)
+                if (request == null)
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "INVALID_PARAMETERS",
+                        Message = "Tool parameters are required"
+                    });
+                }
+
+                if (request.Parameters == null || request.Parameters.Count == 0)
                 {
                     return BadRequest(new ErrorResponse
                     {

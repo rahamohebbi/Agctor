@@ -749,8 +749,8 @@ namespace AgctorSDK.Core.Utils.Logging
                     _backgroundCancellation.Cancel();
                     try
                     {
-                        // Wait for the background task to complete
-                        _backgroundTask?.Wait(1000);
+                        // Wait for the background task (and flush) to complete
+                        _backgroundTask?.Wait(5000);
                     }
                     catch
                     {

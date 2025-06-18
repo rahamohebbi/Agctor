@@ -53,6 +53,9 @@ builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 // Register MCP services as hosted services
 builder.Services.AddHostedService<McpListener>();
 
+// Register endpoint info so tests can discover chosen port when 0 is used
+builder.Services.AddSingleton<AgctorSDK.Host.Models.McpEndpointInfo>();
+
 // Add CORS for development
 builder.Services.AddCors(options =>
 {
@@ -95,9 +98,9 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
-Console.WriteLine("🚀 AGCTOR Host starting...");
-Console.WriteLine("📊 Swagger UI available at: http://localhost:5000/swagger");
-Console.WriteLine("🔌 MCP listener will start on TCP port 8080");
+// The actual port may still be 0 here (ephemeral). Log configuration value only.
+var configuredPort = builder.Configuration.GetValue<int>("Mcp:Port", 8080);
+Console.WriteLine($"🔌 MCP listener configured to start on TCP port {configuredPort} (0 means dynamic)");
 
 app.Run();
 

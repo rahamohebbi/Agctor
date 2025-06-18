@@ -141,18 +141,32 @@ namespace AgctorSDK.Core.Utils.Logging
                 _ => ConsoleColor.White,
             };
             
-            // Write the message
-            Console.WriteLine(fullMessage);
+            // Write the message - protect against ObjectDisposed when Console is redirected by test host
+            try
+            {
+                Console.WriteLine(fullMessage);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Swallow; occurs in test environments where Console.Out has been disposed
+            }
             
             // Write exception details if present
             if (exception != null)
             {
-                Console.WriteLine($"  Exception: {exception.GetType().Name}: {exception.Message}");
-                Console.WriteLine($"  StackTrace: {exception.StackTrace}");
-                
-                if (exception.InnerException != null)
+                try
                 {
-                    Console.WriteLine($"  Inner Exception: {exception.InnerException.GetType().Name}: {exception.InnerException.Message}");
+                    Console.WriteLine($"  Exception: {exception.GetType().Name}: {exception.Message}");
+                    Console.WriteLine($"  StackTrace: {exception.StackTrace}");
+                    
+                    if (exception.InnerException != null)
+                    {
+                        Console.WriteLine($"  Inner Exception: {exception.InnerException.GetType().Name}: {exception.InnerException.Message}");
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Ignore
                 }
             }
             
