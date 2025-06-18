@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace AgctorSDK.Core.Utils
 {
@@ -135,6 +136,22 @@ namespace AgctorSDK.Core.Utils
             }
             // If HEAD doesn't exist (e.g., new repo with no commits), it will exit with non-zero.
             return null; 
+        }
+
+        /// <summary>
+        /// Gets the list of files changed between two commits (or between a commit and the working tree).
+        /// </summary>
+        /// <param name="repositoryPath">Repository root.</param>
+        /// <param name="fromCommit">Older commit hash (e.g. previous HEAD). Use hash or branch ref.</param>
+        /// <param name="toCommit">Newer commit hash (defaults to HEAD). Pass null or "HEAD" for current HEAD.</param>
+        public static async Task<IReadOnlyList<string>> GetChangedFilesAsync(string repositoryPath, string fromCommit, string? toCommit = null)
+        {
+            toCommit ??= "HEAD";
+            var args = $"diff --name-only {fromCommit} {toCommit}";
+            var (outp, err, code) = await ExecuteProcessAsync("git", args, repositoryPath);
+            if (code != 0) throw new System.Exception($"Git diff failed: {err} {outp}");
+            var lines = outp.Split('\n', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries);
+            return lines;
         }
     }
 } 
