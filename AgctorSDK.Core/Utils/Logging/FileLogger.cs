@@ -742,7 +742,20 @@ namespace AgctorSDK.Core.Utils.Logging
             if (!_disposed)
             {
                 _disposed = true;
-                
+
+                // Ensure any remaining queued log entries are flushed *before* we signal cancellation.
+                if (_options.UseBackgroundWorker && _backgroundQueue != null)
+                {
+                    // Drain the queue synchronously to guarantee everything is persisted even if we time-out later.
+                    while (_backgroundQueue.TryDequeue(out var pending))
+                    {
+                        // Synchronously write to file to minimise race conditions during shutdown.
+                        WriteMessageAsync(pending.Level, pending.Exception, pending.Message)
+                            .GetAwaiter()
+                            .GetResult();
+                    }
+                }
+
                 // Stop the background worker if it's running
                 if (_options.UseBackgroundWorker && _backgroundCancellation != null)
                 {
@@ -756,7 +769,7 @@ namespace AgctorSDK.Core.Utils.Logging
                     {
                         // Ignore exceptions during shutdown
                     }
-                    
+
                     _backgroundCancellation.Dispose();
                     _backgroundCancellation = null;
                 }
