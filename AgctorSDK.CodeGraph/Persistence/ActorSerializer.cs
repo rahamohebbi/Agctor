@@ -49,7 +49,7 @@ namespace AgctorSDK.CodeGraph.Persistence
             };
         }
 
-        public static CodeGraphActorBase FromDto(ActorDto dto)
+        public static CodeGraphActorBase FromDto(ActorDto dto, string? actorsDirectory = null)
         {
             CodeGraphActorBase actor = dto.ActorType switch
             {
@@ -61,11 +61,11 @@ namespace AgctorSDK.CodeGraph.Persistence
                 _ => throw new InvalidDataException($"Unknown actor type: {dto.ActorType}")
             };
 
-            if (dto.Children != null)
+            if (dto.Children != null && actorsDirectory == null)
             {
                 foreach (var childDto in dto.Children)
                 {
-                    var childActor = FromDto(childDto);
+                    var childActor = FromDto(childDto, actorsDirectory);
                     actor.AddChild(childActor);
                 }
             }
