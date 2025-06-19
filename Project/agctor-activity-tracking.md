@@ -70,7 +70,8 @@ The implementation had several compatibility issues with the existing codebase t
 While significant progress has been made, the following tasks remain to complete the implementation:
 
 1. **Integration Testing**:
-   - Test the tracing system with real agents in the Agctor runtime
+   - ✅ Code Understanding Subsystem – full integration-test suite implemented (Groups 1-6 + End-to-End) and passing
+   - ⏳ Activity Tracking Subsystem – create dedicated tests that exercise context propagation across a live agent network
    - Verify context propagation across the entire agent network
 
 2. **Visualization Tools**:
