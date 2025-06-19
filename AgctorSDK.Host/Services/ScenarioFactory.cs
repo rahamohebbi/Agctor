@@ -15,7 +15,8 @@ public class ScenarioFactory : IScenarioFactory
         _serviceProvider = serviceProvider;
         _scenarios = new Dictionary<string, Type>
         {
-            { "code-generation-chain", typeof(CodeGenerationChainScenario) }
+            { "code-generation-chain", typeof(CodeGenerationChainScenario) },
+            { "code-graph-demo", typeof(CodeGraphDemoScenario) }
             // Add new scenarios here:
             // { "math-generation-chain", typeof(MathGenerationChainScenario) }
         };

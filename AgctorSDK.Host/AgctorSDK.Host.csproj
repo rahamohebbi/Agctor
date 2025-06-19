@@ -19,6 +19,7 @@
     <ProjectReference Include="..\AgctorSDK.Agents\AgctorSDK.Agents.csproj" />
     <ProjectReference Include="..\AgctorSDK.Tools\AgctorSDK.Tools.csproj" />
     <ProjectReference Include="..\AgctorSDK.Extensions\AgctorSDK.Extensions.csproj" />
+    <ProjectReference Include="..\AgctorSDK.CodeGraph\AgctorSDK.CodeGraph.csproj" />
   </ItemGroup>
 
 </Project> 
