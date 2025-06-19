@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using AgctorSDK.CodeGraph.Actors;
 using AgctorSDK.CodeGraph.Analyzers;
@@ -58,23 +59,51 @@ namespace AgctorSDK.CodeGraph.Agents
         {
             if (root is FileActor file)
             {
-                var parsed = await file.AnalyzeAsync(_registry, null);
-                foreach (var cls in parsed.Classes)
+                // Prefer explicit class/method children if they already exist (e.g., constructed via tests).
+                if (file.Children.Count > 0)
                 {
-                    var classText = cls.Name;
-                    var vec = await _generator.GenerateEmbeddingAsync(classText);
-                    await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(cls.Name, vec, classText)));
-                    foreach (var m in cls.Methods)
+                    foreach (var classActor in file.Children.OfType<ClassActor>())
                     {
-                        var vecM = await _generator.GenerateEmbeddingAsync(m.Name);
-                        await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(m.Name, vecM, m.Name)));
+                        await IndexClassAsync(classActor);
                     }
                 }
+                else
+                {
+                    // Fall-back to analyzer parsing when the graph was created from raw source files.
+                    var parsed = await file.AnalyzeAsync(_registry, null);
+                    foreach (var cls in parsed.Classes)
+                    {
+                        var vec = await _generator.GenerateEmbeddingAsync(cls.Name);
+                        await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(cls.Name, vec, cls.Name)));
+                        foreach (var m in cls.Methods)
+                        {
+                            var vecM = await _generator.GenerateEmbeddingAsync(m.Name);
+                            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(m.Name, vecM, m.Name)));
+                        }
+                    }
+                }
+            }
+
+            if (root is ClassActor clsActor)
+            {
+                await IndexClassAsync(clsActor);
             }
 
             foreach (var child in root.Children)
             {
                 await IndexAsync(child);
+            }
+        }
+
+        private async Task IndexClassAsync(ClassActor clsActor)
+        {
+            var vec = await _generator.GenerateEmbeddingAsync(clsActor.Name);
+            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(clsActor.Name, vec, clsActor.Name)));
+
+            foreach (var method in clsActor.Children.OfType<MethodActor>())
+            {
+                var vecM = await _generator.GenerateEmbeddingAsync(method.Name);
+                await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(method.Name, vecM, method.Name)));
             }
         }
 
