@@ -6,6 +6,11 @@ namespace AgctorSDK.CodeGraph.Actors
     /// </summary>
     public sealed class MethodActor : CodeGraphActorBase
     {
+        /// <summary>
+        /// Approximate number of lines of code contained in this method, including whitespace and comments.
+        /// </summary>
+        public int? LinesOfCode { get; set; }
+
         public MethodActor(string name) : base(name)
         {
         }

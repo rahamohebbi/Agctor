@@ -90,8 +90,18 @@ namespace AgctorSDK.CodeGraph.Tests.Integration
             var resultEnv = await _storeActor.ReceiveAsync(envelope);
             var res = (QueryResultMessage)resultEnv.Payload;
             Assert.IsTrue(res.Results.Any(), "Should return at least one result");
+
+            // Resolve the expected actor id for the "Login" method within the solution hierarchy
+            var loginMethodId = solution
+                .Children              // projects
+                .SelectMany(p => p.Children)
+                .SelectMany(f => f.Children) // files -> classes
+                .SelectMany(c => c.Children)
+                .OfType<MethodActor>()
+                .First(m => m.Name == "Login").Id;
+
             var top = res.Results.First();
-            Assert.AreEqual("Login", top.ActorId); // We upserted method name as id
+            Assert.AreEqual(loginMethodId, top.ActorId, "Vector store should return the Login method actor id as the top match");
         }
     }
 } 

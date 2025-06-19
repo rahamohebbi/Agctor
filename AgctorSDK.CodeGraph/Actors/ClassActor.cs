@@ -5,6 +5,11 @@ namespace AgctorSDK.CodeGraph.Actors
     /// </summary>
     public sealed class ClassActor : CodeGraphActorBase
     {
+        /// <summary>
+        /// Approximate number of lines of code contained in this class, including whitespace and comments.
+        /// </summary>
+        public int? LinesOfCode { get; set; }
+
         public ClassActor(string name) : base(name)
         {
         }

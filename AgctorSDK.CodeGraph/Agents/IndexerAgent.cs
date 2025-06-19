@@ -71,14 +71,41 @@ namespace AgctorSDK.CodeGraph.Agents
                 {
                     // Fall-back to analyzer parsing when the graph was created from raw source files.
                     var parsed = await file.AnalyzeAsync(_registry, null);
+
                     foreach (var cls in parsed.Classes)
                     {
+                        // 1. Ensure ClassActor exists in the tree
+                        var classActor = file.Children.OfType<ClassActor>()
+                                                .FirstOrDefault(c => c.Name == cls.Name);
+                        if (classActor == null)
+                        {
+                            classActor = new ClassActor(cls.Name)
+                            {
+                                LinesOfCode = TryEstimateClassLines(file.PhysicalPath, cls.Name)
+                            };
+                            file.AddClass(classActor);
+                        }
+
+                        // 2. Generate embedding for class
                         var vec = await _generator.GenerateEmbeddingAsync(cls.Name);
-                        await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(cls.Name, vec, cls.Name)));
+                        await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(classActor.Id, vec, cls.Name)));
+
+                        // 3. Methods
                         foreach (var m in cls.Methods)
                         {
+                            var methodActor = classActor.Children.OfType<MethodActor>()
+                                                         .FirstOrDefault(mm => mm.Name == m.Name);
+                            if (methodActor == null)
+                            {
+                                methodActor = new MethodActor(m.Name)
+                                {
+                                    LinesOfCode = TryEstimateMethodLines(file.PhysicalPath, m.Name)
+                                };
+                                classActor.AddMethod(methodActor);
+                            }
+
                             var vecM = await _generator.GenerateEmbeddingAsync(m.Name);
-                            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(m.Name, vecM, m.Name)));
+                            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(methodActor.Id, vecM, m.Name)));
                         }
                     }
                 }
@@ -98,15 +125,67 @@ namespace AgctorSDK.CodeGraph.Agents
         private async Task IndexClassAsync(ClassActor clsActor)
         {
             var vec = await _generator.GenerateEmbeddingAsync(clsActor.Name);
-            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(clsActor.Name, vec, clsActor.Name)));
+            await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(clsActor.Id, vec, clsActor.Name)));
 
             foreach (var method in clsActor.Children.OfType<MethodActor>())
             {
                 var vecM = await _generator.GenerateEmbeddingAsync(method.Name);
-                await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(method.Name, vecM, method.Name)));
+                await _storeActor.ReceiveAsync(new AgctorSDK.Core.Messages.MessageEnvelope(new UpsertEmbeddingMessage(method.Id, vecM, method.Name)));
             }
         }
 
         protected override bool ShouldDecomposeTask(string prompt) => false; // never decompose
+
+        #region Helper – LOC estimation
+
+        private static int? TryEstimateClassLines(string? filePath, string className)
+        {
+            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath)) return null;
+
+            var lines = System.IO.File.ReadAllLines(filePath);
+            int start = Array.FindIndex(lines, l => l.Contains($"class {className}"));
+            if (start == -1) return null;
+
+            int depth = 0;
+            int end = start;
+            for (int i = start; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                depth += CountChar(line, '{') - CountChar(line, '}');
+                if (i > start && depth <= 0)
+                {
+                    end = i;
+                    break;
+                }
+            }
+            return end - start + 1;
+        }
+
+        private static int? TryEstimateMethodLines(string? filePath, string methodName)
+        {
+            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath)) return null;
+
+            var lines = System.IO.File.ReadAllLines(filePath);
+            int start = Array.FindIndex(lines, l => l.Contains($"{methodName}("));
+            if (start == -1) return null;
+
+            int depth = 0;
+            int end = start;
+            for (int i = start; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                depth += CountChar(line, '{') - CountChar(line, '}');
+                if (i > start && depth <= 0)
+                {
+                    end = i;
+                    break;
+                }
+            }
+            return end - start + 1;
+        }
+
+        private static int CountChar(string s, char c) => s.Count(ch => ch == c);
+
+        #endregion
     }
 } 

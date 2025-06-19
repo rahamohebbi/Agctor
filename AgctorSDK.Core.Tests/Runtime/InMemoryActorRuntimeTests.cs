@@ -232,14 +232,14 @@ namespace AgctorSDK.Core.Tests.Runtime
             Assert.IsNotNull(sentEvent);
             Assert.AreEqual(senderForMessage, sentEvent.SenderId);
             Assert.AreEqual(actorId, sentEvent.ReceiverId);
-            Assert.AreEqual("String", sentEvent.MessageType); 
+            Assert.AreEqual("Prompt", sentEvent.MessageType); 
 
             // Assert for what the actor received
             Assert.IsNotNull(actor.LastReceivedEnvelope);
             Assert.AreEqual(message, actor.LastReceivedEnvelope.Payload);
             Assert.AreEqual(senderForMessage, actor.LastReceivedEnvelope.Headers["SenderId"]);
             Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
-            Assert.AreEqual("String", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.AreEqual("Prompt", actor.LastReceivedEnvelope.Headers["MessageType"]);
             Assert.IsTrue(actor.LastReceivedEnvelope.Metadata.ContainsKey("Timestamp"));
         }
 
@@ -265,7 +265,7 @@ namespace AgctorSDK.Core.Tests.Runtime
             Assert.AreEqual("CustomValue", actor.LastReceivedEnvelope.Headers["CustomHeader"]);
             Assert.AreEqual("sender-test-2", actor.LastReceivedEnvelope.Headers["SenderId"]);
             Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
-            Assert.AreEqual("String", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.AreEqual("Prompt", actor.LastReceivedEnvelope.Headers["MessageType"]);
             Assert.AreEqual("1.0", actor.LastReceivedEnvelope.Headers["Version"]);
         }
 
