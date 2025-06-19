@@ -741,8 +741,6 @@ namespace AgctorSDK.Core.Utils.Logging
         {
             if (!_disposed)
             {
-                _disposed = true;
-
                 // Ensure any remaining queued log entries are flushed *before* we signal cancellation.
                 if (_options.UseBackgroundWorker && _backgroundQueue != null)
                 {
@@ -774,6 +772,7 @@ namespace AgctorSDK.Core.Utils.Logging
                     _backgroundCancellation = null;
                 }
                 
+                _disposed = true;
                 _lock.Dispose();
             }
         }
