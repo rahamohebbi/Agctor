@@ -10,6 +10,8 @@ using AgctorSDK.CodeGraph.Analyzers;
 using AgctorSDK.CodeGraph.Analyzers.Roslyn;
 using AgctorSDK.CodeGraph.Embeddings;
 using AgctorSDK.CodeGraph.Agents;
+using AgctorSDK.Core.Utils.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AgctorSDK.Host.Services.Scenarios
 {
@@ -61,21 +63,53 @@ namespace AgctorSDK.Host.Services.Scenarios
                 var storeActor = new EmbeddingStoreActor("vector-store", vectorStore);
                 var embeddingGen = new StubEmbeddingGenerator();
 
-                // 4. Create and register IndexerAgent manually (we need fine-grained control over initialization).
+                // 4. Spawn application agents.
                 const string indexerId = "indexer-agent";
+                const string searchId  = "search-agent";
+                const string llmId     = "llm-agent";
+                const string queryId   = "query-agent";
+
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
+                indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
 
-                await _runtimeAdapter.RegisterActorAsync(indexerAgent);
-                await _agentRegistry.RegisterAgentAsync(indexerAgent);
+                var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution);
 
-                _logger.LogInformation("CodeGraph demo scenario set up – IndexerAgent ready (ID: {IndexerId})", indexerId);
+                var llmAgent     = new LLMAgent(llmId); // Uses default Ollama settings – OK for demo.
 
-                return new ScenarioSetupResponse(
-                    Success: true,
-                    ScenarioName: Name,
-                    CreatedAgentIds: new List<string> { indexerId },
-                    AgentRoles: new Dictionary<string, string> { [indexerId] = "Indexes CodeGraph and stores embeddings" },
-                    ErrorMessage: null);
+                // Manually initialize and then register the prebuilt agents
+                foreach (var agent in new Agent[] { indexerAgent, searchAgent, llmAgent })
+                {
+                    await agent.InitializeAsync();
+                    await _runtimeAdapter.RegisterActorAsync(agent);
+                    await _agentRegistry.RegisterAgentAsync(agent);
+                }
+
+                // Spawn QueryAgent via runtime so AgentFactory gets injected automatically
+                var spawnedQuery = await _runtimeAdapter.SpawnActorAsync<QueryAgent>(
+                    queryId,
+                    id => new QueryAgent(id, searchId, llmId));
+
+                // Inject an AgentFactory so QueryAgent has access to the runtime for sub-messages.
+                // A lightweight factory is sufficient for the demo (no DI container required).
+                var consoleLogger = new AgctorConsoleLogger();
+                var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
+                var agentFactory = new AgctorSDK.Core.Agents.AgentFactory(_runtimeAdapter, sp, consoleLogger, _agentRegistry);
+                spawnedQuery.SetAgentFactory(agentFactory);
+
+                await _agentRegistry.RegisterAgentAsync(spawnedQuery);
+
+                _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query)");
+
+                var created = new List<string> { indexerId, searchId, llmId, queryId };
+                var roles = new Dictionary<string, string>
+                {
+                    [indexerId] = "Indexes CodeGraph and stores embeddings",
+                    [searchId]  = "Vector search over CodeGraph",
+                    [llmId]     = "Large-language-model interface (Ollama)",
+                    [queryId]   = "Orchestrator – user-facing agent"
+                };
+
+                return new ScenarioSetupResponse(true, Name, created, roles, null);
             }
             catch (Exception ex)
             {

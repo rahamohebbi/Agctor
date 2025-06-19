@@ -229,8 +229,8 @@ namespace AgctorSDK.Core.Agents
                 }
                 
                 // If we have a prompt message, process it as a prompt
-                if (envelope.Headers.TryGetValue("MessageType", out var messageType) && 
-                    messageType == "Prompt" &&
+                if (envelope.Headers.TryGetValue("MessageType", out var messageType) &&
+                    ((messageType == "Prompt") || (messageType == "String")) &&
                     message is string promptText)
                 {
                     await ProcessPromptAsync(promptText, cancellationToken);

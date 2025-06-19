@@ -77,7 +77,7 @@ namespace AgctorSDK.Host.Services
                 var senderId = request.SenderId ?? "http-api";
 
                 // Send message and wait for response (request-response pattern)
-                var timeout = TimeSpan.FromSeconds(30); // Increased timeout for LLM responses
+                var timeout = TimeSpan.FromSeconds(180); // Increased timeout for LLM responses (LLM may take longer)
                 _logger.LogInformation("Sending request-response message to agent {AgentId} with {TimeoutSeconds}s timeout", agentId, timeout.TotalSeconds);
                 
                 var response = await _runtimeAdapter.SendMessageAsync<string>(
@@ -257,6 +257,18 @@ namespace AgctorSDK.Host.Services
                 {
                     metadata[meta.Key] = meta.Value;
                 }
+            }
+
+            // Ensure MessageType header exists; treat raw string payloads as Prompt.
+            // We must base this on the final payload that will be placed in the envelope (may differ after JsonElement conversion).
+            object tentativePayload = request.Payload;
+            if (tentativePayload is System.Text.Json.JsonElement je)
+            {
+                tentativePayload = je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString()! : tentativePayload;
+            }
+            if (!headers.ContainsKey("MessageType"))
+            {
+                headers["MessageType"] = tentativePayload is string ? "Prompt" : tentativePayload?.GetType().Name ?? "Unknown";
             }
 
             // Convert payload to appropriate type

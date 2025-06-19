@@ -61,13 +61,20 @@ namespace AgctorSDK.Core.Agents
             : base(id)
         {
             _httpClient = httpClient;
+            _httpClient.Timeout = TimeSpan.FromSeconds(180); // Allow larger generations
             _ollamaApiUrl = ollamaApiUrl.EndsWith("/") ? ollamaApiUrl : ollamaApiUrl + "/";
             _defaultModel = defaultModel;
         }
 
         public LLMAgent(string id, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
-            : this(id, new HttpClient(), ollamaApiUrl, defaultModel)
+            : this(id, CreateClient(), ollamaApiUrl, defaultModel)
         {
+        }
+
+        private static HttpClient CreateClient()
+        {
+            var cli = new HttpClient { Timeout = TimeSpan.FromSeconds(180) };
+            return cli;
         }
 
         public override async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -156,10 +163,24 @@ namespace AgctorSDK.Core.Agents
                     Prompt = prompt
                 };
 
-                HttpResponseMessage httpResponse = await _httpClient.PostAsJsonAsync(
-                    _ollamaApiUrl + "api/generate",
-                    requestPayloadOllama,
-                    cancellationToken);
+                HttpResponseMessage httpResponse;
+                try
+                {
+                    httpResponse = await _httpClient.PostAsJsonAsync(
+                        _ollamaApiUrl + "api/generate",
+                        requestPayloadOllama,
+                        cancellationToken);
+                }
+                catch (TaskCanceledException tex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // HttpClient timeout
+                    responseHeaders["MessageType"] = "OllamaTimeout";
+                    return new MessageEnvelope(
+                        payload: "Error: LLM request timed out before completion.",
+                        metadata: responseMetadata,
+                        id: Guid.NewGuid().ToString(),
+                        headers: responseHeaders);
+                }
 
                 if (httpResponse.IsSuccessStatusCode)
                 {

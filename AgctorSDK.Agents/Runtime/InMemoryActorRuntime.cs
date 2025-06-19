@@ -288,7 +288,10 @@ namespace AgctorSDK.Core.Runtime
             var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
             mcpHeaders["SenderId"] = senderId ?? "system"; // Per MCP, use originating agent or "system"
             mcpHeaders["ReceiverId"] = targetActorId;    // Per MCP
-            mcpHeaders["MessageType"] = message?.GetType().Name ?? "Unknown"; // Per MCP
+            if (!mcpHeaders.ContainsKey("MessageType"))
+            {
+                mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+            }
             mcpHeaders["Version"] = "1.0"; // Example default version
 
             var mcpMetadata = new Dictionary<string, object>
@@ -347,7 +350,10 @@ namespace AgctorSDK.Core.Runtime
             var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
             mcpHeaders["SenderId"] = senderId ?? "system";
             mcpHeaders["ReceiverId"] = targetActorId;
-            mcpHeaders["MessageType"] = message?.GetType().Name ?? "Unknown";
+            if (!mcpHeaders.ContainsKey("MessageType"))
+            {
+                mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+            }
             mcpHeaders["Version"] = "1.0";
             // mcpHeaders["ReplyTo"] could be added if a specific reply path is known, e.g. runtime's own address.
             // For now, relies on correlationId.
