@@ -12,6 +12,8 @@ using AgctorSDK.CodeGraph.Embeddings;
 using AgctorSDK.CodeGraph.Agents;
 using AgctorSDK.Core.Utils.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using AgctorSDK.CodeGraph.Intents;
+using AgctorSDK.CodeGraph.Llm;
 
 namespace AgctorSDK.Host.Services.Scenarios
 {
@@ -45,14 +47,25 @@ namespace AgctorSDK.Host.Services.Scenarios
                 // 1. Create a temporary workspace with a simple C# source file.
                 var tempDir = Path.Combine(Path.GetTempPath(), $"agctor-demo-{Guid.NewGuid():N}");
                 Directory.CreateDirectory(tempDir);
-                var srcFilePath = Path.Combine(tempDir, "Calculator.cs");
-                await File.WriteAllTextAsync(srcFilePath, SampleSource);
+                _logger.LogInformation("[CodeGraphDemoScenario] Workspace directory: {TempDir}", tempDir);
+                Console.WriteLine($"[AGCTOR DEMO] Workspace directory: {tempDir}");
+                var calcPath = Path.Combine(tempDir, "Calculator.cs");
+                var utilsPath = Path.Combine(tempDir, "MathUtils.cs");
+                var sciPath  = Path.Combine(tempDir, "ScientificCalculator.cs");
+
+                await File.WriteAllTextAsync(calcPath, CalculatorSource);
+                await File.WriteAllTextAsync(utilsPath, MathUtilsSource);
+                await File.WriteAllTextAsync(sciPath, ScientificCalculatorSource);
 
                 // 2. Build CodeGraph actors (Solution → Project → File)
                 var solution = new SolutionActor("DemoSolution", Path.Combine(tempDir, "Demo.sln"));
                 var project = new ProjectActor("DemoProject", Path.Combine(tempDir, "Demo.csproj"));
-                var fileActor = new FileActor("Calculator.cs", srcFilePath);
-                project.AddFile(fileActor);
+                var calcFile = new FileActor("Calculator.cs", calcPath);
+                var utilsFile = new FileActor("MathUtils.cs", utilsPath);
+                var sciFile  = new FileActor("ScientificCalculator.cs", sciPath);
+                project.AddFile(calcFile);
+                project.AddFile(utilsFile);
+                project.AddFile(sciFile);
                 solution.AddProject(project);
 
                 // 3. Prepare analyzer registry and embedding infrastructure.
@@ -61,23 +74,45 @@ namespace AgctorSDK.Host.Services.Scenarios
 
                 var vectorStore = new InMemoryVectorStore();
                 var storeActor = new EmbeddingStoreActor("vector-store", vectorStore);
-                var embeddingGen = new StubEmbeddingGenerator();
+                IEmbeddingGenerator embeddingGen;
+                try
+                {
+                    var http = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
+                    embeddingGen = new OllamaEmbeddingGenerator(http);
+                }
+                catch (Exception)
+                {
+                    // Fallback for environments without Ollama running.
+                    embeddingGen = new StubEmbeddingGenerator();
+                }
 
                 // 4. Spawn application agents.
                 const string indexerId = "indexer-agent";
                 const string searchId  = "search-agent";
                 const string llmId     = "llm-agent";
+                const string intentId  = "intent-agent";
                 const string queryId   = "query-agent";
 
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
                 indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
 
-                var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution);
+                var resolvers = new List<IIntentResolver>
+                {
+                    new RegexIntentResolver(),
+                    new HeuristicIntentResolver(),
+                    new ProxyIntentResolver(_runtimeAdapter, intentId)
+                };
+                var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution, resolvers);
 
                 var llmAgent     = new LLMAgent(llmId); // Uses default Ollama settings – OK for demo.
 
+                // IntentDetectionAgent (LLM-based)
+                var httpCli = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
+                ILlmClient llmClient = new OllamaLlmClient(httpCli);
+                var intentAgent = new IntentDetectionAgent(intentId, llmClient);
+
                 // Manually initialize and then register the prebuilt agents
-                foreach (var agent in new Agent[] { indexerAgent, searchAgent, llmAgent })
+                foreach (var agent in new Agent[] { indexerAgent, searchAgent, llmAgent, intentAgent })
                 {
                     await agent.InitializeAsync();
                     await _runtimeAdapter.RegisterActorAsync(agent);
@@ -121,11 +156,40 @@ namespace AgctorSDK.Host.Services.Scenarios
         /// <summary>
         /// Very small sample source used for the demo graph.
         /// </summary>
-        private const string SampleSource = @"namespace DemoApp
+        private const string CalculatorSource = @"namespace DemoApp
 {
     public class Calculator
     {
         public int Add(int a, int b) => a + b;
+        public int Subtract(int a, int b) => a - b;
+        public int Multiply(int a, int b) => a * b;
+
+        public double Divide(int a, int b)
+        {
+            if (b == 0) throw new System.DivideByZeroException();
+            return (double)a / b;
+        }
+
+        // Sum of an arbitrary list of integers
+        public int Sum(params int[] numbers) => System.Linq.Enumerable.Sum(numbers);
+    }
+}";
+
+        private const string MathUtilsSource = @"namespace DemoApp
+{
+    public static class MathUtils
+    {
+        public static int Square(int x) => x * x;
+        public static int Cube(int x)   => x * x * x;
+    }
+}";
+
+        private const string ScientificCalculatorSource = @"namespace DemoApp
+{
+    public class ScientificCalculator : Calculator
+    {
+        public double Power(double @base, double exp) => System.Math.Pow(@base, exp);
+        public double Sqrt(double x) => System.Math.Sqrt(x);
     }
 }";
 

@@ -10,6 +10,7 @@ using AgctorSDK.CodeGraph.Analyzers;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.CodeGraph.Intents;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -23,16 +24,19 @@ namespace AgctorSDK.CodeGraph.Agents
         private IEmbeddingGenerator _generator = null!;
         private EmbeddingStoreActor _storeActor = null!;
         private CodeGraphActorBase _root = null!;
+        private IReadOnlyList<IIntentResolver> _resolvers = Array.Empty<IIntentResolver>();
 
         public SearchAgent(string id,
                            IEmbeddingGenerator generator,
                            EmbeddingStoreActor storeActor,
-                           CodeGraphActorBase root)
+                           CodeGraphActorBase root,
+                           IEnumerable<IIntentResolver> resolvers)
             : base(id)
         {
             _generator = generator;
             _storeActor = storeActor;
             _root = root;
+            _resolvers = resolvers?.ToList() ?? throw new ArgumentNullException(nameof(resolvers));
         }
 
         /// <summary>
@@ -42,11 +46,13 @@ namespace AgctorSDK.CodeGraph.Agents
 
         public void Configure(IEmbeddingGenerator generator,
                               EmbeddingStoreActor storeActor,
-                              CodeGraphActorBase root)
+                              CodeGraphActorBase root,
+                              IEnumerable<IIntentResolver> resolvers)
         {
             _generator = generator ?? throw new ArgumentNullException(nameof(generator));
             _storeActor = storeActor ?? throw new ArgumentNullException(nameof(storeActor));
             _root = root ?? throw new ArgumentNullException(nameof(root));
+            _resolvers = resolvers?.ToList() ?? throw new ArgumentNullException(nameof(resolvers));
         }
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -79,53 +85,53 @@ namespace AgctorSDK.CodeGraph.Agents
 
         private async Task<string> ExecuteSearchAsync(string prompt, CancellationToken cancellationToken)
         {
-            // === Structural queries first ===
-
-            // List classes
-            if (IsListClassesCommand(prompt))
+            var intent = ResolveIntent(prompt);
+            if (!intent.IsSuccess)
             {
-                var classes = EnumerateClasses(_root).Distinct().OrderBy(c => c).ToList();
-                return classes.Count == 0 ? "No classes found in source." : string.Join("\n", classes);
+                // Fall back to semantic vector search when intent resolution fails.
+                intent = new Intents.IntentResolution(Intents.IntentKind.SemanticSearch, null);
             }
 
-            // List files
-            if (IsListFilesCommand(prompt))
+            switch (intent.Kind)
             {
-                var files = EnumerateFiles(_root).Select(f => f.Name).Distinct().OrderBy(f => f).ToList();
-                return files.Count == 0 ? "No source files in graph." : string.Join("\n", files);
-            }
-
-            // List methods of a class
-            if (TryExtractListMethodsRequest(prompt, out var methodsClass))
-            {
-                var clsNode = FindClassByName(_root, methodsClass);
-                if (clsNode == null)
-                    return $"Class '{methodsClass}' not found.";
-
-                var methods = clsNode.Children.OfType<MethodActor>().Select(m => m.Name).OrderBy(n => n).ToList();
-                return methods.Count == 0 ? $"Class '{methodsClass}' has no methods." : string.Join("\n", methods);
-            }
-
-            // Lines of code queries
-            if (TryExtractLineCountRequest(prompt, out var targetName, out var locScope))
-            {
-                switch (locScope)
+                case IntentKind.ListClasses:
                 {
-                    case "class":
+                    var classes = EnumerateClasses(_root).Distinct().OrderBy(c => c).ToList();
+                    return classes.Count == 0 ? "No classes found in source." : string.Join("\n", classes);
+                }
+                case IntentKind.ListFiles:
+                {
+                    var files = EnumerateFiles(_root).Select(f => f.Name).Distinct().OrderBy(f => f).ToList();
+                    return files.Count == 0 ? "No source files in graph." : string.Join("\n", files);
+                }
+                case IntentKind.ListMethods:
+                {
+                    var clsName = intent.Slots != null && intent.Slots.TryGetValue("ClassName", out var tmpCls) ? tmpCls : string.Empty;
+                    var clsNode = FindClassByName(_root, clsName);
+                    if (clsNode == null) return $"Class '{clsName}' not found.";
+                    var methods = clsNode.Children.OfType<MethodActor>().Select(m => m.Name).OrderBy(n => n).ToList();
+                    return methods.Count == 0 ? $"Class '{clsName}' has no methods." : string.Join("\n", methods);
+                }
+                case IntentKind.CountLinesClass:
+                case IntentKind.CountLinesFile:
+                {
+                    bool isClass = intent.Kind == IntentKind.CountLinesClass;
+                    var nameKey = isClass ? "ClassName" : "FileName";
+                    var targetName = intent.Slots != null && intent.Slots.TryGetValue(nameKey, out var tmpName) ? tmpName : string.Empty;
+
+                    if (isClass)
                     {
                         var cls = FindClassByName(_root, targetName);
                         if (cls == null) return $"Class '{targetName}' not found.";
-
                         int? loc = cls.LinesOfCode;
                         if (loc == null)
                         {
-                            // Best-effort fallback: compute quickly from file
                             var file = FindFileContainingClass(_root, targetName);
                             loc = file != null ? QuickEstimateClassLines(file.PhysicalPath, targetName) : null;
                         }
                         return loc == null ? $"Unable to determine LOC for class '{targetName}'." : $"Class {targetName} has approximately {loc} lines of code (including whitespace).";
                     }
-                    case "file":
+                    else
                     {
                         var file = FindFileByName(_root, targetName);
                         if (file == null) return $"File '{targetName}' not found.";
@@ -134,6 +140,29 @@ namespace AgctorSDK.CodeGraph.Agents
                         return $"File {targetName} has {count} lines of code (including whitespace).";
                     }
                 }
+                case IntentKind.GetMethodSource:
+                {
+                    var methodName = intent.Slots != null && intent.Slots.TryGetValue("MethodName", out var mname) ? mname : string.Empty;
+                    var methodNode = FindMethodByName(_root, methodName);
+                    if (methodNode == null) return $"Method '{methodName}' not found.";
+                    var file = FindFileContainingClass(_root, FindParentClass(_root, methodNode.Id)?.Name ?? string.Empty);
+                    if (file?.PhysicalPath == null || !System.IO.File.Exists(file.PhysicalPath))
+                        return $"Source for method '{methodName}' not available.";
+                    var snippet = ExtractMethodSource(file.PhysicalPath, methodName);
+                    return string.IsNullOrWhiteSpace(snippet) ? $"Could not extract source for {methodName}." : $"```csharp\n{snippet}\n```";
+                }
+                case IntentKind.GetClassSource:
+                {
+                    var className = intent.Slots != null && intent.Slots.TryGetValue("ClassName", out var cname) ? cname : string.Empty;
+                    var file = FindFileContainingClass(_root, className);
+                    if (file?.PhysicalPath == null || !System.IO.File.Exists(file.PhysicalPath))
+                        return $"Source for class '{className}' not available.";
+                    var snippet = ExtractClassSource(file.PhysicalPath, className);
+                    return string.IsNullOrWhiteSpace(snippet) ? $"Could not extract source for {className}." : $"```csharp\n{snippet}\n```";
+                }
+                case IntentKind.SemanticSearch:
+                default:
+                    break; // fall-through to vector search below
             }
 
             var vec = await _generator.GenerateEmbeddingAsync(prompt);
@@ -166,11 +195,15 @@ namespace AgctorSDK.CodeGraph.Agents
             await FinalizeTask("Search completed", cancellationToken);
         }
 
-        private static bool IsListClassesCommand(string prompt)
-            => prompt.Trim().ToLowerInvariant().StartsWith("list") && prompt.Contains("class", StringComparison.OrdinalIgnoreCase);
-
-        private static bool IsListFilesCommand(string prompt)
-            => prompt.Trim().ToLowerInvariant().StartsWith("list") && prompt.Contains("file", StringComparison.OrdinalIgnoreCase);
+        private Intents.IntentResolution ResolveIntent(string prompt)
+        {
+            foreach (var resolver in _resolvers)
+            {
+                var res = resolver.Resolve(prompt);
+                if (res.IsSuccess) return res;
+            }
+            return Intents.IntentResolution.Unresolved;
+        }
 
         private static IEnumerable<string> EnumerateClasses(CodeGraphActorBase root)
         {
@@ -227,52 +260,6 @@ namespace AgctorSDK.CodeGraph.Agents
         private static FileActor? FindFileByName(CodeGraphActorBase root, string fileName)
         {
             return EnumerateFiles(root).FirstOrDefault(f => f.Name.Equals(fileName, StringComparison.OrdinalIgnoreCase));
-        }
-
-        private static bool TryExtractListMethodsRequest(string prompt, out string className)
-        {
-            className = string.Empty;
-            var lowered = prompt.ToLowerInvariant();
-            if (!(lowered.StartsWith("list") || lowered.StartsWith("what"))) return false;
-            if (!lowered.Contains("method")) return false;
-
-            // simple heuristic: look for "in <ClassName>" or "of <ClassName>"
-            var tokens = prompt.Split(new[] { ' ', '?', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            for (int i = 0; i < tokens.Length - 1; i++)
-            {
-                if (tokens[i].Equals("in", StringComparison.OrdinalIgnoreCase) || tokens[i].Equals("of", StringComparison.OrdinalIgnoreCase))
-                {
-                    className = tokens[i + 1];
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private static bool TryExtractLineCountRequest(string prompt, out string targetName, out string scope)
-        {
-            targetName = string.Empty;
-            scope = string.Empty;
-            var lowered = prompt.ToLowerInvariant();
-            if (!lowered.Contains("lines of code")) return false;
-
-            var tokens = prompt.Split(new[] { ' ', '?', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-            for (int i = 0; i < tokens.Length - 1; i++)
-            {
-                if (tokens[i + 1].Equals("class", StringComparison.OrdinalIgnoreCase))
-                {
-                    targetName = tokens[i];
-                    scope = "class";
-                    return true;
-                }
-                if (tokens[i + 1].Equals("file", StringComparison.OrdinalIgnoreCase))
-                {
-                    targetName = tokens[i];
-                    scope = "file";
-                    return true;
-                }
-            }
-            return false;
         }
 
         private static int? QuickEstimateClassLines(string? filePath, string className)
@@ -356,14 +343,60 @@ namespace AgctorSDK.CodeGraph.Agents
 
         private static ClassActor? FindParentClass(CodeGraphActorBase root, string methodId)
         {
-            foreach (var child in root.Children)
+            foreach (var cls in EnumerateClasses(root).Select(name => FindClassByName(root, name)).Where(c => c != null))
             {
-                if (child is ClassActor cls && cls.Children.Any(m => m.Id == methodId))
+                if (cls!.Children.OfType<MethodActor>().Any(m => m.Id == methodId))
                     return cls;
-                var nested = FindParentClass(child, methodId);
-                if (nested != null) return nested;
             }
             return null;
+        }
+
+        private static MethodActor? FindMethodByName(CodeGraphActorBase root, string name)
+        {
+            foreach (var cls in EnumerateClasses(root).Select(n => FindClassByName(root, n)).Where(c => c != null))
+            {
+                var method = cls!.Children.OfType<MethodActor>()
+                                     .FirstOrDefault(m => m.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                if (method != null) return method;
+            }
+            return null;
+        }
+
+        private static string ExtractMethodSource(string filePath, string methodName, int maxLines = 40)
+        {
+            var lines = System.IO.File.ReadAllLines(filePath);
+            int start = Array.FindIndex(lines, l => l.Contains(methodName + "("));
+            if (start == -1) return string.Empty;
+
+            var sb = new System.Text.StringBuilder();
+            int depth = 0;
+            for (int i = start; i < lines.Length && sb.Length < maxLines * 200; i++)
+            {
+                var line = lines[i];
+                sb.AppendLine(line);
+                depth += CountChar(line, '{') - CountChar(line, '}');
+                if (i > start && depth <= 0) break;
+                if (i - start >= maxLines) break;
+            }
+            return sb.ToString();
+        }
+
+        private static string ExtractClassSource(string filePath, string className, int maxLines = 120)
+        {
+            var lines = System.IO.File.ReadAllLines(filePath);
+            int start = Array.FindIndex(lines, l => l.Contains("class " + className));
+            if (start == -1) return string.Empty;
+            var sb = new System.Text.StringBuilder();
+            int depth = 0;
+            for (int i = start; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                sb.AppendLine(line);
+                depth += CountChar(line, '{') - CountChar(line, '}');
+                if (i > start && depth <= 0) break;
+                if (i - start >= maxLines) break;
+            }
+            return sb.ToString();
         }
 
         #endregion

@@ -82,8 +82,26 @@ namespace AgctorSDK.CodeGraph.Agents
                 headers: promptHeaders,
                 cancellationToken: cancellationToken);
 
-            // 2. Build LLM prompt.
-            var llmPrompt = $"### Context\n{context}\n\n### Question\n{prompt}\n\n### Answer:";
+            // short-circuit: if context already contains the direct answer for a purely structural query
+            if (!string.IsNullOrWhiteSpace(context) && IsDirectAnswerPrompt(prompt))
+                return context;
+
+            // 2. Build LLM prompt (explicitly forbid hallucination)
+            var llmPrompt = $@"You are an expert code assistant.
+CONTEXT already is the answer; reformat it and do not invent new code.
+If CONTEXT is empty reply with 'No code found for the query'.
+
+---
+CONTEXT:
+{context}
+---
+QUESTION: {prompt}
+ANSWER:";
+
+            static bool IsDirectAnswerPrompt(string p)
+                => System.Text.RegularExpressions.Regex.IsMatch(p,
+                       @"\b(list|show|lines? of code|methods?|classes?)\b",
+                       System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
             // 3. Ask LLM
             var answer = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
