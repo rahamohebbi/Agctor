@@ -51,7 +51,7 @@ This document details the integration testing strategy for the AGCTOR Code Under
   - Embeddings linked to actor IDs
 
 #### ✅ Test: `VectorSearchActor_ShouldReturnSemanticMatches`
-- **Query**: “user login logic”
+- **Query**: "user login logic"
 - **Expectations**:
   - Top-K method or class actors returned
   - Results include cosine similarity scores
@@ -90,14 +90,44 @@ This document details the integration testing strategy for the AGCTOR Code Under
 - **Expectations**:
   - Human-readable summary of changes
   - Comments on test coverage, duplication, complexity
-  - Scorecard output with categories like “readability”, “risk level”, “coverage completeness”
+  - Scorecard output with categories like "readability", "risk level", "coverage completeness"
+
+---
+
+### 🤖 Group 7: Intent Detection & Natural-Language Search (NEW)
+
+#### ✅ Test: `IntentDetectionAgent_ShouldResolveQueryViaLlm`
+- **Setup**: Query "Which classes implement ICalculator?" – not matched by heuristics.
+- **Expectations**:
+  - All local resolvers return `null`.
+  - `IntentDetectionAgent` is invoked and returns `IntentKind.SemanticSearch`.
+  - `SearchAgent` executes semantic flow and returns matching classes.
+
+#### ✅ Test: `HeuristicIntentResolver_ShouldHandleListCommands`
+- **Query**: "list classes"
+- **Expectations**:
+  - Heuristic resolver detects `IntentKind.ListClasses` with high confidence.
+  - No LLM calls are made (verified via mock `ILlmClient`).
+
+#### ✅ Test: `SearchAgent_ShouldFallbackToVectorSearch`
+- **Query**: "parses json"
+- **Expectations**:
+  - No resolver matches confidently.
+  - Vector search is invoked with query text.
+  - Results include methods/classes with JSON parsing.
+
+#### ✅ Test: `QueryAgent_ShouldReformatOnly`
+- **Setup**: Structural answer already contains desired code snippet.
+- **Expectations**:
+  - LLM prompt instructs model to *reformat without inventing new code*.
+  - Response contains only re-formatted snippet, no hallucinations.
 
 ---
 
 ### ✅ End-to-End Scenario
 
 #### ✅ Test: `SelfImprovingAgent_ShouldUnderstandIndexAndSuggestPR`
-- **Input**: High-level goal (e.g., “Add email verification to registration logic”)
+- **Input**: High-level goal (e.g., "Add email verification to registration logic")
 - **Expected Flow**:
   - PlannerAgent analyzes goal → identifies affected actors
   - VectorSearchActor narrows candidate classes/methods

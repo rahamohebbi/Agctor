@@ -90,7 +90,7 @@ This document breaks the AGCTOR Code Understanding Subsystem into stages for inc
 ## 📦 Stage 6: Code Comprehension APIs (for Agents or IDE)
 
 ### ✅ Tests to Write First
-- ✅ Can query actor graph for “find all public methods”
+- ✅ Can query actor graph for "find all public methods"
 - ✅ Can retrieve summaries from classes and methods
 - ✅ Can highlight where a method is used across files
 - ✅ Can search using semantic and structural filters
@@ -148,6 +148,27 @@ This document breaks the AGCTOR Code Understanding Subsystem into stages for inc
 - Build `DiffFormatterService` to produce input prompts
 - Add scoring rubric (readability, test coverage, duplication)
 - Optional: GitHub/GitLab integration for posting reviews
+
+---
+
+## 📦 Stage 10: Intent Detection & SearchAgent Refactor
+
+### ✅ Tests to Write First
+- ✅ `HeuristicIntentResolver_ShouldDetectListClasses`
+- ✅ `RegexIntentResolver_ShouldMatchCustomPattern`
+- ✅ `IntentDetectionAgent_ShouldReturnIntentFromLlm`
+- ✅ `SearchAgent_ShouldFallbackToVectorWhenIntentUnresolved`
+- ✅ End-to-End: "show code for Square" returns method body without LLM hallucination
+
+### 🔨 Tasks
+- Implement `IntentKind` & `IntentResolution` models
+- Extract `IIntentResolver` interface & default chain logic
+- Implement resolvers: Heuristic, Regex, LLM, Proxy
+- Wrap `LlmIntentResolver` inside `IntentDetectionAgent`
+- Refactor `SearchAgent` to consume resolver chain via DI
+- Remove legacy helper methods (`IsList…` family)
+- Update `CodeGraphDemoScenario` to wire resolvers + agent
+- Add unit and integration tests
 
 ---
 
