@@ -64,9 +64,6 @@ namespace AgctorSDK.Core.Adapters
         /// Initializes the Proto.Actor runtime with the provided configuration.
         /// TODO: Implement Proto.Actor system initialization and actor system setup.
         /// </summary>
-        /// <param name="configuration">Proto.Actor-specific configuration parameters</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task representing the asynchronous initialization operation</returns>
         public Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor adapter initialization is not yet implemented. " +
@@ -77,8 +74,6 @@ namespace AgctorSDK.Core.Adapters
         /// Gracefully shuts down the Proto.Actor runtime and cleans up resources.
         /// TODO: Implement Proto.Actor system shutdown and resource cleanup.
         /// </summary>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task representing the asynchronous shutdown operation</returns>
         public Task ShutdownAsync(CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor adapter shutdown is not yet implemented. " +
@@ -89,11 +84,6 @@ namespace AgctorSDK.Core.Adapters
         /// Spawns a new Proto.Actor instance of the specified type.
         /// TODO: Implement Proto.Actor spawning using Props and actor system.
         /// </summary>
-        /// <typeparam name="T">The type of actor to spawn</typeparam>
-        /// <param name="actorId">Unique identifier for the new actor instance</param>
-        /// <param name="initializationData">Optional data to pass to the actor during spawning</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task containing the spawned actor instance</returns>
         public Task<T> SpawnActorAsync<T>(string actorId, object? initializationData = null, CancellationToken cancellationToken = default) where T : class, IActor
         {
             throw new NotImplementedException("Proto.Actor spawning is not yet implemented. " +
@@ -109,9 +99,6 @@ namespace AgctorSDK.Core.Adapters
         /// Registers an existing actor instance with the Proto.Actor runtime.
         /// TODO: Implement Proto.Actor registration logic.
         /// </summary>
-        /// <param name="actor">The actor instance to register</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task representing the asynchronous registration operation</returns>
         public Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor registration is not yet implemented. " +
@@ -122,10 +109,6 @@ namespace AgctorSDK.Core.Adapters
         /// Gets a reference to an existing Proto.Actor by its ID.
         /// TODO: Implement Proto.Actor PID resolution and actor reference retrieval.
         /// </summary>
-        /// <typeparam name="T">The type of actor to retrieve</typeparam>
-        /// <param name="actorId">The unique identifier of the actor</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task containing the actor reference or null if not found</returns>
         public Task<T?> GetActorAsync<T>(string actorId, CancellationToken cancellationToken = default) where T : class, IActor
         {
             throw new NotImplementedException("Proto.Actor reference retrieval is not yet implemented. " +
@@ -136,12 +119,6 @@ namespace AgctorSDK.Core.Adapters
         /// Sends a message to the specified Proto.Actor.
         /// TODO: Implement Proto.Actor message sending using PID and context.
         /// </summary>
-        /// <param name="targetActorId">The ID of the actor to send the message to</param>
-        /// <param name="message">The message payload to send</param>
-        /// <param name="senderId">Optional ID of the sending actor</param>
-        /// <param name="headers">Optional custom headers for the message</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task representing the asynchronous send operation</returns>
         public Task SendMessageAsync(string targetActorId, object message, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor message sending is not yet implemented. " +
@@ -152,14 +129,6 @@ namespace AgctorSDK.Core.Adapters
         /// Sends a message and waits for a response from the target Proto.Actor.
         /// TODO: Implement Proto.Actor request-response pattern using context.RequestAsync().
         /// </summary>
-        /// <typeparam name="TResponse">The expected type of the response</typeparam>
-        /// <param name="targetActorId">The ID of the actor to send the message to</param>
-        /// <param name="message">The message payload to send</param>
-        /// <param name="timeout">Maximum time to wait for a response</param>
-        /// <param name="senderId">Optional ID of the sending actor</param>
-        /// <param name="headers">Optional custom headers for the message</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task containing the response from the target actor</returns>
         public Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default) where TResponse : class
         {
             throw new NotImplementedException("Proto.Actor request-response messaging is not yet implemented. " +
@@ -170,9 +139,6 @@ namespace AgctorSDK.Core.Adapters
         /// Stops and removes a Proto.Actor from the runtime.
         /// TODO: Implement Proto.Actor stopping using context.Stop().
         /// </summary>
-        /// <param name="actorId">The ID of the actor to stop</param>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task representing the asynchronous stop operation</returns>
         public Task StopActorAsync(string actorId, CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor stopping is not yet implemented. " +
@@ -183,8 +149,6 @@ namespace AgctorSDK.Core.Adapters
         /// Gets a list of all active Proto.Actor IDs in the runtime.
         /// TODO: Implement Proto.Actor process registry querying for active PIDs.
         /// </summary>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task containing the list of active actor IDs</returns>
         public Task<IEnumerable<string>> GetActiveActorIdsAsync(CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor active actor enumeration is not yet implemented. " +
@@ -195,8 +159,6 @@ namespace AgctorSDK.Core.Adapters
         /// Gets Proto.Actor runtime statistics and health information.
         /// TODO: Implement Proto.Actor metrics collection and system monitoring.
         /// </summary>
-        /// <param name="cancellationToken">Token for cancelling the operation</param>
-        /// <returns>A task containing Proto.Actor runtime statistics</returns>
         public Task<IRuntimeStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
         {
             throw new NotImplementedException("Proto.Actor statistics collection is not yet implemented. " +
@@ -211,8 +173,6 @@ namespace AgctorSDK.Core.Adapters
             if (_isDisposed) return;
 
             // TODO: Implement proper Proto.Actor resource cleanup
-            // This should include actor system disposal and process registry cleanup
-            
             _isDisposed = true;
             GC.SuppressFinalize(this);
         }

@@ -11,7 +11,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
 
-namespace AgctorSDK.Core.Runtime
+namespace AgctorSDK.Core.Adapters
 {
     /// <summary>
     /// In-memory actor runtime implementation that provides basic actor lifecycle management,

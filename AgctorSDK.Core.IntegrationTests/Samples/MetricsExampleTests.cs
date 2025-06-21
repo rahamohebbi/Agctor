@@ -13,6 +13,7 @@ using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Interfaces;
 using System.Threading;
+using AgctorSDK.Core.Adapters;
 
 namespace AgctorSDK.Core.IntegrationTests.Samples
 {

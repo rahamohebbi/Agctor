@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Adapters;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Tools.Implementations;

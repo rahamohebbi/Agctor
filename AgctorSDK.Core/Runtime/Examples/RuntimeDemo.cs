@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Adapters;
 
 namespace AgctorSDK.Core.Runtime.Examples
 {

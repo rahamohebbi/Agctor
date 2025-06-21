@@ -8,6 +8,7 @@ using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Runtime.Examples;
 using AgctorSDK.Core.Events;
 using AgctorSDK.Core.Messages;
+using AgctorSDK.Core.Adapters;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace AgctorSDK.Core.Tests.Runtime

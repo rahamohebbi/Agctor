@@ -11,6 +11,7 @@ using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
 using AgctorSDK.Core.Utils.ActivityTracking;
+using AgctorSDK.Core.Adapters;
 
 namespace AgctorSDK.Core
 {
