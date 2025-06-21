@@ -11,6 +11,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.CodeGraph.Intents;
+using AgctorSDK.CodeGraph.Snippets;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -142,22 +143,66 @@ namespace AgctorSDK.CodeGraph.Agents
                 }
                 case IntentKind.GetMethodSource:
                 {
-                    var methodName = intent.Slots != null && intent.Slots.TryGetValue("MethodName", out var mname) ? mname : string.Empty;
-                    var methodNode = FindMethodByName(_root, methodName);
-                    if (methodNode == null) return $"Method '{methodName}' not found.";
-                    var file = FindFileContainingClass(_root, FindParentClass(_root, methodNode.Id)?.Name ?? string.Empty);
-                    if (file?.PhysicalPath == null || !System.IO.File.Exists(file.PhysicalPath))
-                        return $"Source for method '{methodName}' not available.";
-                    var snippet = ExtractMethodSource(file.PhysicalPath, methodName);
-                    return string.IsNullOrWhiteSpace(snippet) ? $"Could not extract source for {methodName}." : $"```csharp\n{snippet}\n```";
+                    // Snippet providers are discovered via SnippetProviderRegistry; SearchAgent remains language-agnostic.
+
+                    var rawName = intent.Slots != null && intent.Slots.TryGetValue("MethodName", out var mname) ? mname : string.Empty;
+                    if (string.IsNullOrWhiteSpace(rawName)) return "Method name not provided.";
+
+                    // Support multiple method names separated by comma or the word "and".
+                    var names = System.Text.RegularExpressions.Regex.Split(rawName, @"\s*(?:,| and )\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                                   .Where(n => !string.IsNullOrWhiteSpace(n))
+                                   .Distinct(StringComparer.OrdinalIgnoreCase)
+                                   .ToList();
+
+                    var snippets = new StringBuilder();
+
+                    foreach (var name in names)
+                    {
+                        var methodNode = FindMethodByName(_root, name);
+                        if (methodNode == null)
+                        {
+                            snippets.AppendLine($"// Method '{name}' not found\n");
+                            continue;
+                        }
+
+                        var parentClass = FindParentClass(_root, methodNode.Id);
+                        var file = FindFileContainingClass(_root, parentClass?.Name ?? string.Empty);
+                        if (file?.PhysicalPath == null || !System.IO.File.Exists(file.PhysicalPath))
+                        {
+                            snippets.AppendLine($"// Source for method '{name}' not available\n");
+                            continue;
+                        }
+
+                        var provider = SnippetProviderRegistry.GetProvider(file.PhysicalPath);
+                        var snippet = provider?.GetMethodSource(file.PhysicalPath, name) ?? string.Empty;
+
+                        if (string.IsNullOrWhiteSpace(snippet))
+                        {
+                            snippets.AppendLine($"// Could not extract source for {name}\n");
+                            continue;
+                        }
+
+                        snippets.AppendLine($"// --- {name} ---");
+                        snippets.AppendLine(snippet.TrimEnd());
+                        snippets.AppendLine();
+                    }
+
+                    var resultStr = snippets.ToString().Trim();
+                    return string.IsNullOrEmpty(resultStr) ? "No snippets found." : $"```csharp\n{resultStr}\n```";
                 }
                 case IntentKind.GetClassSource:
                 {
+                    // Snippet providers auto-register themselves; no language-specific code here.
+
                     var className = intent.Slots != null && intent.Slots.TryGetValue("ClassName", out var cname) ? cname : string.Empty;
+                    if (string.IsNullOrWhiteSpace(className)) return "Class name not provided.";
+
                     var file = FindFileContainingClass(_root, className);
                     if (file?.PhysicalPath == null || !System.IO.File.Exists(file.PhysicalPath))
                         return $"Source for class '{className}' not available.";
-                    var snippet = ExtractClassSource(file.PhysicalPath, className);
+
+                    var provider = SnippetProviderRegistry.GetProvider(file.PhysicalPath);
+                    var snippet = provider?.GetClassSource(file.PhysicalPath, className) ?? string.Empty;
                     return string.IsNullOrWhiteSpace(snippet) ? $"Could not extract source for {className}." : $"```csharp\n{snippet}\n```";
                 }
                 case IntentKind.SemanticSearch:
@@ -360,43 +405,6 @@ namespace AgctorSDK.CodeGraph.Agents
                 if (method != null) return method;
             }
             return null;
-        }
-
-        private static string ExtractMethodSource(string filePath, string methodName, int maxLines = 40)
-        {
-            var lines = System.IO.File.ReadAllLines(filePath);
-            int start = Array.FindIndex(lines, l => l.Contains(methodName + "("));
-            if (start == -1) return string.Empty;
-
-            var sb = new System.Text.StringBuilder();
-            int depth = 0;
-            for (int i = start; i < lines.Length && sb.Length < maxLines * 200; i++)
-            {
-                var line = lines[i];
-                sb.AppendLine(line);
-                depth += CountChar(line, '{') - CountChar(line, '}');
-                if (i > start && depth <= 0) break;
-                if (i - start >= maxLines) break;
-            }
-            return sb.ToString();
-        }
-
-        private static string ExtractClassSource(string filePath, string className, int maxLines = 120)
-        {
-            var lines = System.IO.File.ReadAllLines(filePath);
-            int start = Array.FindIndex(lines, l => l.Contains("class " + className));
-            if (start == -1) return string.Empty;
-            var sb = new System.Text.StringBuilder();
-            int depth = 0;
-            for (int i = start; i < lines.Length; i++)
-            {
-                var line = lines[i];
-                sb.AppendLine(line);
-                depth += CountChar(line, '{') - CountChar(line, '}');
-                if (i > start && depth <= 0) break;
-                if (i - start >= maxLines) break;
-            }
-            return sb.ToString();
         }
 
         #endregion

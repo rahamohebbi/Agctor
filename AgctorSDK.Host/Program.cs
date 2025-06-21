@@ -5,6 +5,8 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Mcp;
+using AgctorSDK.CodeGraph.Llm;
+using AgctorSDK.CodeGraph.Snippets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +49,10 @@ builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 
+// Register LLM client (Ollama default)
+builder.Services.AddHttpClient<OllamaLlmClient>();
+builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmClient>());
+
 // Register scenario services
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 
@@ -69,6 +75,9 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Register built-in snippet providers (C#, Python, etc.)
+AgctorSDK.CodeGraph.Snippets.SnippetProviderBootstrapper.RegisterBuiltIn();
+
 // Initialize the actor runtime before starting the application
 Console.WriteLine("🔧 Initializing Actor Runtime...");
 var runtime = app.Services.GetRequiredService<IActorRuntimeAdapter>();
@@ -79,6 +88,11 @@ await runtime.InitializeAsync(new Dictionary<string, object>
     ["DefaultTimeoutMs"] = 30000
 });
 Console.WriteLine("✅ Actor Runtime initialized successfully");
+
+// Spawn SnippetResolverAgent (LLM fallback for snippets)
+var llmClient = app.Services.GetRequiredService<ILlmClient>();
+var snippetResolver = await runtime.SpawnActorAsync("snippet-resolver", id => new SnippetResolverAgent(id, llmClient));
+AgctorSDK.CodeGraph.Snippets.SnippetProviderRegistry.Register(snippetResolver);
 
 // Configure the HTTP request pipeline
 // Enable Swagger in all environments for API documentation
