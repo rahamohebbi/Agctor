@@ -7,6 +7,8 @@ using Proto;
 using System.Collections.Concurrent;
 using AgctorIActor = AgctorSDK.Core.Interfaces.IActor;
 using ProtoActorInterface = Proto.IActor;
+using Proto.Remote;
+using Proto.Remote.GrpcNet;
 
 namespace AgctorSDK.Core.Adapters
 {
@@ -29,6 +31,7 @@ namespace AgctorSDK.Core.Adapters
         private DateTimeOffset _startTime;
         private long _totalMessages;
         private readonly ConcurrentDictionary<string, long> _actorMsgCount = new();
+        private GrpcNetRemote? _remote;
 
         /// <summary>
         /// Name identifier for the Proto.Actor runtime adapter.
@@ -78,16 +81,23 @@ namespace AgctorSDK.Core.Adapters
         public async Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default)
         {
             if (_isInitialized) return;
-            // copy config
-            foreach (var kvp in configuration)
-            {
-                _configuration[kvp.Key] = kvp.Value;
-            }
+            foreach (var kvp in configuration) _configuration[kvp.Key] = kvp.Value;
+
+            string? host = _configuration.TryGetValue("remoteHost", out var h) ? h?.ToString() : null;
+            int port = _configuration.TryGetValue("remotePort", out var p) && int.TryParse(p.ToString(), out var po) ? po : 0;
+
             _system = new ActorSystem();
+
+            if (!string.IsNullOrEmpty(host) && port > 0)
+            {
+                var remoteConfig = GrpcNetRemoteConfig.BindTo(host!, port);
+                _remote = new GrpcNetRemote(_system, remoteConfig);
+                await _remote.StartAsync();
+            }
+
             _root = _system.Root;
             _startTime = DateTimeOffset.UtcNow;
             _isInitialized = true;
-            await Task.CompletedTask;
         }
 
         /// <summary>
@@ -105,6 +115,11 @@ namespace AgctorSDK.Core.Adapters
             // _system.Dispose(); // ActorSystem has no Dispose; allow GC
             _isInitialized = false;
             await Task.CompletedTask;
+            if(_remote!=null)
+            {
+                await _remote.ShutdownAsync();
+                _remote=null;
+            }
         }
 
         /// <summary>
@@ -184,10 +199,8 @@ namespace AgctorSDK.Core.Adapters
         /// </summary>
         public Task SendMessageAsync(string targetActorId, object message, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
         {
-            if (!_pidMap.TryGetValue(targetActorId, out var pid))
-            {
-                return Task.CompletedTask; // actor not found
-            }
+            if (!_isInitialized) throw new InvalidOperationException("Runtime not initialized");
+            var pid = ResolvePid(targetActorId);
             IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
             _root.Send(pid, envelope);
             Interlocked.Increment(ref _totalMessages);
@@ -202,10 +215,8 @@ namespace AgctorSDK.Core.Adapters
         /// </summary>
         public async Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default) where TResponse : class
         {
-            if (!_pidMap.TryGetValue(targetActorId, out var pid))
-            {
-                throw new InvalidOperationException($"Target actor {targetActorId} not found");
-            }
+            if (!_isInitialized) throw new InvalidOperationException("Runtime not initialized");
+            var pid = ResolvePid(targetActorId);
             IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
             var response = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
             Interlocked.Increment(ref _totalMessages);
@@ -290,7 +301,7 @@ namespace AgctorSDK.Core.Adapters
         {
             try
             {
-                return (T)Activator.CreateInstance(typeof(T), actorId)!;
+                return (T)System.Activator.CreateInstance(typeof(T), actorId)!;
             }
             catch (MissingMethodException ex)
             {
@@ -329,6 +340,27 @@ namespace AgctorSDK.Core.Adapters
             public long MemoryUsageBytes => GC.GetTotalMemory(false);
             public IReadOnlyDictionary<string, object> AdditionalMetrics { get; }
             public double AverageMailboxLength { get; }
+        }
+
+        private static bool TryParseRemote(string actorId, out string name, out string address)
+        {
+            var at = actorId.IndexOf('@');
+            if (at > 0 && at < actorId.Length - 1)
+            {
+                name = actorId[..at];
+                address = actorId[(at + 1)..];
+                return true;
+            }
+            name = string.Empty; address = string.Empty; return false;
+        }
+        private PID ResolvePid(string targetActorId)
+        {
+            if (_pidMap.TryGetValue(targetActorId, out var pid)) return pid;
+            if (TryParseRemote(targetActorId, out var name, out var address))
+            {
+                return PID.FromAddress(address, name);
+            }
+            throw new InvalidOperationException($"Actor {targetActorId} not found locally or remote spec invalid");
         }
     }
 } 
