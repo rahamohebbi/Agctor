@@ -25,8 +25,10 @@ namespace AgctorSDK.Core.Adapters
         private ActorSystem _system = null!;
         private Proto.IRootContext _root = null!;
         private readonly ConcurrentDictionary<string, PID> _pidMap = new();
+        private readonly ConcurrentDictionary<string, AgctorIActor> _actorInstances = new();
         private DateTimeOffset _startTime;
         private long _totalMessages;
+        private readonly ConcurrentDictionary<string, long> _actorMsgCount = new();
 
         /// <summary>
         /// Name identifier for the Proto.Actor runtime adapter.
@@ -130,6 +132,7 @@ namespace AgctorSDK.Core.Adapters
                 _root.Stop(pid);
                 throw new InvalidOperationException("Failed to add PID map");
             }
+            _actorInstances[actorId]=actorInstance;
             ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, typeof(T).Name));
             return actorInstance;
         }
@@ -158,6 +161,7 @@ namespace AgctorSDK.Core.Adapters
                 _root.Stop(pid);
                 throw new InvalidOperationException("Failed to register PID");
             }
+            _actorInstances[actorId]=actor;
             ActorSpawned?.Invoke(this, new ActorSpawnedEventArgs(actorId, actor.ActorType));
         }
 
@@ -167,8 +171,10 @@ namespace AgctorSDK.Core.Adapters
         /// </summary>
         public Task<T?> GetActorAsync<T>(string actorId, CancellationToken cancellationToken = default) where T : class, AgctorIActor
         {
-            // This adapter doesn't keep instance references after spawning; so cannot return actor
-            // Step-1: return null to indicate not supported yet
+            if (_actorInstances.TryGetValue(actorId, out var actor))
+            {
+                return Task.FromResult(actor as T);
+            }
             return Task.FromResult<T?>(null);
         }
 
@@ -185,6 +191,7 @@ namespace AgctorSDK.Core.Adapters
             IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
             _root.Send(pid, envelope);
             Interlocked.Increment(ref _totalMessages);
+            _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
             MessageSent?.Invoke(this, new MessageSentEventArgs(envelope.Id, senderId, targetActorId, message.GetType().Name));
             return Task.CompletedTask;
         }
@@ -202,6 +209,7 @@ namespace AgctorSDK.Core.Adapters
             IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
             var response = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
             Interlocked.Increment(ref _totalMessages);
+            _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
             MessageSent?.Invoke(this, new MessageSentEventArgs(envelope.Id, senderId, targetActorId, message.GetType().Name));
             return response;
         }
@@ -217,6 +225,7 @@ namespace AgctorSDK.Core.Adapters
                 _root.Stop(pid);
                 ActorStopped?.Invoke(this, new ActorStoppedEventArgs(actorId, "Unknown"));
             }
+            _actorInstances.TryRemove(actorId, out _);
             return Task.CompletedTask;
         }
 
@@ -237,7 +246,15 @@ namespace AgctorSDK.Core.Adapters
         public Task<IRuntimeStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
         {
             var uptime = DateTimeOffset.UtcNow - _startTime;
-            var stats = new RuntimeStats(_pidMap.Count, _totalMessages, uptime);
+            int mailboxTotal=0;
+            // Removed mailbox calculation due to visibility
+            var avgMailbox=0.0;
+            var metrics = new Dictionary<string, object>{
+                {"PerActorMessageCount", new Dictionary<string,long>(_actorMsgCount)},
+                {"AverageMailboxLength", avgMailbox},
+                {"TotalMailboxLength", mailboxTotal}
+            };
+            var stats=new RuntimeStats(_pidMap.Count,_totalMessages,uptime,avgMailbox,metrics);
             return Task.FromResult<IRuntimeStatistics>(stats);
         }
 
@@ -296,11 +313,13 @@ namespace AgctorSDK.Core.Adapters
 
         private class RuntimeStats : IRuntimeStatistics
         {
-            public RuntimeStats(int active, long total, TimeSpan up)
+            public RuntimeStats(int active, long total, TimeSpan up, double avgMailbox, IReadOnlyDictionary<string, object> additional)
             {
                 ActiveActorCount = active;
                 TotalMessagesProcessed = total;
                 Uptime = up;
+                AverageMailboxLength = avgMailbox;
+                AdditionalMetrics = additional;
             }
             public int ActiveActorCount { get; }
             public long TotalMessagesProcessed { get; }
@@ -308,7 +327,8 @@ namespace AgctorSDK.Core.Adapters
             public double AverageMessageProcessingTime => 0;
             public TimeSpan Uptime { get; }
             public long MemoryUsageBytes => GC.GetTotalMemory(false);
-            public IReadOnlyDictionary<string, object> AdditionalMetrics { get; } = new Dictionary<string, object>();
+            public IReadOnlyDictionary<string, object> AdditionalMetrics { get; }
+            public double AverageMailboxLength { get; }
         }
     }
 } 
