@@ -9,4 +9,8 @@
     <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Proto.Actor" Version="1.4.4" />
+  </ItemGroup>
+
 </Project> 
