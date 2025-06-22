@@ -201,7 +201,15 @@ namespace AgctorSDK.Core.Adapters
         {
             if (!_isInitialized) throw new InvalidOperationException("Runtime not initialized");
             var pid = ResolvePid(targetActorId);
-            IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
+            IMessageEnvelope envelope;
+            if (message is IMessageEnvelope msgEnv)
+            {
+                envelope = msgEnv;
+            }
+            else
+            {
+                envelope = new AgctorSDK.Core.Messages.MessageEnvelope(message, null, null, headers == null ? null : new Dictionary<string,string>(headers));
+            }
             _root.Send(pid, envelope);
             Interlocked.Increment(ref _totalMessages);
             _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
@@ -217,7 +225,15 @@ namespace AgctorSDK.Core.Adapters
         {
             if (!_isInitialized) throw new InvalidOperationException("Runtime not initialized");
             var pid = ResolvePid(targetActorId);
-            IMessageEnvelope envelope = message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(message);
+            IMessageEnvelope envelope;
+            if (message is IMessageEnvelope msgEnv)
+            {
+                envelope = msgEnv;
+            }
+            else
+            {
+                envelope = new AgctorSDK.Core.Messages.MessageEnvelope(message, null, null, headers == null ? null : new Dictionary<string,string>(headers));
+            }
             var response = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
             Interlocked.Increment(ref _totalMessages);
             _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
@@ -327,7 +343,15 @@ namespace AgctorSDK.Core.Adapters
                 _adapter.RecordInbound(_real.Id);
                 if (context.Sender != null && reply!=null)
                 {
-                    context.Respond(reply);
+                    if (reply is IMessageEnvelope repEnv)
+                    {
+                        // Unwrap the payload so callers can await strongly-typed results (e.g., string)
+                        context.Respond(repEnv.Payload ?? repEnv);
+                    }
+                    else
+                    {
+                        context.Respond(reply);
+                    }
                 }
             }
         }

@@ -85,6 +85,16 @@ namespace AgctorSDK.Core.DependencyInjection
             // Register the agent factory for agent functionality
             services.AddSingleton<IAgentFactory, AgentFactory>();
             
+            // Register logging and error handling services
+            services.AddSingleton<IAgctorLogger>(sp =>
+            {
+                var options = sp.GetService<Microsoft.Extensions.Options.IOptions<AgctorOptions>>()?.Value;
+                var minLevel = options?.EnableDetailedLogging == true ? LogLevel.Trace : LogLevel.Info;
+                return LoggerFactory.CreateLogger("Agctor", minLevel);
+            });
+            
+            services.AddSingleton<ErrorHandlingMiddleware>();
+            
             // Configure options if provided
             if (configureOptions != null)
             {

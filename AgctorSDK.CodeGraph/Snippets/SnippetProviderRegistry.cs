@@ -10,19 +10,31 @@ namespace AgctorSDK.CodeGraph.Snippets
     public static class SnippetProviderRegistry
     {
         private static readonly List<ISnippetProvider> _providers = new();
+        private static readonly object _sync = new();
 
         public static void Register(ISnippetProvider provider)
         {
             if (provider == null) throw new ArgumentNullException(nameof(provider));
-            _providers.Add(provider);
+            lock (_sync)
+            {
+                _providers.Add(provider);
+            }
         }
 
         public static ISnippetProvider? GetProvider(string filePath)
         {
-            return _providers.FirstOrDefault(p => p.CanHandle(filePath));
+            lock (_sync)
+            {
+                return _providers.FirstOrDefault(p => p.CanHandle(filePath));
+            }
         }
 
         internal static bool IsRegistered(Type providerType)
-            => _providers.Any(p => p.GetType() == providerType);
+        {
+            lock (_sync)
+            {
+                return _providers.Any(p => p.GetType() == providerType);
+            }
+        }
     }
 } 

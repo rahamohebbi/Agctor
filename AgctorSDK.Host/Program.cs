@@ -42,7 +42,22 @@ builder.Services.Configure<AgentTypeOptions>(options =>
 });
 
 // Register AGCTOR Core services
-builder.Services.AddAgctor();
+var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory");
+Console.WriteLine($"🔄 Configured actor runtime: {defaultRuntime}");
+
+switch (defaultRuntime)
+{
+    case "Proto":
+    case "Proto.Actor":
+        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.ProtoActorAdapter>(opts => opts.DefaultRuntime = "Proto.Actor");
+        break;
+    case "Orleans":
+        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.OrleansAdapter>(opts => opts.DefaultRuntime = "Orleans");
+        break;
+    default:
+        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.InMemoryActorRuntime>(opts => opts.DefaultRuntime = "InMemory");
+        break;
+}
 
 // Register Host-specific services
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
@@ -81,12 +96,20 @@ AgctorSDK.CodeGraph.Snippets.SnippetProviderBootstrapper.RegisterBuiltIn();
 // Initialize the actor runtime before starting the application
 Console.WriteLine("🔧 Initializing Actor Runtime...");
 var runtime = app.Services.GetRequiredService<IActorRuntimeAdapter>();
-await runtime.InitializeAsync(new Dictionary<string, object>
+var runtimeConfig = new Dictionary<string, object>
 {
     ["Environment"] = app.Environment.EnvironmentName,
     ["MaxConcurrentMessages"] = 1000,
     ["DefaultTimeoutMs"] = 30000
-});
+};
+
+if (runtime.Name == "Proto.Actor")
+{
+    runtimeConfig["remoteHost"] = builder.Configuration.GetValue<string>("Agctor:ProtoHost", "127.0.0.1");
+    runtimeConfig["remotePort"] = builder.Configuration.GetValue("Agctor:ProtoPort", 12000);
+}
+
+await runtime.InitializeAsync(runtimeConfig);
 Console.WriteLine("✅ Actor Runtime initialized successfully");
 
 // Spawn SnippetResolverAgent (LLM fallback for snippets)
