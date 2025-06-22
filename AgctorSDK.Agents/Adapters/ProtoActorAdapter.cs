@@ -140,7 +140,7 @@ namespace AgctorSDK.Core.Adapters
             var actorInstance = actorFactory(actorId);
             await actorInstance.InitializeAsync(cancellationToken);
 
-            var props = Props.FromProducer(() => new ProtoActorShell(actorInstance));
+            var props = Props.FromProducer(() => new ProtoActorShell(actorInstance, this));
             var pid = _root.SpawnNamed(props, actorId);
             if(!_pidMap.TryAdd(actorId, pid))
             {
@@ -169,7 +169,7 @@ namespace AgctorSDK.Core.Adapters
                 await actor.InitializeAsync(cancellationToken);
             }
 
-            var props = Props.FromProducer(() => new ProtoActorShell(actor));
+            var props = Props.FromProducer(() => new ProtoActorShell(actor, this));
             var pid = _root.SpawnNamed(props, actorId);
             if(!_pidMap.TryAdd(actorId, pid))
             {
@@ -313,13 +313,29 @@ namespace AgctorSDK.Core.Adapters
         private class ProtoActorShell : ProtoActorInterface
         {
             private readonly AgctorIActor _real;
-            public ProtoActorShell(AgctorIActor real) { _real = real; }
+            private readonly ProtoActorAdapter _adapter;
+            public ProtoActorShell(AgctorIActor real, ProtoActorAdapter adapter)
+            {
+                _real = real;
+                _adapter = adapter;
+            }
             public async Task ReceiveAsync(IContext context)
             {
-                if (context.Message is Terminated) return; // ignore system messages for now
+                if (context.Message is Terminated) return;
                 var env = context.Message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(context.Message!);
-                await _real.ReceiveAsync(env);
+                var reply = await _real.ReceiveAsync(env);
+                _adapter.RecordInbound(_real.Id);
+                if (context.Sender != null && reply!=null)
+                {
+                    context.Respond(reply);
+                }
             }
+        }
+
+        private void RecordInbound(string actorId)
+        {
+            Interlocked.Increment(ref _totalMessages);
+            _actorMsgCount.AddOrUpdate(actorId,1,(_,v)=>v+1);
         }
 
         private class RuntimeStats : IRuntimeStatistics
