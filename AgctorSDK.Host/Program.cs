@@ -41,6 +41,7 @@ builder.Services.Configure<AgentTypeOptions>(options =>
     options.RegisterAgentType("CodeExecutorTool", typeof(CodeExecutorTool));
     options.RegisterAgentType("CompileTool", typeof(CompileTool));
     options.RegisterAgentType("TestRunnerTool", typeof(TestRunnerTool));
+    options.RegisterAgentType("CoderAgent", typeof(CoderAgent));
 });
 
 // Register AGCTOR Core services
