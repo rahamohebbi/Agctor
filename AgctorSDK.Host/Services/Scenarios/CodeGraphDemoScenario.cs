@@ -92,6 +92,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                 const string llmId     = "llm-agent";
                 const string intentId  = "intent-agent";
                 const string queryId   = "query-agent";
+                const string coderId   = "coder-agent";
 
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
                 indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
@@ -129,19 +130,34 @@ namespace AgctorSDK.Host.Services.Scenarios
                 var consoleLogger = new AgctorConsoleLogger();
                 var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
                 var agentFactory = new AgctorSDK.Core.Agents.AgentFactory(_runtimeAdapter, sp, consoleLogger, _agentRegistry);
-                spawnedQuery.SetAgentFactory(agentFactory);
 
+                // Ensure factory knows core tool and coder agents
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CodeEditorTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
+
+                spawnedQuery.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedQuery);
 
-                _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query)");
+                // Spawn CoderAgent for editing/building code
+                var spawnedCoder = await _runtimeAdapter.SpawnActorAsync<CoderAgent>(
+                    coderId,
+                    id => new CoderAgent(id));
 
-                var created = new List<string> { indexerId, searchId, llmId, queryId };
+                spawnedCoder.SetAgentFactory(agentFactory);
+                await _agentRegistry.RegisterAgentAsync(spawnedCoder);
+
+                _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder)");
+
+                var created = new List<string> { indexerId, searchId, llmId, queryId, coderId };
                 var roles = new Dictionary<string, string>
                 {
                     [indexerId] = "Indexes CodeGraph and stores embeddings",
                     [searchId]  = "Vector search over CodeGraph",
                     [llmId]     = "Large-language-model interface (Ollama)",
-                    [queryId]   = "Orchestrator – user-facing agent"
+                    [queryId]   = "Query orchestrator",
+                    [coderId]   = "Code editing / compile / test orchestration"
                 };
 
                 return new ScenarioSetupResponse(true, Name, created, roles, null);

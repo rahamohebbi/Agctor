@@ -254,7 +254,45 @@ namespace AgctorSDK.Core.Tools.Implementations
                 };
             }
 
-            LogInfo($"Writing file to path: {filePath}");
+            // Resolve relative path by searching current directory tree if needed
+            if (!Path.IsPathRooted(filePath))
+            {
+                var cwd = Directory.GetCurrentDirectory();
+                var matches = Directory.GetFiles(cwd, filePath, SearchOption.AllDirectories);
+                if (matches.Length == 1)
+                {
+                    LogInfo($"Resolved relative path '{filePath}' to '{matches[0]}'");
+                    filePath = matches[0];
+                }
+                else if (matches.Length == 0)
+                {
+                    return new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = $"File '{filePath}' not found in current workspace."
+                    };
+                }
+                else
+                {
+                    return new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = $"Ambiguous relative path '{filePath}'. Found {matches.Length} matches. Please specify full path."
+                    };
+                }
+            }
+
+            // Fail fast if the file does not already exist – prevents accidental creation of new files when editing.
+            if (!File.Exists(filePath))
+            {
+                return new ToolResult
+                {
+                    IsSuccess = false,
+                    Error = $"Target file does not exist: {filePath}"
+                };
+            }
+
+            LogInfo($"Overwriting file: {filePath}");
             LogInfo($"Content sample (first 100 chars): {content.Substring(0, Math.Min(100, content.Length))}");
 
             try
