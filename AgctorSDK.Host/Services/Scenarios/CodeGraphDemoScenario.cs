@@ -57,6 +57,9 @@ namespace AgctorSDK.Host.Services.Scenarios
                 await File.WriteAllTextAsync(utilsPath, MathUtilsSource);
                 await File.WriteAllTextAsync(sciPath, ScientificCalculatorSource);
 
+                // Make the demo workspace the current directory so tooling can resolve relative paths like "MathUtils.cs".
+                Directory.SetCurrentDirectory(tempDir);
+
                 // 2. Build CodeGraph actors (Solution → Project → File)
                 var solution = new SolutionActor("DemoSolution", Path.Combine(tempDir, "Demo.sln"));
                 var project = new ProjectActor("DemoProject", Path.Combine(tempDir, "Demo.csproj"));
@@ -93,6 +96,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                 const string intentId  = "intent-agent";
                 const string queryId   = "query-agent";
                 const string coderId   = "coder-agent";
+                const string refactorId = "refactor-agent";
 
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
                 indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
@@ -136,6 +140,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
+                agentFactory.RegisterAgentType<AgctorSDK.CodeGraph.Agents.RefactorAgent>();
 
                 spawnedQuery.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedQuery);
@@ -148,16 +153,25 @@ namespace AgctorSDK.Host.Services.Scenarios
                 spawnedCoder.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedCoder);
 
-                _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder)");
+                // Spawn RefactorAgent
+                var spawnedRefactor = await _runtimeAdapter.SpawnActorAsync<RefactorAgent>(
+                    refactorId,
+                    id => new RefactorAgent(id, searchId, llmId, coderId));
 
-                var created = new List<string> { indexerId, searchId, llmId, queryId, coderId };
+                spawnedRefactor.SetAgentFactory(agentFactory);
+                await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
+
+                _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder, Refactor)");
+
+                var created = new List<string> { indexerId, searchId, llmId, queryId, coderId, refactorId };
                 var roles = new Dictionary<string, string>
                 {
                     [indexerId] = "Indexes CodeGraph and stores embeddings",
                     [searchId]  = "Vector search over CodeGraph",
                     [llmId]     = "Large-language-model interface (Ollama)",
                     [queryId]   = "Query orchestrator",
-                    [coderId]   = "Code editing / compile / test orchestration"
+                    [coderId]   = "Code editing / compile / test orchestration",
+                    [refactorId] = "End-to-end refactor orchestrator"
                 };
 
                 return new ScenarioSetupResponse(true, Name, created, roles, null);

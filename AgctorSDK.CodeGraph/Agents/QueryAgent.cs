@@ -99,9 +99,14 @@ QUESTION: {prompt}
 ANSWER:";
 
             static bool IsDirectAnswerPrompt(string p)
-                => System.Text.RegularExpressions.Regex.IsMatch(p,
-                       @"\b(list|show|lines? of code|methods?|classes?)\b",
-                       System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            {
+                // Only treat very explicit listing queries as direct-answerable.
+                // Exclude generic words like "method" that appear in many refactor prompts.
+                return System.Text.RegularExpressions.Regex.IsMatch(
+                    p,
+                    @"\b(list|show|lines? of code|classes?)\b",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            }
 
             // 3. Ask LLM
             var answer = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(

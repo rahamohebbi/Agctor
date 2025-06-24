@@ -9,6 +9,8 @@ using AgctorIActor = AgctorSDK.Core.Interfaces.IActor;
 using ProtoActorInterface = Proto.IActor;
 using Proto.Remote;
 using Proto.Remote.GrpcNet;
+using System.IO;
+using System.Text.Json;
 
 namespace AgctorSDK.Core.Adapters
 {
@@ -90,9 +92,26 @@ namespace AgctorSDK.Core.Adapters
 
             if (!string.IsNullOrEmpty(host) && port > 0)
             {
-                var remoteConfig = GrpcNetRemoteConfig.BindTo(host!, port);
-                _remote = new GrpcNetRemote(_system, remoteConfig);
-                await _remote.StartAsync();
+                try
+                {
+                    var remoteConfig = GrpcNetRemoteConfig.BindTo(host!, port);
+                    _remote = new GrpcNetRemote(_system, remoteConfig);
+                    await _remote.StartAsync();
+                }
+                catch (IOException ioEx) when (ioEx.InnerException is Microsoft.AspNetCore.Connections.AddressInUseException)
+                {
+                    // The requested port is already in use – fall back to an ephemeral port
+                    LogWarning($"Port {port} is already in use, falling back to a dynamic port.");
+                    _remote = null; // reset before retry
+
+                    // Attempt to find a free TCP port
+                    int freePort = GetAvailablePort();
+                    _configuration["remotePort"] = freePort; // persist chosen port for later discovery
+
+                    var remoteConfig = GrpcNetRemoteConfig.BindTo(host!, freePort);
+                    _remote = new GrpcNetRemote(_system, remoteConfig);
+                    await _remote.StartAsync();
+                }
             }
 
             _root = _system.Root;
@@ -234,7 +253,33 @@ namespace AgctorSDK.Core.Adapters
             {
                 envelope = new AgctorSDK.Core.Messages.MessageEnvelope(message, null, null, headers == null ? null : new Dictionary<string,string>(headers));
             }
-            var response = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
+
+            object? rawResponse;
+
+            if (typeof(TResponse) == typeof(string))
+            {
+                // Expecting a primitive string but remote actors return envelopes – request as envelope first
+                var envResp = await _root.RequestAsync<IMessageEnvelope>(pid, envelope, timeout);
+
+                string strValue;
+                if (envResp.Payload is JsonElement je && je.ValueKind == JsonValueKind.String)
+                {
+                    strValue = je.GetString() ?? string.Empty;
+                }
+                else
+                {
+                    strValue = envResp.Payload?.ToString() ?? string.Empty;
+                }
+
+                rawResponse = strValue; // ensure cast below succeeds
+            }
+            else
+            {
+                rawResponse = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
+            }
+
+            var response = (TResponse)rawResponse;
+
             Interlocked.Increment(ref _totalMessages);
             _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
             MessageSent?.Invoke(this, new MessageSentEventArgs(envelope.Id, senderId, targetActorId, message.GetType().Name));
@@ -343,15 +388,8 @@ namespace AgctorSDK.Core.Adapters
                 _adapter.RecordInbound(_real.Id);
                 if (context.Sender != null && reply!=null)
                 {
-                    if (reply is IMessageEnvelope repEnv)
-                    {
-                        // Unwrap the payload so callers can await strongly-typed results (e.g., string)
-                        context.Respond(repEnv.Payload ?? repEnv);
-                    }
-                    else
-                    {
-                        context.Respond(reply);
-                    }
+                    // Always respond with the full envelope so callers retain metadata
+                    context.Respond(reply);
                 }
             }
         }
@@ -401,6 +439,16 @@ namespace AgctorSDK.Core.Adapters
                 return PID.FromAddress(address, name);
             }
             throw new InvalidOperationException($"Actor {targetActorId} not found locally or remote spec invalid");
+        }
+
+        // Helper method to locate a free TCP port on the loopback adapter.
+        private static int GetAvailablePort()
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+            return port;
         }
     }
 } 

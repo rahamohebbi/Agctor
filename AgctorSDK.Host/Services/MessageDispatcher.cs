@@ -122,7 +122,7 @@ namespace AgctorSDK.Host.Services
                     ErrorMessage = "Operation was cancelled"
                 };
             }
-            catch (InvalidOperationException ex) when (ex.Message.Contains("Target actor") && ex.Message.Contains("not found"))
+            catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase) && ex.Message.Contains("actor", StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("Agent {AgentId} not found in actor runtime: {Message}", agentId, ex.Message);
                 return new MessageResponse

@@ -59,12 +59,33 @@ namespace AgctorSDK.Host.Mcp
 
                 // Start TCP listener
                 var ipAddress = IPAddress.Parse(host);
-                _tcpListener = new TcpListener(ipAddress, port);
-                _tcpListener.Start();
+
+                try
+                {
+                    _tcpListener = new TcpListener(ipAddress, port);
+                    _tcpListener.Start();
+
+                    // If we asked the OS for any free port (port 0), determine which one was chosen
+                    if (port == 0)
+                    {
+                        port = ((_tcpListener.LocalEndpoint as IPEndPoint)?.Port) ?? 0;
+                    }
+                }
+                catch (SocketException sockEx) when (sockEx.SocketErrorCode == SocketError.AddressAlreadyInUse)
+                {
+                    _logger.LogWarning("MCP port {Port} is already in use. Falling back to an ephemeral port.", port);
+
+                    // Fall back to any free port (port 0)
+                    _tcpListener = new TcpListener(ipAddress, 0);
+                    _tcpListener.Start();
+
+                    // Update endpoint info with the new port
+                    port = ((_tcpListener.LocalEndpoint as IPEndPoint)?.Port) ?? port;
+                }
 
                 // Store the real bound endpoint so integration tests can discover it
                 _endpointInfo.Host = host;
-                _endpointInfo.Port = ((_tcpListener.LocalEndpoint as System.Net.IPEndPoint)?.Port) ?? port;
+                _endpointInfo.Port = port;
 
                 _logger.LogInformation("MCP listener started on {Host}:{Port}", host, port);
 

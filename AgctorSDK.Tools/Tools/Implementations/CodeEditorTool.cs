@@ -282,15 +282,8 @@ namespace AgctorSDK.Core.Tools.Implementations
                 }
             }
 
-            // Fail fast if the file does not already exist – prevents accidental creation of new files when editing.
-            if (!File.Exists(filePath))
-            {
-                return new ToolResult
-                {
-                    IsSuccess = false,
-                    Error = $"Target file does not exist: {filePath}"
-                };
-            }
+            // If the file doesn't exist yet, treat this as create + write instead of erroring out.
+            bool creatingNew = !File.Exists(filePath);
 
             LogInfo($"Overwriting file: {filePath}");
             LogInfo($"Content sample (first 100 chars): {content.Substring(0, Math.Min(100, content.Length))}");
