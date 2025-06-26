@@ -324,6 +324,27 @@ namespace AgctorSDK.Core.Tools.Implementations
                     content = content.Substring(1, content.Length - 2).Trim();
                 }
 
+                // Strip Markdown code fences (``` or ```csharp etc.) if present
+                if (content.StartsWith("```"))
+                {
+                    var newlineIdx = content.IndexOf('\n');
+                    if (newlineIdx >= 0)
+                    {
+                        // Skip the first line (``` or ```lang)
+                        content = content.Substring(newlineIdx + 1);
+                    }
+                    // Remove ending fence
+                    var lastFence = content.LastIndexOf("```", StringComparison.Ordinal);
+                    if (lastFence >= 0)
+                    {
+                        content = content.Substring(0, lastFence);
+                    }
+                    content = content.Trim();
+                }
+
+                // Remove stray leading backticks that sometimes remain after fence removal
+                content = content.Trim('`');
+
                 // Clean up any remaining escaped quotes and escaped newlines/tabs
                 content = content.Replace("\\\"", "\"")
                                  .Replace("\"\"", "\"")
