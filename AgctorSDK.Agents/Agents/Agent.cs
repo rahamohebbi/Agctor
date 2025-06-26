@@ -1169,5 +1169,17 @@ namespace AgctorSDK.Core.Agents
                 LogError("Task failed, no parent to notify.");
             }
         }
+
+        /// <summary>
+        /// Removes all tracked child-agent IDs. Useful before starting a new orchestration so that
+        /// stale (already completed) child-count does not block new subtasks.
+        /// </summary>
+        protected void ClearChildAgents()
+        {
+            lock (_lockObject)
+            {
+                _childAgentIds.Clear();
+            }
+        }
     }
 } 

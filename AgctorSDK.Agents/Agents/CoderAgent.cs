@@ -75,9 +75,12 @@ namespace AgctorSDK.Core.Agents
 
         public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
         {
+            // Reset child tracking so previous runs don't count towards limit
+            ClearChildAgents();
+            _stage = Stage.Edit;
+
             LogInfo($"CoderAgent starting orchestration. Initial prompt: {prompt}");
             LogInfo("[CoderAgent] Stage = Edit. Spawning CodeEditorTool …");
-            _stage = Stage.Edit;
             await AssignSubtaskAsync(prompt, "CodeEditorTool", cancellationToken);
         }
 
