@@ -16,6 +16,10 @@ namespace AgctorSDK.CodeGraph.Agents
     /// </summary>
     public sealed class RefactorAgent : Agent
     {
+        // Track original caller for async reply
+        private string? _originalSenderId;
+        private string? _rootCorrelationId;
+
         private readonly string _searchAgentId;
         private readonly string _llmAgentId;
         private readonly string _coderAgentId;
@@ -35,12 +39,80 @@ namespace AgctorSDK.CodeGraph.Agents
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope env, CancellationToken ct = default)
         {
-            if (env.Headers.TryGetValue("MessageType", out var mt) && mt == "Prompt" && env.Payload is string prompt)
+            if (env.Headers.TryGetValue("MessageType", out var mt))
             {
-                var res = await ExecuteRefactorAsync(prompt, ct);
-                return new MessageEnvelope(res);
+                // --- PROMPT (entry point) -----------------------------------------------------
+                if (mt == "Prompt" && env.Payload is string prompt)
+                {
+                    // Capture routing so we can reply asynchronously
+                    _originalSenderId = env.Headers.GetValueOrDefault("SenderId");
+                    if (env.Metadata?.TryGetValue("CorrelationId", out var cidObj) == true)
+                        _rootCorrelationId = cidObj?.ToString();
+                    else if (env.Headers.TryGetValue("CorrelationId", out var cidHdr))
+                        _rootCorrelationId = cidHdr;
+
+                    // Kick off orchestration without blocking the actor message loop
+                    _ = Task.Run(() => OrchestrateRefactorAsync(prompt, ct), ct);
+
+                    // Immediate ACK so runtime keeps processing
+                    var ackHeaders = new Dictionary<string,string>
+                    {
+                        ["SenderId"]   = Id,
+                        ["ReceiverId"] = _originalSenderId ?? "unknown",
+                        ["MessageType"] = "Acknowledgment"
+                    };
+                    var ackMeta = new Dictionary<string,object> { ["Timestamp"] = DateTimeOffset.UtcNow };
+                    return new MessageEnvelope("Started", ackMeta, null, ackHeaders);
+                }
+
+                // --- TOOL RESULT or FINAL RESULT passthrough ---------------------------------
+                if ((mt == "ToolResult" && env.Payload is AgctorSDK.Core.Tools.Models.ToolResult) || mt == "Result" || mt == "Error")
+                {
+                    // Simply echo so runtime resolves the pending correlation.
+                    return env;
+                }
             }
+
             return await base.ReceiveAsync(env, ct);
+        }
+
+        private async Task OrchestrateRefactorAsync(string prompt, CancellationToken ct)
+        {
+            try
+            {
+                var resultString = await ExecuteRefactorAsync(prompt, ct);
+
+                // Send final reply back to original caller (HTTP) using captured correlation
+                if (_rootCorrelationId != null && AgentFactory?.RuntimeAdapter != null)
+                {
+                    // Send the result back to *this* agent with the correlation ID so the runtime
+                    // completes the pending request created by MessageDispatcher.
+                    var headers = new Dictionary<string,string>
+                    {
+                        ["SenderId"]     = Id,
+                        ["ReceiverId"]   = Id,
+                        ["MessageType"] = "Result",
+                        ["CorrelationId"] = _rootCorrelationId
+                    };
+                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, resultString, Id, headers, ct);
+                    LogInfo($"[RefactorAgent] Final result enqueued for correlation {_rootCorrelationId}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError($"[RefactorAgent] Orchestration failed: {ex.Message}");
+                if (_rootCorrelationId != null && AgentFactory?.RuntimeAdapter != null)
+                {
+                    var headers = new Dictionary<string,string>
+                    {
+                        ["SenderId"]     = Id,
+                        ["ReceiverId"]   = Id,
+                        ["MessageType"] = "Error",
+                        ["CorrelationId"] = _rootCorrelationId
+                    };
+                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, $"Error: {ex.Message}", Id, headers, ct);
+                }
+            }
         }
 
         private async Task<string> ExecuteRefactorAsync(string prompt, CancellationToken ct)
@@ -112,7 +184,7 @@ JSON:";
             var toolResult = await AgentFactory.RuntimeAdapter.SendMessageAsync<AgctorSDK.Core.Tools.Models.ToolResult>(
                 _coderAgentId,
                 editorCmd,
-                timeout: TimeSpan.FromMinutes(3),
+                timeout: TimeSpan.FromMinutes(8),
                 senderId: Id,
                 headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
                 cancellationToken: ct);

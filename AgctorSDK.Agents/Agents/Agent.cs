@@ -33,6 +33,13 @@ namespace AgctorSDK.Core.Agents
         private object? _lastSubtaskResult;
         private readonly Dictionary<string, object> _subtaskResults = new Dictionary<string, object>();
 
+        // Root request tracking (for top-level agents invoked directly by external callers)
+        private string? _rootRequestSenderId;
+        private string? _rootCorrelationId;
+
+        // Holds final result when this agent was invoked via request-response and has no parent
+        private object? _immediateResult;
+
         /// <summary>
         /// Unique identifier for this agent instance.
         /// </summary>
@@ -235,9 +242,43 @@ namespace AgctorSDK.Core.Agents
                     ((messageType == "Prompt") || (messageType == "String")) &&
                     message is string promptText)
                 {
+                    // Capture sender/correlation so we can send the final result back when done (if we have no parent)
+                    _rootRequestSenderId = envelope.Headers.GetValueOrDefault("SenderId", null);
+                    if (envelope.Metadata?.TryGetValue("CorrelationId", out var cidObj) == true)
+                    {
+                        _rootCorrelationId = cidObj?.ToString();
+                    }
+                    else if (envelope.Headers.TryGetValue("CorrelationId", out var cidHeader))
+                    {
+                        _rootCorrelationId = cidHeader;
+                    }
+
                     await ProcessPromptAsync(promptText, cancellationToken);
                     
-                    // Return a simple acknowledgment
+                    // If processing produced a synchronous result (no parent / no subtasks) return it immediately
+                    if (_immediateResult != null)
+                    {
+                        var resHeaders = new Dictionary<string,string>
+                        {
+                            {"SenderId", Id},
+                            {"ReceiverId", _rootRequestSenderId ?? envelope.Headers.GetValueOrDefault("SenderId", "unknown")},
+                            {"MessageId", Guid.NewGuid().ToString()},
+                            {"InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "")},
+                            {"MessageType", "Result"},
+                            {"CorrelationId", _rootCorrelationId ?? string.Empty}
+                        };
+                        var resMeta = new Dictionary<string, object>
+                        {
+                            {"Timestamp", DateTimeOffset.UtcNow},
+                            {"CorrelationId", _rootCorrelationId ?? string.Empty}
+                        };
+
+                        var resultPayload = _immediateResult;
+                        _immediateResult = null; // reset
+                        return new MessageEnvelope(resultPayload, resMeta, null, resHeaders);
+                    }
+
+                    // Otherwise return acknowledgment so caller knows it's async
                     var ackPayload = $"Prompt accepted. Agent {Id} is processing.";
                     var ackId = Guid.NewGuid().ToString();
                     var ackMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
@@ -305,10 +346,29 @@ namespace AgctorSDK.Core.Agents
                 
                 // Handle subtask failure notification
                 if (envelope.Headers.TryGetValue("MessageType", out var failureMsgType) && 
-                    failureMsgType == "SubtaskFailed" &&
-                    envelope.Headers.TryGetValue("SubtaskId", out var failedChildId) &&
-                    message is Exception error)
+                    failureMsgType == "SubtaskFailed")
                 {
+                    string failedChildId;
+                    Exception error;
+
+                    // Two possible payload formats: direct Exception or wrapped in SubtaskFailedMessage
+                    if (message is SubtaskFailedMessage sfm)
+                    {
+                        failedChildId = sfm.ChildAgentId;
+                        error = sfm.Error;
+                    }
+                    else if (envelope.Headers.TryGetValue("SubtaskId", out var failedChildHdr) && message is Exception ex)
+                    {
+                        failedChildId = failedChildHdr;
+                        error = ex;
+                    }
+                    else
+                    {
+                        // Unknown payload format – treat as generic failure
+                        failedChildId = envelope.Headers.GetValueOrDefault("SubtaskId", "unknown");
+                        error = new Exception("Unknown subtask failure payload");
+                    }
+
                     await HandleSubtaskFailureAsync(failedChildId, error, cancellationToken);
                     
                     // Return acknowledgment
@@ -1081,7 +1141,8 @@ namespace AgctorSDK.Core.Agents
             }
             else
             {
-                LogInfo("Task finalized, no parent to notify.");
+                // No parent – store result so ReceiveAsync can return it to runtime
+                _immediateResult = result;
             }
         }
 
@@ -1100,8 +1161,7 @@ namespace AgctorSDK.Core.Agents
                     { "MessageType", "SubtaskFailed" },
                     { "SubtaskId", Id }
                 };
-                var envelope = new MessageEnvelope(failureMessage, null, messageId, headers);
-                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, Id, null, cancellationToken);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, failureMessage, Id, headers, cancellationToken);
                 LogInfo($"Sent subtask failure message to parent {ParentAgentId}.");
             }
             else

@@ -54,25 +54,20 @@ namespace AgctorSDK.Core.Agents
 
                 LogInfo($"[CoderAgent] Prompt received from {_originalSenderId}, correlation={_correlationId}");
 
-                _responseTcs = new TaskCompletionSource<ToolResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-
                 _ = ProcessPromptAsync(prompt, cancellationToken); // fire-and-forget orchestration
 
-                // Wait for orchestration to finish and return final ToolResult
-                var finalResult = await _responseTcs.Task.WaitAsync(cancellationToken);
-
-                var respHeaders = new Dictionary<string,string>
+                // Return immediate ACK so this ReceiveAsync completes and actor can process further messages
+                var ackHeaders = new Dictionary<string,string>
                 {
                     {"SenderId", Id},
                     {"ReceiverId", _originalSenderId ?? "unknown"},
-                    {"MessageType","ToolResult"}
+                    {"MessageType","Acknowledgment"}
                 };
-                var respMeta = new Dictionary<string,object>
+                var ackMeta = new Dictionary<string,object>
                 {
-                    {"CorrelationId", _correlationId ?? string.Empty},
                     {"Timestamp", DateTimeOffset.UtcNow}
                 };
-                return new MessageEnvelope(finalResult, respMeta, null, respHeaders);
+                return new MessageEnvelope("Started", ackMeta, null, ackHeaders);
             }
 
             return await base.ReceiveAsync(envelope, cancellationToken);
@@ -157,8 +152,8 @@ namespace AgctorSDK.Core.Agents
             }
 
             _stage = Stage.Test;
-            LogInfo("[CoderAgent] Compile step complete – running tests");
-            string testPrompt = "TestRunnerTool RunTests --path \"Agctor.sln\"";
+            LogInfo("[CoderAgent] Compile step complete – running unit tests");
+            string testPrompt = "TestRunnerTool RunTests --path \"AgctorSDK.Core.Tests.csproj\"";
             await AssignSubtaskAsync(testPrompt, "TestRunnerTool", ct);
         }
 
@@ -211,8 +206,22 @@ namespace AgctorSDK.Core.Agents
 
         private async Task SendReplyAsync(ToolResult tr, CancellationToken ct)
         {
-            // no-op now – synchronous reply is handled via _responseTcs and ReceiveAsync return
-            await Task.CompletedTask;
+            if (_originalSenderId == null || _correlationId == null || AgentFactory?.RuntimeAdapter == null)
+            {
+                LogWarning("Cannot send reply – missing routing info or runtime adapter");
+                return;
+            }
+
+            var headers = new Dictionary<string,string>
+            {
+                {"SenderId", Id},
+                {"ReceiverId", _originalSenderId},
+                {"MessageType","ToolResult"},
+                {"CorrelationId", _correlationId}
+            };
+
+            await AgentFactory.RuntimeAdapter.SendMessageAsync(_originalSenderId, tr, Id, headers, ct);
+            LogInfo($"[CoderAgent] Reply sent to {_originalSenderId}. Correlation={_correlationId} Success={tr.IsSuccess}");
         }
     }
 

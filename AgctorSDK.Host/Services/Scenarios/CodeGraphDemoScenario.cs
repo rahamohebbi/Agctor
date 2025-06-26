@@ -57,6 +57,33 @@ namespace AgctorSDK.Host.Services.Scenarios
                 await File.WriteAllTextAsync(utilsPath, MathUtilsSource);
                 await File.WriteAllTextAsync(sciPath, ScientificCalculatorSource);
 
+                // 1b. Create a minimal xUnit test project so the demo pipeline's TestRunnerTool has tests to run.
+                var testsProjPath = Path.Combine(tempDir, "AgctorSDK.Core.Tests.csproj");
+                var testsFilePath = Path.Combine(tempDir, "MathUtilsTests.cs");
+
+                var testsCsproj = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.9.0"" />
+    <PackageReference Include=""xunit"" Version=""2.5.0"" />
+    <PackageReference Include=""xunit.runner.visualstudio"" Version=""2.5.0"" />
+    <PackageReference Include=""coverlet.collector"" Version=""6.0.0"" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include=""Demo.csproj"" />
+  </ItemGroup>
+</Project>";
+
+                var testCode = @"using DemoApp;using Xunit;namespace DemoApp.Tests{public class MathUtilsTests{[Theory][InlineData(0,0)][InlineData(2,8)][InlineData(-3,-27)]public void Cube_Works(int input,int expected){Assert.Equal(expected,MathUtils.Cube(input));}}}";
+
+                await File.WriteAllTextAsync(testsProjPath, testsCsproj);
+                await File.WriteAllTextAsync(testsFilePath, testCode);
+
                 // Make the demo workspace the current directory so tooling can resolve relative paths like "MathUtils.cs".
                 Directory.SetCurrentDirectory(tempDir);
 

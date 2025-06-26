@@ -77,10 +77,10 @@ namespace AgctorSDK.Host.Services
                 var senderId = request.SenderId ?? "http-api";
 
                 // Send message and wait for response (request-response pattern)
-                var timeout = TimeSpan.FromSeconds(180); // Increased timeout for LLM responses (LLM may take longer)
+                var timeout = TimeSpan.FromSeconds(600); // Allow up to 10 minutes for complex refactor pipelines
                 _logger.LogInformation("Sending request-response message to agent {AgentId} with {TimeoutSeconds}s timeout", agentId, timeout.TotalSeconds);
                 
-                var response = await _runtimeAdapter.SendMessageAsync<string>(
+                var responseEnvelope = await _runtimeAdapter.SendMessageAsync<object>(
                     targetActorId: agentId,
                     message: envelope.Payload,
                     timeout: timeout,
@@ -88,10 +88,23 @@ namespace AgctorSDK.Host.Services
                     headers: envelope.Headers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
                     cancellationToken: cancellationToken);
 
-                _logger.LogInformation("Received response from agent {AgentId}. Response: {ResponseType}", agentId, response?.GetType().Name ?? "null");
+                _logger.LogInformation("Received response from agent {AgentId}. Response: {ResponseType}", agentId, responseEnvelope?.GetType().Name ?? "null");
 
-                // The response is now the payload directly
-                var responseData = response;
+                // Convert non-string payloads to JSON for HTTP response
+                string responseData;
+                if (responseEnvelope is string str)
+                {
+                    responseData = str;
+                }
+                else if (responseEnvelope != null)
+                {
+                    responseData = System.Text.Json.JsonSerializer.Serialize(responseEnvelope);
+                }
+                else
+                {
+                    responseData = string.Empty;
+                }
+
                 var isError = false; // If we got a string response, it's successful (errors would throw exceptions)
 
                 return new MessageResponse
@@ -99,7 +112,7 @@ namespace AgctorSDK.Host.Services
                     MessageId = envelope.Id,
                     Status = isError ? MessageStatus.Failed : MessageStatus.Success,
                     ResponseData = responseData,
-                    ErrorMessage = isError ? responseData?.ToString() : null
+                    ErrorMessage = isError ? responseData : null
                 };
             }
             catch (TimeoutException)

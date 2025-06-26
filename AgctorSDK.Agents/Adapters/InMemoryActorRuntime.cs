@@ -689,7 +689,13 @@ namespace AgctorSDK.Core.Adapters
                         // Handle request-response pattern
                         if (!string.IsNullOrEmpty(correlationId) && _pendingRequests.TryGetValue(correlationId, out var tcs))
                         {
-                            if (responseEnvelope != null)
+                            // Treat Acknowledgment as interim – do not complete the pending request
+                            var respType = responseEnvelope?.Headers?.GetValueOrDefault("MessageType", string.Empty);
+                            if (respType == "Acknowledgment")
+                            {
+                                LogTrace($"Ignoring interim Acknowledgment for correlation ID '{correlationId}'");
+                            }
+                            else if (responseEnvelope != null)
                             {
                                 LogTrace($"Setting response for correlation ID '{correlationId}' from actor '{actorId}'");
                                 tcs.TrySetResult(responseEnvelope);
