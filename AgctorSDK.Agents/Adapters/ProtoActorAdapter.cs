@@ -30,6 +30,8 @@ namespace AgctorSDK.Core.Adapters
         private Proto.IRootContext _root = null!;
         private readonly ConcurrentDictionary<string, PID> _pidMap = new();
         private readonly ConcurrentDictionary<string, AgctorIActor> _actorInstances = new();
+        internal readonly ConcurrentDictionary<string, TaskCompletionSource<IMessageEnvelope>> _pendingRequests = new();
+        private PID _replyPid = null!; // Local proxy actor that receives all replies
         private DateTimeOffset _startTime;
         private long _totalMessages;
         private readonly ConcurrentDictionary<string, long> _actorMsgCount = new();
@@ -115,6 +117,11 @@ namespace AgctorSDK.Core.Adapters
             }
 
             _root = _system.Root;
+
+            // Spawn reply proxy for correlation matching
+            var proxyProps = Props.FromProducer(() => new ReplyProxy(this));
+            _replyPid = _root.SpawnNamed(proxyProps, "agctor-reply-proxy");
+
             _startTime = DateTimeOffset.UtcNow;
             _isInitialized = true;
         }
@@ -229,7 +236,30 @@ namespace AgctorSDK.Core.Adapters
             {
                 envelope = new AgctorSDK.Core.Messages.MessageEnvelope(message, null, null, headers == null ? null : new Dictionary<string,string>(headers));
             }
-            _root.Send(pid, envelope);
+
+            // Determine if correlation present
+            bool hasCorr = envelope.Metadata.TryGetValue("CorrelationId", out var _) || (envelope.Headers != null && envelope.Headers.TryGetValue("CorrelationId", out var _));
+
+            // Ensure CorrelationId is present in Metadata so that the reply proxy can match responses even if caller only set header
+            if (hasCorr && !envelope.Metadata.ContainsKey("CorrelationId"))
+            {
+                if (envelope.Headers != null && envelope.Headers.TryGetValue("CorrelationId", out var hdrCorr))
+                {
+                    envelope.Metadata["CorrelationId"] = hdrCorr;
+                }
+            }
+
+            // Always use Request so that the reply (even to self) is seen by the proxy and any awaiting requester.
+            _root.Request(pid, envelope, _replyPid);
+
+            string corrVal="-";
+            if (hasCorr)
+            {
+                if (envelope.Metadata.TryGetValue("CorrelationId", out var tmp) && tmp!=null) corrVal=tmp.ToString();
+                else if (envelope.Headers!=null && envelope.Headers.TryGetValue("CorrelationId", out var htmp)) corrVal=htmp;
+            }
+            Console.WriteLine($"[ProtoAdapter] Send-only message {envelope.Headers.GetValueOrDefault("MessageType")} to {targetActorId} corr={corrVal} self={(targetActorId==senderId?"yes":"no")}");
+
             Interlocked.Increment(ref _totalMessages);
             _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
             MessageSent?.Invoke(this, new MessageSentEventArgs(envelope.Id, senderId, targetActorId, message.GetType().Name));
@@ -243,68 +273,66 @@ namespace AgctorSDK.Core.Adapters
         public async Task<TResponse> SendMessageAsync<TResponse>(string targetActorId, object message, TimeSpan timeout, string? senderId = null, IDictionary<string, string>? headers = null, CancellationToken cancellationToken = default) where TResponse : class
         {
             if (!_isInitialized) throw new InvalidOperationException("Runtime not initialized");
+
             var pid = ResolvePid(targetActorId);
-            IMessageEnvelope envelope;
-            if (message is IMessageEnvelope msgEnv)
+
+            // Correlation id and TCS like InMemory runtime
+            var corrId = Guid.NewGuid().ToString();
+            var tcs = new TaskCompletionSource<IMessageEnvelope>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_pendingRequests.TryAdd(corrId, tcs))
+                throw new InvalidOperationException("Failed to add pending correlation id");
+
+            // Build envelope
+            var hdrs = headers != null ? new Dictionary<string,string>(headers) : new Dictionary<string,string>();
+            hdrs["SenderId"] = senderId ?? "proto-client";
+            hdrs["ReceiverId"] = targetActorId;
+            if (!hdrs.ContainsKey("MessageType")) hdrs["MessageType"] = message is string ? "Prompt" : message.GetType().Name;
+
+            var meta = new Dictionary<string,object>{{"Timestamp",DateTimeOffset.UtcNow},{"CorrelationId",corrId}};
+
+            var env = message is IMessageEnvelope envIn ? envIn : new AgctorSDK.Core.Messages.MessageEnvelope(message, meta, null, hdrs);
+
+            if (message is IMessageEnvelope)
             {
-                envelope = msgEnv;
-            }
-            else
-            {
-                envelope = new AgctorSDK.Core.Messages.MessageEnvelope(message, null, null, headers == null ? null : new Dictionary<string,string>(headers));
-            }
-
-            object? rawResponse;
-
-            if (typeof(TResponse) == typeof(string))
-            {
-                // Expecting a primitive string but remote actors return envelopes – request as envelope first
-                var envResp = await _root.RequestAsync<IMessageEnvelope>(pid, envelope, timeout);
-
-                string strValue;
-                if (envResp.Payload is JsonElement je && je.ValueKind == JsonValueKind.String)
-                {
-                    strValue = je.GetString() ?? string.Empty;
-                }
-                else
-                {
-                    strValue = envResp.Payload?.ToString() ?? string.Empty;
-                }
-
-                rawResponse = strValue; // ensure cast below succeeds
-            }
-            else
-            {
-                // Ask returns whatever the remote actor Responds with – typically an envelope.
-                var envResp = await _root.RequestAsync<IMessageEnvelope>(pid, envelope, timeout);
-
-                // If the caller expects a generic object, hand back the payload directly so behaviour
-                // matches the InMemory adapter.
-                if (typeof(TResponse) == typeof(object))
-                {
-                    rawResponse = (TResponse)envResp.Payload!;
-                }
-                else if (envResp.Payload is JsonElement je && je.ValueKind == JsonValueKind.String && typeof(TResponse)==typeof(string))
-                {
-                    rawResponse = (TResponse)(object)(je.GetString() ?? string.Empty);
-                }
-                else if (envResp.Payload is TResponse typed)
-                {
-                    rawResponse = typed;
-                }
-                else
-                {
-                    // Last resort – try cast envelope itself
-                    rawResponse = (TResponse)(object)envResp;
-                }
+                // Inject correlation/timestamp into metadata so the reply can be matched
+                env.Metadata["CorrelationId"] = corrId;
+                if (!env.Metadata.ContainsKey("Timestamp")) env.Metadata["Timestamp"] = DateTimeOffset.UtcNow;
             }
 
-            var response = (TResponse)rawResponse;
+            // Send using Request with explicit sender (_replyPid)
+            _root.Request(pid, env, _replyPid);
 
-            Interlocked.Increment(ref _totalMessages);
-            _actorMsgCount.AddOrUpdate(targetActorId, 1, (_, v) => v + 1);
-            MessageSent?.Invoke(this, new MessageSentEventArgs(envelope.Id, senderId, targetActorId, message.GetType().Name));
-            return response;
+            Console.WriteLine($"[ProtoAdapter] Request sent -> {targetActorId}. Corr={corrId} Type={env.Headers.GetValueOrDefault("MessageType")} PayloadType={env.Payload.GetType().Name}");
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var delayTask = Task.Delay(timeout, timeoutCts.Token);
+            var completed = await Task.WhenAny(tcs.Task, delayTask);
+            if (completed == delayTask)
+            {
+                _pendingRequests.TryRemove(corrId, out _);
+                throw new TimeoutException($"Request to {targetActorId} timed out after {timeout.TotalSeconds}s");
+            }
+
+            timeoutCts.Cancel();
+            var respEnv = await tcs.Task;
+
+            Console.WriteLine($"[ProtoAdapter] Response received Corr={corrId} PayloadType={respEnv.Payload?.GetType().Name ?? "null"}");
+
+            // Convert payload to expected type like InMemory
+            if (typeof(TResponse)==typeof(string))
+            {
+                if (respEnv.Payload is JsonElement je && je.ValueKind==JsonValueKind.String)
+                    return (TResponse)(object)(je.GetString() ?? string.Empty);
+                return (TResponse)(object)(respEnv.Payload?.ToString() ?? string.Empty);
+            }
+
+            if (respEnv.Payload is TResponse good)
+                return good;
+
+            if (typeof(TResponse)==typeof(object))
+                return (TResponse)respEnv.Payload!;
+
+            throw new InvalidOperationException($"Unexpected payload type {respEnv.Payload?.GetType().Name}");
         }
 
         /// <summary>
@@ -405,13 +433,50 @@ namespace AgctorSDK.Core.Adapters
             {
                 if (context.Message is Terminated) return;
                 var env = context.Message as IMessageEnvelope ?? new AgctorSDK.Core.Messages.MessageEnvelope(context.Message!);
-                var reply = await _real.ReceiveAsync(env);
+                var replyObj = await _real.ReceiveAsync(env);
                 _adapter.RecordInbound(_real.Id);
-                if (context.Sender != null && reply!=null)
+
+                if (context.Sender != null && replyObj == null) return;
+
+                IMessageEnvelope replyEnv;
+                if (replyObj is IMessageEnvelope re)
                 {
-                    // Always respond with the full envelope so callers retain metadata
-                    context.Respond(reply);
+                    // Ensure correlation id present
+                    if (!re.Metadata.ContainsKey("CorrelationId") && env.Metadata.TryGetValue("CorrelationId", out var cidVal))
+                    {
+                        re.Metadata["CorrelationId"] = cidVal;
+                    }
+                    replyEnv = re;
                 }
+                else
+                {
+                    // Wrap raw payload in an envelope so correlation id flows back
+                    var meta = new Dictionary<string,object>();
+                    if (env.Metadata.TryGetValue("CorrelationId", out var cid)) meta["CorrelationId"] = cid;
+                    meta["Timestamp"] = DateTimeOffset.UtcNow;
+
+                    var hdrs = new Dictionary<string,string>
+                    {
+                        ["SenderId"] = _real.Id,
+                    };
+                    if (env.Headers.GetValueOrDefault("SenderId") is string originalSender)
+                    {
+                        hdrs["ReceiverId"] = originalSender;
+                    }
+                    hdrs["MessageType"] = "Result";
+
+                    replyEnv = new AgctorSDK.Core.Messages.MessageEnvelope(replyObj, meta, null, hdrs);
+                }
+
+                if (replyEnv.Metadata.TryGetValue("CorrelationId", out var corrObj))
+                {
+                    Console.WriteLine($"[ProtoShell] Actor {_real.Id} responding corr={corrObj}");
+                }
+                else
+                {
+                    Console.WriteLine($"[ProtoShell] Actor {_real.Id} responding corr=-");
+                }
+                context.Respond(replyEnv);
             }
         }
 
@@ -470,6 +535,51 @@ namespace AgctorSDK.Core.Adapters
             int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
             return port;
+        }
+
+        // Merge extension helpers for dictionaries
+    }
+
+    internal static class DictionaryExtensions
+    {
+        public static void Merge(this IDictionary<string, object> target, IDictionary<string, object> source)
+        {
+            foreach (var kv in source) target[kv.Key]=kv.Value;
+        }
+        public static void Merge(this IDictionary<string, string> target, IDictionary<string, string> source)
+        {
+            foreach (var kv in source) target[kv.Key]=kv.Value;
+        }
+    }
+
+    // Proxy actor that receives all replies and matches correlation ids
+    internal class ReplyProxy : ProtoActorInterface
+    {
+        private readonly ProtoActorAdapter _adapter;
+        public ReplyProxy(ProtoActorAdapter adapter){_adapter=adapter;}
+        public Task ReceiveAsync(IContext context)
+        {
+            if (context.Message is IMessageEnvelope env)
+            {
+                if (env.Metadata!=null && env.Metadata.TryGetValue("CorrelationId", out var cidObj))
+                {
+                    string? cid = cidObj as string;
+                    if (cid==null && cidObj is JsonElement je && je.ValueKind==JsonValueKind.String)
+                    {
+                        cid = je.GetString();
+                    }
+                    if (cid==null) return Task.CompletedTask;
+                    if (_adapter._pendingRequests.TryGetValue(cid, out var tcs))
+                    {
+                        var msgType = env.Headers?.GetValueOrDefault("MessageType");
+                        if (msgType=="Acknowledgment") return Task.CompletedTask; // interim
+                        Console.WriteLine($"[ReplyProxy] Corr={cid} passing payload type={env.Payload.GetType().Name}");
+                        tcs.TrySetResult(env);
+                        _adapter._pendingRequests.TryRemove(cid, out _);
+                    }
+                }
+            }
+            return Task.CompletedTask;
         }
     }
 } 

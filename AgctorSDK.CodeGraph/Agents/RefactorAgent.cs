@@ -87,14 +87,19 @@ namespace AgctorSDK.CodeGraph.Agents
                 {
                     // Send the result back to *this* agent with the correlation ID so the runtime
                     // completes the pending request created by MessageDispatcher.
-                    var headers = new Dictionary<string,string>
+                    var meta = new Dictionary<string,object>
                     {
-                        ["SenderId"]     = Id,
-                        ["ReceiverId"]   = Id,
-                        ["MessageType"] = "Result",
+                        ["Timestamp"] = DateTimeOffset.UtcNow,
                         ["CorrelationId"] = _rootCorrelationId
                     };
-                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, resultString, Id, headers, ct);
+                    var hdr = new Dictionary<string,string>
+                    {
+                        ["SenderId"]   = Id,
+                        ["ReceiverId"] = Id,
+                        ["MessageType"] = "Result"
+                    };
+                    var envelope = new MessageEnvelope(resultString, meta, null, hdr);
+                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
                     LogInfo($"[RefactorAgent] Final result enqueued for correlation {_rootCorrelationId}");
                 }
             }
@@ -103,14 +108,19 @@ namespace AgctorSDK.CodeGraph.Agents
                 LogError($"[RefactorAgent] Orchestration failed: {ex.Message}");
                 if (_rootCorrelationId != null && AgentFactory?.RuntimeAdapter != null)
                 {
-                    var headers = new Dictionary<string,string>
+                    var meta = new Dictionary<string,object>
                     {
-                        ["SenderId"]     = Id,
-                        ["ReceiverId"]   = Id,
-                        ["MessageType"] = "Error",
+                        ["Timestamp"] = DateTimeOffset.UtcNow,
                         ["CorrelationId"] = _rootCorrelationId
                     };
-                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, $"Error: {ex.Message}", Id, headers, ct);
+                    var hdr = new Dictionary<string,string>
+                    {
+                        ["SenderId"]   = Id,
+                        ["ReceiverId"] = Id,
+                        ["MessageType"] = "Error"
+                    };
+                    var envelope = new MessageEnvelope($"Error: {ex.Message}", meta, null, hdr);
+                    await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
                 }
             }
         }
