@@ -278,6 +278,16 @@ namespace AgctorSDK.Core.Adapters
                 rawResponse = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
             }
 
+            // Proto.Remote serializes arbitrary objects using System.Text.Json. When we send a simple
+            // string payload the round-tripped value arrives as JsonElement(ValueKind.String). Normalize
+            // that so callers see the original string and equality assertions succeed.
+            if (rawResponse is IMessageEnvelope respEnv && respEnv.Payload is JsonElement j && j.ValueKind == JsonValueKind.String)
+            {
+                var str = j.GetString() ?? string.Empty;
+                respEnv = new AgctorSDK.Core.Messages.MessageEnvelope(str, respEnv.Metadata, respEnv.Id, respEnv.Headers);
+                rawResponse = (TResponse)(object)respEnv;
+            }
+
             var response = (TResponse)rawResponse;
 
             Interlocked.Increment(ref _totalMessages);
