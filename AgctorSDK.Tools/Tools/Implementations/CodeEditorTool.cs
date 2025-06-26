@@ -27,6 +27,21 @@ namespace AgctorSDK.Core.Tools.Implementations
             _fileSystem = fileSystem ?? new DefaultFileSystem();
         }
 
+        // Fallback: if runtime failed to set ParentAgentId, derive it from the hierarchical ID (parent.child)
+        private void EnsureParentId()
+        {
+            if (ParentAgentId == null)
+            {
+                var idx = Id.IndexOf('.');
+                if (idx > 0)
+                {
+                    var pid = Id.Substring(0, idx);
+                    SetParentAgentId(pid);
+                    LogWarning($"ParentAgentId was missing – inferred '{pid}' from hierarchical ID.");
+                }
+            }
+        }
+
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
             if (envelope.Payload is ProcessPromptMessage promptMsg)
@@ -46,6 +61,10 @@ namespace AgctorSDK.Core.Tools.Implementations
         public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
         {
             LogInfo($"CodeEditorTool processing prompt: {prompt}");
+            LogInfo($"ParentAgentId = {ParentAgentId ?? "<null>"}");
+            LogInfo($"HasFactory={(AgentFactory!=null)} RuntimeAdapterNull={(AgentFactory?.RuntimeAdapter==null)}");
+
+            EnsureParentId();
 
             try
             {
@@ -297,15 +316,30 @@ namespace AgctorSDK.Core.Tools.Implementations
                     Directory.CreateDirectory(directory);
                 }
 
-                // Remove any extra quotes that might have been added during parameter extraction
+                // Remove any extra wrapping quotes that might have been added during parameter extraction
                 content = content.Trim();
-                if (content.StartsWith("\"") && content.EndsWith("\""))
+                // Some LLMs wrap the entire snippet in one or more quote characters – peel them repeatedly.
+                while (content.Length > 1 && content.StartsWith("\"") && content.EndsWith("\""))
                 {
-                    content = content.Substring(1, content.Length - 2);
+                    content = content.Substring(1, content.Length - 2).Trim();
                 }
 
-                // Clean up any remaining escaped quotes
-                content = content.Replace("\\\"", "\"").Replace("\"\"", "\"");
+                // Clean up any remaining escaped quotes and escaped newlines/tabs
+                content = content.Replace("\\\"", "\"")
+                                 .Replace("\"\"", "\"")
+                                 .Replace("\\n", System.Environment.NewLine)
+                                 .Replace("\\r", "")
+                                 .Replace("\\t", "\t");
+                
+                // Simple brace-balance fix: if more '{' than '}', append the missing ones.
+                int openBraces = content.Count(c => c == '{');
+                int closeBraces = content.Count(c => c == '}');
+                if (openBraces > closeBraces)
+                {
+                    var diff = openBraces - closeBraces;
+                    LogInfo($"Brace balance check: adding {diff} missing '}}' characters");
+                    content += System.Environment.NewLine + new string('}', diff);
+                }
                 
                 LogInfo($"Final content to write (first 100 chars): {content.Substring(0, Math.Min(100, content.Length))}");
 

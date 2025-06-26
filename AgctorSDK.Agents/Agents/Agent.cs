@@ -220,7 +220,9 @@ namespace AgctorSDK.Core.Agents
                 var message = envelope.Payload;
                 var headers = envelope.Headers;
                 
-                LogInfo($"Received message: {envelope.Headers.GetValueOrDefault("MessageType", "Unknown")}");
+                var msgTypeLog = envelope.Headers.GetValueOrDefault("MessageType", "Unknown");
+                if (msgTypeLog == "Unknown") msgTypeLog = "Init";
+                LogInfo($"Received message: {msgTypeLog}");
                 
                 // Status request
                 if (message is GetAgentStatusMessage statusMsg)
@@ -443,6 +445,8 @@ namespace AgctorSDK.Core.Agents
                 if (childAgent is Agent childAgentImpl)
                 {
                     childAgentImpl.SetHierarchyDepth(_hierarchyDepth + 1);
+                    childAgentImpl.SetParentAgentId(Id);          // make sure parent ID is set
+                    childAgentImpl.SetAgentFactory(_agentFactory); // guarantee factory reference
                 }
                 
                 // Track the child agent
@@ -1061,7 +1065,6 @@ namespace AgctorSDK.Core.Agents
             LogInfo("Finalizing task and notifying parent.");
             if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
             {
-                var completionMessage = new SubtaskCompletedMessage(Id, ParentAgentId, result);
                 var messageId = Guid.NewGuid().ToString();
                 var headers = new Dictionary<string, string>
                 {
@@ -1071,8 +1074,9 @@ namespace AgctorSDK.Core.Agents
                     { "MessageType", "SubtaskCompleted" },
                     { "SubtaskId", Id }
                 };
-                var envelope = new MessageEnvelope(completionMessage, null, messageId, headers);
-                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, envelope, Id, null, cancellationToken);
+
+                // Send the raw result object; parent will inspect it directly.
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, result, Id, headers, cancellationToken);
                 LogInfo($"Sent subtask completion message to parent {ParentAgentId}.");
             }
             else

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Utils.Logging;
+using AgctorSDK.Core.Messages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -148,26 +149,54 @@ namespace AgctorSDK.Core.Agents
 
             try
             {
-                // Create the agent instance
-                var agent = CreateAgentInstance(type, agentId);
+                // Use runtime spawn so initialization data is honored and factory/parent are wired internally
+                var initData = new AgentInitializationData
+                {
+                    Prompt = initialPrompt ?? string.Empty,
+                    ParentAgentId = parentAgentId,
+                    AgentFactory = this
+                };
 
-                // Configure the agent
-                agent.SetAgentFactory(this);
-                agent.SetParentAgentId(parentAgentId);
+                _logger.Info($"AgentFactory: Using initialization data type {initData.GetType().Name} for child '{agentId}', has factory={(initData.AgentFactory!=null)}");
 
-                // Register the agent with the runtime
-                await _runtimeAdapter.RegisterActorAsync(agent, cancellationToken);
-                
-                // Register the agent with our registry
+                // Call _runtimeAdapter.SpawnActorAsync<type> via reflection
+                var method = _runtimeAdapter.GetType().GetMethod(nameof(IActorRuntimeAdapter.SpawnActorAsync), new[]
+                {
+                    typeof(string),
+                    typeof(object),
+                    typeof(CancellationToken)
+                });
+
+                var genericMethod = method!.MakeGenericMethod(type);
+                var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { agentId, initData, cancellationToken })!;
+                await task.ConfigureAwait(false);
+
+                var agent = (IAgent)task.GetType().GetProperty("Result")!.GetValue(task)!;
+
+                // Register with global registry for discovery
                 await _agentRegistry.RegisterAgentAsync(agent);
 
-                // Initialize the agent
-                await agent.InitializeAsync(cancellationToken);
+                // Wait until runtime confirms the actor is registered so the first message hits the right instance
+                await WaitForActorReadyAsync(agentId, cancellationToken);
 
-                // Process the initial prompt if provided
+                // Dispatch initial prompt via runtime (if any)
                 if (!string.IsNullOrEmpty(initialPrompt))
                 {
-                    await agent.ProcessPromptAsync(initialPrompt, cancellationToken);
+                    var headers = new Dictionary<string, string>
+                    {
+                        {"SenderId", parentAgentId ?? "system"},
+                        {"ReceiverId", agentId},
+                        {"MessageType", "Prompt"}
+                    };
+
+                    _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
+
+                    await _runtimeAdapter.SendMessageAsync(
+                        agentId,
+                        new ProcessPromptMessage(initialPrompt),
+                        senderId: parentAgentId,
+                        headers: headers,
+                        cancellationToken: cancellationToken);
                 }
 
                 return agent;
@@ -177,30 +206,6 @@ namespace AgctorSDK.Core.Agents
                 _logger.Error($"Failed to spawn agent of type {agentType}: {ex.Message}");
                 throw;
             }
-        }
-
-        private IAgent CreateAgentInstance(Type agentType, string agentId)
-        {
-            // Try to find a constructor with an ID parameter
-            var constructorWithId = agentType.GetConstructor(new[] { typeof(string) });
-            if (constructorWithId != null)
-            {
-                return (IAgent)Activator.CreateInstance(agentType, agentId)!;
-            }
-
-            // Try to create using the default constructor and set the ID via reflection
-            var agent = (IAgent)ActivatorUtilities.CreateInstance(_serviceProvider, agentType);
-            var idProperty = agentType.GetProperty("Id");
-            if (idProperty != null && idProperty.CanWrite)
-            {
-                idProperty.SetValue(agent, agentId);
-            }
-            else
-            {
-                _logger.Warning($"Could not set ID for agent of type {agentType.Name}");
-            }
-
-            return agent;
         }
 
         /// <summary>
@@ -232,8 +237,24 @@ namespace AgctorSDK.Core.Agents
             // Spawn the agent using the runtime adapter
             var agent = await _runtimeAdapter.SpawnActorAsync<TAgent>(agentId, initData, cancellationToken);
 
-            // Process the initial prompt
-            await agent.ProcessPromptAsync(prompt, cancellationToken);
+            // Ensure registration complete then send prompt
+            await WaitForActorReadyAsync(agentId, cancellationToken);
+
+            var headers = new Dictionary<string,string>
+            {
+                {"SenderId", parentAgentId ?? "system"},
+                {"ReceiverId", agentId},
+                {"MessageType","Prompt"}
+            };
+
+            _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
+
+            await _runtimeAdapter.SendMessageAsync(
+                agentId,
+                new ProcessPromptMessage(prompt),
+                senderId: parentAgentId,
+                headers: headers,
+                cancellationToken: cancellationToken);
 
             return agent;
         }
@@ -283,8 +304,24 @@ namespace AgctorSDK.Core.Agents
             var resultProperty = task.GetType().GetProperty("Result");
             var agent = (IAgent)resultProperty!.GetValue(task)!;
 
-            // Process the initial prompt
-            await agent.ProcessPromptAsync(prompt, cancellationToken);
+            // Ensure registration complete then send prompt
+            await WaitForActorReadyAsync(agentId, cancellationToken);
+
+            var headers = new Dictionary<string,string>
+            {
+                {"SenderId", parentAgentId ?? "system"},
+                {"ReceiverId", agentId},
+                {"MessageType","Prompt"}
+            };
+
+            _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
+
+            await _runtimeAdapter.SendMessageAsync(
+                agentId,
+                new ProcessPromptMessage(prompt),
+                senderId: parentAgentId,
+                headers: headers,
+                cancellationToken: cancellationToken);
 
             return agent;
         }
@@ -317,6 +354,23 @@ namespace AgctorSDK.Core.Agents
                 throw new ArgumentException("Agent ID cannot be null or empty", nameof(agentId));
 
             return await _runtimeAdapter.GetActorAsync<IAgent>(agentId, cancellationToken);
+        }
+
+        // Waits until the runtime reports the actor instance is in its table (max 1s)
+        private async Task WaitForActorReadyAsync(string id, CancellationToken ct)
+        {
+            const int maxAttempts = 20; // 20 * 50ms = 1s
+            for (var i = 0; i < maxAttempts; i++)
+            {
+                var actor = await _runtimeAdapter.GetActorAsync<IAgent>(id, ct);
+                if (actor != null)
+                {
+                    return;
+                }
+                await Task.Delay(50, ct);
+            }
+
+            _logger.Warning($"AgentFactory: actor '{id}' was not visible in runtime after waiting. Initial prompt may still race.");
         }
     }
 

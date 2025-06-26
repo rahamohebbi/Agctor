@@ -177,6 +177,8 @@ namespace AgctorSDK.Core.Adapters
                     {
                         baseAgent.SetParentAgentId(agentInitData.ParentAgentId);
                     }
+
+                    LogTrace($"SpawnActorAsync: wired AgentFactory & ParentId for actor '{actorId}'");
                 }
             }
             
@@ -297,8 +299,13 @@ namespace AgctorSDK.Core.Adapters
             var mcpMetadata = new Dictionary<string, object>
             {
                 ["Timestamp"] = DateTimeOffset.UtcNow // Per MCP, timestamp of creation/dispatch
-                // Other relevant metadata like "Priority" could be added if sourced from somewhere
             };
+
+            // Propagate correlation ID from headers if present so responders can match request-response.
+            if (mcpHeaders.TryGetValue("CorrelationId", out var corr))
+            {
+                mcpMetadata["CorrelationId"] = corr;
+            }
 
             var envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
                 id: messageId,

@@ -49,6 +49,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 throw new InvalidOperationException("RuntimeAdapter missing in RefactorAgent");
 
             // 1. Ask SearchAgent for context (optional but helps the LLM)
+            LogInfo("[RefactorAgent] Step 1: requesting context from SearchAgent");
             var context = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
                 _searchAgentId,
                 prompt,
@@ -58,6 +59,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 cancellationToken: ct);
 
             // 2. Build LLM prompt – instruct to output JSON with path+code only
+            LogInfo("[RefactorAgent] Step 2: sending prompt to LLM agent");
             var llmPrompt = @$"You are an expert C# refactoring assistant.
 INSTRUCTIONS:
 - Given the CONTEXT and the REQUEST, output a single-line JSON object with fields 'path' and 'code'.
@@ -80,6 +82,8 @@ JSON:";
                 headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
                 cancellationToken: ct);
 
+            LogInfo("[RefactorAgent] LLM response received. Parsing …");
+
             // 3. Parse JSON
             string path;
             string code;
@@ -101,6 +105,7 @@ JSON:";
             }
 
             // 4. Build CodeEditorTool command (WriteFile overwrites the file)
+            LogInfo($"[RefactorAgent] Building CodeEditorTool command for path '{path}'");
             var escaped = code.Replace("\"", "\\\"").Replace("\n", "\\n");
             var editorCmd = $"CodeEditorTool WriteFile --path \"{path}\" --content \"{escaped}\"";
 
@@ -111,6 +116,8 @@ JSON:";
                 senderId: Id,
                 headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
                 cancellationToken: ct);
+
+            LogInfo($"[RefactorAgent] ToolResult received – success: {toolResult.IsSuccess}");
 
             return toolResult.IsSuccess
                 ? $"File {path} updated and build/tests {(toolResult.IsSuccess ? "succeeded" : "failed")}."

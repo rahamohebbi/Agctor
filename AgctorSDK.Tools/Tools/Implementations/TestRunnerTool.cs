@@ -111,9 +111,63 @@ namespace AgctorSDK.Core.Tools.Implementations
             if (!parameters.TryGetValue("path", out var pathObj) || pathObj is not string path)
                 return new ToolResult { IsSuccess = false, Error = "Missing 'path' parameter." };
 
-            if (!Directory.Exists(path) && !File.Exists(path))
+            // Attempt to resolve a relative path in several passes with detailed logging
+            if (!Directory.Exists(path) && !File.Exists(path) && !Path.IsPathRooted(path))
             {
-                return new ToolResult { IsSuccess = false, Error = $"Path not found: {path}" };
+                var cwd = Directory.GetCurrentDirectory();
+                LogInfo($"[PathResolution] Searching current directory subtree '{cwd}' for '{path}' …");
+
+                var matches = Directory.GetFiles(cwd, path, SearchOption.AllDirectories);
+
+                if (matches.Length == 1)
+                {
+                    LogInfo($"[PathResolution] Resolved relative test path '{path}' to '{matches[0]}' (current-dir search)");
+                    path = matches[0];
+                }
+                else if (matches.Length > 1)
+                {
+                    LogInfo($"[PathResolution] Ambiguous relative test path '{path}'. Found {matches.Length} matches under current directory. Returning ambiguity error.");
+                    return new ToolResult { IsSuccess = false, Error = $"Ambiguous relative test path '{path}'. Found {matches.Length} matches." };
+                }
+                else // matches.Length == 0
+                {
+                    LogInfo($"[PathResolution] File not found in current directory tree. Trying AppContext.BaseDirectory …");
+
+                    var baseDir = AppContext.BaseDirectory;
+                    var baseMatches = Directory.GetFiles(baseDir, path, SearchOption.AllDirectories);
+
+                    if (baseMatches.Length == 1)
+                    {
+                        LogInfo($"[PathResolution] Resolved relative test path '{path}' to '{baseMatches[0]}' (assembly base-dir search)");
+                        path = baseMatches[0];
+                    }
+                    else if (baseMatches.Length > 1)
+                    {
+                        LogInfo($"[PathResolution] Ambiguous: found {baseMatches.Length} matches for '{path}' under assembly base directory '{baseDir}'. Returning ambiguity error.");
+                        return new ToolResult { IsSuccess = false, Error = $"Ambiguous relative test path '{path}'. Found {baseMatches.Length} matches under assembly directory." };
+                    }
+                    else // still not found – attempt parent walking of both cwd and base dir
+                    {
+                        LogInfo($"[PathResolution] Attempting to walk parent directories from cwd to locate '{path}' …");
+                        var resolved = WalkParentsForPath(cwd, path);
+                        if (resolved == null)
+                        {
+                            LogInfo($"[PathResolution] Attempting to walk parent directories from assembly base to locate '{path}' …");
+                            resolved = WalkParentsForPath(baseDir, path);
+                        }
+
+                        if (resolved != null)
+                        {
+                            LogInfo($"[PathResolution] Resolved relative test path '{path}' to '{resolved}' (parent walk) ");
+                            path = resolved;
+                        }
+                        else
+                        {
+                            LogError($"[PathResolution] Failed to locate path '{path}' after all search strategies.");
+                            return new ToolResult { IsSuccess = false, Error = $"Path not found: {path}" };
+                        }
+                    }
+                }
             }
 
             var language = parameters.TryGetValue("language", out var langObj) && langObj is string langStr ? langStr.ToLowerInvariant() : InferLanguageFromPath(path);
@@ -136,6 +190,25 @@ namespace AgctorSDK.Core.Tools.Implementations
                 ".csproj" or ".sln" => "csharp",
                 _ => "csharp"
             };
+        }
+
+        /// <summary>
+        /// Walks up parent directories starting from <paramref name="startDir"/> looking for <paramref name="relativePath"/>.
+        /// Returns the full path if found; otherwise null.
+        /// </summary>
+        private static string? WalkParentsForPath(string startDir, string relativePath)
+        {
+            var dir = new DirectoryInfo(startDir);
+            while (dir != null)
+            {
+                var candidate = Path.Combine(dir.FullName, relativePath);
+                if (File.Exists(candidate) || Directory.Exists(candidate))
+                {
+                    return candidate;
+                }
+                dir = dir.Parent;
+            }
+            return null;
         }
     }
 } 
