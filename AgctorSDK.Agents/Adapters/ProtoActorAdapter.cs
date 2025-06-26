@@ -275,17 +275,28 @@ namespace AgctorSDK.Core.Adapters
             }
             else
             {
-                rawResponse = await _root.RequestAsync<TResponse>(pid, envelope, timeout);
-            }
+                // Ask returns whatever the remote actor Responds with – typically an envelope.
+                var envResp = await _root.RequestAsync<IMessageEnvelope>(pid, envelope, timeout);
 
-            // Proto.Remote serializes arbitrary objects using System.Text.Json. When we send a simple
-            // string payload the round-tripped value arrives as JsonElement(ValueKind.String). Normalize
-            // that so callers see the original string and equality assertions succeed.
-            if (rawResponse is IMessageEnvelope respEnv && respEnv.Payload is JsonElement j && j.ValueKind == JsonValueKind.String)
-            {
-                var str = j.GetString() ?? string.Empty;
-                respEnv = new AgctorSDK.Core.Messages.MessageEnvelope(str, respEnv.Metadata, respEnv.Id, respEnv.Headers);
-                rawResponse = (TResponse)(object)respEnv;
+                // If the caller expects a generic object, hand back the payload directly so behaviour
+                // matches the InMemory adapter.
+                if (typeof(TResponse) == typeof(object))
+                {
+                    rawResponse = (TResponse)envResp.Payload!;
+                }
+                else if (envResp.Payload is JsonElement je && je.ValueKind == JsonValueKind.String && typeof(TResponse)==typeof(string))
+                {
+                    rawResponse = (TResponse)(object)(je.GetString() ?? string.Empty);
+                }
+                else if (envResp.Payload is TResponse typed)
+                {
+                    rawResponse = typed;
+                }
+                else
+                {
+                    // Last resort – try cast envelope itself
+                    rawResponse = (TResponse)(object)envResp;
+                }
             }
 
             var response = (TResponse)rawResponse;
