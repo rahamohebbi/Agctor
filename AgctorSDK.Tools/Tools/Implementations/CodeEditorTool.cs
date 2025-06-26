@@ -331,6 +331,24 @@ namespace AgctorSDK.Core.Tools.Implementations
                                  .Replace("\\r", "")
                                  .Replace("\\t", "\t");
                 
+                // If this looks like a C# file, run it through the CSharpFormatter for nice layout.
+                if (Path.GetExtension(filePath).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    var formatter = new AgctorSDK.Core.Tools.Implementations.Format.CSharpFormatter();
+                    if (formatter.IsAvailable)
+                    {
+                        var (ok, formatted, err) = await formatter.FormatAsync(content);
+                        if (ok && formatted != null)
+                        {
+                            content = formatted;
+                        }
+                        else
+                        {
+                            LogWarning($"CSharpFormatter failed: {err}");
+                        }
+                    }
+                }
+                
                 // Simple brace-balance fix: if more '{' than '}', append the missing ones.
                 int openBraces = content.Count(c => c == '{');
                 int closeBraces = content.Count(c => c == '}');
