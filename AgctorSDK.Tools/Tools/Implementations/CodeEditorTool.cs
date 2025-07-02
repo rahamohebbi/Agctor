@@ -13,6 +13,7 @@ using System.Text.Json.Serialization;
 using System.IO;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using AgctorSDK.Core.Tools.Implementations.LanguageAdapters;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
@@ -390,22 +391,12 @@ namespace AgctorSDK.Core.Tools.Implementations
                                  .Replace("\\r", "")
                                  .Replace("\\t", "\t");
                 
-                // If this looks like a C# file, run it through the CSharpFormatter for nice layout.
-                if (Path.GetExtension(filePath).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                // Language-specific formatter
+                var adapterFmt = LanguageAdapterFactory.GetByExtension(Path.GetExtension(filePath));
+                if (adapterFmt != null)
                 {
-                    var formatter = new AgctorSDK.Core.Tools.Implementations.Format.CSharpFormatter();
-                    if (formatter.IsAvailable)
-                    {
-                        var (ok, formatted, err) = await formatter.FormatAsync(content);
-                        if (ok && formatted != null)
-                        {
-                            content = formatted;
-                        }
-                        else
-                        {
-                            LogWarning($"CSharpFormatter failed: {err}");
-                        }
-                    }
+                    var (ok, formatted) = await adapterFmt.TryFormatAsync(content, default);
+                    if (ok && formatted != null) content = formatted;
                 }
                 
                 // Simple brace-balance fix: if more '{' than '}', append the missing ones.
@@ -455,25 +446,25 @@ namespace AgctorSDK.Core.Tools.Implementations
 
             string source = await _fileSystem.ReadAllTextAsync(path);
 
-            // 1) Try selector
+            // 1) Try selector via language adapter
             if (parameters.TryGetValue("selector", out var selObj) && selObj is string selector)
             {
-                try
+                var adapter = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
+                if (adapter != null)
                 {
-                    if (Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        var updated = RoslynInsertBySelector(source, selector, content);
+                        var updated = adapter.InsertBySelector(source, selector, content);
                         if (updated != null)
                         {
                             await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
                         }
                     }
-                    // TODO: Add other language parsers here
-                }
-                catch (Exception ex)
-                {
-                    LogWarning($"Selector insertion failed: {ex.Message}. Falling back.");
+                    catch (Exception ex)
+                    {
+                        LogWarning($"Adapter insertion failed: {ex.Message}. Falling back.");
+                    }
                 }
             }
 
@@ -517,26 +508,24 @@ namespace AgctorSDK.Core.Tools.Implementations
 
             string source = await _fileSystem.ReadAllTextAsync(path);
 
-            // Prefer selector replacement
-            if (parameters.TryGetValue("selector", out var selObj) && selObj is string selector)
+            // Prefer selector replacement via adapter
+            if (parameters.TryGetValue("selector", out var selectorObj) && selectorObj is string selector2)
             {
-                if (Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                var adapter = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
+                if (adapter != null)
                 {
                     try
                     {
-                        var tree = CSharpSyntaxTree.ParseText(source);
-                        var root = tree.GetRoot();
-                        var target = ResolveSelector(root, selector);
-                        if (target != null)
+                        var updated = adapter.ReplaceBySelector(source, selector2, content);
+                        if (updated != null)
                         {
-                            var updatedText = source.Substring(0, target.Span.Start) + content + source.Substring(target.Span.End);
-                            await _fileSystem.WriteAllTextAsync(path, updatedText);
+                            await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogWarning($"Selector replacement failed: {ex.Message}");
+                        LogWarning($"Adapter replacement failed: {ex.Message}");
                     }
                 }
             }
@@ -643,7 +632,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             return current;
         }
 
-        /// <summary>Normalize content sent by LLM: strip fences/backticks, unescape sequences, balance braces.</summary>
+        /// <summaryNormalize content sent by LLM: strip fences/backticks, unescape sequences, balance braces.</summary>
         private string NormalizeContent(string content)
         {
             content = content.Trim();
