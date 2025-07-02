@@ -318,6 +318,22 @@ namespace AgctorSDK.Core.Adapters
 
             Console.WriteLine($"[ProtoAdapter] Response received Corr={corrId} PayloadType={respEnv.Payload?.GetType().Name ?? "null"}");
 
+            // If caller expects the entire envelope, return it directly
+            if (typeof(IMessageEnvelope).IsAssignableFrom(typeof(TResponse)))
+            {
+                if (respEnv.Payload is JsonElement je2 && je2.ValueKind==JsonValueKind.String)
+                {
+                    respEnv = respEnv.WithPayload((je2.GetString() ?? string.Empty).Trim());
+                }
+                else if (respEnv.Payload is string str)
+                {
+                    var cleaned = str.Trim().Trim('"');
+                    respEnv = respEnv.WithPayload(cleaned);
+                }
+                Console.WriteLine($"[Debug] Returning envelope payload type={respEnv.Payload.GetType().Name} value='{respEnv.Payload}'");
+                return (TResponse)(object)respEnv;
+            }
+
             // Convert payload to expected type like InMemory
             if (typeof(TResponse)==typeof(string))
             {

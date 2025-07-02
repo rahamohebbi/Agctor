@@ -38,29 +38,96 @@ namespace AgctorSDK.Core.Tests.Tools
         }
 
         [TestMethod]
-        public async Task Handle_InsertIntoFile_Success()
+        public async Task Handle_InsertIntoFile_LineNumber_Success()
         {
-            var initialLines = new[] { "line 1", "line 3" };
-            _mockFileSystem.Setup(fs => fs.ReadAllLinesAsync("a.txt")).ReturnsAsync(initialLines);
+            var original = "line 1\nline 3";
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("a.txt")).ReturnsAsync(original);
+
             var request = new ToolRequest
             {
                 Operation = "InsertIntoFile",
-                Parameters = new Dictionary<string, object> { { "path", "a.txt" }, { "content", "line 2" }, { "lineNumber", 1 } }
+                Parameters = new Dictionary<string, object>
+                {
+                    { "path", "a.txt" },
+                    { "content", "line 2" },
+                    { "lineNumber", 1 }
+                }
             };
 
             var result = await _codeEditorTool.Handle(request);
 
             Assert.IsTrue(result.IsSuccess);
-            _mockFileSystem.Verify(fs => fs.WriteAllLinesAsync("a.txt", It.Is<IEnumerable<string>>(lines =>
-                lines.SequenceEqual(new[] { "line 1", "line 2", "line 3" })
-            )), Times.Once);
+            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", "line 1\nline 2\nline 3"), Times.Once);
+        }
+
+        [TestMethod]
+        public async Task Handle_InsertIntoFile_Selector_Success()
+        {
+            var source = @"namespace Demo { public static class MathUtils { public static int Square(int x) => x * x; } }";
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("MathUtils.cs")).ReturnsAsync(source);
+
+            const string snippet = "public static int Cube(int x) => x * x * x;";
+
+            var request = new ToolRequest
+            {
+                Operation = "InsertIntoFile",
+                Parameters = new Dictionary<string, object>
+                {
+                    { "path", "MathUtils.cs" },
+                    { "content", snippet },
+                    { "selector", "class:MathUtils" }
+                }
+            };
+
+            string? captured = null;
+            _mockFileSystem.Setup(fs => fs.WriteAllTextAsync("MathUtils.cs", It.IsAny<string>()))
+                           .Callback<string,string>((_, txt) => captured = txt)
+                           .Returns(Task.CompletedTask);
+
+            var result = await _codeEditorTool.Handle(request);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsNotNull(captured);
+            Assert.IsTrue(captured!.Contains(snippet));
+        }
+
+        [TestMethod]
+        public async Task Handle_ReplaceInFile_Selector_Success()
+        {
+            var source = @"namespace Demo { public static class MathUtils { public static int Square(int x) => x * x; } }";
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("MathUtils.cs")).ReturnsAsync(source);
+
+            const string newSquare = "public static int Square(int x) => x * x * 2;";
+
+            var request = new ToolRequest
+            {
+                Operation = "ReplaceInFile",
+                Parameters = new Dictionary<string, object>
+                {
+                    { "path", "MathUtils.cs" },
+                    { "content", newSquare },
+                    { "selector", "class:MathUtils > method:Square" }
+                }
+            };
+
+            string? captured = null;
+            _mockFileSystem.Setup(fs => fs.WriteAllTextAsync("MathUtils.cs", It.IsAny<string>()))
+                           .Callback<string,string>((_, txt) => captured = txt)
+                           .Returns(Task.CompletedTask);
+
+            var result = await _codeEditorTool.Handle(request);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsNotNull(captured);
+            Assert.IsTrue(captured!.Contains(newSquare));
+            Assert.IsFalse(captured.Contains("=> x * x;"));
         }
 
         [TestMethod]
         public async Task Handle_ReplaceInFile_Success()
         {
             var initialLines = new[] { "line 1", "line 2", "line 3" };
-            _mockFileSystem.Setup(fs => fs.ReadAllLinesAsync("a.txt")).ReturnsAsync(initialLines);
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("a.txt")).ReturnsAsync(string.Join("\n", initialLines));
             var request = new ToolRequest
             {
                 Operation = "ReplaceInFile",
@@ -70,16 +137,14 @@ namespace AgctorSDK.Core.Tests.Tools
             var result = await _codeEditorTool.Handle(request);
 
             Assert.IsTrue(result.IsSuccess);
-            _mockFileSystem.Verify(fs => fs.WriteAllLinesAsync("a.txt", It.Is<IEnumerable<string>>(lines =>
-                lines.SequenceEqual(new[] { "line 1", "new line", "line 3" })
-            )), Times.Once);
+            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", "line 1\nnew line\nline 3"), Times.Once);
         }
         
         [TestMethod]
         public async Task Handle_InsertIntoFile_InvalidLineNumber_ReturnsError()
         {
             var initialLines = new[] { "line 1", "line 2" };
-            _mockFileSystem.Setup(fs => fs.ReadAllLinesAsync("a.txt")).ReturnsAsync(initialLines);
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("a.txt")).ReturnsAsync(string.Join("\n", initialLines));
             var request = new ToolRequest
             {
                 Operation = "InsertIntoFile",
@@ -96,7 +161,7 @@ namespace AgctorSDK.Core.Tests.Tools
         public async Task Handle_ReplaceInFile_InvalidLineRange_ReturnsError()
         {
             var initialLines = new[] { "line 1", "line 2", "line 3" };
-            _mockFileSystem.Setup(fs => fs.ReadAllLinesAsync("a.txt")).ReturnsAsync(initialLines);
+            _mockFileSystem.Setup(fs => fs.ReadAllTextAsync("a.txt")).ReturnsAsync(string.Join("\n", initialLines));
             var request = new ToolRequest
             {
                 Operation = "ReplaceInFile",

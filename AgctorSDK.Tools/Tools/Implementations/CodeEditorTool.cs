@@ -11,6 +11,8 @@ using AgctorSDK.Core.Tools.Models;
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 using System.IO;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
@@ -142,7 +144,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             var parameters = new Dictionary<string, object>();
 
             // First try to find the path parameter since it's easier to parse
-            var pathMatch = Regex.Match(commandLine, @"--path\s+(?:""([^""]*)""|([^\s--][^\s]*))");
+            var pathMatch = Regex.Match(commandLine, @"--path\s+(?:""([^""]*)""|([^\s]+))");
             if (pathMatch.Success)
             {
                 string pathValue = pathMatch.Groups[1].Success ? pathMatch.Groups[1].Value : pathMatch.Groups[2].Value;
@@ -213,6 +215,43 @@ namespace AgctorSDK.Core.Tools.Implementations
                 }
             }
 
+            // --selector "class:MathUtils > method:Cube"
+            var selMatch = Regex.Match(commandLine, @"--selector\s+(?:""([^""]*)""|([^\s]+))");
+            if (selMatch.Success)
+            {
+                string value = selMatch.Groups[1].Success ? selMatch.Groups[1].Value : selMatch.Groups[2].Value;
+                parameters["selector"] = value;
+            }
+
+            // --anchor "class MathUtils {"
+            var anchorMatch = Regex.Match(commandLine, @"--anchor\s+(?:""([^""]*)""|([^\s]+))");
+            if (anchorMatch.Success)
+            {
+                string value = anchorMatch.Groups[1].Success ? anchorMatch.Groups[1].Value : anchorMatch.Groups[2].Value;
+                parameters["anchor"] = value;
+            }
+
+            // --lineNumber 42
+            var lineMatch = Regex.Match(commandLine, @"--lineNumber\s+(\d+)");
+            if (lineMatch.Success && int.TryParse(lineMatch.Groups[1].Value, out var ln))
+            {
+                parameters["lineNumber"] = ln;
+            }
+
+            // --startLine 10
+            var stMatch = Regex.Match(commandLine, @"--startLine\s+(\d+)");
+            if (stMatch.Success && int.TryParse(stMatch.Groups[1].Value, out var stl))
+            {
+                parameters["startLine"] = stl;
+            }
+
+            // --endLine 20
+            var endMatch = Regex.Match(commandLine, @"--endLine\s+(\d+)");
+            if (endMatch.Success && int.TryParse(endMatch.Groups[1].Value, out var enl))
+            {
+                parameters["endLine"] = enl;
+            }
+
             // Log the extracted parameters
             var paramString = string.Join(", ", parameters.Select(p => $"{p.Key}={p.Value}"));
             LogInfo($"Parsed parameters: {paramString}");
@@ -244,6 +283,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                     "WriteFile" => await ExecuteWriteFileOperation(request.Parameters),
                     "InsertIntoFile" => await InsertIntoFile(request.Parameters),
                     "ReplaceInFile" => await ReplaceInFile(request.Parameters),
+                    "ApplyPatch" => await ReplaceInFile(request.Parameters),
                     _ => new ToolResult { IsSuccess = false, Error = $"Unsupported operation: {request.Operation}" }
                 };
             }
@@ -285,11 +325,9 @@ namespace AgctorSDK.Core.Tools.Implementations
                 }
                 else if (matches.Length == 0)
                 {
-                    return new ToolResult
-                    {
-                        IsSuccess = false,
-                        Error = $"File '{filePath}' not found in current workspace."
-                    };
+                    // Treat as new file creation at the relative path
+                    LogInfo($"No existing file named '{filePath}' found – will create new file at workspace root.");
+                    filePath = Path.Combine(cwd, filePath);
                 }
                 else
                 {
@@ -342,8 +380,8 @@ namespace AgctorSDK.Core.Tools.Implementations
                     content = content.Trim();
                 }
 
-                // Remove stray leading backticks that sometimes remain after fence removal
-                content = content.Trim('`');
+                // Remove stray leading backticks or colons that sometimes remain after fence removal
+                content = content.Trim('`').TrimStart(':',' ');
 
                 // Clean up any remaining escaped quotes and escaped newlines/tabs
                 content = content.Replace("\\\"", "\"")
@@ -412,16 +450,60 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'path' parameter." };
             if (!parameters.TryGetValue("content", out var contentObj) || contentObj is not string content)
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'content' parameter." };
-            if (!parameters.TryGetValue("lineNumber", out var lineObj) || !int.TryParse(lineObj.ToString(), out var lineNumber))
-                return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'lineNumber' parameter." };
 
-            var lines = (await _fileSystem.ReadAllLinesAsync(path)).ToList();
-            if (lineNumber < 0 || lineNumber > lines.Count)
-                return new ToolResult { IsSuccess = false, Error = "Line number is out of range." };
+            content = NormalizeContent(content);
 
-            lines.Insert(lineNumber, content);
-            await _fileSystem.WriteAllLinesAsync(path, lines);
-            return new ToolResult { IsSuccess = true };
+            string source = await _fileSystem.ReadAllTextAsync(path);
+
+            // 1) Try selector
+            if (parameters.TryGetValue("selector", out var selObj) && selObj is string selector)
+            {
+                try
+                {
+                    if (Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var updated = RoslynInsertBySelector(source, selector, content);
+                        if (updated != null)
+                        {
+                            await _fileSystem.WriteAllTextAsync(path, updated);
+                            return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+                        }
+                    }
+                    // TODO: Add other language parsers here
+                }
+                catch (Exception ex)
+                {
+                    LogWarning($"Selector insertion failed: {ex.Message}. Falling back.");
+                }
+            }
+
+            // 2) Try anchor text
+            if (parameters.TryGetValue("anchor", out var ancObj) && ancObj is string anchor)
+            {
+                int idx = source.IndexOf(anchor, StringComparison.Ordinal);
+                if (idx >= 0)
+                {
+                    int insertPos = idx + anchor.Length;
+                    var updated = source.Insert(insertPos, System.Environment.NewLine + content);
+                    await _fileSystem.WriteAllTextAsync(path, updated);
+                    return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+                }
+                LogWarning($"Anchor '{anchor}' not found. Falling back.");
+            }
+
+            // 3) Fallback to lineNumber
+            if (parameters.TryGetValue("lineNumber", out var lineObj) && int.TryParse(lineObj.ToString(), out var lineNumber))
+            {
+                var lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).ToList();
+                if (lineNumber < 0 || lineNumber > lines.Count)
+                    return new ToolResult { IsSuccess = false, Error = "Line number is out of range." };
+                lines.Insert(lineNumber, content);
+                var updated = string.Join(System.Environment.NewLine, lines);
+                await _fileSystem.WriteAllTextAsync(path, updated);
+                return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+            }
+
+            return new ToolResult { IsSuccess = false, Error = "Could not insert content – no valid selector, anchor or line number resolved." };
         }
 
         private async Task<ToolResult> ReplaceInFile(IDictionary<string, object> parameters)
@@ -430,21 +512,172 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'path' parameter." };
             if (!parameters.TryGetValue("content", out var contentObj) || contentObj is not string content)
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'content' parameter." };
-            if (!parameters.TryGetValue("startLine", out var startLineObj) || !int.TryParse(startLineObj.ToString(), out var startLine))
-                return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'startLine' parameter." };
-            if (!parameters.TryGetValue("endLine", out var endLineObj) || !int.TryParse(endLineObj.ToString(), out var endLine))
-                return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'endLine' parameter." };
 
-            var lines = (await _fileSystem.ReadAllLinesAsync(path)).ToList();
+            content = NormalizeContent(content);
 
-            if (startLine < 0 || startLine > lines.Count || endLine < startLine || endLine > lines.Count)
-                return new ToolResult { IsSuccess = false, Error = "Line numbers are out of range." };
+            string source = await _fileSystem.ReadAllTextAsync(path);
 
-            lines.RemoveRange(startLine, endLine - startLine);
-            lines.Insert(startLine, content);
+            // Prefer selector replacement
+            if (parameters.TryGetValue("selector", out var selObj) && selObj is string selector)
+            {
+                if (Path.GetExtension(path).Equals(".cs", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var tree = CSharpSyntaxTree.ParseText(source);
+                        var root = tree.GetRoot();
+                        var target = ResolveSelector(root, selector);
+                        if (target != null)
+                        {
+                            var updatedText = source.Substring(0, target.Span.Start) + content + source.Substring(target.Span.End);
+                            await _fileSystem.WriteAllTextAsync(path, updatedText);
+                            return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogWarning($"Selector replacement failed: {ex.Message}");
+                    }
+                }
+            }
 
-            await _fileSystem.WriteAllLinesAsync(path, lines);
-            return new ToolResult { IsSuccess = true };
+            // Anchor-based replacement (replace first occurrence only)
+            if (parameters.TryGetValue("anchor", out var ancObj) && ancObj is string anchor)
+            {
+                int idx = source.IndexOf(anchor, StringComparison.Ordinal);
+                if (idx >= 0)
+                {
+                    int endIdx = idx + anchor.Length;
+                    var updated = source.Substring(0, idx) + content + source.Substring(endIdx);
+                    await _fileSystem.WriteAllTextAsync(path, updated);
+                    return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+                }
+            }
+
+            // Fallback to explicit line numbers
+            if (parameters.TryGetValue("startLine", out var startLineObj) && int.TryParse(startLineObj.ToString(), out var startLine) &&
+                parameters.TryGetValue("endLine", out var endLineObj) && int.TryParse(endLineObj.ToString(), out var endLine))
+            {
+                var lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).ToList();
+
+                if (startLine < 0 || startLine > lines.Count || endLine < startLine || endLine > lines.Count)
+                    return new ToolResult { IsSuccess = false, Error = "Line numbers are out of range." };
+
+                lines.RemoveRange(startLine, endLine - startLine);
+                lines.Insert(startLine, content);
+
+                var updated = string.Join(System.Environment.NewLine, lines);
+                await _fileSystem.WriteAllTextAsync(path, updated);
+                return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+            }
+
+            return new ToolResult { IsSuccess = false, Error = "Could not replace content – no valid selector, anchor or line numbers resolved." };
         }
+
+        #region Roslyn helpers
+
+        /// <summary>
+        /// Inserts <paramref name="snippet"/> right after the node matched by <paramref name="selector"/>.
+        /// Currently supports simple selectors like "class:Foo" or "class:Foo > method:Bar".
+        /// Returns null when selector not resolved.
+        /// </summary>
+        private string? RoslynInsertBySelector(string source, string selector, string snippet)
+        {
+            try
+            {
+                var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source);
+                var root = tree.GetRoot();
+
+                var target = ResolveSelector(root, selector);
+                if (target == null) return null;
+
+                // Insert after target node
+                int insertPos = target.Span.End;
+                var updated = source.Insert(insertPos, System.Environment.NewLine + snippet + System.Environment.NewLine);
+                return updated;
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Roslyn insertion failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        private Microsoft.CodeAnalysis.SyntaxNode? ResolveSelector(Microsoft.CodeAnalysis.SyntaxNode root, string selector)
+        {
+            // Very simple selector parser: segment1 > segment2
+            var segments = selector.Split('>');
+            Microsoft.CodeAnalysis.SyntaxNode? current = root;
+            foreach (var rawSeg in segments)
+            {
+                var seg = rawSeg.Trim();
+                var parts = seg.Split(':');
+                if (parts.Length != 2) return null;
+                var kind = parts[0].Trim().ToLowerInvariant();
+                var name = parts[1].Trim();
+
+                if (kind == "class")
+                {
+                    current = current.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>()
+                                     .FirstOrDefault(c => c.Identifier.Text == name);
+                }
+                else if (kind == "method")
+                {
+                    current = current.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>()
+                                     .FirstOrDefault(m => m.Identifier.Text == name);
+                }
+                else if (kind == "namespace")
+                {
+                    current = current.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.NamespaceDeclarationSyntax>()
+                                     .FirstOrDefault(n => n.Name.ToString() == name);
+                }
+                else
+                {
+                    // Unsupported kind
+                    return null;
+                }
+
+                if (current == null) return null;
+            }
+
+            return current;
+        }
+
+        /// <summary>Normalize content sent by LLM: strip fences/backticks, unescape sequences, balance braces.</summary>
+        private string NormalizeContent(string content)
+        {
+            content = content.Trim();
+
+            // Remove wrapping quotes/backticks repeatedly
+            while (content.Length > 1 && (content.StartsWith("\"") && content.EndsWith("\"") || content.StartsWith("`") && content.EndsWith("`")))
+            {
+                content = content.Substring(1, content.Length - 2).Trim();
+            }
+
+            // Strip markdown code fences
+            if (content.StartsWith("```"))
+            {
+                var nl = content.IndexOf('\n');
+                if (nl >= 0) content = content.Substring(nl + 1);
+                var last = content.LastIndexOf("```", StringComparison.Ordinal);
+                if (last >= 0) content = content.Substring(0, last);
+                content = content.Trim();
+            }
+
+            // Unescape common sequences
+            content = content.Replace("\\n", System.Environment.NewLine)
+                           .Replace("\\r", "")
+                           .Replace("\\t", "\t")
+                           .Replace("\\\"", "\"");
+
+            // Balance braces simple check
+            int open = content.Count(c => c == '{');
+            int close = content.Count(c => c == '}');
+            if (open > close) content += new string('}', open - close);
+
+            return content;
+        }
+
+        #endregion
     }
 } 

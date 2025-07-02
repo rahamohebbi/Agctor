@@ -142,13 +142,56 @@ namespace AgctorSDK.CodeGraph.Agents
 
             // 2. Build LLM prompt – instruct to output JSON with path+code only
             LogInfo("[RefactorAgent] Step 2: sending prompt to LLM agent");
-            var llmPrompt = @$"You are an expert C# refactoring assistant.
+
+            static string DetectLanguage(string filePath)
+            {
+                return System.IO.Path.GetExtension(filePath).ToLowerInvariant() switch
+                {
+                    ".cs" => "C#",
+                    ".py" => "Python",
+                    ".ts" => "TypeScript",
+                    ".js" => "JavaScript",
+                    ".java" => "Java",
+                    _ => "code"
+                };
+            }
+
+            // Attempts to infer language by scanning the prompt for any filename with a known extension.
+            static string DetectLanguageFromPrompt(string text)
+            {
+                var m = Regex.Match(text, @"\w+\.(cs|py|ts|js|java)", RegexOptions.IgnoreCase);
+                if (m.Success)
+                {
+                    return DetectLanguage(m.Value);
+                }
+                return "code";
+            }
+
+            var langName = DetectLanguageFromPrompt(prompt);
+            LogInfo($"[RefactorAgent] Detected language = {langName}");
+
+            // (Path not yet known – sanitisation after JSON parse)
+
+            var llmPrompt = @$"You are an expert {langName} refactoring assistant.
 INSTRUCTIONS:
-- Given the CONTEXT and the REQUEST, output a single-line JSON object with fields 'path' and 'code'.
-- 'path' is the relative file path to modify (e.g. 'MathUtils.cs').
-- 'code' is the COMPLETE revised contents of that file. Do NOT wrap the JSON in markdown.
-- Do NOT include any extra keys or comments.
-- If insufficient information, reply with {{""error"":""reason""}}.
+- Decide whether the REQUEST requires a brand-new file, an insertion, or a patch to existing code.
+
+Return a ONE-LINE JSON object with these keys (omit keys that are not needed):
+  operation  : 'WriteFile' | 'InsertIntoFile' | 'ReplaceInFile'
+  path       : relative file path (e.g. 'MathUtils.cs')
+  content    : the code snippet to write / insert / replace (escape quotes and newlines)
+  selector   : semantic selector like 'class:MathUtils' or 'class:MathUtils > method:Cube'
+  anchor     : plain text anchor (used only if selector is not provided)
+  lineNumber : integer (fallback when both selector and anchor fail)
+  startLine  : integer (for ReplaceInFile fallback)
+  endLine    : integer (for ReplaceInFile fallback)
+
+Rules:
+- For WriteFile, 'content' must be the entire file.
+- For InsertIntoFile, give either 'selector', 'anchor', or 'lineNumber'. Prefer 'selector'.
+- For ReplaceInFile, prefer 'selector'; otherwise use 'anchor' or the startLine/endLine pair.
+- Do NOT wrap the JSON in markdown. NO comments. NO ellipsis.
+- If the request is ambiguous, reply with {{""error"":""reason""}}.
 
 CONTEXT:
 {context}
@@ -169,6 +212,12 @@ JSON:";
             // 3. Parse JSON
             string path;
             string code;
+            string operation = "WriteFile";
+            string? selector = null;
+            string? anchor = null;
+            int? lineNumber = null;
+            int? startLine = null;
+            int? endLine = null;
             try
             {
                 using var doc = JsonDocument.Parse(llmResponse);
@@ -176,8 +225,26 @@ JSON:";
                 if (root.TryGetProperty("error", out var errProp))
                     return $"LLM error: {errProp.GetString()}";
 
+                operation = root.TryGetProperty("operation", out var opProp) ? opProp.GetString() ?? "WriteFile" : "WriteFile";
                 path = root.GetProperty("path").GetString() ?? throw new Exception("path missing");
-                code = root.GetProperty("code").GetString() ?? throw new Exception("code missing");
+                if (root.TryGetProperty("content", out var contProp))
+                {
+                    code = contProp.GetString() ?? string.Empty;
+                }
+                else if (root.TryGetProperty("code", out var codeProp))
+                {
+                    code = codeProp.GetString() ?? string.Empty;
+                }
+                else
+                {
+                    code = string.Empty;
+                }
+
+                if (root.TryGetProperty("selector", out var selProp)) selector = selProp.GetString();
+                if (root.TryGetProperty("anchor", out var ancProp)) anchor = ancProp.GetString();
+                if (root.TryGetProperty("lineNumber", out var lnProp) && lnProp.TryGetInt32(out var lnVal)) lineNumber = lnVal;
+                if (root.TryGetProperty("startLine", out var slProp) && slProp.TryGetInt32(out var slVal)) startLine = slVal;
+                if (root.TryGetProperty("endLine", out var elProp) && elProp.TryGetInt32(out var elVal)) endLine = elVal;
             }
             catch (Exception)
             {
@@ -186,10 +253,57 @@ JSON:";
                     return $"Failed to parse LLM response. Raw: {llmResponse}";
             }
 
+            // Sanitize path – remove stray quotes/backticks produced by some LLMs
+            path = path.Trim().Trim('\'', '"', '`');
+
+            // If language looked like generic 'code', retry detection using the file path
+            if (langName == "code")
+            {
+                var langFromPath = DetectLanguage(path);
+                if (!string.Equals(langFromPath, "code", StringComparison.OrdinalIgnoreCase))
+                    langName = langFromPath;
+            }
+
+            // --- NEW LOGGING -------------------------------------------------------
+            LogInfo($"[RefactorAgent] LLM output → path='{path}', code length={code.Length} chars");
+            var preview = code.Length > 400 ? code.Substring(0, 400) + " …" : code;
+            LogInfo($"[RefactorAgent] LLM code preview:\n{preview}");
+            // -----------------------------------------------------------------------
+
             // 4. Build CodeEditorTool command (WriteFile overwrites the file)
-            LogInfo($"[RefactorAgent] Building CodeEditorTool command for path '{path}'");
-            var escaped = code.Replace("\"", "\\\"").Replace("\n", "\\n");
-            var editorCmd = $"CodeEditorTool WriteFile --path \"{path}\" --content \"{escaped}\"";
+            string BuildEditorCommand()
+            {
+                string esc(string s) => s.Replace("\"", "\\\"").Replace("\n", "\\n");
+
+                switch (operation)
+                {
+                    case "InsertIntoFile":
+                        {
+                            var cmd = $"CodeEditorTool InsertIntoFile --path \"{path}\" --content \"{esc(code)}\"";
+                            if (!string.IsNullOrEmpty(selector)) cmd += $" --selector \"{esc(selector)}\"";
+                            else if (!string.IsNullOrEmpty(anchor)) cmd += $" --anchor \"{esc(anchor)}\"";
+                            else if (lineNumber.HasValue) cmd += $" --lineNumber {lineNumber.Value}";
+                            return cmd;
+                        }
+                    case "ReplaceInFile":
+                    case "ApplyPatch":
+                        {
+                            var cmd = $"CodeEditorTool ReplaceInFile --path \"{path}\" --content \"{esc(code)}\"";
+                            if (!string.IsNullOrEmpty(selector)) cmd += $" --selector \"{esc(selector)}\"";
+                            else if (!string.IsNullOrEmpty(anchor)) cmd += $" --anchor \"{esc(anchor)}\"";
+                            else if (startLine.HasValue && endLine.HasValue) cmd += $" --startLine {startLine.Value} --endLine {endLine.Value}";
+                            return cmd;
+                        }
+                    default:
+                        {
+                            var cmd = $"CodeEditorTool WriteFile --path \"{path}\" --content \"{esc(code)}\"";
+                            return cmd;
+                        }
+                }
+            }
+
+            LogInfo($"[RefactorAgent] Building CodeEditorTool command for path '{path}', operation={operation}");
+            var editorCmd = BuildEditorCommand();
 
             var toolResult = await AgentFactory.RuntimeAdapter.SendMessageAsync<AgctorSDK.Core.Tools.Models.ToolResult>(
                 _coderAgentId,
@@ -213,22 +327,20 @@ JSON:";
             path = code = string.Empty;
             try
             {
+                // Extract path
                 var pMatch = Regex.Match(raw, "\\\"path\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"");
                 if (!pMatch.Success) return false;
                 path = pMatch.Groups[1].Value.Trim();
 
-                var cIdx = raw.IndexOf("\"code\"", StringComparison.OrdinalIgnoreCase);
-                if (cIdx < 0) return false;
-                var firstQuote = raw.IndexOf('"', cIdx + 6);
-                if (firstQuote < 0) return false;
+                // Extract content|code with a single regex allowing either quote or backtick delimiter
+                var cMatch = Regex.Match(raw, "\\\"(?:content|code)\\\"\\s*:\\s*([`\"])([\\s\\S]*?)\\1");
+                if (!cMatch.Success) return false;
 
-                // Code value may span until the last quote before the final }
-                var lastQuote = raw.LastIndexOf('"');
-                if (lastQuote <= firstQuote) return false;
-                code = raw.Substring(firstQuote + 1, lastQuote - firstQuote - 1);
+                code = cMatch.Groups[2].Value.Trim();
 
-                // Remove leading characters like + or whitespace
-                code = code.TrimStart('+', '\n', '\r', ' ');
+                // Strip any leading colon/backtick leftovers
+                code = code.TrimStart(':', ' ', '`');
+
                 return true;
             }
             catch { return false; }
