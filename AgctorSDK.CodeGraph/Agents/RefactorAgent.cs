@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
+using System.IO;
+using System.Text;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -172,32 +174,49 @@ namespace AgctorSDK.CodeGraph.Agents
 
             // (Path not yet known – sanitisation after JSON parse)
 
-            var llmPrompt = @$"You are an expert {langName} refactoring assistant.
-INSTRUCTIONS:
-- Decide whether the REQUEST requires a brand-new file, an insertion, or a patch to existing code.
+            // Build LLM prompt with StringBuilder to avoid brace-escaping complications
+            var sbPrompt = new StringBuilder();
+            sbPrompt.AppendLine($"You are an expert {langName} refactoring assistant.");
+            sbPrompt.AppendLine("INSTRUCTIONS:");
+            sbPrompt.AppendLine("- Decide whether the REQUEST requires a brand-new file, an insertion, or a patch to existing code.");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("Return a ONE-LINE JSON object with these keys (omit keys that are not needed):");
+            sbPrompt.AppendLine("  operation  : 'WriteFile' | 'InsertIntoFile' | 'ReplaceInFile'");
+            sbPrompt.AppendLine("  path       : relative file path (e.g. 'MathUtils.cs')");
+            sbPrompt.AppendLine("  content    : the code snippet to write / insert / replace (escape quotes and newlines)");
+            sbPrompt.AppendLine("  selector   : semantic selector like 'class:MathUtils' or 'class:MathUtils > method:Cube'");
+            sbPrompt.AppendLine("  anchor     : plain text anchor (used only if selector is not provided)");
+            sbPrompt.AppendLine("  lineNumber : integer (fallback when both selector and anchor fail)");
+            sbPrompt.AppendLine("  startLine  : integer (for ReplaceInFile fallback)");
+            sbPrompt.AppendLine("  endLine    : integer (for ReplaceInFile fallback)");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("Rules:");
+            sbPrompt.AppendLine("- For WriteFile, 'content' must be the entire file.");
+            sbPrompt.AppendLine("- For InsertIntoFile, give either 'selector', 'anchor', or 'lineNumber'. Prefer 'selector'.");
+            sbPrompt.AppendLine("- For ReplaceInFile, prefer 'selector'; otherwise use 'anchor' or the startLine/endLine pair.");
+            sbPrompt.AppendLine("- Do NOT wrap the JSON in markdown. NO comments. NO ellipsis.");
+            sbPrompt.AppendLine("- If the request is ambiguous, reply with {\"error\":\"reason\"}.");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("EXAMPLES:");
+            sbPrompt.AppendLine("  # Add a method to an existing static class declared inside a namespace");
+            sbPrompt.AppendLine("  {\"operation\":\"InsertIntoFile\",\"path\":\"AgctorSDK/Utils/MathUtils.cs\",\"selector\":\"class:MathUtils\",\"content\":\"public static double Division(double a, double b) { return a / b; }\"}");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("  # Update an existing method");
+            sbPrompt.AppendLine("  {\"operation\":\"ReplaceInFile\",\"path\":\"AgctorSDK/Utils/MathUtils.cs\",\"selector\":\"class:MathUtils > method:Square\",\"content\":\"public static int Square(int x) { return x * x; }\"}");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("  # Create a brand-new file");
+            sbPrompt.AppendLine("  {\"operation\":\"WriteFile\",\"path\":\"Foo.cs\",\"content\":\"namespace Demo { public class Foo { } }\"}");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("GUIDELINES:");
+            sbPrompt.AppendLine("  - When inserting into a class scope, provide ONLY the new members (methods, properties, fields) without any surrounding namespace or class declarations.");
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine("CONTEXT:");
+            sbPrompt.AppendLine(context);
+            sbPrompt.AppendLine();
+            sbPrompt.AppendLine($"REQUEST: {prompt}");
+            sbPrompt.AppendLine("JSON:");
 
-Return a ONE-LINE JSON object with these keys (omit keys that are not needed):
-  operation  : 'WriteFile' | 'InsertIntoFile' | 'ReplaceInFile'
-  path       : relative file path (e.g. 'MathUtils.cs')
-  content    : the code snippet to write / insert / replace (escape quotes and newlines)
-  selector   : semantic selector like 'class:MathUtils' or 'class:MathUtils > method:Cube'
-  anchor     : plain text anchor (used only if selector is not provided)
-  lineNumber : integer (fallback when both selector and anchor fail)
-  startLine  : integer (for ReplaceInFile fallback)
-  endLine    : integer (for ReplaceInFile fallback)
-
-Rules:
-- For WriteFile, 'content' must be the entire file.
-- For InsertIntoFile, give either 'selector', 'anchor', or 'lineNumber'. Prefer 'selector'.
-- For ReplaceInFile, prefer 'selector'; otherwise use 'anchor' or the startLine/endLine pair.
-- Do NOT wrap the JSON in markdown. NO comments. NO ellipsis.
-- If the request is ambiguous, reply with {{""error"":""reason""}}.
-
-CONTEXT:
-{context}
-
-REQUEST: {prompt}
-JSON:";
+            var llmPrompt = sbPrompt.ToString();
 
             var llmResponse = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
                 _llmAgentId,
@@ -262,6 +281,36 @@ JSON:";
                 var langFromPath = DetectLanguage(path);
                 if (!string.Equals(langFromPath, "code", StringComparison.OrdinalIgnoreCase))
                     langName = langFromPath;
+            }
+
+            // If the snippet lacks 'class' or 'namespace' keywords, it probably represents member-only code.
+            bool looksLikeMemberSnippet = !Regex.IsMatch(code, "\\b(class|namespace)\\b", RegexOptions.IgnoreCase);
+            if (looksLikeMemberSnippet && (operation == "WriteFile" || operation == "ReplaceInFile"))
+            {
+                var inferredClass = Path.GetFileNameWithoutExtension(path);
+                if (string.IsNullOrWhiteSpace(selector))
+                    selector = $"class:{inferredClass}";
+
+                operation = "InsertIntoFile";
+                LogInfo($"[RefactorAgent] Adjusted operation to InsertIntoFile with selector '{selector}' because snippet lacked class/namespace declarations.");
+            }
+            else if (operation == "WriteFile")
+            {
+                // Detect class wrapper without namespace – treat inner body as members
+                var inferredClass = Path.GetFileNameWithoutExtension(path);
+                var classRegex = new Regex($"class\\s+{inferredClass}\\s*\\{{([\\s\\S]*)\\}}", RegexOptions.IgnoreCase);
+                var m = classRegex.Match(code);
+                if (m.Success && !Regex.IsMatch(code, "\\bnamespace\\b", RegexOptions.IgnoreCase))
+                {
+                    var inner = m.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(inner))
+                    {
+                        code = inner;
+                        selector = $"class:{inferredClass}";
+                        operation = "InsertIntoFile";
+                        LogInfo($"[RefactorAgent] Extracted members from class wrapper and switched to InsertIntoFile.");
+                    }
+                }
             }
 
             // --- NEW LOGGING -------------------------------------------------------

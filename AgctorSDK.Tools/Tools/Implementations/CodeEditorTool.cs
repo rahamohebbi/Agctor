@@ -391,6 +391,9 @@ namespace AgctorSDK.Core.Tools.Implementations
                                  .Replace("\\r", "")
                                  .Replace("\\t", "\t");
                 
+                // Remove stray '@' prefixes that sometimes precede 'using' or other directives (e.g., '@using System;')
+                content = System.Text.RegularExpressions.Regex.Replace(content, @"^\s*@using", "using", System.Text.RegularExpressions.RegexOptions.Multiline);
+                
                 // Language-specific formatter
                 var adapterFmt = LanguageAdapterFactory.GetByExtension(Path.GetExtension(filePath));
                 if (adapterFmt != null)
@@ -457,6 +460,15 @@ namespace AgctorSDK.Core.Tools.Implementations
                         var updated = adapter.InsertBySelector(source, selector, content);
                         if (updated != null)
                         {
+                            // Run formatter if available
+                            var adapterFmt2 = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
+                            if (adapterFmt2 != null)
+                            {
+                                var (ok2, formatted2) = await adapterFmt2.TryFormatAsync(updated, default);
+                                if (ok2 && formatted2 != null)
+                                    updated = formatted2;
+                            }
+
                             await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
                         }
@@ -519,6 +531,15 @@ namespace AgctorSDK.Core.Tools.Implementations
                         var updated = adapter.ReplaceBySelector(source, selector2, content);
                         if (updated != null)
                         {
+                            // Run formatter if available
+                            var adapterFmt2 = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
+                            if (adapterFmt2 != null)
+                            {
+                                var (ok2, formatted2) = await adapterFmt2.TryFormatAsync(updated, default);
+                                if (ok2 && formatted2 != null)
+                                    updated = formatted2;
+                            }
+
                             await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
                         }
@@ -658,6 +679,9 @@ namespace AgctorSDK.Core.Tools.Implementations
                            .Replace("\\r", "")
                            .Replace("\\t", "\t")
                            .Replace("\\\"", "\"");
+
+            // Remove stray '@' prefixes that sometimes precede 'using' or other directives (e.g., '@using System;')
+            content = System.Text.RegularExpressions.Regex.Replace(content, @"^\s*@using", "using", System.Text.RegularExpressions.RegexOptions.Multiline);
 
             // Balance braces simple check
             int open = content.Count(c => c == '{');

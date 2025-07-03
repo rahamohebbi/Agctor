@@ -19,8 +19,76 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                 var root = tree.GetRoot();
                 var target = ResolveSelector(root, selector);
                 if (target == null) return null;
-                int insertPos = target.Span.End;
-                return source.Insert(insertPos, Environment.NewLine + snippet + Environment.NewLine);
+
+                // If selector targets a class, handle smart insertion + duplicate checks
+                if (target is ClassDeclarationSyntax cls)
+                {
+                    var className = cls.Identifier.Text;
+
+                    // Gather existing method names in the class for duplicate detection
+                    var existingMethodNames = cls.Members
+                        .OfType<MethodDeclarationSyntax>()
+                        .Select(m => m.Identifier.Text)
+                        .ToHashSet(StringComparer.Ordinal);
+
+                    // Parse the snippet to discover method declarations inside it
+                    var dummyWrap = $"class Dummy {{ {snippet} }}";
+                    var snippetTree = CSharpSyntaxTree.ParseText(dummyWrap);
+                    var snippetRoot = snippetTree.GetRoot();
+                    var snippetMethods = snippetRoot.DescendantNodes()
+                        .OfType<MethodDeclarationSyntax>()
+                        .ToList();
+
+                    // Remove duplicates by replacing existing methods instead of inserting new ones
+                    string updatedSource = source;
+                    foreach (var sm in snippetMethods)
+                    {
+                        var name = sm.Identifier.Text;
+                        var smText = sm.ToFullString();
+
+                        if (existingMethodNames.Contains(name))
+                        {
+                            // Use ReplaceBySelector to update existing method implementation
+                            var selectorForReplace = $"class:{className} > method:{name}";
+                            updatedSource = ReplaceBySelector(updatedSource, selectorForReplace, smText) ?? updatedSource;
+                        }
+                    }
+
+                    // For non-duplicates, build the content to insert
+                    var newMembers = snippetMethods
+                        .Where(sm => !existingMethodNames.Contains(sm.Identifier.Text))
+                        .Select(sm => sm.ToFullString())
+                        .ToList();
+
+                    if (newMembers.Count == 0)
+                        return updatedSource; // nothing new to insert
+
+                    // Determine indentation based on first existing member if present
+                    var indentTrivia = "    "; // 4 spaces default
+                    if (cls.Members.FirstOrDefault() is MethodDeclarationSyntax firstMethod)
+                    {
+                        var leading = firstMethod.GetLeadingTrivia().ToString();
+                        var lastNl = leading.LastIndexOf('\n');
+                        if (lastNl >= 0 && lastNl < leading.Length - 1)
+                        {
+                            var indentCandidate = leading.Substring(lastNl + 1);
+                            if (!string.IsNullOrWhiteSpace(indentCandidate)) indentTrivia = indentCandidate;
+                        }
+                    }
+
+                    var insertPos = cls.CloseBraceToken.FullSpan.Start;
+                    var contentToInsert = System.Environment.NewLine + string.Join(System.Environment.NewLine, newMembers.Select(m => indentTrivia + m.Trim())) + System.Environment.NewLine;
+
+                    updatedSource = updatedSource.Insert(insertPos, contentToInsert);
+                    return updatedSource;
+                }
+                else
+                {
+                    // Fallback: insert after target node
+                    int insertPos = target.Span.End;
+                    var contentToInsert = System.Environment.NewLine + snippet + System.Environment.NewLine;
+                    return source.Insert(insertPos, contentToInsert);
+                }
             }
             catch { return null; }
         }
