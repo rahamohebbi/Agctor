@@ -401,6 +401,8 @@ namespace AgctorSDK.Core.Tools.Implementations
                     var (ok, formatted) = await adapterFmt.TryFormatAsync(content, default);
                     if (ok && formatted != null) content = formatted;
                 }
+
+                content = CollapseBlankLines(content);
                 
                 // Simple brace-balance fix: if more '{' than '}', append the missing ones.
                 int openBraces = content.Count(c => c == '{');
@@ -468,6 +470,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                                 if (ok2 && formatted2 != null)
                                     updated = formatted2;
                             }
+                            updated = CollapseBlankLines(updated);
 
                             await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
@@ -539,6 +542,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                                 if (ok2 && formatted2 != null)
                                     updated = formatted2;
                             }
+                            updated = CollapseBlankLines(updated);
 
                             await _fileSystem.WriteAllTextAsync(path, updated);
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
@@ -689,6 +693,12 @@ namespace AgctorSDK.Core.Tools.Implementations
             if (open > close) content += new string('}', open - close);
 
             return content;
+        }
+
+        private static string CollapseBlankLines(string text)
+        {
+            // Collapse 2 or more consecutive blank/whitespace-only lines into a single empty line
+            return Regex.Replace(text, @"(\r?\n[ \t]*){2,}", Environment.NewLine + Environment.NewLine);
         }
 
         #endregion

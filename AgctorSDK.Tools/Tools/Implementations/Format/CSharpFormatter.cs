@@ -25,6 +25,7 @@ namespace AgctorSDK.Core.Tools.Implementations.Format
                 using var workspace = new AdhocWorkspace();
                 var options = workspace.Options
                     .WithChangedOption(FormattingOptions.UseTabs, LanguageNames.CSharp, false)
+                    .WithChangedOption(FormattingOptions.IndentationSize, LanguageNames.CSharp, 4)
                     .WithChangedOption(FormattingOptions.TabSize, LanguageNames.CSharp, 4);
 
                 var formattedRoot = Formatter.Format(root, workspace, options, cancellationToken);

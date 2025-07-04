@@ -207,6 +207,9 @@ namespace AgctorSDK.CodeGraph.Agents
             sbPrompt.AppendLine("  # Create a brand-new file");
             sbPrompt.AppendLine("  {\"operation\":\"WriteFile\",\"path\":\"Foo.cs\",\"content\":\"namespace Demo { public class Foo { } }\"}");
             sbPrompt.AppendLine();
+            sbPrompt.AppendLine("  # Remove an existing method");
+            sbPrompt.AppendLine("  {\"operation\":\"ReplaceInFile\",\"path\":\"MathUtils.cs\",\"selector\":\"class:MathUtils > method:Division\",\"content\":\"\"}");
+            sbPrompt.AppendLine();
             sbPrompt.AppendLine("GUIDELINES:");
             sbPrompt.AppendLine("  - When inserting into a class scope, provide ONLY the new members (methods, properties, fields) without any surrounding namespace or class declarations.");
             sbPrompt.AppendLine();
@@ -284,7 +287,7 @@ namespace AgctorSDK.CodeGraph.Agents
             }
 
             // If the snippet lacks 'class' or 'namespace' keywords, it probably represents member-only code.
-            bool looksLikeMemberSnippet = !Regex.IsMatch(code, "\\b(class|namespace)\\b", RegexOptions.IgnoreCase);
+            bool looksLikeMemberSnippet = code.Trim().Length > 0 && !Regex.IsMatch(code, "\\b(class|namespace)\\b", RegexOptions.IgnoreCase);
             if (looksLikeMemberSnippet && (operation == "WriteFile" || operation == "ReplaceInFile"))
             {
                 var inferredClass = Path.GetFileNameWithoutExtension(path);

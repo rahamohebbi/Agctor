@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Collections.Generic; // Added for List
+using System.Text.RegularExpressions; // Added for Regex
 
 namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
 {
@@ -64,22 +66,50 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                         return updatedSource; // nothing new to insert
 
                     // Determine indentation based on first existing member if present
-                    var indentTrivia = "    "; // 4 spaces default
+                    var indentTrivia = "    "; // default
                     if (cls.Members.FirstOrDefault() is MethodDeclarationSyntax firstMethod)
                     {
-                        var leading = firstMethod.GetLeadingTrivia().ToString();
-                        var lastNl = leading.LastIndexOf('\n');
-                        if (lastNl >= 0 && lastNl < leading.Length - 1)
+                        var fullText = source;
+                        var spanStart = firstMethod.Span.Start;
+
+                        // Walk backwards from method start to find the indentation on its line
+                        int lineStart = fullText.LastIndexOf('\n', spanStart);
+                        if (lineStart >= 0)
                         {
-                            var indentCandidate = leading.Substring(lastNl + 1);
-                            if (!string.IsNullOrWhiteSpace(indentCandidate)) indentTrivia = indentCandidate;
+                            int indentStart = lineStart + 1;
+                            int indentEnd = indentStart;
+                            while (indentEnd < fullText.Length && (fullText[indentEnd] == ' ' || fullText[indentEnd] == '\t'))
+                                indentEnd++;
+                            indentTrivia = fullText.Substring(indentStart, indentEnd - indentStart);
                         }
                     }
 
+                    // Apply indentTrivia to every line of each new member
+                    List<string> indentedMembers = new();
+                    foreach (var memRaw in newMembers)
+                    {
+                        var mem = ExpandSingleLineMethod(memRaw);
+                        var lines = mem.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                        for (int i = 0; i < lines.Length; i++)
+                        {
+                            var line = lines[i];
+                            lines[i] = string.IsNullOrWhiteSpace(line)
+                                ? ""
+                                : indentTrivia + line.TrimStart();
+                        }
+                        indentedMembers.Add(string.Join(Environment.NewLine, lines));
+                    }
+
                     var insertPos = cls.CloseBraceToken.FullSpan.Start;
-                    var contentToInsert = System.Environment.NewLine + string.Join(System.Environment.NewLine, newMembers.Select(m => indentTrivia + m.Trim())) + System.Environment.NewLine;
+                    var fullBlock = string.Join(Environment.NewLine, indentedMembers);
+                    var contentToInsert = Environment.NewLine + fullBlock + Environment.NewLine;
 
                     updatedSource = updatedSource.Insert(insertPos, contentToInsert);
+
+                    Console.WriteLine("=== INSERTED ===");
+                    Console.WriteLine(contentToInsert);
+                    Console.WriteLine("================");
+
                     return updatedSource;
                 }
                 else
@@ -101,6 +131,33 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                 var root = tree.GetRoot();
                 var target = ResolveSelector(root, selector);
                 if (target == null) return null;
+
+                if (string.IsNullOrEmpty(replacement))
+                {
+                    // Remove leading indentation and any blank line
+                    int start = target.Span.Start;
+                    // Walk backwards to first non-white char or newline
+                    while (start > 0 && char.IsWhiteSpace(source[start-1]) && source[start-1] != '\n' && source[start-1] != '\r')
+                        start--;
+                    // If we are at indentation after newline, include the newline too
+                    if (start > 0 && (source[start-1] == '\n' || source[start-1] == '\r'))
+                    {
+                        start--;
+                        if (start>0 && source[start-1]=='\r' && source[start]=='\n') start--; // handle CRLF
+                    }
+                    int end = target.Span.End;
+                    // Also remove following whitespace-only line
+                    int idx = end;
+                    while (idx < source.Length && (source[idx]==' ' || source[idx]=='\t')) idx++;
+                    if (idx < source.Length && (source[idx]=='\r' || source[idx]=='\n'))
+                    {
+                        idx++;
+                        if (idx < source.Length && source[idx]=='\n' && source[idx-1]=='\r') idx++;
+                        end = idx;
+                    }
+                    return source.Substring(0, start) + source.Substring(end);
+                }
+
                 return source.Substring(0, target.Span.Start) + replacement + source.Substring(target.Span.End);
             }
             catch { return null; }
@@ -112,6 +169,19 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
             if (!formatter.IsAvailable) return (false, null);
             var (ok, formatted, _) = await formatter.FormatAsync(source);
             return (ok, formatted);
+        }
+
+        private static string ExpandSingleLineMethod(string snippet)
+        {
+            // Detect pattern: signature { body }
+            var m = Regex.Match(snippet.Trim(), @"^(.*?\))\s*\{\s*(.*?;)\s*\}$");
+            if (!m.Success) return snippet;
+            var sign = m.Groups[1].Value.Trim();
+            var body = m.Groups[2].Value.Trim();
+            if (body.EndsWith(";")) body = body.Substring(0, body.Length - 1).TrimEnd();
+            var ind = "    "; // 4 spaces inner
+            var nl = Environment.NewLine;
+            return sign + nl + "{" + nl + ind + body + ";" + nl + "}";            
         }
 
         private Microsoft.CodeAnalysis.SyntaxNode? ResolveSelector(Microsoft.CodeAnalysis.SyntaxNode root, string selector)
