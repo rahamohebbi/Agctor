@@ -20,7 +20,10 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                 var tree = CSharpSyntaxTree.ParseText(source);
                 var root = tree.GetRoot();
                 var target = ResolveSelector(root, selector);
-                if (target == null) return null;
+                if (target == null) 
+                {
+                    return null;
+                }
 
                 // If selector targets a class, handle smart insertion + duplicate checks
                 if (target is ClassDeclarationSyntax cls)
@@ -63,10 +66,13 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                         .ToList();
 
                     if (newMembers.Count == 0)
+                    {
                         return updatedSource; // nothing new to insert
+                    }
 
                     // Determine indentation based on first existing member if present
                     var indentTrivia = "    "; // default
+
                     if (cls.Members.FirstOrDefault() is MethodDeclarationSyntax firstMethod)
                     {
                         var fullText = source;
@@ -74,6 +80,7 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
 
                         // Walk backwards from method start to find the indentation on its line
                         int lineStart = fullText.LastIndexOf('\n', spanStart);
+                        
                         if (lineStart >= 0)
                         {
                             int indentStart = lineStart + 1;
@@ -90,14 +97,25 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                     {
                         var mem = ExpandSingleLineMethod(memRaw);
                         var lines = mem.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+                        
                         for (int i = 0; i < lines.Length; i++)
                         {
                             var line = lines[i];
-                            lines[i] = string.IsNullOrWhiteSpace(line)
-                                ? ""
-                                : indentTrivia + line.TrimStart();
+                            
+                            // FIXED: Preserve relative indentation instead of trimming all whitespace
+                            if (string.IsNullOrWhiteSpace(line))
+                            {
+                                lines[i] = "";
+                            }
+                            else
+                            {
+                                // Add class-level indentation while preserving existing relative indentation
+                                lines[i] = indentTrivia + line;
+                            }
                         }
-                        indentedMembers.Add(string.Join(Environment.NewLine, lines));
+                        
+                        var indentedMember = string.Join(Environment.NewLine, lines);
+                        indentedMembers.Add(indentedMember);
                     }
 
                     var insertPos = cls.CloseBraceToken.FullSpan.Start;
@@ -105,10 +123,6 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                     var contentToInsert = Environment.NewLine + fullBlock + Environment.NewLine;
 
                     updatedSource = updatedSource.Insert(insertPos, contentToInsert);
-
-                    Console.WriteLine("=== INSERTED ===");
-                    Console.WriteLine(contentToInsert);
-                    Console.WriteLine("================");
 
                     return updatedSource;
                 }
@@ -120,7 +134,12 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
                     return source.Insert(insertPos, contentToInsert);
                 }
             }
-            catch { return null; }
+            catch (Exception ex) 
+            { 
+                Console.WriteLine($"[CSharpLanguageAdapter] Exception in InsertBySelector: {ex.Message}");
+                Console.WriteLine($"[CSharpLanguageAdapter] Stack trace: {ex.StackTrace}");
+                return null; 
+            }
         }
 
         public string? ReplaceBySelector(string source, string selector, string replacement)
@@ -160,7 +179,12 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
 
                 return source.Substring(0, target.Span.Start) + replacement + source.Substring(target.Span.End);
             }
-            catch { return null; }
+            catch (Exception ex) 
+            { 
+                Console.WriteLine($"[CSharpLanguageAdapter] Exception in ReplaceBySelector: {ex.Message}");
+                Console.WriteLine($"[CSharpLanguageAdapter] Stack trace: {ex.StackTrace}");
+                return null; 
+            }
         }
 
         public async Task<(bool ok, string? formatted)> TryFormatAsync(string source, CancellationToken ct = default)
@@ -175,13 +199,19 @@ namespace AgctorSDK.Core.Tools.Implementations.LanguageAdapters
         {
             // Detect pattern: signature { body }
             var m = Regex.Match(snippet.Trim(), @"^(.*?\))\s*\{\s*(.*?;)\s*\}$");
-            if (!m.Success) return snippet;
+            if (!m.Success) 
+            {
+                return snippet;
+            }
+            
             var sign = m.Groups[1].Value.Trim();
             var body = m.Groups[2].Value.Trim();
+            
             if (body.EndsWith(";")) body = body.Substring(0, body.Length - 1).TrimEnd();
             var ind = "    "; // 4 spaces inner
             var nl = Environment.NewLine;
-            return sign + nl + "{" + nl + ind + body + ";" + nl + "}";            
+            
+            return sign + nl + "{" + nl + ind + body + ";" + nl + "}";
         }
 
         private Microsoft.CodeAnalysis.SyntaxNode? ResolveSelector(Microsoft.CodeAnalysis.SyntaxNode root, string selector)

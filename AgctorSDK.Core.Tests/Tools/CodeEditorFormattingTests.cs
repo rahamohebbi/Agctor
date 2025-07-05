@@ -21,7 +21,7 @@ namespace AgctorSDK.Core.Tests.Tools
         [Fact]
         public async Task InsertMethod_IsFormattedCorrectly()
         {
-            var tmp = Path.GetTempFileName();
+            var tmp = Path.ChangeExtension(Path.GetTempFileName(), ".cs");
             await File.WriteAllTextAsync(tmp, InitialClass);
 
             var tool = new CodeEditorTool("test");
@@ -33,12 +33,15 @@ namespace AgctorSDK.Core.Tests.Tools
             Assert.Contains("return a / b;", updated);
             // Division signature should be indented 8 spaces relative to namespace
             Assert.Contains("        public static double Division", updated);
+            
+            // Clean up
+            File.Delete(tmp);
         }
 
         [Fact]
         public async Task RemoveMethod_LeavesProperFormatting()
         {
-            var tmp = Path.GetTempFileName();
+            var tmp = Path.ChangeExtension(Path.GetTempFileName(), ".cs");
             // Start with class that already has Division formatted correctly
             var initial = InitialClass.Replace("    }", "        public static double Division(double a, double b) { return a / b; }\n    }");
             await File.WriteAllTextAsync(tmp, initial);
@@ -51,6 +54,9 @@ namespace AgctorSDK.Core.Tests.Tools
             Assert.DoesNotContain("Division", updated);
             // Ensure closing brace of class is still indented 4 spaces
             Assert.Contains("    }", updated);
+            
+            // Clean up
+            File.Delete(tmp);
         }
     }
 } 

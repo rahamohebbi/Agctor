@@ -447,59 +447,154 @@ namespace AgctorSDK.Core.Tools.Implementations
             if (!parameters.TryGetValue("content", out var contentObj) || contentObj is not string content)
                 return new ToolResult { IsSuccess = false, Error = "Missing or invalid 'content' parameter." };
 
-            content = NormalizeContent(content);
+            LogInfo($"[CodeEditorTool] InsertIntoFile called with path: '{path}'");
+            LogInfo($"[CodeEditorTool] Original content: '{content}'");
+            LogInfo($"[CodeEditorTool] Content length: {content.Length}");
 
-            string source = await _fileSystem.ReadAllTextAsync(path);
+            content = NormalizeContent(content);
+            LogInfo($"[CodeEditorTool] Normalized content: '{content}'");
+            LogInfo($"[CodeEditorTool] Normalized content length: {content.Length}");
+
+            string source;
+            try
+            {
+                // First try to read the file as-is (works with mock file systems in tests)
+                source = await _fileSystem.ReadAllTextAsync(path);
+                LogInfo($"[CodeEditorTool] Source file length: {source.Length}");
+            }
+            catch (Exception ex)
+            {
+                // If reading fails and path is not rooted, try path resolution
+                if (!Path.IsPathRooted(path))
+                {
+                    LogInfo($"[CodeEditorTool] Failed to read '{path}' directly: {ex.Message}. Trying path resolution.");
+                    
+                    var cwd = Directory.GetCurrentDirectory();
+                    var matches = Directory.GetFiles(cwd, path, SearchOption.AllDirectories);
+                    if (matches.Length == 1)
+                    {
+                        LogInfo($"[CodeEditorTool] Resolved relative path '{path}' to '{matches[0]}'");
+                        path = matches[0];
+                        source = await _fileSystem.ReadAllTextAsync(path);
+                        LogInfo($"[CodeEditorTool] Source file length: {source.Length}");
+                    }
+                    else if (matches.Length == 0)
+                    {
+                        // Also check system temp directory for temporary files
+                        var tempDir = Path.GetTempPath();
+                        var tempMatches = Directory.GetFiles(tempDir, path, SearchOption.TopDirectoryOnly);
+                        if (tempMatches.Length == 1)
+                        {
+                            LogInfo($"[CodeEditorTool] Found in temp directory: '{tempMatches[0]}'");
+                            path = tempMatches[0];
+                            source = await _fileSystem.ReadAllTextAsync(path);
+                            LogInfo($"[CodeEditorTool] Source file length: {source.Length}");
+                        }
+                        else
+                        {
+                            LogInfo($"[CodeEditorTool] No existing file named '{path}' found in current directory or temp directory.");
+                            return new ToolResult { IsSuccess = false, Error = $"Could not find file '{path}'." };
+                        }
+                    }
+                    else
+                    {
+                        return new ToolResult
+                        {
+                            IsSuccess = false,
+                            Error = $"Ambiguous relative path '{path}'. Found {matches.Length} matches. Please specify full path."
+                        };
+                    }
+                }
+                else
+                {
+                    // Re-throw the original exception if path is rooted
+                    throw;
+                }
+            }
 
             // 1) Try selector via language adapter
             if (parameters.TryGetValue("selector", out var selObj) && selObj is string selector)
             {
+                LogInfo($"[CodeEditorTool] Using selector: '{selector}'");
+                
                 var adapter = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
                 if (adapter != null)
                 {
+                    LogInfo($"[CodeEditorTool] Found adapter: {adapter.GetType().Name}");
+                    
                     try
                     {
+                        LogInfo($"[CodeEditorTool] Calling adapter.InsertBySelector with content: '{content}'");
+                        
                         var updated = adapter.InsertBySelector(source, selector, content);
                         if (updated != null)
                         {
+                            LogInfo($"[CodeEditorTool] Adapter returned updated content, length: {updated.Length}");
+                            
                             // Run formatter if available
                             var adapterFmt2 = LanguageAdapterFactory.GetByExtension(Path.GetExtension(path));
                             if (adapterFmt2 != null)
                             {
+                                LogInfo("[CodeEditorTool] Running formatter on updated content");
                                 var (ok2, formatted2) = await adapterFmt2.TryFormatAsync(updated, default);
                                 if (ok2 && formatted2 != null)
+                                {
+                                    LogInfo($"[CodeEditorTool] Formatter succeeded, formatted length: {formatted2.Length}");
+                                    LogInfo($"[CodeEditorTool] Formatted content sample (first 500 chars): '{formatted2.Substring(0, Math.Min(500, formatted2.Length))}'");
                                     updated = formatted2;
+                                }
+                                else
+                                {
+                                    LogInfo($"[CodeEditorTool] Formatter failed or returned null. ok2={ok2}, formatted2={formatted2?.Length ?? -1}");
+                                }
                             }
                             updated = CollapseBlankLines(updated);
+                            LogInfo($"[CodeEditorTool] After CollapseBlankLines, length: {updated.Length}");
 
                             await _fileSystem.WriteAllTextAsync(path, updated);
+                            LogInfo($"[CodeEditorTool] Successfully wrote updated content to file");
                             return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
+                        }
+                        else
+                        {
+                            LogInfo("[CodeEditorTool] Adapter returned null");
                         }
                     }
                     catch (Exception ex)
                     {
-                        LogWarning($"Adapter insertion failed: {ex.Message}. Falling back.");
+                        LogWarning($"[CodeEditorTool] Adapter insertion failed: {ex.Message}. Falling back.");
                     }
                 }
+                else
+                {
+                    LogInfo($"[CodeEditorTool] No adapter found for extension: {Path.GetExtension(path)}");
+                }
+            }
+            else
+            {
+                LogInfo("[CodeEditorTool] No selector provided");
             }
 
             // 2) Try anchor text
             if (parameters.TryGetValue("anchor", out var ancObj) && ancObj is string anchor)
             {
+                LogInfo($"[CodeEditorTool] Trying anchor: '{anchor}'");
                 int idx = source.IndexOf(anchor, StringComparison.Ordinal);
                 if (idx >= 0)
                 {
+                    LogInfo($"[CodeEditorTool] Found anchor at position: {idx}");
                     int insertPos = idx + anchor.Length;
                     var updated = source.Insert(insertPos, System.Environment.NewLine + content);
                     await _fileSystem.WriteAllTextAsync(path, updated);
                     return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
                 }
-                LogWarning($"Anchor '{anchor}' not found. Falling back.");
+                LogWarning($"[CodeEditorTool] Anchor '{anchor}' not found. Falling back.");
             }
 
             // 3) Fallback to lineNumber
             if (parameters.TryGetValue("lineNumber", out var lineObj) && int.TryParse(lineObj.ToString(), out var lineNumber))
             {
+                LogInfo($"[CodeEditorTool] Using lineNumber: {lineNumber}");
                 var lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None).ToList();
                 if (lineNumber < 0 || lineNumber > lines.Count)
                     return new ToolResult { IsSuccess = false, Error = "Line number is out of range." };
@@ -509,6 +604,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new ToolResult { IsSuccess = true, Output = $"File written to {path}" };
             }
 
+            LogInfo("[CodeEditorTool] No valid insertion method found");
             return new ToolResult { IsSuccess = false, Error = "Could not insert content – no valid selector, anchor or line number resolved." };
         }
 
@@ -521,7 +617,59 @@ namespace AgctorSDK.Core.Tools.Implementations
 
             content = NormalizeContent(content);
 
-            string source = await _fileSystem.ReadAllTextAsync(path);
+            string source;
+            try
+            {
+                // First try to read the file as-is (works with mock file systems in tests)
+                source = await _fileSystem.ReadAllTextAsync(path);
+            }
+            catch (Exception ex)
+            {
+                // If reading fails and path is not rooted, try path resolution
+                if (!Path.IsPathRooted(path))
+                {
+                    LogInfo($"[CodeEditorTool] Failed to read '{path}' directly: {ex.Message}. Trying path resolution.");
+                    
+                    var cwd = Directory.GetCurrentDirectory();
+                    var matches = Directory.GetFiles(cwd, path, SearchOption.AllDirectories);
+                    if (matches.Length == 1)
+                    {
+                        LogInfo($"[CodeEditorTool] Resolved relative path '{path}' to '{matches[0]}'");
+                        path = matches[0];
+                        source = await _fileSystem.ReadAllTextAsync(path);
+                    }
+                    else if (matches.Length == 0)
+                    {
+                        // Also check system temp directory for temporary files
+                        var tempDir = Path.GetTempPath();
+                        var tempMatches = Directory.GetFiles(tempDir, path, SearchOption.TopDirectoryOnly);
+                        if (tempMatches.Length == 1)
+                        {
+                            LogInfo($"[CodeEditorTool] Found in temp directory: '{tempMatches[0]}'");
+                            path = tempMatches[0];
+                            source = await _fileSystem.ReadAllTextAsync(path);
+                        }
+                        else
+                        {
+                            LogInfo($"[CodeEditorTool] No existing file named '{path}' found in current directory or temp directory.");
+                            return new ToolResult { IsSuccess = false, Error = $"Could not find file '{path}'." };
+                        }
+                    }
+                    else
+                    {
+                        return new ToolResult
+                        {
+                            IsSuccess = false,
+                            Error = $"Ambiguous relative path '{path}'. Found {matches.Length} matches. Please specify full path."
+                        };
+                    }
+                }
+                else
+                {
+                    // Re-throw the original exception if path is rooted
+                    throw;
+                }
+            }
 
             // Prefer selector replacement via adapter
             if (parameters.TryGetValue("selector", out var selectorObj) && selectorObj is string selector2)
@@ -660,45 +808,74 @@ namespace AgctorSDK.Core.Tools.Implementations
         /// <summaryNormalize content sent by LLM: strip fences/backticks, unescape sequences, balance braces.</summary>
         private string NormalizeContent(string content)
         {
+            LogInfo($"[CodeEditorTool] NormalizeContent - Input: '{content}'");
+            
             content = content.Trim();
+            LogInfo($"[CodeEditorTool] NormalizeContent - After Trim: '{content}'");
 
             // Remove wrapping quotes/backticks repeatedly
+            var originalContent = content;
             while (content.Length > 1 && (content.StartsWith("\"") && content.EndsWith("\"") || content.StartsWith("`") && content.EndsWith("`")))
             {
                 content = content.Substring(1, content.Length - 2).Trim();
+            }
+            if (content != originalContent)
+            {
+                LogInfo($"[CodeEditorTool] NormalizeContent - After removing quotes/backticks: '{content}'");
             }
 
             // Strip markdown code fences
             if (content.StartsWith("```"))
             {
+                LogInfo("[CodeEditorTool] NormalizeContent - Stripping markdown code fences");
                 var nl = content.IndexOf('\n');
                 if (nl >= 0) content = content.Substring(nl + 1);
                 var last = content.LastIndexOf("```", StringComparison.Ordinal);
                 if (last >= 0) content = content.Substring(0, last);
                 content = content.Trim();
+                LogInfo($"[CodeEditorTool] NormalizeContent - After stripping fences: '{content}'");
             }
 
             // Unescape common sequences
+            var beforeUnescape = content;
             content = content.Replace("\\n", System.Environment.NewLine)
                            .Replace("\\r", "")
                            .Replace("\\t", "\t")
                            .Replace("\\\"", "\"");
+            if (content != beforeUnescape)
+            {
+                LogInfo($"[CodeEditorTool] NormalizeContent - After unescaping: '{content}'");
+            }
 
             // Remove stray '@' prefixes that sometimes precede 'using' or other directives (e.g., '@using System;')
+            var beforeAtRemoval = content;
             content = System.Text.RegularExpressions.Regex.Replace(content, @"^\s*@using", "using", System.Text.RegularExpressions.RegexOptions.Multiline);
+            if (content != beforeAtRemoval)
+            {
+                LogInfo($"[CodeEditorTool] NormalizeContent - After removing @ prefixes: '{content}'");
+            }
 
             // Balance braces simple check
             int open = content.Count(c => c == '{');
             int close = content.Count(c => c == '}');
-            if (open > close) content += new string('}', open - close);
+            if (open > close) 
+            {
+                LogInfo($"[CodeEditorTool] NormalizeContent - Balancing braces: {open} open, {close} close, adding {open - close} closing braces");
+                content += new string('}', open - close);
+                LogInfo($"[CodeEditorTool] NormalizeContent - After balancing braces: '{content}'");
+            }
 
+            LogInfo($"[CodeEditorTool] NormalizeContent - Final result: '{content}'");
             return content;
         }
 
         private static string CollapseBlankLines(string text)
         {
             // Collapse 2 or more consecutive blank/whitespace-only lines into a single empty line
-            return Regex.Replace(text, @"(\r?\n[ \t]*){2,}", Environment.NewLine + Environment.NewLine);
+            // FIXED: Use a more precise regex that only matches truly empty lines (not lines with meaningful content)
+            // Old pattern: @"(\r?\n[ \t]*){2,}" - this was too greedy and captured indented code lines
+            // New pattern: Match only consecutive empty lines (lines with only whitespace and no other content)
+            return Regex.Replace(text, @"(\r?\n\s*\r?\n)+", Environment.NewLine + Environment.NewLine);
         }
 
         #endregion
