@@ -66,6 +66,8 @@ switch (defaultRuntime)
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
+// Register InMemoryGoalStore
+builder.Services.AddInMemoryGoalStore();
 
 // Register LLM client (Ollama default)
 builder.Services.AddHttpClient<OllamaLlmClient>();
