@@ -9,7 +9,7 @@ using AgctorSDK.Core.Tasks;
 namespace AgctorSDK.Agents.Agents
 {
     /// <summary>
-    /// Generates a directed acyclic task graph from new goals and stores the resulting tasks.
+    /// Generates a directed acyclic task graph (DAG – Directed Acyclic Graph) from new goals and stores the resulting tasks.
     /// </summary>
     public class TaskScoperAgent : Agent
     {
@@ -40,6 +40,8 @@ namespace AgctorSDK.Agents.Agents
 
         /// <summary>
         /// Very simple heuristic: each non-empty line in the goal description represents a task. Dependencies are declared with ':'
+        ///
+        /// The resulting structure is a Directed Acyclic Graph (DAG), so downstream components can execute tasks respecting dependencies.
         /// Example: "Task2:Task1,Task0" means Task2 depends on Task1 and Task0.
         /// </summary>
         public List<ProjectTask> GenerateTasks(Goal goal)

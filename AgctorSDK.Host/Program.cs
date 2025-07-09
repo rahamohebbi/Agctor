@@ -66,6 +66,14 @@ switch (defaultRuntime)
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
+// Register InMemoryTaskStore
+builder.Services.AddInMemoryTaskStore();
+// Task scoper background service
+builder.Services.Configure<AgctorSDK.Host.Services.TaskScoperHostedService.TaskScoperOptions>(builder.Configuration.GetSection("TaskScoper"));
+builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskScoperHostedService>();
+// Task flow engine background service
+builder.Services.Configure<AgctorSDK.Host.Services.TaskFlowHostedService.TaskFlowOptions>(builder.Configuration.GetSection("TaskFlow"));
+builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskFlowHostedService>();
 // Register InMemoryGoalStore
 builder.Services.AddInMemoryGoalStore();
 

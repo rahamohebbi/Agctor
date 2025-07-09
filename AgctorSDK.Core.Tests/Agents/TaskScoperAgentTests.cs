@@ -19,6 +19,7 @@ public class TaskScoperAgentTests
         return new TaskScoperAgent("scoper-1", goalStore, taskStore);
     }
 
+    // DAG = Directed Acyclic Graph
     [TestMethod]
     public void GenerateTasks_ShouldCreateTasks_WithDependencies()
     {
