@@ -71,6 +71,8 @@ builder.Services.AddInMemoryTaskStore();
 // Task scoper background service
 builder.Services.Configure<AgctorSDK.Host.Services.TaskScoperHostedService.TaskScoperOptions>(builder.Configuration.GetSection("TaskScoper"));
 builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskScoperHostedService>();
+// Code generation
+builder.Services.AddSimpleCodeGeneration();
 // Task flow engine background service
 builder.Services.Configure<AgctorSDK.Host.Services.TaskFlowHostedService.TaskFlowOptions>(builder.Configuration.GetSection("TaskFlow"));
 builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskFlowHostedService>();

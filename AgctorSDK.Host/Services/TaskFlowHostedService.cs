@@ -16,9 +16,9 @@ public sealed class TaskFlowHostedService : IHostedService, IDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _loop;
 
-    public TaskFlowHostedService(ITaskStore store, ILogger<TaskFlowHostedService> logger, IOptions<TaskFlowOptions>? opts = null)
+    public TaskFlowHostedService(ITaskStore store, ITaskExecutor executor, ILogger<TaskFlowHostedService> logger, IOptions<TaskFlowOptions>? opts = null)
     {
-        _engine = new TaskFlowEngine(store, new SimpleTaskExecutor());
+        _engine = new TaskFlowEngine(store, executor);
         _logger = logger;
         _interval = opts?.Value?.Interval ?? TimeSpan.FromSeconds(10);
     }
