@@ -62,7 +62,14 @@ public sealed class TaskScoperHostedService : IHostedService, IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _cts.Cancel();
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The token source was already disposed (e.g. StopAsync called after Dispose). Safe to ignore.
+        }
         if (_loopTask != null)
         {
             await Task.WhenAny(_loopTask, Task.Delay(Timeout.Infinite, cancellationToken));
