@@ -1,4 +1,4 @@
-using AgctorSDK.Core.DependencyInjection;
+using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
@@ -7,6 +7,7 @@ using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Snippets;
+using AgctorSDK.Core.DependencyInjection;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -72,7 +73,7 @@ builder.Services.AddInMemoryTaskStore();
 builder.Services.Configure<AgctorSDK.Host.Services.TaskScoperHostedService.TaskScoperOptions>(builder.Configuration.GetSection("TaskScoper"));
 builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskScoperHostedService>();
 // Code generation
-builder.Services.AddSimpleCodeGeneration();
+builder.Services.AddCodeGraphGeneration();
 // Task flow engine background service
 builder.Services.Configure<AgctorSDK.Host.Services.TaskFlowHostedService.TaskFlowOptions>(builder.Configuration.GetSection("TaskFlow"));
 builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskFlowHostedService>();
