@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agctor System Architecture Diagram</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script>
+        // Dynamically load and render the Mermaid diagram from diagram.mermaid
+        async function loadAndRenderDiagram() {
+            try {
+                const url = 'diagram.mermaid?ts=' + Date.now(); // cache-bust
+                const response = await fetch(url, { cache: 'no-store' });
+                console.log('Fetch status:', response.status, 'CT:', response.headers.get('content-type'));
+                if (!response.ok) {
+                    throw new Error('Failed to load diagram.mermaid');
+                }
+                let mermaidCode = await response.text();
+                console.log('Loaded text length:', mermaidCode.length);
+
+                // Remove BOM if present
+                if (mermaidCode.charCodeAt(0) === 0xFEFF) {
+                    mermaidCode = mermaidCode.slice(1);
+                }
+
+                // Normalize line endings and trim
+                mermaidCode = mermaidCode.replace(/\r\n/g, '\n').trim();
+                console.log('Cleaned Mermaid Code (first 60 chars):', mermaidCode.substring(0, 60));
+                if (!mermaidCode) {
+                    document.getElementById('mermaid-container').innerHTML = '<p>Loaded empty diagram. Check diagram.mermaid contents.</p>';
+                    return;
+                }
+
+                const container = document.getElementById('mermaid-container');
+                container.innerHTML = '';
+
+                const diagramDiv = document.createElement('div');
+                diagramDiv.className = 'mermaid';
+                diagramDiv.textContent = mermaidCode; // Let mermaid transform this node
+                container.appendChild(diagramDiv);
+
+                // Initialize and run
+                mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { useMaxWidth: true } });
+                console.log('Running mermaid on node...');
+                await mermaid.run({ nodes: [diagramDiv] });
+                console.log('Mermaid render complete.');
+            } catch (error) {
+                console.error('Error rendering diagram:', error);
+                document.getElementById('mermaid-container').innerHTML = '<p>Error loading/rendering diagram. Check console.</p>';
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadAndRenderDiagram);
+    </script>
+</head>
+<body>
+    <h1>Agctor System Architecture Visualization</h1>
+    <div id="mermaid-container"></div>
+</body>
+</html>

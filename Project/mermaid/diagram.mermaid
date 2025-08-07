@@ -1,0 +1,117 @@
+graph TD;
+    %% Define subgraphs for logical grouping
+
+    subgraph "Actors (Core Building Blocks)"
+        IActor["IActor Interface - Id - ActorType - State - ReceiveAsync - InitializeAsync - ShutdownAsync"]
+        CodeGraphActorBase["CodeGraphActorBase - Base for hierarchical actors - Manages children - State management"]
+        TimeoutSupervisorActor["TimeoutSupervisorActor - Monitors timeouts - Supervises other actors"]
+        EchoActor["EchoActor - Simple demo actor - Echoes messages"]
+    end
+
+    subgraph "Agents (Intelligent Entities extending IActor)"
+        IAgent["IAgent Interface - Extends IActor - CurrentPrompt - ParentAgentId - ChildAgentIds - Status - ProcessPromptAsync"]
+        Agent["Agent - Basic agent implementation - Spawns child agents - Processes prompts recursively"]
+        EchoAgent["EchoAgent - Simple echoing agent"]
+        LLMAgent["LLMAgent - Integrates with LLM - Processes AI tasks"]
+        RefactorAgent["RefactorAgent - Handles code refactoring"]
+        SearchAgent["SearchAgent - Performs searches - Uses embeddings"]
+        CodeReviewerAgent["CodeReviewerAgent - Reviews code changes"]
+        PullRequestAgent["PullRequestAgent - Manages PR tasks"]
+        GitWatcherAgent["GitWatcherAgent - Monitors Git events"]
+        IndexerAgent["IndexerAgent - Indexes code for search"]
+        IntentDetectionAgent["IntentDetectionAgent - Detects user intents"]
+        ComprehensionAgent["ComprehensionAgent - Code comprehension"]
+    end
+
+    subgraph "Adapters (Runtime Backends)"
+        IActorRuntimeAdapter["IActorRuntimeAdapter - Name - Version - IsInitialized - InitializeAsync - ShutdownAsync - SpawnActorAsync - SendMessageAsync"]
+        InMemoryActorRuntime["InMemoryActorRuntime - In-memory execution"]
+        OrleansAdapter["OrleansAdapter - Distributed actor model"]
+        ProtoActorAdapter["ProtoActorAdapter - Proto.Actor integration"]
+    end
+
+    subgraph "Tools (Specialized Actors for Tasks)"
+        IToolActor["IToolActor - Extends IAgent - Handles ToolRequest"]
+        CodeEditorTool["CodeEditorTool - Edits code files"]
+        CodeExecutorTool["CodeExecutorTool - Executes code snippets"]
+        FormatTool["FormatTool - Formats code"]
+        FileSystemTool["FileSystemTool - File operations"]
+        CompileTool["CompileTool - Compiles code"]
+    end
+
+    subgraph "Task Executors"
+        ITaskExecutor["ITaskExecutor - ExecuteAsync"]
+        CoderTaskExecutor["CoderTaskExecutor - Code generation tasks"]
+        PullRequestTaskExecutor["PullRequestTaskExecutor - PR-related tasks"]
+        CodeGraphTaskExecutor["CodeGraphTaskExecutor - Code graph operations"]
+    end
+
+    subgraph "Core Services"
+        MessageDispatcher["MessageDispatcher - Routes messages to agents"]
+        AgentRegistry["AgentRegistry - Tracks all agents"]
+        TaskFlowEngine["TaskFlowEngine - Orchestrates task flows"]
+        AnalyzerRegistry["AnalyzerRegistry - Manages code analyzers (Roslyn, TreeSitter, LLM)"]
+        SnapshotService["SnapshotService - Manages code snapshots"]
+        SnapshotDiffService["SnapshotDiffService - Computes diffs"]
+        EmbeddingStore["EmbeddingStore - Stores vector embeddings"]
+    end
+
+    subgraph "Messages (Communication)"
+        IMessageEnvelope["IMessageEnvelope - Id - Payload - Headers - SenderId - TargetId"]
+        ProcessPromptMessage["ProcessPromptMessage - Prompt - CorrelationId"]
+        AssignSubtaskMessage["AssignSubtaskMessage - Subtask prompt"]
+        ToolRequest["ToolRequest - Tool-specific params"]
+        ToolResult["ToolResult - Success - Data - Error"]
+    end
+
+    subgraph "External Systems"
+        CLI["CLI - User interface"]
+        HostAPI["Host API - HTTP + MCP Gateway"]
+        GitRepo["Git Repository"]
+        LLM["LLM (e.g., Ollama)"]
+        VectorStore["Vector Store"]
+        MetricsBackend["Metrics/Observability"]
+    end
+
+    %% Communication Flows (Message Passing)
+    CLI -->|Sends commands| HostAPI
+    HostAPI -->|Dispatches messages| MessageDispatcher
+    MessageDispatcher -->|Routes to| Agent
+    Agent -->|Spawns children| LLMAgent
+    Agent -->|Spawns children| RefactorAgent
+    Agent -->|Spawns children| SearchAgent
+    RefactorAgent -->|Uses| CodeEditorTool
+    RefactorAgent -->|Uses| CodeExecutorTool
+    SearchAgent -->|Queries| EmbeddingStore
+    SearchAgent -->|Queries| VectorStore
+    LLMAgent -->|Calls| LLM
+    CodeReviewerAgent -->|Analyzes| AnalyzerRegistry
+    PullRequestAgent -->|Interacts with| GitRepo
+    GitWatcherAgent -->|Monitors| GitRepo
+    IndexerAgent -->|Updates| EmbeddingStore
+    IntentDetectionAgent -->|Detects intents| ComprehensionAgent
+
+    %% Adapter Integration
+    IActorRuntimeAdapter <-->|Implemented by| InMemoryActorRuntime
+    IActorRuntimeAdapter <-->|Implemented by| OrleansAdapter
+    IActorRuntimeAdapter <-->|Implemented by| ProtoActorAdapter
+    Agent -->|Runs on| IActorRuntimeAdapter
+    IToolActor -->|Runs on| IActorRuntimeAdapter
+
+    %% Message Passing Examples
+    Agent -->|Sends ProcessPromptMessage| LLMAgent
+    LLMAgent -->|Returns ToolResult| Agent
+    Agent -->|Sends ToolRequest| CodeEditorTool
+    CodeEditorTool -->|Returns ToolResult| Agent
+
+    %% Core Interactions
+    TaskFlowEngine -->|Executes| CoderTaskExecutor
+    TaskFlowEngine -->|Executes| PullRequestTaskExecutor
+    SnapshotService -->|Uses| SnapshotDiffService
+    MetricsCollector -->|Sends to| MetricsBackend
+
+    %% Styles for better visualization
+    classDef interface fill:#f9f,stroke:#333,stroke-width:2px;
+    class IActor,IAgent,IActorRuntimeAdapter,IToolActor,ITaskExecutor,IMessageEnvelope interface;
+    classDef message fill:#ddf,stroke:#333;
+    class ProcessPromptMessage,AssignSubtaskMessage,ToolRequest,ToolResult message;
