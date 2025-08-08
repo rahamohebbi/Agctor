@@ -1,60 +1,154 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agctor System Architecture Diagram</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; }
+        #nav { margin-bottom: 12px; }
+        a.button { display: inline-block; margin-right: 8px; padding: 6px 10px; border: 1px solid #ccc; border-radius: 6px; text-decoration: none; color: #0366d6; }
+        a.button:hover { background: #f5f5f5; }
+    </style>
     <script>
-        // Dynamically load and render the Mermaid diagram from diagram.mermaid
-        async function loadAndRenderDiagram() {
-            try {
-                const url = 'diagram.mermaid?ts=' + Date.now(); // cache-bust
-                const response = await fetch(url, { cache: 'no-store' });
-                console.log('Fetch status:', response.status, 'CT:', response.headers.get('content-type'));
-                if (!response.ok) {
-                    throw new Error('Failed to load diagram.mermaid');
+        // Parse the multi-section Mermaid file and select blocks by tag
+        async function loadSections() {
+            const text = await (await fetch('diagram.mermaid?ts=' + Date.now(), { cache: 'no-store' })).text();
+            const parts = {};
+            let current = null;
+            const lines = text.split('\n');
+            for (const line of lines) {
+                // Matches: %% @overview  OR  %% @section actors
+                const m = line.match(/^%%\s*@([a-zA-Z0-9_-]+)(?:\s+([a-zA-Z0-9_-]+))?\s*$/);
+                if (m) {
+                    const tag = (m[1] || '').toLowerCase();
+                    const value = (m[2] || '').toLowerCase();
+                    // Use the section name directly as the key: overview, actors, agents, ...
+                    current = tag === 'section' && value ? value : tag;
+                    parts[current] = '';
+                } else if (current) {
+                    parts[current] += line + '\n';
                 }
-                let mermaidCode = await response.text();
-                console.log('Loaded text length:', mermaidCode.length);
+            }
+            console.debug('Sections parsed:', Object.keys(parts));
+            return parts;
+        }
 
-                // Remove BOM if present
-                if (mermaidCode.charCodeAt(0) === 0xFEFF) {
-                    mermaidCode = mermaidCode.slice(1);
-                }
-
-                // Normalize line endings and trim
-                mermaidCode = mermaidCode.replace(/\r\n/g, '\n').trim();
-                console.log('Cleaned Mermaid Code (first 60 chars):', mermaidCode.substring(0, 60));
-                if (!mermaidCode) {
-                    document.getElementById('mermaid-container').innerHTML = '<p>Loaded empty diagram. Check diagram.mermaid contents.</p>';
-                    return;
-                }
-
-                const container = document.getElementById('mermaid-container');
-                container.innerHTML = '';
-
-                const diagramDiv = document.createElement('div');
-                diagramDiv.className = 'mermaid';
-                diagramDiv.textContent = mermaidCode; // Let mermaid transform this node
-                container.appendChild(diagramDiv);
-
-                // Initialize and run
-                mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { useMaxWidth: true } });
-                console.log('Running mermaid on node...');
-                await mermaid.run({ nodes: [diagramDiv] });
-                console.log('Mermaid render complete.');
-            } catch (error) {
-                console.error('Error rendering diagram:', error);
-                document.getElementById('mermaid-container').innerHTML = '<p>Error loading/rendering diagram. Check console.</p>';
+        function setNav(showBack, onBack) {
+            const nav = document.getElementById('nav');
+            nav.innerHTML = '';
+            if (showBack && typeof onBack === 'function') {
+                const a = document.createElement('a');
+                a.href = '#';
+                a.className = 'button';
+                a.textContent = 'Back to Overview';
+                a.onclick = (e) => { e.preventDefault(); onBack(); };
+                nav.appendChild(a);
             }
         }
 
-        window.addEventListener('DOMContentLoaded', loadAndRenderDiagram);
+        async function renderMermaid(code) {
+            const container = document.getElementById('mermaid-container');
+            container.innerHTML = '';
+            const d = document.createElement('div');
+            d.className = 'mermaid';
+            d.textContent = code.trim();
+            container.appendChild(d);
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { useMaxWidth: true } });
+            await mermaid.run({ nodes: [d] });
+            // Enhance hover tooltips: sync label text into a <title> so native tooltip shows
+            const svg = container.querySelector('svg');
+            if (svg) {
+                const addTitle = (nodeId) => {
+                    const g = svg.querySelector(`[id$="-${nodeId}"]`);
+                    if (!g) return;
+                    // Get displayed label text
+                    const text = g.querySelector('text');
+                    const label = text ? text.textContent : nodeId;
+                    let title = g.querySelector('title');
+                    if (!title) { title = document.createElementNS('http://www.w3.org/2000/svg', 'title'); g.prepend(title); }
+                    title.textContent = label;
+                };
+                ['IAgent','Agent','EchoAgent','LLMAgent','RefactorAgent','SearchAgent','CodeReviewerAgent','PullRequestAgent','GitWatcherAgent','IndexerAgent','IntentDetectionAgent','ComprehensionAgent'].forEach(addTitle);
+            }
+        }
+
+        // Global expand handler called from 'click' bindings in overview
+        window.expand = async function (nodeId) {
+            try {
+                const sections = await loadSections();
+                const id = (nodeId || '').toLowerCase();
+                const mapping = {
+                    'n_external': 'external',
+                    'n_agents': 'agents',
+                    'n_core': 'core',
+                    'n_tools': 'tools',
+                    'n_adapters': 'adapters',
+                    'n_messages': 'messages',
+                    'n_actors': 'actors'
+                };
+                const key = mapping[id];
+                if (!key) { console.warn('No mapping for nodeId', nodeId); return; }
+                const code = sections[key];
+                if (!code) { console.warn('Section not found:', key, 'Available:', Object.keys(sections)); return; }
+                setNav(true, showOverview);
+                await renderMermaid(code);
+            } catch (e) {
+                console.error('Expand failed', e);
+            }
+        };
+
+        // Expand individual core service detail sections
+        window.expandService = async function (nodeId) {
+            try {
+                const sections = await loadSections();
+                const id = (nodeId || '').toLowerCase();
+                const mapping = {
+                    'messagedispatcher': 'core_messagedispatcher',
+                    'agentregistry': 'core_agentregistry',
+                    'taskflowengine': 'core_taskflowengine',
+                    'analyzerregistry': 'core_analyzerregistry',
+                    'snapshotservice': 'core_snapshotservice',
+                    'snapshotdiffservice': 'core_snapshotdiffservice',
+                    'embeddingstore': 'core_embeddingstore'
+                };
+                const sectionKey = mapping[id];
+                if (!sectionKey) { console.warn('No service mapping for', nodeId); return; }
+                const code = sections[sectionKey];
+                if (!code) { console.warn('Service section not found:', sectionKey, 'Available:', Object.keys(sections)); return; }
+                setNav(true, async () => {
+                    const base = sections['core'];
+                    setNav(false);
+                    await renderMermaid(base);
+                });
+                await renderMermaid(code);
+            } catch (e) {
+                console.error('expandService failed', e);
+            }
+        };
+
+        async function showOverview() {
+            try {
+                const sections = await loadSections();
+                setNav(false);
+                const code = sections['overview'];
+                if (!code) { console.error('Overview section missing'); return; }
+                await renderMermaid(code);
+            } catch (e) {
+                console.error('Render overview failed', e);
+            }
+        }
+
+        // A no-op function for Mermaid 'click' bindings that only need tooltips
+        window.noop = function(){ /* tooltip-only */ };
+
+        window.addEventListener('DOMContentLoaded', showOverview);
     </script>
 </head>
 <body>
     <h1>Agctor System Architecture Visualization</h1>
+    <div id="nav"></div>
     <div id="mermaid-container"></div>
 </body>
 </html>

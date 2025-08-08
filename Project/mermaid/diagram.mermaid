@@ -1,117 +1,229 @@
-graph TD;
-    %% Define subgraphs for logical grouping
+%% @overview
+flowchart TD
+    %% Styles
+    classDef group fill:#eef,stroke:#333,stroke-width:1px;
+    classDef hotspot fill:#dff,stroke:#06c,stroke-width:2px,cursor:pointer;
 
-    subgraph "Actors (Core Building Blocks)"
-        IActor["IActor Interface - Id - ActorType - State - ReceiveAsync - InitializeAsync - ShutdownAsync"]
-        CodeGraphActorBase["CodeGraphActorBase - Base for hierarchical actors - Manages children - State management"]
-        TimeoutSupervisorActor["TimeoutSupervisorActor - Monitors timeouts - Supervises other actors"]
-        EchoActor["EchoActor - Simple demo actor - Echoes messages"]
+    %% High-level groups (collapsed view)
+    N_EXTERNAL["External Systems"]:::hotspot
+    N_AGENTS["Agents"]:::hotspot
+    N_CORE["Core Services"]:::hotspot
+    N_TOOLS["Tools"]:::hotspot
+    N_ADAPTERS["Runtime Adapters"]:::hotspot
+    N_MESSAGES["Messages"]:::hotspot
+    N_ACTORS["Actors (CodeGraph / Core)"]:::hotspot
+
+    %% High-level flows
+    N_EXTERNAL --> N_AGENTS
+    N_AGENTS --> N_CORE
+    N_CORE --> N_TOOLS
+    N_TOOLS --> N_ADAPTERS
+    N_CORE -. observability .-> N_EXTERNAL
+    N_AGENTS -. message passing .-> N_MESSAGES
+    N_MESSAGES -. envelopes .-> N_AGENTS
+
+    %% Click bindings (handled in index.html via window.expand)
+    click N_EXTERNAL expand "Show External Systems"
+    click N_AGENTS expand "Show Agents"
+    click N_CORE expand "Show Core Services"
+    click N_TOOLS expand "Show Tools"
+    click N_ADAPTERS expand "Show Runtime Adapters"
+    click N_MESSAGES expand "Show Messages"
+    click N_ACTORS expand "Show Actors"
+
+%% @section actors
+flowchart TB
+    subgraph Actors
+        direction TB
+        IActor["IActor Interface<br/>- Id<br/>- ActorType<br/>- State<br/>- ReceiveAsync<br/>- InitializeAsync<br/>- ShutdownAsync"]
+        CodeGraphActorBase["CodeGraphActorBase<br/>- Hierarchical base<br/>- Child management<br/>- State"]
+        TimeoutSupervisorActor["TimeoutSupervisorActor<br/>- Monitors timeouts"]
+        EchoActor["EchoActor<br/>- Demo"]
     end
 
-    subgraph "Agents (Intelligent Entities extending IActor)"
-        IAgent["IAgent Interface - Extends IActor - CurrentPrompt - ParentAgentId - ChildAgentIds - Status - ProcessPromptAsync"]
-        Agent["Agent - Basic agent implementation - Spawns child agents - Processes prompts recursively"]
-        EchoAgent["EchoAgent - Simple echoing agent"]
-        LLMAgent["LLMAgent - Integrates with LLM - Processes AI tasks"]
-        RefactorAgent["RefactorAgent - Handles code refactoring"]
-        SearchAgent["SearchAgent - Performs searches - Uses embeddings"]
-        CodeReviewerAgent["CodeReviewerAgent - Reviews code changes"]
-        PullRequestAgent["PullRequestAgent - Manages PR tasks"]
-        GitWatcherAgent["GitWatcherAgent - Monitors Git events"]
-        IndexerAgent["IndexerAgent - Indexes code for search"]
-        IntentDetectionAgent["IntentDetectionAgent - Detects user intents"]
-        ComprehensionAgent["ComprehensionAgent - Code comprehension"]
+%% @section agents
+flowchart TB
+    subgraph Agents
+        direction TB
+        IAgent["IAgent Interface<br/>- Extends IActor<br/>- Prompt/Status<br/>- Parent/Children"]:::agent
+        Agent["Agent (base)<br/>Recursive task decomposition; child spawning; status tracking"]:::agent
+        EchoAgent["EchoAgent<br/>Echoes messages; demo/testing"]:::agent
+        LLMAgent["LLMAgent<br/>Interfaces local Ollama; generates text/code from prompts"]:::agent
+        RefactorAgent["RefactorAgent<br/>Orchestrates refactors: gather context → LLM JSON plan → CodeEditorTool + tests"]:::agent
+        SearchAgent["SearchAgent<br/>Retrieves context/embeddings for code queries"]:::agent
+        CodeReviewerAgent["CodeReviewerAgent<br/>Analyzes diffs, produces review feedback"]:::agent
+        PullRequestAgent["PullRequestAgent<br/>Creates/updates PRs; integrates with Git"]:::agent
+        GitWatcherAgent["GitWatcherAgent<br/>Listens to repo events; triggers indexing/reviews"]:::agent
+        IndexerAgent["IndexerAgent<br/>Indexes codebase into vector store for semantic search"]:::agent
+        IntentDetectionAgent["IntentDetectionAgent<br/>Classifies user intent to route tasks"]:::agent
+        ComprehensionAgent["ComprehensionAgent<br/>Explains code; summarizes structures/flows"]:::agent
     end
 
-    subgraph "Adapters (Runtime Backends)"
-        IActorRuntimeAdapter["IActorRuntimeAdapter - Name - Version - IsInitialized - InitializeAsync - ShutdownAsync - SpawnActorAsync - SendMessageAsync"]
-        InMemoryActorRuntime["InMemoryActorRuntime - In-memory execution"]
-        OrleansAdapter["OrleansAdapter - Distributed actor model"]
-        ProtoActorAdapter["ProtoActorAdapter - Proto.Actor integration"]
+%% Native hover tooltips via 'click id function "tooltip"'
+click IAgent noop "Interface extending IActor. Adds agent-specific properties like CurrentPrompt, Status, Parent/Children."
+click Agent noop "Base agent. Handles prompts, optional task decomposition, spawning child agents, and status tracking."
+click EchoAgent noop "Simple demo agent that echoes received messages; useful for testing."
+click LLMAgent noop "Connects to local Ollama (HTTP) using a default model (e.g., 'mistral') to generate text/code; can trigger tool-use."
+click RefactorAgent noop "Coordinates refactors: ask SearchAgent for context, build LLM JSON edit plan, delegate edits and tests to Coder/Tools."
+click SearchAgent noop "Provides semantic context/lookup; may use embeddings/vector store for code search."
+click CodeReviewerAgent noop "Reviews diffs/snapshots and produces automated feedback."
+click PullRequestAgent noop "Creates/updates pull requests and pushes changes to Git."
+click GitWatcherAgent noop "Watches repository events (commits/PRs) and triggers indexing/review workflows."
+click IndexerAgent noop "Indexes code elements into a vector store for fast semantic search."
+click IntentDetectionAgent noop "Classifies user intent to route tasks to the right agent."
+click ComprehensionAgent noop "Explains code and summarizes classes/methods and flows for understanding."
+
+classDef agent fill:#f6fff6,stroke:#2c7,stroke-width:1px;
+
+%% @section adapters
+flowchart TB
+    subgraph "Runtime Adapters"
+        direction TB
+        IActorRuntimeAdapter["IActorRuntimeAdapter<br/>- Name/Version<br/>- Initialize/Shutdown<br/>- SendMessage"]
+        InMemory["InMemoryActorRuntime"]
+        Orleans["OrleansAdapter"]
+        Proto["ProtoActorAdapter"]
     end
 
-    subgraph "Tools (Specialized Actors for Tasks)"
-        IToolActor["IToolActor - Extends IAgent - Handles ToolRequest"]
-        CodeEditorTool["CodeEditorTool - Edits code files"]
-        CodeExecutorTool["CodeExecutorTool - Executes code snippets"]
-        FormatTool["FormatTool - Formats code"]
-        FileSystemTool["FileSystemTool - File operations"]
-        CompileTool["CompileTool - Compiles code"]
+%% @section tools
+flowchart TB
+    subgraph Tools
+        direction TB
+        IToolActor["IToolActor (Agent)"]
+        CodeEditorTool["CodeEditorTool"]
+        CodeExecutorTool["CodeExecutorTool"]
+        FormatTool["FormatTool"]
+        FileSystemTool["FileSystemTool"]
+        CompileTool["CompileTool"]
     end
 
-    subgraph "Task Executors"
-        ITaskExecutor["ITaskExecutor - ExecuteAsync"]
-        CoderTaskExecutor["CoderTaskExecutor - Code generation tasks"]
-        PullRequestTaskExecutor["PullRequestTaskExecutor - PR-related tasks"]
-        CodeGraphTaskExecutor["CodeGraphTaskExecutor - Code graph operations"]
-    end
-
+%% @section core
+flowchart TB
     subgraph "Core Services"
-        MessageDispatcher["MessageDispatcher - Routes messages to agents"]
-        AgentRegistry["AgentRegistry - Tracks all agents"]
-        TaskFlowEngine["TaskFlowEngine - Orchestrates task flows"]
-        AnalyzerRegistry["AnalyzerRegistry - Manages code analyzers (Roslyn, TreeSitter, LLM)"]
-        SnapshotService["SnapshotService - Manages code snapshots"]
-        SnapshotDiffService["SnapshotDiffService - Computes diffs"]
-        EmbeddingStore["EmbeddingStore - Stores vector embeddings"]
+        direction TB
+        MessageDispatcher["MessageDispatcher<br/>Routes HTTP/MCP requests to agents via Actor Runtime; handles timeouts and response shaping"]:::core
+        AgentRegistry["AgentRegistry<br/>Tracks agents in-memory; register/unregister; get by id; list root/All"]:::core
+        TaskFlowEngine["TaskFlowEngine<br/>Picks ready tasks (DAG) from store, runs via executor with parallelism, updates status"]:::core
+        AnalyzerRegistry["AnalyzerRegistry<br/>Selects language analyzers (Roslyn/TreeSitter/LLM) for code ops"]:::core
+        SnapshotService["SnapshotService<br/>Creates and manages code snapshots for review"]:::core
+        SnapshotDiffService["SnapshotDiffService<br/>Computes diffs between snapshots for review"]:::core
+        EmbeddingStore["EmbeddingStore<br/>Vector storage/retrieval for semantic search"]:::core
     end
 
-    subgraph "Messages (Communication)"
-        IMessageEnvelope["IMessageEnvelope - Id - Payload - Headers - SenderId - TargetId"]
-        ProcessPromptMessage["ProcessPromptMessage - Prompt - CorrelationId"]
-        AssignSubtaskMessage["AssignSubtaskMessage - Subtask prompt"]
-        ToolRequest["ToolRequest - Tool-specific params"]
-        ToolResult["ToolResult - Success - Data - Error"]
+click MessageDispatcher expandService "Open MessageDispatcher internals"
+click AgentRegistry expandService "Open AgentRegistry internals"
+click TaskFlowEngine expandService "Open TaskFlowEngine internals"
+click AnalyzerRegistry expandService "Open AnalyzerRegistry internals"
+click SnapshotService expandService "Open SnapshotService internals"
+click SnapshotDiffService expandService "Open SnapshotDiffService internals"
+click EmbeddingStore expandService "Open EmbeddingStore internals"
+
+classDef core fill:#fff8e6,stroke:#e0a800,stroke-width:1px;
+
+%% -- Core Service Detail Sections -------------------------------------------------
+
+%% @section core_messageDispatcher
+flowchart TB
+    subgraph "MessageDispatcher – Internals"
+        direction LR
+        HTTP["HTTP API<br/>(AgentsController)"]:::client -->|MessageRequest| MD["MessageDispatcher"]:::core
+        MCP["MCP Listener"]:::client -->|IMessageEnvelope| MD
+        MD -->|validate| REG["AgentRegistry"]:::core
+        MD -->|send via| RUNTIME["IActorRuntimeAdapter<br/>SendMessageAsync"]:::runtime
+        RUNTIME --> AGENT["Target Agent"]:::agent
+        AGENT --> RUNTIME
+        RUNTIME --> MD
+        MD -->|MessageResponse| HTTP
+        MD -->|MessageResponse| MCP
     end
 
+classDef client fill:#eef,stroke:#3a7,stroke-width:1px;
+classDef runtime fill:#e8f0ff,stroke:#268,stroke-width:1px;
+classDef agent fill:#f6fff6,stroke:#2c7,stroke-width:1px;
+
+%% @section core_agentRegistry
+flowchart TB
+    subgraph "AgentRegistry – Internals"
+        direction LR
+        REGCD["ConcurrentDictionary&lt;string, IAgent&gt;"]:::store
+        Register["RegisterAgentAsync(id, agent)"] --> REGCD
+        Unregister["UnregisterAgentAsync(id)"] --> REGCD
+        GetById["GetAgentByIdAsync(id)"] --> REGCD
+        Get&lt;T&gt;["GetAgentAsync&lt;T&gt;(id)"] --> REGCD
+        ListAll["GetAllAgentIdsAsync()"] --> REGCD
+        ListRoot["GetRootAgentIdsAsync()"] --> REGCD
+    end
+
+classDef store fill:#f1f1f1,stroke:#555,stroke-width:1px;
+
+%% @section core_taskFlowEngine
+flowchart TB
+    subgraph "TaskFlowEngine – Internals"
+        direction LR
+        STORE["ITaskStore"]:::store --> RunOnce["RunOnceAsync()<br/>- Select ready tasks (deps done)<br/>- Throttle by parallelism"]:::engine
+        RunOnce --> EXEC["ITaskExecutor.ExecuteAsync(task)"]:::engine
+        EXEC --> Update["Update task status (Completed/Failed)"]:::engine
+    end
+
+classDef engine fill:#fffbea,stroke:#b58900,stroke-width:1px;
+
+%% @section core_analyzerRegistry
+flowchart TB
+    subgraph "AnalyzerRegistry – Internals"
+        direction LR
+        IN["File/Language"] --> Pick["GetAnalyzerForLanguage(lang)"]:::engine
+        Pick --> Roslyn["Roslyn Analyzer"]
+        Pick --> TreeSitter["TreeSitter Analyzer"]
+        Pick --> LLM["LLM Analyzer (fallback)"]
+    end
+
+%% @section core_snapshotService
+flowchart TB
+    subgraph "SnapshotService – Internals"
+        direction LR
+        FS["Source Files"] --> MakeSnap["Create Snapshot"]:::engine
+        MakeSnap --> Persist["Persist (disk)"]:::store
+        Persist --> Expose["Provide Snapshot to Reviewers"]:::engine
+    end
+
+%% @section core_snapshotDiffService
+flowchart TB
+    subgraph "SnapshotDiffService – Internals"
+        direction LR
+        S1["Snapshot A"] --> Diff["Compute Diff"]:::engine
+        S2["Snapshot B"] --> Diff
+        Diff --> Result["Structured Diff"]:::engine
+    end
+
+%% @section core_embeddingStore
+flowchart TB
+    subgraph "EmbeddingStore – Internals"
+        direction LR
+        Indexer["IndexerAgent"]:::agent --> Embed["Generate Embeddings"]:::engine
+        Embed --> Store["Vector Store"]:::store
+        Query["SearchAgent Query"]:::agent --> Sim["Similarities"]:::engine
+        Sim --> Results["Top-K Matches"]:::engine
+    end
+
+%% @section messages
+flowchart TB
+    subgraph Messages
+        direction TB
+        IMessageEnvelope["IMessageEnvelope<br/>- Id<br/>- Payload<br/>- Headers<br/>- SenderId<br/>- TargetId"]
+        ProcessPromptMessage["ProcessPromptMessage<br/>- Prompt<br/>- CorrelationId"]
+        AssignSubtaskMessage["AssignSubtaskMessage<br/>- Prompt"]
+        ToolRequest["ToolRequest"]
+        ToolResult["ToolResult"]
+    end
+
+%% @section external
+flowchart TB
     subgraph "External Systems"
-        CLI["CLI - User interface"]
-        HostAPI["Host API - HTTP + MCP Gateway"]
+        direction TB
+        CLI["CLI"]
+        HostAPI["HTTP + MCP Gateway"]
         GitRepo["Git Repository"]
-        LLM["LLM (e.g., Ollama)"]
+        LLM["LLM (Ollama)"]
         VectorStore["Vector Store"]
-        MetricsBackend["Metrics/Observability"]
+        MetricsBackend["Observability"]
     end
-
-    %% Communication Flows (Message Passing)
-    CLI -->|Sends commands| HostAPI
-    HostAPI -->|Dispatches messages| MessageDispatcher
-    MessageDispatcher -->|Routes to| Agent
-    Agent -->|Spawns children| LLMAgent
-    Agent -->|Spawns children| RefactorAgent
-    Agent -->|Spawns children| SearchAgent
-    RefactorAgent -->|Uses| CodeEditorTool
-    RefactorAgent -->|Uses| CodeExecutorTool
-    SearchAgent -->|Queries| EmbeddingStore
-    SearchAgent -->|Queries| VectorStore
-    LLMAgent -->|Calls| LLM
-    CodeReviewerAgent -->|Analyzes| AnalyzerRegistry
-    PullRequestAgent -->|Interacts with| GitRepo
-    GitWatcherAgent -->|Monitors| GitRepo
-    IndexerAgent -->|Updates| EmbeddingStore
-    IntentDetectionAgent -->|Detects intents| ComprehensionAgent
-
-    %% Adapter Integration
-    IActorRuntimeAdapter <-->|Implemented by| InMemoryActorRuntime
-    IActorRuntimeAdapter <-->|Implemented by| OrleansAdapter
-    IActorRuntimeAdapter <-->|Implemented by| ProtoActorAdapter
-    Agent -->|Runs on| IActorRuntimeAdapter
-    IToolActor -->|Runs on| IActorRuntimeAdapter
-
-    %% Message Passing Examples
-    Agent -->|Sends ProcessPromptMessage| LLMAgent
-    LLMAgent -->|Returns ToolResult| Agent
-    Agent -->|Sends ToolRequest| CodeEditorTool
-    CodeEditorTool -->|Returns ToolResult| Agent
-
-    %% Core Interactions
-    TaskFlowEngine -->|Executes| CoderTaskExecutor
-    TaskFlowEngine -->|Executes| PullRequestTaskExecutor
-    SnapshotService -->|Uses| SnapshotDiffService
-    MetricsCollector -->|Sends to| MetricsBackend
-
-    %% Styles for better visualization
-    classDef interface fill:#f9f,stroke:#333,stroke-width:2px;
-    class IActor,IAgent,IActorRuntimeAdapter,IToolActor,ITaskExecutor,IMessageEnvelope interface;
-    classDef message fill:#ddf,stroke:#333;
-    class ProcessPromptMessage,AssignSubtaskMessage,ToolRequest,ToolResult message;
