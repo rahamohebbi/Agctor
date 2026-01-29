@@ -1,0 +1,41 @@
+---
+description: Documentation structure requirements for the project
+alwaysApply: true
+---
+
+# Documentation Structure
+
+The project must maintain a `docs` folder at the root level containing the following documentation files:
+
+## Required Documentation Files
+
+1. **Architecture Diagram** - Visual representation of the system architecture
+2. **Class Diagram** - UML or visual representation of class relationships and structure
+3. **Endpoints Diagram** - API endpoints documentation and visualization
+4. **Dependencies Diagram** - Visual representation of project dependencies and relationships
+
+## File Naming Conventions
+
+- Use descriptive, clear names (e.g., `architecture-diagram.md`, `class-diagram.md`, `endpoints-diagram.md`, `dependencies-diagram.md`)
+- All diagrams must be created using **Mermaid** syntax within Markdown files
+- Keep documentation up to date when making architectural changes
+
+## Diagram Format
+
+- Use **Mermaid** for all diagrams and visualizations
+- Embed Mermaid code blocks in Markdown files using the ` ```mermaid ` syntax
+- Mermaid diagrams are version-controlled, easy to update, and render in most Markdown viewers
+- Example format:
+  ```markdown
+  ```mermaid
+  graph TD
+      A[Component A] --> B[Component B]
+  ```
+  ```
+
+## When Creating or Updating Documentation
+
+- Ensure all four diagram files exist in the `docs` folder
+- Use Mermaid syntax for all visualizations
+- Update relevant diagrams when making changes that affect architecture, classes, endpoints, or dependencies
+- Maintain consistency across documentation files
