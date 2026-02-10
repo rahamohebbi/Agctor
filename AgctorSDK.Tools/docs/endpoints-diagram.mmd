@@ -1,0 +1,57 @@
+graph LR
+    subgraph "Tool Requests"
+        User["Caller"]
+    end
+
+    subgraph "CodeEditorTool Operations"
+        WriteFile["WriteFile<br/>--path --content"]
+        InsertIntoFile["InsertIntoFile<br/>--path --selector --snippet"]
+        ReplaceInFile["ReplaceInFile<br/>--path --selector --replacement"]
+        ApplyPatch["ApplyPatch<br/>--path --patch"]
+    end
+
+    subgraph "CodeExecutorTool Operations"
+        RunCode["RunCode<br/>--code --language"]
+        RunFile["RunFile<br/>--path --language"]
+        RunCSharpCode["RunCSharpCode<br/>--code"]
+        RunCSharpFile["RunCSharpFile<br/>--path"]
+    end
+
+    subgraph "CompileTool Operations"
+        CompileCode["CompileCode<br/>--code --language"]
+        CompileFile["CompileFile<br/>--path"]
+    end
+
+    subgraph "FormatTool Operations"
+        Format["Format<br/>--code --language"]
+    end
+
+    subgraph "TestRunnerTool Operations"
+        RunTests["RunTests<br/>--path"]
+    end
+
+    subgraph "FileSystemTool Operations"
+        FSRead["ReadFile<br/>--path"]
+        FSWrite["WriteFile<br/>--path --content"]
+        FSExists["FileExists<br/>--path"]
+        FSDelete["DeleteFile<br/>--path"]
+    end
+
+    User --> WriteFile
+    User --> InsertIntoFile
+    User --> ReplaceInFile
+    User --> ApplyPatch
+    User --> RunCode
+    User --> RunFile
+    User --> CompileCode
+    User --> CompileFile
+    User --> Format
+    User --> RunTests
+    User --> FSRead
+    User --> FSWrite
+
+    style WriteFile fill:#e1f5ff
+    style RunCode fill:#b3e5fc
+    style CompileCode fill:#fff9c4
+    style Format fill:#f3e5f5
+    style RunTests fill:#e8f5e9

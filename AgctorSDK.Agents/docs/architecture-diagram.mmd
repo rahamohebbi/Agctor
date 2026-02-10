@@ -1,0 +1,110 @@
+graph TB
+    subgraph "AgctorSDK.Agents"
+        subgraph "Agents Layer"
+            BaseActor[BaseActor<br/>Abstract base class]
+            Agent[Agent<br/>Base agent with task decomposition]
+            LLMAgent[LLMAgent<br/>Ollama integration]
+            CoderAgent[CoderAgent<br/>Code orchestration]
+            EchoAgent[EchoAgent<br/>Echo responses]
+            TracedAgent[TracedAgent<br/>Activity tracking decorator]
+            HumanAgentAdapter[HumanAgentAdapter<br/>Human interaction]
+            PullRequestAgent[PullRequestAgent<br/>PR management]
+            TaskScoperAgent[TaskScoperAgent<br/>Task scoping]
+        end
+        
+        subgraph "Factory & Registry"
+            AgentFactory[AgentFactory<br/>Agent creation & lifecycle]
+            TracingAgentFactory[TracingAgentFactory<br/>Traced agent creation]
+            AgentRegistry[AgentRegistry<br/>Agent tracking & discovery]
+            AgentTypeOptions[AgentTypeOptions<br/>Configuration]
+            AgentOptions[AgentOptions<br/>Agent settings]
+        end
+        
+        subgraph "Runtime Adapters"
+            InMemoryAdapter[InMemoryActorRuntime<br/>In-memory runtime]
+            ProtoAdapter[ProtoActorAdapter<br/>Proto.Actor runtime]
+            OrleansAdapter[OrleansAdapter<br/>Orleans runtime placeholder]
+        end
+        
+        subgraph "Task Executors"
+            CodeGraphExecutor[CodeGraphTaskExecutor<br/>CodeGraph integration]
+            PullRequestExecutor[PullRequestTaskExecutor<br/>PR task execution]
+        end
+        
+        subgraph "Tools Models"
+            ToolRequest[ToolRequest<br/>Tool request model]
+            ToolResult[ToolResult<br/>Tool result model]
+        end
+    end
+    
+    subgraph "AgctorSDK.Core"
+        CoreInterfaces[Core Interfaces<br/>IActor, IAgent, IAgentFactory,<br/>IAgentRegistry, IActorRuntimeAdapter]
+        CoreMessages[Core Messages<br/>MessageEnvelope, ProcessPromptMessage,<br/>GetAgentStatusMessage]
+        CoreTools[Core Tools<br/>Tool models & interfaces]
+        CoreTasks[Core Tasks<br/>ITaskExecutor, ProjectTask]
+        CoreUtils[Core Utils<br/>Logging, ErrorHandling]
+    end
+    
+    subgraph "External Dependencies"
+        Ollama[Ollama<br/>LLM Service<br/>HTTP API]
+        ProtoActor[Proto.Actor<br/>Actor Framework<br/>v1.5.0]
+        Orleans[Orleans<br/>Actor Framework<br/>Placeholder]
+    end
+    
+    %% Inheritance relationships
+    BaseActor -->|inherits| Agent
+    Agent -->|inherits| LLMAgent
+    Agent -->|inherits| CoderAgent
+    Agent -->|inherits| HumanAgentAdapter
+    Agent -->|inherits| PullRequestAgent
+    Agent -->|inherits| TaskScoperAgent
+    EchoAgent -.->|implements| Agent
+    TracedAgent -.->|decorates| Agent
+    
+    %% Factory relationships
+    AgentFactory -->|creates| Agent
+    AgentFactory -->|uses| InMemoryAdapter
+    AgentFactory -->|uses| ProtoAdapter
+    AgentFactory -->|uses| AgentRegistry
+    TracingAgentFactory -->|wraps| AgentFactory
+    
+    %% Runtime adapter relationships
+    InMemoryAdapter -.->|implements| CoreInterfaces
+    ProtoAdapter -.->|implements| CoreInterfaces
+    OrleansAdapter -.->|implements| CoreInterfaces
+    
+    %% Agent to runtime
+    Agent -->|uses| AgentFactory
+    AgentFactory -->|uses| CoreInterfaces
+    
+    %% Task executor relationships
+    CodeGraphExecutor -->|uses| AgentRegistry
+    CodeGraphExecutor -->|uses| AgentFactory
+    PullRequestExecutor -->|uses| AgentRegistry
+    PullRequestExecutor -->|uses| AgentFactory
+    
+    %% External integrations
+    LLMAgent -->|HTTP requests| Ollama
+    ProtoAdapter -->|uses| ProtoActor
+    OrleansAdapter -.->|uses| Orleans
+    
+    %% Core dependencies
+    Agent -->|uses| CoreMessages
+    Agent -->|uses| CoreTools
+    AgentFactory -->|uses| CoreInterfaces
+    AgentRegistry -->|uses| CoreInterfaces
+    CodeGraphExecutor -->|uses| CoreTasks
+    
+    %% Message flow
+    Agent -.->|sends messages| Agent
+    AgentFactory -.->|spawns| Agent
+    
+    style BaseActor fill:#e1f5ff
+    style Agent fill:#b3e5fc
+    style LLMAgent fill:#81d4fa
+    style CoderAgent fill:#81d4fa
+    style AgentFactory fill:#fff9c4
+    style AgentRegistry fill:#fff9c4
+    style InMemoryAdapter fill:#f3e5f5
+    style ProtoAdapter fill:#f3e5f5
+    style CodeGraphExecutor fill:#e8f5e9

@@ -1,0 +1,365 @@
+classDiagram
+    %% ── Core Interfaces ──
+    class IActor {
+        <<interface>>
+        +string Id
+        +string ActorType
+        +ActorState State
+        +InitializeAsync()
+        +ReceiveAsync(envelope)
+        +ShutdownAsync()
+    }
+
+    class IAgent {
+        <<interface>>
+        +AgentStatus Status
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt)
+    }
+
+    %% ── Code Graph Actor Hierarchy ──
+    class CodeGraphActorBase {
+        <<abstract>>
+        +string Name
+        +string PhysicalPath
+        +IReadOnlyList Children
+        +AddChild(child)
+        #ChangeState(newState, reason)
+        +InitializeAsync()
+        +ReceiveAsync(envelope)
+        +ShutdownAsync()
+    }
+
+    class SolutionActor {
+        +AddProject(project)
+        +SaveStateAsync(storage)
+        +LoadStateAsync(storage)
+    }
+
+    class ProjectActor {
+        +AddFile(file)
+    }
+
+    class FileActor {
+        +AddClass(classActor)
+        +AnalyzeAsync(registry)
+    }
+
+    class ClassActor {
+        +int? LinesOfCode
+        +AddMethod(method)
+    }
+
+    class MethodActor {
+        +int? LinesOfCode
+    }
+
+    class ComprehensionActor {
+        +ReceiveAsync(envelope)
+    }
+
+    class EmbeddingStoreActor {
+        -IVectorStore _store
+        +ReceiveAsync(envelope)
+    }
+
+    class TestScaffolderActor {
+        +ReceiveAsync(envelope)
+        -WriteSkeletonAsync(task)
+    }
+
+    %% ── Agents ──
+    class Agent {
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt)
+        #FinalizeTask(result)
+    }
+
+    class IndexerAgent {
+        -AnalyzerRegistry _analyzers
+        -IEmbeddingGenerator _embedder
+        -EmbeddingStoreActor _store
+        +IndexAsync(root)
+        -IndexClassAsync(classActor)
+    }
+
+    class SearchAgent {
+        -IEmbeddingGenerator _embedder
+        -EmbeddingStoreActor _store
+        -CodeGraphActorBase _root
+        -IIntentResolver[] _resolvers
+        +ExecuteSearchAsync(prompt)
+        -ResolveIntent(prompt)
+    }
+
+    class QueryAgent {
+        -string _searchAgentId
+        -string _llmAgentId
+        +ExecuteQueryAsync(prompt)
+    }
+
+    class RefactorAgent {
+        -string _searchAgentId
+        -string _llmAgentId
+        -string _coderAgentId
+        +ExecuteRefactorAsync(prompt)
+        -OrchestrateRefactorAsync(prompt)
+    }
+
+    class CodeReviewerAgent {
+        -ILlmClient _llm
+        +ReceiveAsync(envelope)
+        -ComputeScore(diff)
+    }
+
+    class GitWatcherAgent {
+        -string _repoPath
+        -CodeGraphActorBase _root
+        -AnalyzerRegistry _analyzers
+        +ReceiveAsync(envelope)
+    }
+
+    class IntentDetectionAgent {
+        -ILlmClient _llm
+        +ReceiveAsync(envelope)
+    }
+
+    class TestPlannerAgent {
+        -string _solutionDir
+        +ReceiveAsync(envelope)
+        -BuildPlan(diff)
+    }
+
+    %% ── Analyzers ──
+    class ICodeAnalyzer {
+        <<interface>>
+        +string Language
+        +string[] SupportedFileExtensions
+        +AnalyzeAsync(filePath, sourceCode)
+    }
+
+    class AnalyzerRegistry {
+        +RegisterAnalyzer(analyzer)
+        +GetAnalyzerForLanguage(lang)
+        +GetAnalyzerForExtension(ext)
+        +EnableLlmFallback(llm)
+    }
+
+    class RoslynCodeAnalyzer {
+        +AnalyzeAsync(filePath, sourceCode)
+    }
+
+    class LLMAnalyzer {
+        -ILlmClient _llm
+        +AnalyzeAsync(filePath, sourceCode)
+    }
+
+    class TreeSitterAnalyzer {
+        +AnalyzeAsync(filePath, sourceCode)
+    }
+
+    %% ── Embeddings ──
+    class IEmbeddingGenerator {
+        <<interface>>
+        +GenerateEmbeddingAsync(text)
+    }
+
+    class OllamaEmbeddingGenerator {
+        -HttpClient _http
+        -string _model
+        +GenerateEmbeddingAsync(text)
+    }
+
+    class IVectorStore {
+        <<interface>>
+        +UpsertAsync(record)
+        +QueryAsync(vector, k)
+        +CountAsync()
+    }
+
+    class InMemoryVectorStore {
+        +UpsertAsync(record)
+        +QueryAsync(vector, k)
+    }
+
+    %% ── Intent Resolution ──
+    class IIntentResolver {
+        <<interface>>
+        +Resolve(prompt)
+    }
+
+    class HeuristicIntentResolver {
+        +Resolve(prompt)
+    }
+
+    class RegexIntentResolver {
+        +Resolve(prompt)
+        +Add(pattern, kind, slotKey)
+    }
+
+    class LlmIntentResolver {
+        -ILlmClient _llm
+        +Resolve(prompt)
+    }
+
+    class ProxyIntentResolver {
+        -IActorRuntimeAdapter _runtime
+        -string _agentId
+        +Resolve(prompt)
+    }
+
+    %% ── LLM ──
+    class ILlmClient {
+        <<interface>>
+        +CompleteAsync(prompt, options)
+    }
+
+    class OllamaLlmClient {
+        -HttpClient _http
+        -string _model
+        +CompleteAsync(prompt, options)
+    }
+
+    %% ── Persistence ──
+    class IActorStorage {
+        <<interface>>
+        +SaveAsync(actor, storeId)
+        +LoadAsync(storeId, deep)
+        +DeleteStoreAsync(storeId)
+    }
+
+    class FileSystemActorStorage {
+        -string _basePath
+        +SaveAsync(actor, storeId)
+        +LoadAsync(storeId, deep)
+    }
+
+    class ActorSerializer {
+        <<static>>
+        +ToDto(actor)$
+        +FromDto(dto, parentPath)$
+        +WriteAsync(dto, path)$
+        +ReadAsync(path)$
+    }
+
+    %% ── Snapshots ──
+    class SnapshotService {
+        <<static>>
+        +SaveSnapshotAsync(root, dir, sha)$
+        +LoadSnapshotAsync(path)$
+    }
+
+    class SnapshotDiffService {
+        <<static>>
+        +Diff(before, after, analyzers)$
+    }
+
+    %% ── Snippets ──
+    class ISnippetProvider {
+        <<interface>>
+        +CanHandle(filePath)
+        +GetMethodSource(filePath, methodName, maxLines)
+        +GetClassSource(filePath, className, maxLines)
+    }
+
+    class CSharpSnippetProvider {
+        +CanHandle(filePath)
+        +GetMethodSource(...)
+        +GetClassSource(...)
+    }
+
+    class PythonSnippetProvider {
+        +CanHandle(filePath)
+        +GetMethodSource(...)
+        +GetClassSource(...)
+    }
+
+    class SnippetProviderRegistry {
+        <<static>>
+        +Register(provider)$
+        +GetProvider(filePath)$
+    }
+
+    class SnippetResolverAgent {
+        -ILlmClient _llm
+        +CanHandle(filePath)
+        +GetMethodSource(...)
+        +GetClassSource(...)
+    }
+
+    %% ═══════ Relationships ═══════
+
+    %% Hierarchy inheritance
+    IActor <|.. CodeGraphActorBase
+    CodeGraphActorBase <|-- SolutionActor
+    CodeGraphActorBase <|-- ProjectActor
+    CodeGraphActorBase <|-- FileActor
+    CodeGraphActorBase <|-- ClassActor
+    CodeGraphActorBase <|-- MethodActor
+    CodeGraphActorBase <|-- ComprehensionActor
+    CodeGraphActorBase <|-- EmbeddingStoreActor
+
+    %% Agent inheritance
+    IAgent <|.. Agent
+    Agent <|-- IndexerAgent
+    Agent <|-- SearchAgent
+    Agent <|-- QueryAgent
+    Agent <|-- RefactorAgent
+    Agent <|-- CodeReviewerAgent
+    Agent <|-- GitWatcherAgent
+    Agent <|-- IntentDetectionAgent
+    Agent <|-- TestPlannerAgent
+    Agent <|-- TestScaffolderActor
+    Agent <|-- SnippetResolverAgent
+
+    %% Analyzer relationships
+    ICodeAnalyzer <|.. RoslynCodeAnalyzer
+    ICodeAnalyzer <|.. LLMAnalyzer
+    ICodeAnalyzer <|.. TreeSitterAnalyzer
+    AnalyzerRegistry --> ICodeAnalyzer : manages
+    FileActor --> AnalyzerRegistry : uses
+
+    %% Embedding relationships
+    IEmbeddingGenerator <|.. OllamaEmbeddingGenerator
+    IVectorStore <|.. InMemoryVectorStore
+    EmbeddingStoreActor --> IVectorStore : wraps
+    IndexerAgent --> IEmbeddingGenerator : uses
+    IndexerAgent --> EmbeddingStoreActor : stores in
+    SearchAgent --> IEmbeddingGenerator : uses
+    SearchAgent --> EmbeddingStoreActor : queries
+
+    %% Intent relationships
+    IIntentResolver <|.. HeuristicIntentResolver
+    IIntentResolver <|.. RegexIntentResolver
+    IIntentResolver <|.. LlmIntentResolver
+    IIntentResolver <|.. ProxyIntentResolver
+    SearchAgent --> IIntentResolver : uses
+
+    %% LLM relationships
+    ILlmClient <|.. OllamaLlmClient
+    CodeReviewerAgent --> ILlmClient : uses
+    IntentDetectionAgent --> ILlmClient : uses
+    LLMAnalyzer --> ILlmClient : uses
+    LlmIntentResolver --> ILlmClient : uses
+
+    %% Snippet relationships
+    ISnippetProvider <|.. CSharpSnippetProvider
+    ISnippetProvider <|.. PythonSnippetProvider
+    ISnippetProvider <|.. SnippetResolverAgent
+    SnippetProviderRegistry --> ISnippetProvider : manages
+
+    %% Persistence
+    IActorStorage <|.. FileSystemActorStorage
+    FileSystemActorStorage --> ActorSerializer : uses
+
+    %% Agent orchestration
+    QueryAgent --> SearchAgent : delegates search
+    RefactorAgent --> SearchAgent : delegates search
+    TestPlannerAgent --> SnapshotDiffService : uses
+    GitWatcherAgent --> SnapshotService : uses
+
+    %% Hierarchy containment
+    SolutionActor --> ProjectActor : contains
+    ProjectActor --> FileActor : contains
+    FileActor --> ClassActor : contains
+    ClassActor --> MethodActor : contains

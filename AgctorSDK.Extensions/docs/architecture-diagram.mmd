@@ -1,0 +1,71 @@
+graph TB
+    subgraph "AgctorSDK.Extensions"
+        subgraph "DependencyInjection"
+            ServiceCollectionExt["ServiceCollectionExtensions<br/>AddAgctor, AddAgctorInMemory,<br/>AddAgctorProtoActor, AddAgctorOrleans"]
+            CoreServiceExt["CoreServiceExtensions<br/>AddAgctorCore, AddAgctorObservability"]
+            AgentServiceExt["AgentServiceExtensions<br/>AddAgentFactory, AddAgentRegistry"]
+            ActivityTrackingExt["ActivityTrackingServiceExtensions<br/>AddAgctorActivityTracking,<br/>AddAgctorOpenTelemetryTracking"]
+            CodeGraphGenExt["CodeGraphGenerationServiceExtensions<br/>AddCodeGraphGeneration"]
+            PullRequestExt["PullRequestAutomationServiceExtensions<br/>AddPullRequestAutomation"]
+            AdapterFactory["ActorRuntimeAdapterFactory<br/>InMemory, Proto.Actor, Orleans"]
+        end
+
+        subgraph "Runtime"
+            RuntimeServiceExt["RuntimeServiceExtensions<br/>AddActorRuntimeMetrics"]
+        end
+
+        subgraph "OpenTelemetry Config"
+            OTelConfig["OpenTelemetryConfiguration<br/>Tracing, Exporters"]
+        end
+    end
+
+    subgraph "AgctorSDK.Core"
+        CoreInterfaces["IActorRuntimeAdapter,<br/>IAgentFactory, IAgentRegistry"]
+        Logging["IAgctorLogger"]
+        Metrics["IMetricsCollector"]
+        ActivityTracking["IActivityTracker"]
+    end
+
+    subgraph "AgctorSDK.Agents"
+        AgentFactory["AgentFactory"]
+        AgentRegistry["AgentRegistry"]
+        InMemoryRuntime["InMemoryActorRuntime"]
+        ProtoAdapter["ProtoActorAdapter"]
+        OrleansAdapter["OrleansAdapter"]
+    end
+
+    subgraph "AgctorSDK.Tools"
+        ToolActors["IToolActor implementations"]
+    end
+
+    subgraph "Consumer"
+        AppHost["Application Host<br/>CLI, Web API, etc."]
+    end
+
+    %% Registration flow
+    AppHost -->|calls| ServiceCollectionExt
+    ServiceCollectionExt -->|calls| CoreServiceExt
+    ServiceCollectionExt -->|calls| AgentServiceExt
+    ServiceCollectionExt -->|registers| AdapterFactory
+
+    CoreServiceExt -->|registers| Logging
+    CoreServiceExt -->|registers| Metrics
+    CoreServiceExt -->|registers| ActivityTracking
+
+    AgentServiceExt -->|registers| AgentFactory
+    AgentServiceExt -->|registers| AgentRegistry
+
+    AdapterFactory -->|creates| InMemoryRuntime
+    AdapterFactory -->|creates| ProtoAdapter
+    AdapterFactory -->|creates| OrleansAdapter
+
+    ActivityTrackingExt -->|configures| OTelConfig
+
+    CodeGraphGenExt -->|registers| CoreInterfaces
+    PullRequestExt -->|registers| CoreInterfaces
+
+    RuntimeServiceExt -->|decorates| CoreInterfaces
+
+    style ServiceCollectionExt fill:#e1f5ff
+    style AdapterFactory fill:#fff9c4
+    style OTelConfig fill:#f3e5f5

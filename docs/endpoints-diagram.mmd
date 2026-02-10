@@ -1,0 +1,55 @@
+graph LR
+    subgraph "HTTP REST API - AgctorSDK.Host"
+        subgraph "Agents"
+            A1["POST /api/agents<br/>Create agent"]
+            A2["GET /api/agents<br/>List agents"]
+            A3["GET /api/agents/id<br/>Get agent"]
+            A4["POST /api/agents/id/message<br/>Send message"]
+            A5["GET /api/agents/health<br/>Health"]
+        end
+
+        subgraph "Goals"
+            G1["POST /api/goals<br/>Create goal"]
+            G2["GET /api/goals<br/>List goals"]
+            G3["GET /api/goals/id<br/>Get goal"]
+            G4["PUT /api/goals/id<br/>Update goal"]
+            G5["DELETE /api/goals/id<br/>Delete goal"]
+        end
+
+        subgraph "Tools"
+            T1["POST /api/tools/id/invoke<br/>Invoke tool"]
+            T2["GET /api/tools<br/>List tools"]
+            T3["GET /api/tools/id<br/>Get tool"]
+            T4["POST /api/tools/batch<br/>Batch invoke"]
+            T5["GET /api/tools/health<br/>Health"]
+        end
+
+        subgraph "Test Scenarios"
+            S1["POST /api/test/setup-scenario<br/>Setup"]
+            S2["GET /api/test/scenarios<br/>List"]
+        end
+
+        subgraph "Docs"
+            SW["GET /swagger<br/>OpenAPI UI"]
+        end
+    end
+
+    subgraph "MCP Protocol"
+        MCP["TCP port 8080<br/>JSON-delimited messages"]
+    end
+
+    subgraph "CLI"
+        CLICmd["AgctorCLI.exe prompt runtime<br/>Single prompt processing"]
+    end
+
+    subgraph "Background Processing"
+        BG1["TaskScoperHostedService<br/>Goal to tasks every 30s"]
+        BG2["TaskFlowHostedService<br/>Task execution every 10s"]
+    end
+
+    style A1 fill:#e1f5ff
+    style A4 fill:#b3e5fc
+    style G1 fill:#fff9c4
+    style T1 fill:#f3e5f5
+    style MCP fill:#e8f5e9
+    style CLICmd fill:#ffe0b2

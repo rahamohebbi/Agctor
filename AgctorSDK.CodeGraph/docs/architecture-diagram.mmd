@@ -1,0 +1,161 @@
+graph TB
+    subgraph "AgctorSDK.CodeGraph"
+        subgraph "Code Graph Actors"
+            CodeGraphActorBase["CodeGraphActorBase<br/>Abstract base for graph nodes"]
+            SolutionActor["SolutionActor<br/>Root: .sln file"]
+            ProjectActor["ProjectActor<br/>Project node"]
+            FileActor["FileActor<br/>Source file node"]
+            ClassActor["ClassActor<br/>Class/type node"]
+            MethodActor["MethodActor<br/>Method leaf node"]
+            ComprehensionActor["ComprehensionActor<br/>Code comprehension queries"]
+            EmbeddingStoreActor["EmbeddingStoreActor<br/>Vector storage wrapper"]
+            TestScaffolderActor["TestScaffolderActor<br/>Test skeleton writer"]
+        end
+
+        subgraph "Agents"
+            IndexerAgent["IndexerAgent<br/>Embedding indexer"]
+            SearchAgent["SearchAgent<br/>Semantic + structural search"]
+            QueryAgent["QueryAgent<br/>Search + LLM orchestrator"]
+            RefactorAgent["RefactorAgent<br/>Refactoring orchestrator"]
+            CodeReviewerAgent["CodeReviewerAgent<br/>Diff review via LLM"]
+            GitWatcherAgent["GitWatcherAgent<br/>Snapshot on demand"]
+            IntentDetectionAgent["IntentDetectionAgent<br/>Prompt intent classification"]
+            TestPlannerAgent["TestPlannerAgent<br/>Test plan from diffs"]
+        end
+
+        subgraph "Analyzers"
+            ICodeAnalyzer["ICodeAnalyzer<br/>Pluggable analyzer interface"]
+            AnalyzerRegistry["AnalyzerRegistry<br/>Language registry"]
+            RoslynCodeAnalyzer["RoslynCodeAnalyzer<br/>C# via Roslyn"]
+            LLMAnalyzer["LLMAnalyzer<br/>LLM fallback"]
+            TreeSitterAnalyzer["TreeSitterAnalyzer<br/>Python stub"]
+        end
+
+        subgraph "Embeddings"
+            IEmbeddingGenerator["IEmbeddingGenerator<br/>Vector generation"]
+            OllamaEmbeddingGen["OllamaEmbeddingGenerator<br/>Ollama nomic-embed-text"]
+            IVectorStore["IVectorStore<br/>Storage interface"]
+            InMemoryVectorStore["InMemoryVectorStore<br/>Cosine similarity"]
+        end
+
+        subgraph "Intent Resolution"
+            IIntentResolver["IIntentResolver<br/>Prompt intent interface"]
+            HeuristicResolver["HeuristicIntentResolver<br/>Keyword/regex fallback"]
+            RegexResolver["RegexIntentResolver<br/>Configurable regex"]
+            LlmResolver["LlmIntentResolver<br/>LLM classification"]
+            ProxyResolver["ProxyIntentResolver<br/>Agent-based resolution"]
+        end
+
+        subgraph "LLM Integration"
+            ILLMClient["ILLMClient<br/>LLM abstraction"]
+            OllamaLlmClient["OllamaLlmClient<br/>Ollama HTTP client"]
+        end
+
+        subgraph "Persistence"
+            IActorStorage["IActorStorage<br/>Storage interface"]
+            FileSystemStorage["FileSystemActorStorage<br/>JSON file storage"]
+            ActorSerializer["ActorSerializer<br/>Hierarchy serialization"]
+        end
+
+        subgraph "Snapshots"
+            SnapshotService["SnapshotService<br/>Save/load snapshots"]
+            SnapshotDiffService["SnapshotDiffService<br/>Diff two snapshots"]
+            DiffFormatterService["DiffFormatterService<br/>Human-readable diffs"]
+        end
+
+        subgraph "Snippets"
+            ISnippetProvider["ISnippetProvider<br/>Code extraction"]
+            CSharpSnippetProvider["CSharpSnippetProvider<br/>Roslyn extraction"]
+            PythonSnippetProvider["PythonSnippetProvider<br/>Indentation extraction"]
+            SnippetProviderRegistry["SnippetProviderRegistry<br/>File-to-provider mapping"]
+            SnippetResolverAgent["SnippetResolverAgent<br/>LLM fallback extraction"]
+        end
+
+        subgraph "Messages"
+            IntentMessages["IntentMessages<br/>Intent request/response"]
+            CodeReviewMessages["CodeReviewMessages<br/>Review request/result"]
+            TestScaffoldingMessages["TestScaffoldingMessages<br/>Test plan/scaffold"]
+            GitWatcherMessages["GitWatcherMessages<br/>Snapshot request/created"]
+            ComprehensionMessages["ComprehensionMessages<br/>Search/public-methods"]
+        end
+    end
+
+    subgraph "AgctorSDK.Core"
+        CoreInterfaces["Core Interfaces<br/>IActor, IAgent"]
+        CoreAgent["Core Agent<br/>Base Agent class"]
+        CoreMessages["Core Messages<br/>MessageEnvelope"]
+    end
+
+    subgraph "AgctorSDK.Agents"
+        AgentsAgent["Agent<br/>Task decomposition"]
+        CoderAgent["CoderAgent<br/>Edit-compile-test"]
+        LLMAgent["LLMAgent<br/>Ollama prompts"]
+    end
+
+    subgraph "External"
+        Ollama["Ollama<br/>LLM + Embeddings"]
+        Roslyn["Microsoft.CodeAnalysis<br/>Roslyn v4.14"]
+        FileSystem["File System<br/>Source code + snapshots"]
+    end
+
+    %% Hierarchy
+    CodeGraphActorBase --> SolutionActor
+    CodeGraphActorBase --> ProjectActor
+    CodeGraphActorBase --> FileActor
+    CodeGraphActorBase --> ClassActor
+    CodeGraphActorBase --> MethodActor
+    CodeGraphActorBase --> ComprehensionActor
+    CodeGraphActorBase --> EmbeddingStoreActor
+    SolutionActor -->|contains| ProjectActor
+    ProjectActor -->|contains| FileActor
+    FileActor -->|contains| ClassActor
+    ClassActor -->|contains| MethodActor
+
+    %% Agent dependencies
+    IndexerAgent -->|indexes| EmbeddingStoreActor
+    IndexerAgent -->|traverses| CodeGraphActorBase
+    SearchAgent -->|queries| EmbeddingStoreActor
+    SearchAgent -->|resolves| IIntentResolver
+    QueryAgent -->|delegates| SearchAgent
+    QueryAgent -->|asks| LLMAgent
+    RefactorAgent -->|delegates| SearchAgent
+    RefactorAgent -->|asks| LLMAgent
+    RefactorAgent -->|delegates| CoderAgent
+    CodeReviewerAgent -->|uses| ILLMClient
+    GitWatcherAgent -->|creates| SnapshotService
+    IntentDetectionAgent -->|uses| ILLMClient
+    TestPlannerAgent -->|uses| SnapshotDiffService
+
+    %% Analyzer usage
+    FileActor -->|uses| AnalyzerRegistry
+    RoslynCodeAnalyzer -->|uses| Roslyn
+    LLMAnalyzer -->|uses| ILLMClient
+
+    %% Embeddings
+    OllamaEmbeddingGen -->|calls| Ollama
+    EmbeddingStoreActor -->|uses| IVectorStore
+
+    %% Persistence
+    FileSystemStorage -->|reads/writes| FileSystem
+    SnapshotService -->|reads/writes| FileSystem
+
+    %% LLM
+    OllamaLlmClient -->|calls| Ollama
+    LlmResolver -->|uses| ILLMClient
+
+    %% Core
+    CodeGraphActorBase -.->|implements| CoreInterfaces
+    IndexerAgent -.->|extends| AgentsAgent
+    SearchAgent -.->|extends| AgentsAgent
+    QueryAgent -.->|extends| AgentsAgent
+    RefactorAgent -.->|extends| AgentsAgent
+
+    style CodeGraphActorBase fill:#e1f5ff
+    style SolutionActor fill:#b3e5fc
+    style IndexerAgent fill:#fff9c4
+    style SearchAgent fill:#fff9c4
+    style QueryAgent fill:#fff9c4
+    style RefactorAgent fill:#fff9c4
+    style AnalyzerRegistry fill:#e8f5e9
+    style EmbeddingStoreActor fill:#f3e5f5
+    style OllamaLlmClient fill:#ffcdd2

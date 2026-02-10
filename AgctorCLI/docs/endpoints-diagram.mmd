@@ -1,0 +1,114 @@
+graph LR
+    subgraph "Command Line Interface"
+        CLI[AgctorCLI.exe<br/>Command Line Tool]
+    end
+    
+    subgraph "Program Entry Points"
+        Main["Main Method<br/>args: string array"]
+        ShowUsage[ShowUsage<br/>Displays help]
+    end
+    
+    subgraph "Initialization APIs"
+        ConfigureDI[ConfigureDependencyInjection<br/>runtimeName: string<br/>Returns: ServiceProvider]
+        InitRuntime[InitializeRuntimeAsync<br/>serviceProvider, runtimeName, logger<br/>Returns: IActorRuntimeAdapter]
+    end
+    
+    subgraph "Processing APIs"
+        ProcessPrompt[ProcessPromptWithRootAgent<br/>runtime, prompt, logger<br/>Returns: string result]
+    end
+    
+    subgraph "Service Provider APIs"
+        GetService["GetRequiredService T<br/>Returns: T"]
+        GetServiceOptional["GetService T<br/>Returns: T optional"]
+        Dispose[DisposeAsync<br/>Cleanup]
+    end
+    
+    subgraph "Runtime Adapter APIs"
+        RuntimeInit[InitializeAsync<br/>config: Dictionary]
+        RuntimeSpawn["SpawnActorAsync T<br/>actorId, initData<br/>Returns: T"]
+        RuntimeSend[SendMessageAsync<br/>targetId, message]
+        RuntimeShutdown[ShutdownAsync<br/>Cleanup]
+    end
+    
+    subgraph "Agent Factory APIs"
+        FactorySpawn["SpawnAgentAsync TAgent<br/>prompt, agentId<br/>Returns: TAgent"]
+        FactoryStop[StopAgentAsync<br/>agentId]
+        FactoryGet["GetAgentAsync TAgent<br/>agentId<br/>Returns: TAgent optional"]
+    end
+    
+    subgraph "Agent APIs"
+        AgentProcess[ProcessPromptAsync<br/>prompt]
+        AgentAssignSubtask[AssignSubtaskAsync<br/>subtaskPrompt<br/>Returns: childAgentId]
+        AgentStatus[Status Property<br/>Returns: AgentStatus]
+    end
+    
+    subgraph "Registry APIs"
+        RegistryRegister[RegisterAgentAsync<br/>agent]
+        RegistryGet[GetAgentByIdAsync<br/>agentId<br/>Returns: IAgent?]
+        RegistryGetAll[GetAllAgentIdsAsync<br/>Returns: IEnumerable~string~]
+    end
+    
+    subgraph "Logging APIs"
+        LogInfo[LogInformation<br/>message, args]
+        LogError[LogError<br/>message, args]
+        LogWarning[LogWarning<br/>message, args]
+    end
+    
+    subgraph "Console Output"
+        ConsoleWrite[Console.WriteLine<br/>message]
+        ConsoleError[Console.Error<br/>Error output]
+    end
+    
+    %% Command line flow
+    CLI -->|executes| Main
+    Main -->|no args| ShowUsage
+    Main -->|valid args| ConfigureDI
+    
+    %% Initialization flow
+    ConfigureDI -->|creates| GetService
+    ConfigureDI -->|registers| LogInfo
+    Main -->|calls| InitRuntime
+    InitRuntime -->|calls| RuntimeInit
+    InitRuntime -->|returns| RuntimeSpawn
+    
+    %% Processing flow
+    Main -->|calls| ProcessPrompt
+    ProcessPrompt -->|creates| FactorySpawn
+    ProcessPrompt -->|uses| RegistryRegister
+    ProcessPrompt -->|calls| AgentProcess
+    ProcessPrompt -->|monitors| AgentStatus
+    ProcessPrompt -->|may call| AgentAssignSubtask
+    
+    %% Service resolution
+    ProcessPrompt -->|uses| GetService
+    ProcessPrompt -->|uses| GetServiceOptional
+    
+    %% Runtime operations
+    FactorySpawn -->|uses| RuntimeSpawn
+    AgentAssignSubtask -->|uses| FactorySpawn
+    
+    %% Registry operations
+    FactorySpawn -->|registers| RegistryRegister
+    ProcessPrompt -->|queries| RegistryGet
+    
+    %% Logging
+    Main -->|logs| LogInfo
+    ProcessPrompt -->|logs| LogInfo
+    ProcessPrompt -->|logs errors| LogError
+    
+    %% Output
+    LogInfo -->|outputs| ConsoleWrite
+    LogError -->|outputs| ConsoleError
+    ProcessPrompt -->|outputs| ConsoleWrite
+    ShowUsage -->|outputs| ConsoleWrite
+    
+    %% Cleanup
+    Main -->|calls| RuntimeShutdown
+    Main -->|calls| Dispose
+    
+    style CLI fill:#e1f5ff
+    style Main fill:#b3e5fc
+    style ProcessPrompt fill:#81d4fa
+    style FactorySpawn fill:#fff9c4
+    style RuntimeSpawn fill:#f3e5f5
+    style ConsoleWrite fill:#e8f5e9

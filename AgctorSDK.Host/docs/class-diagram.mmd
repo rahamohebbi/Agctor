@@ -1,0 +1,90 @@
+classDiagram
+    class AgentsController {
+        -IAgentFactory _factory
+        -IAgentRegistry _registry
+        -IActorRuntimeAdapter _runtime
+        +CreateAgent(request) ActionResult
+        +ListAgents() ActionResult
+        +GetAgent(agentId) ActionResult
+        +SendMessage(agentId, request) ActionResult
+        +HealthCheck() ActionResult
+    }
+
+    class GoalsController {
+        -IGoalStore _store
+        +ListGoals() ActionResult
+        +GetGoal(id) ActionResult
+        +CreateGoal(request) ActionResult
+        +UpdateGoal(id, request) ActionResult
+        +DeleteGoal(id) ActionResult
+    }
+
+    class ToolsController {
+        -ToolInvoker _invoker
+        +InvokeTool(toolId, request) ActionResult
+        +ListTools() ActionResult
+        +GetTool(toolId) ActionResult
+        +BatchInvoke(request) ActionResult
+        +HealthCheck() ActionResult
+    }
+
+    class TestController {
+        -IScenarioFactory _scenarioFactory
+        +SetupScenario(request) ActionResult
+        +ListScenarios() ActionResult
+        +GetScenario(name) ActionResult
+    }
+
+    class McpListener {
+        -IActorRuntimeAdapter _runtime
+        -int _port
+        +StartAsync(ct) Task
+        +StopAsync(ct) Task
+    }
+
+    class MessageDispatcher {
+        -IActorRuntimeAdapter _runtime
+        +DispatchAsync(targetId, message, headers)
+    }
+
+    class ToolInvoker {
+        -IServiceProvider _provider
+        +InvokeAsync(toolId, request) ToolResult
+    }
+
+    class IScenarioFactory {
+        <<interface>>
+        +CreateScenario(name) IScenario
+        +GetAvailableScenarios() IEnumerable
+    }
+
+    class ScenarioFactory {
+        +CreateScenario(name) IScenario
+        +GetAvailableScenarios() IEnumerable
+    }
+
+    class IScenario {
+        <<interface>>
+        +string Name
+        +string Description
+        +SetupAsync(runtime, factory) Task
+    }
+
+    class TaskScoperHostedService {
+        -IGoalStore _goalStore
+        -ITaskStore _taskStore
+        -IAgentFactory _factory
+        +ExecuteAsync(ct) Task
+    }
+
+    class TaskFlowHostedService {
+        -TaskFlowEngine _engine
+        -ITaskStore _store
+        +ExecuteAsync(ct) Task
+    }
+
+    IScenarioFactory <|.. ScenarioFactory
+    AgentsController --> MessageDispatcher : uses
+    ToolsController --> ToolInvoker : uses
+    TestController --> IScenarioFactory : uses
+    TaskScoperHostedService --> IScenario : uses

@@ -1,0 +1,46 @@
+graph LR
+    subgraph "HTTP REST API"
+        subgraph "Agents /api/agents"
+            CreateAgent["POST /api/agents<br/>Create agent"]
+            ListAgents["GET /api/agents<br/>List all agents"]
+            GetAgent["GET /api/agents/id<br/>Get agent info"]
+            SendMsg["POST /api/agents/id/message<br/>Send message"]
+            AgentHealth["GET /api/agents/health<br/>Health check"]
+        end
+
+        subgraph "Goals /api/goals"
+            ListGoals["GET /api/goals<br/>List all goals"]
+            GetGoal["GET /api/goals/id<br/>Get goal"]
+            CreateGoal["POST /api/goals<br/>Create goal"]
+            UpdateGoal["PUT /api/goals/id<br/>Update goal"]
+            DeleteGoal["DELETE /api/goals/id<br/>Delete goal"]
+        end
+
+        subgraph "Tools /api/tools"
+            ListTools["GET /api/tools<br/>List available tools"]
+            GetTool["GET /api/tools/id<br/>Get tool info"]
+            InvokeTool["POST /api/tools/id/invoke<br/>Invoke tool"]
+            BatchInvoke["POST /api/tools/batch<br/>Batch invoke"]
+            ToolHealth["GET /api/tools/health<br/>Health check"]
+        end
+
+        subgraph "Test /api/test"
+            SetupScenario["POST /api/test/setup-scenario<br/>Setup scenario"]
+            ListScenarios["GET /api/test/scenarios<br/>List scenarios"]
+            GetScenario["GET /api/test/scenarios/name<br/>Get scenario"]
+        end
+    end
+
+    subgraph "MCP Protocol"
+        McpTcp["TCP port 8080<br/>JSON-delimited messages"]
+    end
+
+    subgraph "Swagger"
+        SwaggerUI["GET /swagger<br/>OpenAPI UI"]
+    end
+
+    style CreateAgent fill:#e1f5ff
+    style SendMsg fill:#b3e5fc
+    style CreateGoal fill:#fff9c4
+    style InvokeTool fill:#f3e5f5
+    style McpTcp fill:#e8f5e9

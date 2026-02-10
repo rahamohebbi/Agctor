@@ -1,0 +1,139 @@
+classDiagram
+    class IToolActor {
+        <<interface>>
+        +Handle(request) ToolResult
+    }
+
+    class CodeEditorTool {
+        -IFileSystem _fs
+        -LanguageAdapterFactory _adapters
+        +Handle(request) ToolResult
+    }
+
+    class CodeExecutorTool {
+        -ILanguageExecutorFactory _factory
+        +Handle(request) ToolResult
+    }
+
+    class CompileTool {
+        -ILanguageCompilerFactory _factory
+        +Handle(request) ToolResult
+    }
+
+    class FormatTool {
+        -LanguageFormatterFactory _factory
+        +Handle(request) ToolResult
+    }
+
+    class TestRunnerTool {
+        -ILanguageTestRunnerFactory _factory
+        +Handle(request) ToolResult
+    }
+
+    class FileSystemTool {
+        -IFileSystem _fs
+        +Handle(request) ToolResult
+    }
+
+    class ILanguageAdapter {
+        <<interface>>
+        +string Extension
+        +InsertBySelector(source, selector, snippet)
+        +ReplaceBySelector(source, selector, replacement)
+        +TryFormatAsync(source)
+    }
+
+    class CSharpLanguageAdapter {
+        +InsertBySelector(source, selector, snippet)
+        +ReplaceBySelector(source, selector, replacement)
+    }
+
+    class ICodeFormatter {
+        <<interface>>
+        +bool IsAvailable
+        +FormatAsync(code)
+    }
+
+    class CSharpFormatter {
+        +FormatAsync(code)
+    }
+
+    class PythonFormatter {
+        +bool IsAvailable
+        +FormatAsync(code)
+    }
+
+    class ILanguageCompiler {
+        <<interface>>
+        +string Language
+        +CompileCodeAsync(code)
+    }
+
+    class CSharpCompiler {
+        +CompileCodeAsync(code)
+    }
+
+    class ILanguageExecutor {
+        <<interface>>
+        +string Language
+        +ExecuteCodeAsync(code)
+    }
+
+    class CSharpExecutor {
+        +ExecuteCodeAsync(code)
+    }
+
+    class PythonExecutor {
+        +ExecuteCodeAsync(code)
+    }
+
+    class ILanguageTestRunner {
+        <<interface>>
+        +string Language
+        +RunTestsAsync(path)
+    }
+
+    class CSharpTestRunner {
+        +RunTestsAsync(path)
+    }
+
+    class IFileSystem {
+        <<interface>>
+        +ReadAllTextAsync(path)
+        +WriteAllTextAsync(path, contents)
+    }
+
+    class TracedToolActor {
+        -IToolActor _inner
+        +Handle(request) ToolResult
+    }
+
+    class MetricsEnabledActor {
+        -IActor _inner
+        +ReceiveAsync(envelope)
+    }
+
+    IToolActor <|.. CodeEditorTool
+    IToolActor <|.. CodeExecutorTool
+    IToolActor <|.. CompileTool
+    IToolActor <|.. FormatTool
+    IToolActor <|.. TestRunnerTool
+    IToolActor <|.. FileSystemTool
+    IToolActor <|.. TracedToolActor
+
+    ILanguageAdapter <|.. CSharpLanguageAdapter
+    ICodeFormatter <|.. CSharpFormatter
+    ICodeFormatter <|.. PythonFormatter
+    ILanguageCompiler <|.. CSharpCompiler
+    ILanguageExecutor <|.. CSharpExecutor
+    ILanguageExecutor <|.. PythonExecutor
+    ILanguageTestRunner <|.. CSharpTestRunner
+
+    CodeEditorTool --> ILanguageAdapter : uses
+    CodeEditorTool --> IFileSystem : uses
+    CodeExecutorTool --> ILanguageExecutor : uses
+    CompileTool --> ILanguageCompiler : uses
+    FormatTool --> ICodeFormatter : uses
+    TestRunnerTool --> ILanguageTestRunner : uses
+    TracedToolActor --> IToolActor : wraps
+    CSharpLanguageAdapter --> CSharpFormatter : uses

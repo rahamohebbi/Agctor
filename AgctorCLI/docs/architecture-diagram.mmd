@@ -1,0 +1,85 @@
+graph TB
+    subgraph "AgctorCLI"
+        Program[Program<br/>Main Entry Point<br/>CLI Interface]
+        
+        subgraph "Initialization"
+            ConfigureDI[ConfigureDependencyInjection<br/>DI Container Setup]
+            InitRuntime[InitializeRuntimeAsync<br/>Runtime Initialization]
+        end
+        
+        subgraph "Processing"
+            ProcessPrompt[ProcessPromptWithRootAgent<br/>Agent Creation & Processing]
+            ShowUsage[ShowUsage<br/>Help Display]
+        end
+        
+        subgraph "Services"
+            ServiceProvider[ServiceProvider<br/>DI Container]
+            Logger[ILogger<br/>Console Logging]
+            RuntimeAdapter[IActorRuntimeAdapter<br/>Runtime Backend]
+            AgentFactory[AgentFactory<br/>Agent Creation]
+            AgentRegistry[AgentRegistry<br/>Agent Tracking]
+        end
+    end
+    
+    subgraph "AgctorSDK.Core"
+        CoreInterfaces[Core Interfaces<br/>IActorRuntimeAdapter,<br/>IAgentFactory, IAgent]
+        CoreDI[Core.DependencyInjection<br/>AddAgctor Extension]
+        CoreLogging[Core.Utils.Logging<br/>FileLogger, AgctorFileLogger]
+        CoreRegistry[Core.Registry<br/>InMemoryAgentRegistry]
+    end
+    
+    subgraph "AgctorSDK.Agents"
+        Agent[Agent<br/>Base Agent Implementation]
+        AgentFactoryImpl[AgentFactory<br/>Agent Creation Logic]
+    end
+    
+    subgraph "Runtime Adapters"
+        InMemoryRuntime[InMemoryActorRuntime<br/>Default Runtime]
+        ProtoRuntime[ProtoActorAdapter<br/>Optional Runtime]
+        OrleansRuntime[OrleansAdapter<br/>Optional Runtime]
+    end
+    
+    subgraph "External"
+        User[User<br/>Command Line]
+        Console[Console<br/>Output]
+    end
+    
+    %% Flow relationships
+    User -->|command line args| Program
+    Program -->|validates| ShowUsage
+    Program -->|calls| ConfigureDI
+    ConfigureDI -->|creates| ServiceProvider
+    ConfigureDI -->|registers| Logger
+    ConfigureDI -->|uses| CoreDI
+    
+    Program -->|calls| InitRuntime
+    InitRuntime -->|creates| RuntimeAdapter
+    InitRuntime -->|selects| InMemoryRuntime
+    InitRuntime -.->|optional| ProtoRuntime
+    InitRuntime -.->|optional| OrleansRuntime
+    
+    Program -->|calls| ProcessPrompt
+    ProcessPrompt -->|creates| AgentFactory
+    ProcessPrompt -->|uses| AgentRegistry
+    ProcessPrompt -->|uses| CoreLogging
+    ProcessPrompt -->|spawns| Agent
+    
+    AgentFactory -->|uses| AgentFactoryImpl
+    AgentFactory -->|uses| RuntimeAdapter
+    Agent -->|implements| CoreInterfaces
+    
+    ProcessPrompt -->|outputs| Console
+    Logger -->|logs to| Console
+    
+    %% Runtime selection
+    RuntimeAdapter -.->|implements| CoreInterfaces
+    InMemoryRuntime -.->|implements| CoreInterfaces
+    ProtoRuntime -.->|implements| CoreInterfaces
+    OrleansRuntime -.->|implements| CoreInterfaces
+    
+    style Program fill:#e1f5ff
+    style ConfigureDI fill:#b3e5fc
+    style ProcessPrompt fill:#81d4fa
+    style ServiceProvider fill:#fff9c4
+    style RuntimeAdapter fill:#f3e5f5
+    style Agent fill:#e8f5e9

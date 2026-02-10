@@ -1,0 +1,123 @@
+graph TB
+    subgraph "AgctorSDK.CodeGraph"
+        CodeGraphProject["AgctorSDK.CodeGraph.csproj<br/>.NET 8.0"]
+    end
+
+    subgraph "Project References"
+        CoreProject["AgctorSDK.Core<br/>Project Reference<br/>Required"]
+        AgentsProject["AgctorSDK.Agents<br/>Project Reference<br/>Required"]
+    end
+
+    subgraph "NuGet Packages"
+        Roslyn["Microsoft.CodeAnalysis.CSharp<br/>Version 4.14.0<br/>Required"]
+    end
+
+    subgraph "AgctorSDK.Core Provides"
+        CoreInterfaces["Core.Interfaces<br/>IActor, IAgent, IAgentFactory,<br/>IActorRuntimeAdapter, IRuntimeStatistics"]
+        CoreMessages["Core.Messages<br/>MessageEnvelope,<br/>ActorStateChangedEventArgs"]
+        CoreUtils["Core.Utils<br/>Logging, ErrorHandling"]
+        CoreTasks["Core.Tasks<br/>ITaskExecutor, ProjectTask"]
+    end
+
+    subgraph "AgctorSDK.Agents Provides"
+        AgentBase["Agent<br/>Base agent with task decomposition"]
+        CoderAgent["CoderAgent<br/>Edit-compile-test orchestrator"]
+        LLMAgentRef["LLMAgent<br/>Ollama prompt processing"]
+        AgentFactory["AgentFactory<br/>Agent creation"]
+        RuntimeAdapters["Runtime Adapters<br/>InMemory, Proto.Actor"]
+    end
+
+    subgraph "Roslyn Provides"
+        SyntaxTrees["CSharp Syntax Trees<br/>Parsing and analysis"]
+        SemanticModel["Semantic Model<br/>Type information"]
+        Compilation["Compilation API<br/>Code compilation"]
+    end
+
+    subgraph "External Services"
+        OllamaLLM["Ollama LLM<br/>HTTP API<br/>Text completion"]
+        OllamaEmbed["Ollama Embeddings<br/>HTTP API<br/>nomic-embed-text"]
+        FileSystem["File System<br/>Source code, snapshots,<br/>actor state, test files"]
+    end
+
+    subgraph "Transitive via Core"
+        MicrosoftExtDI["Microsoft.Extensions<br/>DependencyInjection"]
+        MicrosoftExtLog["Microsoft.Extensions<br/>Logging"]
+        SystemNetHttp["System.Net.Http<br/>HTTP client"]
+        SystemTextJson["System.Text.Json<br/>JSON serialization"]
+    end
+
+    subgraph "CodeGraph Internal Modules"
+        Actors["Actors<br/>CodeGraphActorBase hierarchy"]
+        Agents["Agents<br/>8 specialized agents"]
+        Analyzers["Analyzers<br/>Registry + 3 implementations"]
+        Embeddings["Embeddings<br/>Generator + VectorStore"]
+        Intents["Intents<br/>4 resolver implementations"]
+        LlmModule["Llm<br/>ILlmClient + OllamaLlmClient"]
+        Persistence["Persistence<br/>Storage + Serializer"]
+        Snapshots["Snapshots<br/>Save/Load/Diff"]
+        Snippets["Snippets<br/>Registry + 3 providers"]
+        Messages["Messages<br/>5 message groups"]
+    end
+
+    %% Project dependencies
+    CodeGraphProject -->|depends on| CoreProject
+    CodeGraphProject -->|depends on| AgentsProject
+    CodeGraphProject -->|references| Roslyn
+
+    %% Core provides
+    CoreProject -->|provides| CoreInterfaces
+    CoreProject -->|provides| CoreMessages
+    CoreProject -->|provides| CoreUtils
+    CoreProject -->|provides| CoreTasks
+
+    %% Agents provides
+    AgentsProject -->|provides| AgentBase
+    AgentsProject -->|provides| CoderAgent
+    AgentsProject -->|provides| LLMAgentRef
+    AgentsProject -->|provides| AgentFactory
+    AgentsProject -->|provides| RuntimeAdapters
+
+    %% Roslyn provides
+    Roslyn -->|provides| SyntaxTrees
+    Roslyn -->|provides| SemanticModel
+    Roslyn -->|provides| Compilation
+
+    %% Internal module usage
+    CodeGraphProject -->|contains| Actors
+    CodeGraphProject -->|contains| Agents
+    CodeGraphProject -->|contains| Analyzers
+    CodeGraphProject -->|contains| Embeddings
+    CodeGraphProject -->|contains| Intents
+    CodeGraphProject -->|contains| LlmModule
+    CodeGraphProject -->|contains| Persistence
+    CodeGraphProject -->|contains| Snapshots
+    CodeGraphProject -->|contains| Snippets
+    CodeGraphProject -->|contains| Messages
+
+    %% Module to dependency mapping
+    Actors -->|uses| CoreInterfaces
+    Agents -->|extends| AgentBase
+    Agents -->|delegates to| CoderAgent
+    Agents -->|delegates to| LLMAgentRef
+    Analyzers -->|uses| Roslyn
+    Analyzers -->|uses| LlmModule
+    Embeddings -.->|calls| OllamaEmbed
+    LlmModule -.->|calls| OllamaLLM
+    Persistence -.->|reads/writes| FileSystem
+    Snapshots -.->|reads/writes| FileSystem
+    Snippets -->|uses| Roslyn
+
+    %% Transitive
+    CoreProject -->|transitively| MicrosoftExtDI
+    CoreProject -->|transitively| MicrosoftExtLog
+    CoreProject -->|transitively| SystemNetHttp
+    CoreProject -->|transitively| SystemTextJson
+
+    style CodeGraphProject fill:#e1f5ff
+    style CoreProject fill:#b3e5fc
+    style AgentsProject fill:#81d4fa
+    style Roslyn fill:#fff9c4
+    style OllamaLLM fill:#ffcdd2
+    style OllamaEmbed fill:#ffcdd2
+    style Actors fill:#e8f5e9
+    style Agents fill:#f3e5f5

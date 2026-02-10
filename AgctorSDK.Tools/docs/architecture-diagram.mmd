@@ -1,0 +1,92 @@
+graph TB
+    subgraph "AgctorSDK.Tools"
+        subgraph "Tool Actors"
+            IToolActor["IToolActor<br/>Handle ToolRequest"]
+            CodeEditorTool["CodeEditorTool<br/>WriteFile, InsertIntoFile,<br/>ReplaceInFile, ApplyPatch"]
+            CodeExecutorTool["CodeExecutorTool<br/>RunCode, RunFile"]
+            CompileTool["CompileTool<br/>CompileCode, CompileFile"]
+            FormatTool["FormatTool<br/>Format source code"]
+            TestRunnerTool["TestRunnerTool<br/>RunTests"]
+            FileSystemTool["FileSystemTool<br/>File operations"]
+        end
+
+        subgraph "Language Adapters"
+            ILanguageAdapter["ILanguageAdapter<br/>AST-based edits"]
+            CSharpAdapter["CSharpLanguageAdapter<br/>Roslyn selectors"]
+            LanguageAdapterFactory["LanguageAdapterFactory"]
+        end
+
+        subgraph "Code Formatters"
+            ICodeFormatter["ICodeFormatter<br/>Format source"]
+            CSharpFormatter["CSharpFormatter<br/>Roslyn Workspaces"]
+            PythonFormatter["PythonFormatter<br/>External black tool"]
+            FormatterFactory["LanguageFormatterFactory"]
+        end
+
+        subgraph "Language Compilers"
+            ILanguageCompiler["ILanguageCompiler<br/>Compile code"]
+            CSharpCompiler["CSharpCompiler<br/>Roslyn in-memory"]
+            CompilerFactory["LanguageCompilerFactory"]
+        end
+
+        subgraph "Language Executors"
+            ILanguageExecutor["ILanguageExecutor<br/>Execute code"]
+            CSharpExecutor["CSharpExecutor<br/>Roslyn compile + run"]
+            PythonExecutor["PythonExecutor<br/>IronPython"]
+            ExecutorFactory["LanguageExecutorFactory"]
+        end
+
+        subgraph "Language Test Runners"
+            ILanguageTestRunner["ILanguageTestRunner<br/>Run tests"]
+            CSharpTestRunner["CSharpTestRunner<br/>dotnet test CLI"]
+            TestRunnerFactory["LanguageTestRunnerFactory"]
+        end
+
+        subgraph "File System"
+            IFileSystem["IFileSystem<br/>Read/Write abstraction"]
+            DefaultFileSystem["DefaultFileSystem<br/>System.IO wrapper"]
+        end
+
+        subgraph "Decorators"
+            TracedToolActor["TracedToolActor<br/>Activity tracking"]
+            MetricsEnabledActor["MetricsEnabledActor<br/>Metrics collection"]
+        end
+    end
+
+    subgraph "AgctorSDK.Core"
+        CoreAgent["Agent base class"]
+        CoreInterfaces["IActor, IAgent"]
+        ToolModels["ToolRequest, ToolResult"]
+    end
+
+    subgraph "External"
+        Roslyn["Microsoft.CodeAnalysis<br/>C# parsing + compilation"]
+        DotnetCLI["dotnet CLI<br/>Test execution"]
+        BlackTool["black<br/>Python formatter"]
+    end
+
+    %% Tool relationships
+    CodeEditorTool -->|uses| LanguageAdapterFactory
+    CodeEditorTool -->|uses| IFileSystem
+    CodeExecutorTool -->|uses| ExecutorFactory
+    CompileTool -->|uses| CompilerFactory
+    FormatTool -->|uses| FormatterFactory
+    TestRunnerTool -->|uses| TestRunnerFactory
+
+    %% Language adapter chain
+    CSharpAdapter -->|uses| CSharpFormatter
+    CSharpAdapter -->|uses| Roslyn
+    CSharpCompiler -->|uses| Roslyn
+    CSharpExecutor -->|uses| Roslyn
+    CSharpTestRunner -->|uses| DotnetCLI
+    PythonFormatter -->|uses| BlackTool
+
+    %% Core
+    IToolActor -.->|extends| CoreAgent
+    TracedToolActor -->|wraps| IToolActor
+    MetricsEnabledActor -->|wraps| CoreInterfaces
+
+    style IToolActor fill:#e1f5ff
+    style CodeEditorTool fill:#b3e5fc
+    style CSharpAdapter fill:#fff9c4
+    style TracedToolActor fill:#f3e5f5

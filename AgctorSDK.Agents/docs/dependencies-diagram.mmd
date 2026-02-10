@@ -1,0 +1,90 @@
+graph TB
+    subgraph "AgctorSDK.Agents"
+        AgentsProject[AgctorSDK.Agents.csproj<br/>.NET 8.0]
+    end
+    
+    subgraph "Project References"
+        CoreProject[AgctorSDK.Core<br/>Project Reference<br/>Required]
+    end
+    
+    subgraph "NuGet Packages"
+        ProtoActor[Proto.Actor<br/>Version 1.5.0<br/>Required]
+        ProtoCluster[Proto.Cluster<br/>Version 1.5.0<br/>Required]
+        ProtoRemote[Proto.Remote<br/>Version 1.5.0<br/>Required]
+    end
+    
+    subgraph "AgctorSDK.Core Dependencies"
+        CoreInterfaces[Core.Interfaces<br/>IActor, IAgent, IAgentFactory,<br/>IAgentRegistry, IActorRuntimeAdapter,<br/>ITaskExecutor, IRuntimeStatistics]
+        CoreMessages[Core.Messages<br/>MessageEnvelope, ProcessPromptMessage,<br/>GetAgentStatusMessage, SubtaskFailedMessage,<br/>ActorStateChangedEventArgs, AgentStatusChangedEventArgs]
+        CoreTools[Core.Tools.Models<br/>ToolResult, ToolRequest]
+        CoreTasks[Core.Tasks<br/>ITaskExecutor, ProjectTask, TaskStatus]
+        CoreUtils[Core.Utils<br/>Logging: IAgctorLogger, LoggerFactory<br/>ErrorHandling: ErrorHandlingMiddleware]
+        CoreEvents[Core.Events<br/>ActorSpawnedEventArgs, ActorStoppedEventArgs,<br/>MessageSentEventArgs, ChildAgentSpawnedEventArgs,<br/>SubtaskCompletedEventArgs]
+    end
+    
+    subgraph "External Dependencies"
+        NetStandard[.NET Standard 2.0<br/>via AgctorSDK.Core]
+        SystemNetHttp[System.Net.Http<br/>for LLMAgent HTTP requests]
+        SystemTextJson[System.Text.Json<br/>for LLMAgent JSON serialization]
+        MicrosoftExtensions[Microsoft.Extensions<br/>DependencyInjection, Options, Logging<br/>via Core]
+    end
+    
+    subgraph "Runtime Dependencies"
+        Ollama[Ollama Service<br/>HTTP API<br/>External Service]
+        ProtoActorRuntime[Proto.Actor Runtime<br/>via ProtoActorAdapter<br/>Distributed Actor System]
+        OrleansRuntime[Orleans Runtime<br/>via OrleansAdapter<br/>Placeholder]
+    end
+    
+    subgraph "Development Dependencies"
+        TestFramework[Test Framework<br/>via Test Projects]
+    end
+    
+    %% Project dependencies
+    AgentsProject -->|depends on| CoreProject
+    AgentsProject -->|references| ProtoActor
+    AgentsProject -->|references| ProtoCluster
+    AgentsProject -->|references| ProtoRemote
+    
+    %% Core provides
+    CoreProject -->|provides| CoreInterfaces
+    CoreProject -->|provides| CoreMessages
+    CoreProject -->|provides| CoreTools
+    CoreProject -->|provides| CoreTasks
+    CoreProject -->|provides| CoreUtils
+    CoreProject -->|provides| CoreEvents
+    
+    %% Agents uses Core
+    AgentsProject -->|uses| CoreInterfaces
+    AgentsProject -->|uses| CoreMessages
+    AgentsProject -->|uses| CoreTools
+    AgentsProject -->|uses| CoreTasks
+    AgentsProject -->|uses| CoreUtils
+    AgentsProject -->|uses| CoreEvents
+    
+    %% External dependencies
+    AgentsProject -->|uses| NetStandard
+    AgentsProject -->|uses| SystemNetHttp
+    AgentsProject -->|uses| SystemTextJson
+    AgentsProject -->|uses| MicrosoftExtensions
+    
+    %% Runtime dependencies
+    AgentsProject -.->|connects to| Ollama
+    AgentsProject -->|uses| ProtoActorRuntime
+    AgentsProject -.->|uses| OrleansRuntime
+    
+    %% NuGet package relationships
+    ProtoActor -->|provides| ProtoActorRuntime
+    ProtoCluster -->|extends| ProtoActor
+    ProtoRemote -->|extends| ProtoActor
+    
+    %% Component dependencies
+    CoreInterfaces -.->|defines| CoreMessages
+    CoreInterfaces -.->|defines| CoreEvents
+    CoreUtils -.->|uses| MicrosoftExtensions
+    
+    style AgentsProject fill:#e1f5ff
+    style CoreProject fill:#b3e5fc
+    style ProtoActor fill:#fff9c4
+    style CoreInterfaces fill:#e8f5e9
+    style Ollama fill:#ffcdd2
+    style ProtoActorRuntime fill:#f3e5f5

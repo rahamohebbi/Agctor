@@ -1,0 +1,139 @@
+classDiagram
+    class Program {
+        -string prompt
+        -string runtimeName
+        +Main(args) static
+        -ConfigureDependencyInjection(runtimeName) ServiceProvider
+        -InitializeRuntimeAsync(serviceProvider, runtimeName, logger) Task~IActorRuntimeAdapter~
+        -ProcessPromptWithRootAgent(runtime, prompt, logger) Task~string~
+        -ShowUsage() void
+    }
+    
+    class ServiceProvider {
+        +GetRequiredService~T~() T
+        +GetService~T~() T?
+        +DisposeAsync() ValueTask
+    }
+    
+    class ILogger~T~ {
+        <<interface>>
+        +LogInformation(message, args)
+        +LogError(message, args)
+        +LogWarning(message, args)
+    }
+    
+    class IActorRuntimeAdapter {
+        <<interface>>
+        +string Name
+        +bool IsInitialized
+        +InitializeAsync(config) Task
+        +ShutdownAsync() Task
+        +SpawnActorAsync~T~(actorId, initData) Task~T~
+        +SendMessageAsync(targetId, message) Task
+    }
+    
+    class IActorRuntimeAdapterFactory {
+        <<interface>>
+        +CreateRuntime(name) IActorRuntimeAdapter
+        +IsRuntimeAvailable(name) bool
+        +GetAvailableRuntimes() IEnumerable~string~
+    }
+    
+    class AgentFactory {
+        -IActorRuntimeAdapter _runtimeAdapter
+        -IServiceProvider _serviceProvider
+        -IAgctorLogger _logger
+        -IAgentRegistry _agentRegistry
+        +SpawnAgentAsync~TAgent~(prompt, agentId) Task~TAgent~
+        +StopAgentAsync(agentId) Task
+    }
+    
+    class IAgent {
+        <<interface>>
+        +string Id
+        +AgentStatus Status
+        +string? CurrentPrompt
+        +IReadOnlyList~string~ ChildAgentIds
+        +ProcessPromptAsync(prompt) Task
+    }
+    
+    class Agent {
+        +string Id
+        +AgentStatus Status
+        +ProcessPromptAsync(prompt) Task
+        +AssignSubtaskAsync(subtaskPrompt) Task~string~
+    }
+    
+    class IAgentRegistry {
+        <<interface>>
+        +RegisterAgentAsync(agent) Task
+        +GetAgentByIdAsync(agentId) Task~IAgent?~
+    }
+    
+    class InMemoryAgentRegistry {
+        -ConcurrentDictionary~string,IAgent~ _agents
+        +RegisterAgentAsync(agent) Task
+        +GetAgentByIdAsync(agentId) Task~IAgent?~
+    }
+    
+    class IAgctorLogger {
+        <<interface>>
+        +Info(message, args)
+        +Error(message, args)
+        +Warning(message, args)
+    }
+    
+    class FileLogger {
+        -string _name
+        -FileLoggerOptions _options
+        -LogLevel _level
+        +Log(level, message, args)
+    }
+    
+    class AgctorFileLogger {
+        -FileLogger _fileLogger
+        +Info(message, args)
+        +Error(message, args)
+        +Warning(message, args)
+    }
+    
+    class InMemoryActorRuntime {
+        +InitializeAsync(config) Task
+        +SpawnActorAsync~T~(actorId, initData) Task~T~
+        +SendMessageAsync(targetId, message) Task
+        +ShutdownAsync() Task
+    }
+    
+    class ServiceCollection {
+        +AddLogging(builder) IServiceCollection
+        +AddSingleton~T~(instance) IServiceCollection
+        +BuildServiceProvider() ServiceProvider
+    }
+    
+    %% Relationships
+    Program --> ServiceCollection : uses
+    Program --> ServiceProvider : creates
+    Program --> ILogger~Program~ : uses
+    Program --> IActorRuntimeAdapterFactory : uses
+    Program --> IActorRuntimeAdapter : uses
+    Program --> AgentFactory : creates
+    Program --> Agent : spawns
+    
+    ServiceCollection --> ServiceProvider : builds
+    ServiceProvider --> ILogger~T~ : provides
+    
+    IActorRuntimeAdapterFactory --> IActorRuntimeAdapter : creates
+    IActorRuntimeAdapter <|.. InMemoryActorRuntime : implements
+    
+    AgentFactory --> IActorRuntimeAdapter : uses
+    AgentFactory --> IAgentRegistry : uses
+    AgentFactory --> IAgctorLogger : uses
+    AgentFactory --> IAgent : creates
+    
+    IAgent <|.. Agent : implements
+    IAgentRegistry <|.. InMemoryAgentRegistry : implements
+    
+    AgctorFileLogger --> FileLogger : wraps
+    AgctorFileLogger ..|> IAgctorLogger : implements
+    
+    Agent --> AgentFactory : uses for child agents

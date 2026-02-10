@@ -1,0 +1,139 @@
+graph LR
+    subgraph "External Clients"
+        User[User/Client]
+        System[System/Service]
+    end
+    
+    subgraph "Agent Factory API"
+        Spawn[SpawnAgentAsync<br/>agentType, prompt, parentId]
+        Stop[StopAgentAsync<br/>agentId]
+        Get[GetAgentAsync<br/>agentId]
+        GetTypes[GetAvailableAgentTypes]
+    end
+    
+    subgraph "Agent Registry API"
+        Register[RegisterAgentAsync<br/>agent]
+        Unregister[UnregisterAgentAsync<br/>agentId]
+        GetById[GetAgentByIdAsync<br/>agentId]
+        GetAll[GetAllAgentIdsAsync]
+        GetRoot[GetRootAgentIdsAsync]
+    end
+    
+    subgraph "Agent Message API"
+        ProcessPrompt[ProcessPromptAsync<br/>prompt]
+        AssignSubtask[AssignSubtaskAsync<br/>subtaskPrompt, agentType]
+        HandleCompletion[HandleSubtaskCompletionAsync<br/>childId, result]
+        HandleFailure[HandleSubtaskFailureAsync<br/>childId, error]
+        Receive[ReceiveAsync<br/>envelope]
+    end
+    
+    subgraph "Runtime Adapter API"
+        RuntimeSpawn[SpawnActorAsync<br/>actorId, initData]
+        RuntimeGet[GetActorAsync<br/>actorId]
+        RuntimeSend[SendMessageAsync<br/>targetId, message, headers]
+        RuntimeSendResponse[SendMessageAsync~TResponse~<br/>targetId, message, timeout]
+        RuntimeStop[StopActorAsync<br/>actorId]
+        RuntimeStats[GetStatisticsAsync]
+        RuntimeActive[GetActiveActorIdsAsync]
+    end
+    
+    subgraph "Task Executor API"
+        Execute[ExecuteAsync<br/>task]
+    end
+    
+    subgraph "LLM Agent API"
+        LLMProcess[ProcessPromptAsync<br/>prompt]
+        LLMReceive[ReceiveAsync<br/>envelope]
+    end
+    
+    subgraph "Coder Agent API"
+        CoderProcess[ProcessPromptAsync<br/>prompt]
+        CoderHandleEdit[HandleEditCompletionAsync<br/>result]
+        CoderHandleCompile[HandleCompileCompletionAsync<br/>result]
+        CoderHandleTest[HandleTestCompletionAsync<br/>result]
+    end
+    
+    subgraph "Human Agent API"
+        HumanProcess[ProcessPromptAsync<br/>prompt]
+        HumanRequest[RequestHumanInputAsync<br/>prompt, instructions]
+    end
+    
+    subgraph "Message Types"
+        PromptMsg[Prompt Message<br/>MessageType: Prompt]
+        SubtaskMsg[Subtask Assignment<br/>MessageType: SubtaskAssignment]
+        CompletionMsg[Subtask Completion<br/>MessageType: SubtaskCompleted]
+        FailureMsg[Subtask Failure<br/>MessageType: SubtaskFailed]
+        StatusMsg[Status Request<br/>MessageType: GetAgentStatus]
+        StatusResp[Status Response<br/>MessageType: AgentStatusResponse]
+        AckMsg[Acknowledgment<br/>MessageType: Acknowledgment]
+        ResultMsg[Result<br/>MessageType: Result]
+        ErrorMsg[Error<br/>MessageType: Error]
+    end
+    
+    %% Client to Factory
+    User --> Spawn
+    System --> Spawn
+    User --> Stop
+    User --> Get
+    User --> GetTypes
+    
+    %% Client to Registry
+    System --> Register
+    System --> Unregister
+    User --> GetById
+    User --> GetAll
+    User --> GetRoot
+    
+    %% Agent internal APIs
+    ProcessPrompt --> AssignSubtask
+    AssignSubtask --> HandleCompletion
+    AssignSubtask --> HandleFailure
+    Receive --> ProcessPrompt
+    Receive --> HandleCompletion
+    Receive --> HandleFailure
+    
+    %% Runtime APIs
+    Spawn --> RuntimeSpawn
+    RuntimeSpawn --> RuntimeGet
+    RuntimeSend --> RuntimeSendResponse
+    RuntimeSend --> RuntimeStop
+    RuntimeSend --> RuntimeStats
+    RuntimeSend --> RuntimeActive
+    
+    %% Task Executor
+    System --> Execute
+    Execute --> ProcessPrompt
+    
+    %% Specialized Agent APIs
+    ProcessPrompt --> LLMProcess
+    ProcessPrompt --> CoderProcess
+    ProcessPrompt --> HumanProcess
+    
+    LLMProcess --> LLMReceive
+    CoderProcess --> CoderHandleEdit
+    CoderHandleEdit --> CoderHandleCompile
+    CoderHandleCompile --> CoderHandleTest
+    HumanProcess --> HumanRequest
+    
+    %% Message flow
+    Receive --> PromptMsg
+    Receive --> SubtaskMsg
+    Receive --> StatusMsg
+    HandleCompletion --> CompletionMsg
+    HandleFailure --> FailureMsg
+    ProcessPrompt --> AckMsg
+    ProcessPrompt --> ResultMsg
+    ProcessPrompt --> ErrorMsg
+    RuntimeSend --> PromptMsg
+    RuntimeSend --> CompletionMsg
+    RuntimeSend --> FailureMsg
+    RuntimeSendResponse --> StatusResp
+    
+    style Spawn fill:#e1f5ff
+    style ProcessPrompt fill:#b3e5fc
+    style Receive fill:#81d4fa
+    style RuntimeSend fill:#fff9c4
+    style Execute fill:#e8f5e9
+    style PromptMsg fill:#f3e5f5
+    style CompletionMsg fill:#c8e6c9
+    style ErrorMsg fill:#ffcdd2

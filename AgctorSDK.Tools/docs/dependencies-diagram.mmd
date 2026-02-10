@@ -1,0 +1,26 @@
+graph TB
+    subgraph "AgctorSDK.Tools"
+        ToolsProject["AgctorSDK.Tools.csproj<br/>.NET 8.0"]
+    end
+
+    subgraph "Project References"
+        CoreProject["AgctorSDK.Core<br/>Required"]
+        AgentsProject["AgctorSDK.Agents<br/>Required"]
+    end
+
+    subgraph "NuGet Packages"
+        RoslynWorkspaces["Microsoft.CodeAnalysis.CSharp.Workspaces<br/>Version 4.14.0"]
+    end
+
+    subgraph "External Tools"
+        DotnetCLI["dotnet CLI<br/>Test execution"]
+        BlackPython["black<br/>Python formatting"]
+    end
+
+    ToolsProject -->|depends on| CoreProject
+    ToolsProject -->|depends on| AgentsProject
+    ToolsProject -->|references| RoslynWorkspaces
+    ToolsProject -.->|invokes| DotnetCLI
+    ToolsProject -.->|invokes| BlackPython
+
+    style ToolsProject fill:#e1f5ff

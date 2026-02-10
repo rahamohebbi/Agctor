@@ -1,0 +1,87 @@
+classDiagram
+    class ServiceCollectionExtensions {
+        <<static>>
+        +AddAgctor(services, options)$
+        +AddAgctorInMemory(services, options)$
+        +AddAgctorProtoActor(services, options)$
+        +AddAgctorOrleans(services, options)$
+        +AddAgctorWithMetrics(services, options)$
+    }
+
+    class CoreServiceExtensions {
+        <<static>>
+        +AddAgctorCore(services)$
+        +AddAgctorObservability(services)$
+    }
+
+    class AgentServiceExtensions {
+        <<static>>
+        +AddAgentFactory(services)$
+        +AddAgentRegistry(services)$
+        +AddAgentType(services, typeName)$
+    }
+
+    class ActivityTrackingServiceExtensions {
+        <<static>>
+        +AddAgctorActivityTracking(services, options)$
+        +AddAgctorOpenTelemetryTracking(services, options)$
+    }
+
+    class CodeGraphGenerationServiceExtensions {
+        <<static>>
+        +AddCodeGraphGeneration(services)$
+    }
+
+    class PullRequestAutomationServiceExtensions {
+        <<static>>
+        +AddPullRequestAutomation(services)$
+    }
+
+    class IActorRuntimeAdapterFactory {
+        <<interface>>
+        +GetAvailableRuntimes()
+        +CreateRuntime(name)
+        +IsRuntimeAvailable(name)
+        +GetDefaultRuntimeName()
+        +CreateDefaultRuntime()
+    }
+
+    class ActorRuntimeAdapterFactory {
+        -IServiceProvider _provider
+        -AgctorOptions _options
+        +GetAvailableRuntimes()
+        +CreateRuntime(name)
+        +IsRuntimeAvailable(name)
+    }
+
+    class AgctorOptions {
+        +string DefaultRuntime
+        +int MaxConcurrentMessages
+        +int DefaultTimeoutMs
+        +bool EnableDetailedLogging
+        +string Environment
+    }
+
+    class RuntimeServiceExtensions {
+        <<static>>
+        +AddActorRuntimeMetrics(services)$
+    }
+
+    class OpenTelemetryConfiguration {
+        <<static>>
+        +ConfigureOpenTelemetry(services, options)$
+    }
+
+    class OpenTelemetryOptions {
+        +string SourceName
+        +bool EnableZipkin
+        +bool EnableOtlp
+        +bool EnableJaeger
+    }
+
+    IActorRuntimeAdapterFactory <|.. ActorRuntimeAdapterFactory
+    ServiceCollectionExtensions --> AgctorOptions : configures
+    ServiceCollectionExtensions --> CoreServiceExtensions : calls
+    ServiceCollectionExtensions --> AgentServiceExtensions : calls
+    ActivityTrackingServiceExtensions --> OpenTelemetryConfiguration : calls
+    OpenTelemetryConfiguration --> OpenTelemetryOptions : uses

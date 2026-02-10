@@ -1,0 +1,20 @@
+graph TB
+    subgraph "AgctorSDK.Extensions"
+        ExtProject["AgctorSDK.Extensions.csproj<br/>.NET 8.0"]
+    end
+
+    subgraph "Project References"
+        CoreProject["AgctorSDK.Core<br/>Required"]
+        AgentsProject["AgctorSDK.Agents<br/>Required"]
+        ToolsProject["AgctorSDK.Tools<br/>Required"]
+    end
+
+    subgraph "NuGet Packages"
+        NoneExplicit["No explicit NuGet packages<br/>Uses transitive dependencies"]
+    end
+
+    ExtProject -->|depends on| CoreProject
+    ExtProject -->|depends on| AgentsProject
+    ExtProject -->|depends on| ToolsProject
+
+    style ExtProject fill:#e1f5ff

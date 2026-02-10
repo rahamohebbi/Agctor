@@ -1,0 +1,97 @@
+graph TB
+    subgraph "Application Layer"
+        Host["AgctorSDK.Host<br/>ASP.NET Core Web API"]
+        CLI["AgctorCLI<br/>Console App"]
+    end
+
+    subgraph "Extension Layer"
+        Extensions["AgctorSDK.Extensions<br/>DI Wiring"]
+    end
+
+    subgraph "Intelligence Layer"
+        Agents["AgctorSDK.Agents<br/>Agent Framework"]
+        CodeGraph["AgctorSDK.CodeGraph<br/>Code Intelligence"]
+    end
+
+    subgraph "Tool Layer"
+        Tools["AgctorSDK.Tools<br/>Tool Actors"]
+    end
+
+    subgraph "Foundation"
+        Core["AgctorSDK.Core<br/>Core Interfaces"]
+    end
+
+    subgraph "Test Projects"
+        CoreTests["AgctorSDK.Core.Tests"]
+        CoreIntTests["AgctorSDK.Core.IntegrationTests"]
+        HostIntTests["AgctorSDK.Host.IntegrationTests"]
+        CGTests["AgctorSDK.CodeGraph.Tests"]
+    end
+
+    subgraph "Key NuGet Packages"
+        OTel["OpenTelemetry 1.6.0"]
+        Roslyn["Microsoft.CodeAnalysis 4.14.0"]
+        ProtoActor["Proto.Actor 1.5.0"]
+        MsExt["Microsoft.Extensions 8.0.0"]
+        Swashbuckle["Swashbuckle 6.5.0"]
+        IronPy["IronPython 3.4.1"]
+    end
+
+    subgraph "External Services"
+        Ollama["Ollama LLM<br/>localhost:11434"]
+        GitSvc["Git CLI"]
+        FS["File System"]
+    end
+
+    %% Project dependencies
+    Host --> Extensions
+    Host --> CodeGraph
+    Host --> Tools
+    Host --> Agents
+    Host --> Core
+
+    CLI --> Extensions
+    CLI --> Tools
+    CLI --> Agents
+    CLI --> Core
+
+    Extensions --> Tools
+    Extensions --> Agents
+    Extensions --> Core
+
+    CodeGraph --> Agents
+    CodeGraph --> Core
+
+    Tools --> Agents
+    Tools --> Core
+
+    Agents --> Core
+
+    %% Test dependencies
+    CoreTests --> Core
+    CoreIntTests --> Extensions
+    HostIntTests --> Host
+    CGTests --> CodeGraph
+
+    %% NuGet usage
+    Core --> OTel
+    Core --> Roslyn
+    Core --> MsExt
+    Core --> IronPy
+    Agents --> ProtoActor
+    Host --> Swashbuckle
+    CodeGraph --> Roslyn
+
+    %% External
+    Agents -.-> Ollama
+    CodeGraph -.-> Ollama
+    Core -.-> GitSvc
+    Tools -.-> FS
+
+    style Core fill:#e1f5ff
+    style Agents fill:#b3e5fc
+    style CodeGraph fill:#81d4fa
+    style Tools fill:#e8f5e9
+    style Extensions fill:#fff9c4
+    style Host fill:#f3e5f5
+    style CLI fill:#ffe0b2

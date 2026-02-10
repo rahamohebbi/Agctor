@@ -1,0 +1,116 @@
+graph TB
+    subgraph "AgctorCLI"
+        CLIProject[AgctorCLI.csproj<br/>.NET 8.0<br/>Executable]
+    end
+    
+    subgraph "Project References"
+        CoreProject[AgctorSDK.Core<br/>Project Reference<br/>Required]
+        AgentsProject[AgctorSDK.Agents<br/>Project Reference<br/>Required]
+        ToolsProject[AgctorSDK.Tools<br/>Project Reference<br/>Required]
+        ExtensionsProject[AgctorSDK.Extensions<br/>Project Reference<br/>Required]
+    end
+    
+    subgraph "NuGet Packages"
+        MicrosoftDI[Microsoft.Extensions.DependencyInjection<br/>Version 8.0.0<br/>Required]
+        MicrosoftHosting[Microsoft.Extensions.Hosting<br/>Version 8.0.0<br/>Required]
+        MicrosoftLogging[Microsoft.Extensions.Logging<br/>Version 8.0.0<br/>Required]
+        MicrosoftLoggingConsole[Microsoft.Extensions.Logging.Console<br/>Version 8.0.0<br/>Required]
+    end
+    
+    subgraph "AgctorSDK.Core Dependencies"
+        CoreInterfaces[Core.Interfaces<br/>IActorRuntimeAdapter,<br/>IAgentFactory, IAgent,<br/>IAgentRegistry]
+        CoreDI[Core.DependencyInjection<br/>AddAgctor Extension Method]
+        CoreLogging[Core.Utils.Logging<br/>FileLogger, AgctorFileLogger,<br/>IAgctorLogger, LogLevel]
+        CoreRegistry[Core.Registry<br/>InMemoryAgentRegistry]
+        CoreMessages[Core.Messages<br/>MessageEnvelope, etc.]
+    end
+    
+    subgraph "AgctorSDK.Agents Dependencies"
+        AgentsAgent[Agents.Agent<br/>Base Agent Implementation]
+        AgentsFactory[Agents.AgentFactory<br/>Agent Creation Logic]
+        AgentsAdapters[Agents.Adapters<br/>Runtime Adapters]
+    end
+    
+    subgraph "AgctorSDK.Tools Dependencies"
+        ToolsInterfaces[Tools Interfaces<br/>Tool execution]
+    end
+    
+    subgraph "AgctorSDK.Extensions Dependencies"
+        ExtensionsServices[Extension Services<br/>Additional functionality]
+    end
+    
+    subgraph "External Dependencies"
+        NetStandard[.NET Standard 2.0<br/>via Core]
+        SystemConsole[System.Console<br/>Standard I/O]
+        SystemCollections[System.Collections.Generic<br/>Dictionary, List, etc.]
+        SystemThreading[System.Threading.Tasks<br/>Task, async/await]
+    end
+    
+    subgraph "Runtime Dependencies"
+        InMemoryRuntime[InMemoryActorRuntime<br/>Default Runtime<br/>via Agents]
+        ProtoRuntime[ProtoActorAdapter<br/>Optional Runtime<br/>via Agents]
+        OrleansRuntime[OrleansAdapter<br/>Optional Runtime<br/>via Agents]
+    end
+    
+    %% Project dependencies
+    CLIProject -->|depends on| CoreProject
+    CLIProject -->|depends on| AgentsProject
+    CLIProject -->|depends on| ToolsProject
+    CLIProject -->|depends on| ExtensionsProject
+    
+    CLIProject -->|references| MicrosoftDI
+    CLIProject -->|references| MicrosoftHosting
+    CLIProject -->|references| MicrosoftLogging
+    CLIProject -->|references| MicrosoftLoggingConsole
+    
+    %% Core provides
+    CoreProject -->|provides| CoreInterfaces
+    CoreProject -->|provides| CoreDI
+    CoreProject -->|provides| CoreLogging
+    CoreProject -->|provides| CoreRegistry
+    CoreProject -->|provides| CoreMessages
+    
+    %% Agents provides
+    AgentsProject -->|provides| AgentsAgent
+    AgentsProject -->|provides| AgentsFactory
+    AgentsProject -->|provides| AgentsAdapters
+    
+    %% Tools provides
+    ToolsProject -->|provides| ToolsInterfaces
+    
+    %% Extensions provides
+    ExtensionsProject -->|provides| ExtensionsServices
+    
+    %% CLI uses Core
+    CLIProject -->|uses| CoreInterfaces
+    CLIProject -->|uses| CoreDI
+    CLIProject -->|uses| CoreLogging
+    CLIProject -->|uses| CoreRegistry
+    
+    %% CLI uses Agents
+    CLIProject -->|uses| AgentsAgent
+    CLIProject -->|uses| AgentsFactory
+    
+    %% CLI uses runtime adapters
+    CLIProject -->|uses| AgentsAdapters
+    AgentsAdapters -->|provides| InMemoryRuntime
+    AgentsAdapters -.->|provides| ProtoRuntime
+    AgentsAdapters -.->|provides| OrleansRuntime
+    
+    %% External dependencies
+    CLIProject -->|uses| NetStandard
+    CLIProject -->|uses| SystemConsole
+    CLIProject -->|uses| SystemCollections
+    CLIProject -->|uses| SystemThreading
+    
+    %% Microsoft Extensions relationships
+    MicrosoftDI -->|provides| CoreDI
+    MicrosoftLogging -->|provides| CoreLogging
+    MicrosoftLoggingConsole -->|extends| MicrosoftLogging
+    
+    style CLIProject fill:#e1f5ff
+    style CoreProject fill:#b3e5fc
+    style AgentsProject fill:#81d4fa
+    style MicrosoftDI fill:#fff9c4
+    style CoreInterfaces fill:#e8f5e9
+    style InMemoryRuntime fill:#f3e5f5

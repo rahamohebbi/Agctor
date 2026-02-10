@@ -1,0 +1,59 @@
+graph LR
+    subgraph "Consumer Application"
+        App["App Startup"]
+    end
+
+    subgraph "Main Entry Points"
+        AddAgctor["AddAgctor<br/>Default InMemory setup"]
+        AddAgctorInMemory["AddAgctorInMemory<br/>Explicit InMemory"]
+        AddAgctorProto["AddAgctorProtoActor<br/>Proto.Actor setup"]
+        AddAgctorOrleans["AddAgctorOrleans<br/>Orleans setup"]
+        AddAgctorMetrics["AddAgctorWithMetrics<br/>With metrics decoration"]
+    end
+
+    subgraph "Core Registration"
+        AddCore["AddAgctorCore<br/>Logger, ErrorHandler, Metrics"]
+        AddObserve["AddAgctorObservability<br/>Metrics, Activity, Visualization"]
+    end
+
+    subgraph "Agent Registration"
+        AddFactory["AddAgentFactory<br/>IAgentFactory"]
+        AddRegistry["AddAgentRegistry<br/>IAgentRegistry"]
+        AddAgentType["AddAgentType T<br/>Custom agent type"]
+    end
+
+    subgraph "Tracking Registration"
+        AddTracking["AddAgctorActivityTracking<br/>Logger-based"]
+        AddOTel["AddAgctorOpenTelemetryTracking<br/>OpenTelemetry-based"]
+    end
+
+    subgraph "Feature Registration"
+        AddCodeGraph["AddCodeGraphGeneration<br/>CodeGraphTaskExecutor"]
+        AddPR["AddPullRequestAutomation<br/>GitCliService + PullRequestTaskExecutor"]
+    end
+
+    subgraph "Runtime Factory"
+        CreateRuntime["CreateRuntime<br/>name: InMemory, Proto.Actor, Orleans"]
+        IsAvailable["IsRuntimeAvailable<br/>name check"]
+        GetDefault["CreateDefaultRuntime<br/>From AgctorOptions"]
+    end
+
+    App --> AddAgctor
+    App --> AddAgctorInMemory
+    App --> AddAgctorProto
+    App --> AddAgctorOrleans
+
+    AddAgctor --> AddCore
+    AddAgctor --> AddFactory
+    AddAgctor --> AddRegistry
+    AddCore --> AddObserve
+
+    App --> AddTracking
+    App --> AddOTel
+    App --> AddCodeGraph
+    App --> AddPR
+    App --> AddAgctorMetrics
+
+    style AddAgctor fill:#e1f5ff
+    style AddCore fill:#b3e5fc
+    style CreateRuntime fill:#fff9c4

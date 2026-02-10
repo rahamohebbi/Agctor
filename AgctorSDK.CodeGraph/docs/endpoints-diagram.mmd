@@ -1,0 +1,132 @@
+graph LR
+    subgraph "External Callers"
+        User["User / CLI / Host"]
+        TaskFlow["TaskFlowEngine"]
+    end
+
+    subgraph "Agent Message API"
+        IndexerReceive["IndexerAgent.ReceiveAsync<br/>Prompt: index solution"]
+        SearchReceive["SearchAgent.ReceiveAsync<br/>Prompt: search query"]
+        QueryReceive["QueryAgent.ReceiveAsync<br/>Prompt: natural-language question"]
+        RefactorReceive["RefactorAgent.ReceiveAsync<br/>Prompt: refactoring instruction"]
+        ReviewReceive["CodeReviewerAgent.ReceiveAsync<br/>ReviewCommitMessage"]
+        GitWatchReceive["GitWatcherAgent.ReceiveAsync<br/>CreateSnapshotMessage"]
+        IntentReceive["IntentDetectionAgent.ReceiveAsync<br/>InterpretQueryMessage"]
+        TestPlanReceive["TestPlannerAgent.ReceiveAsync<br/>PlanTestsMessage"]
+        ScaffoldReceive["TestScaffolderActor.ReceiveAsync<br/>ScaffoldTestMessage"]
+    end
+
+    subgraph "Search and Query Flow"
+        SearchExec["SearchAgent.ExecuteSearchAsync<br/>prompt string"]
+        IntentResolve["IIntentResolver.Resolve<br/>prompt string"]
+        VectorQuery["EmbeddingStoreActor<br/>QueryEmbeddingMessage"]
+        QueryExec["QueryAgent.ExecuteQueryAsync<br/>prompt string"]
+    end
+
+    subgraph "Indexing Flow"
+        IndexAsync["IndexerAgent.IndexAsync<br/>CodeGraphActorBase root"]
+        GenEmbed["IEmbeddingGenerator<br/>.GenerateEmbeddingAsync"]
+        VectorUpsert["EmbeddingStoreActor<br/>UpsertEmbeddingMessage"]
+    end
+
+    subgraph "Refactoring Flow"
+        RefactorExec["RefactorAgent.ExecuteRefactorAsync<br/>prompt string"]
+        LlmComplete["ILlmClient.CompleteAsync<br/>refactor plan prompt"]
+        CoderDelegate["CoderAgent<br/>WriteFile command"]
+    end
+
+    subgraph "Code Review Flow"
+        ReviewDiff["CodeReviewerAgent<br/>ReviewCommitMessage"]
+        ReviewLlm["ILlmClient.CompleteAsync<br/>review prompt"]
+        ReviewResult["CodeReviewResult<br/>Summary, Comments, Score"]
+    end
+
+    subgraph "Snapshot Flow"
+        SnapCreate["SnapshotService<br/>.SaveSnapshotAsync"]
+        SnapDiff["SnapshotDiffService.Diff<br/>before, after"]
+        DiffFormat["DiffFormatterService.Format<br/>diff result"]
+    end
+
+    subgraph "Test Planning Flow"
+        PlanBuild["TestPlannerAgent.BuildPlan<br/>SnapshotDiffResult"]
+        ScaffoldWrite["TestScaffolderActor.WriteSkeletonAsync<br/>TestTask"]
+    end
+
+    subgraph "Analyzer API"
+        AnalyzeFile["FileActor.AnalyzeAsync<br/>AnalyzerRegistry"]
+        RoslynParse["RoslynCodeAnalyzer.AnalyzeAsync<br/>filePath, sourceCode"]
+        LlmParse["LLMAnalyzer.AnalyzeAsync<br/>filePath, sourceCode"]
+    end
+
+    subgraph "Comprehension API"
+        FindMethods["ComprehensionActor<br/>FindPublicMethodsMessage"]
+        SemanticSearch["ComprehensionActor<br/>SemanticSearchMessage"]
+    end
+
+    subgraph "Snippet API"
+        GetMethod["ISnippetProvider<br/>.GetMethodSource"]
+        GetClass["ISnippetProvider<br/>.GetClassSource"]
+    end
+
+    %% Caller to agent
+    User --> IndexerReceive
+    User --> SearchReceive
+    User --> QueryReceive
+    User --> RefactorReceive
+    TaskFlow --> ReviewReceive
+    TaskFlow --> GitWatchReceive
+    TaskFlow --> TestPlanReceive
+
+    %% Search flow
+    SearchReceive --> SearchExec
+    SearchExec --> IntentResolve
+    SearchExec --> VectorQuery
+    SearchExec --> GetMethod
+    SearchExec --> GetClass
+    QueryReceive --> QueryExec
+    QueryExec --> SearchReceive
+    IntentReceive --> IntentResolve
+
+    %% Indexing flow
+    IndexerReceive --> IndexAsync
+    IndexAsync --> AnalyzeFile
+    IndexAsync --> GenEmbed
+    GenEmbed --> VectorUpsert
+
+    %% Refactoring flow
+    RefactorReceive --> RefactorExec
+    RefactorExec --> SearchReceive
+    RefactorExec --> LlmComplete
+    RefactorExec --> CoderDelegate
+
+    %% Code review flow
+    ReviewReceive --> ReviewDiff
+    ReviewDiff --> ReviewLlm
+    ReviewLlm --> ReviewResult
+
+    %% Snapshot flow
+    GitWatchReceive --> SnapCreate
+    SnapCreate --> SnapDiff
+    SnapDiff --> DiffFormat
+
+    %% Test planning flow
+    TestPlanReceive --> PlanBuild
+    PlanBuild --> SnapDiff
+    PlanBuild --> ScaffoldReceive
+    ScaffoldReceive --> ScaffoldWrite
+
+    %% Analyzer flow
+    AnalyzeFile --> RoslynParse
+    AnalyzeFile --> LlmParse
+
+    %% Comprehension
+    FindMethods --> SearchExec
+    SemanticSearch --> VectorQuery
+
+    style IndexerReceive fill:#e1f5ff
+    style SearchReceive fill:#b3e5fc
+    style QueryReceive fill:#81d4fa
+    style RefactorReceive fill:#fff9c4
+    style ReviewReceive fill:#f3e5f5
+    style GitWatchReceive fill:#e8f5e9
+    style TestPlanReceive fill:#ffcdd2

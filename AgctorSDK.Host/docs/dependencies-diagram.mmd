@@ -1,0 +1,33 @@
+graph TB
+    subgraph "AgctorSDK.Host"
+        HostProject["AgctorSDK.Host.csproj<br/>.NET 8.0<br/>ASP.NET Core Web API"]
+    end
+
+    subgraph "Project References"
+        CoreProject["AgctorSDK.Core"]
+        AgentsProject["AgctorSDK.Agents"]
+        ToolsProject["AgctorSDK.Tools"]
+        ExtProject["AgctorSDK.Extensions"]
+        CodeGraphProject["AgctorSDK.CodeGraph"]
+    end
+
+    subgraph "NuGet Packages"
+        Swashbuckle["Swashbuckle.AspNetCore 6.5.0<br/>Swagger/OpenAPI"]
+        OpenApi["Microsoft.AspNetCore.OpenApi 8.0.0"]
+        MsHosting["Microsoft.Extensions.Hosting 8.0.0"]
+        WebSockets["System.Net.WebSockets 4.3.0"]
+        Newtonsoft["Newtonsoft.Json 13.0.3"]
+    end
+
+    HostProject -->|depends on| CoreProject
+    HostProject -->|depends on| AgentsProject
+    HostProject -->|depends on| ToolsProject
+    HostProject -->|depends on| ExtProject
+    HostProject -->|depends on| CodeGraphProject
+    HostProject -->|references| Swashbuckle
+    HostProject -->|references| OpenApi
+    HostProject -->|references| MsHosting
+    HostProject -->|references| WebSockets
+    HostProject -->|references| Newtonsoft
+
+    style HostProject fill:#e1f5ff

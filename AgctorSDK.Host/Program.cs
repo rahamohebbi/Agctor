@@ -69,14 +69,10 @@ builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 // Register InMemoryTaskStore
 builder.Services.AddInMemoryTaskStore();
-// Task scoper background service
-builder.Services.Configure<AgctorSDK.Host.Services.TaskScoperHostedService.TaskScoperOptions>(builder.Configuration.GetSection("TaskScoper"));
-builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskScoperHostedService>();
 // Code generation + pull-request automation
 builder.Services.AddPullRequestAutomation();
-// Task flow engine background service
-builder.Services.Configure<AgctorSDK.Host.Services.TaskFlowHostedService.TaskFlowOptions>(builder.Configuration.GetSection("TaskFlow"));
-builder.Services.AddHostedService<AgctorSDK.Host.Services.TaskFlowHostedService>();
+// Background services: TaskScoper (goal → task DAG) + TaskFlow (task execution)
+builder.Services.AddAgctorBackgroundServices(builder.Configuration);
 // Register InMemoryGoalStore
 builder.Services.AddInMemoryGoalStore();
 

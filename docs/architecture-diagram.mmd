@@ -1,0 +1,167 @@
+graph TB
+    subgraph "Consumers"
+        HTTPClient["HTTP Clients<br/>Web UI, Postman, etc."]
+        MCPClient["MCP Clients<br/>IDE integrations, etc."]
+        CLIUser["CLI User<br/>Terminal prompts"]
+    end
+
+    subgraph "Application Layer"
+        subgraph "AgctorSDK.Host"
+            RestAPI["REST API<br/>/api/agents<br/>/api/goals<br/>/api/tools"]
+            McpServer["MCP TCP Server<br/>Port 8080<br/>JSON messages"]
+            Swagger["Swagger UI<br/>OpenAPI docs"]
+            BgServices["Background Services<br/>TaskScoper, TaskFlow"]
+        end
+
+        subgraph "AgctorCLI"
+            CLI["CLI Agent Runner<br/>Prompt input/output"]
+        end
+    end
+
+    subgraph "Extension Layer"
+        subgraph "AgctorSDK.Extensions"
+            DIExtensions["DI Extensions<br/>AddAgctor, AddAgctorInMemory,<br/>AddAgctorProtoActor"]
+            RuntimeFactory["RuntimeAdapterFactory<br/>InMemory, Proto.Actor, Orleans"]
+            OTelConfig["OpenTelemetry Config<br/>Tracing, Metrics, Exporters"]
+        end
+    end
+
+    subgraph "Intelligence Layer"
+        subgraph "AgctorSDK.Agents"
+            Agent["Agent<br/>Task decomposition"]
+            LLMAgent["LLMAgent<br/>Ollama integration"]
+            CoderAgent["CoderAgent<br/>Edit + Compile + Test"]
+            HumanAgent["HumanAgentAdapter<br/>Human-in-the-loop"]
+            AgentFactory["AgentFactory<br/>Agent lifecycle"]
+            AgentRegistry["AgentRegistry<br/>Agent discovery"]
+        end
+
+        subgraph "AgctorSDK.CodeGraph"
+            GraphActors["Code Graph Actors<br/>Solution > Project > File ><br/>Class > Method"]
+            IndexerAgent["IndexerAgent<br/>Embedding indexer"]
+            SearchAgent["SearchAgent<br/>Semantic + structural search"]
+            QueryAgent["QueryAgent<br/>Search + LLM answers"]
+            RefactorAgent["RefactorAgent<br/>Automated refactoring"]
+            ReviewAgent["CodeReviewerAgent<br/>LLM-powered code review"]
+            Analyzers["Analyzers<br/>Roslyn, LLM, TreeSitter"]
+            Embeddings["Embeddings<br/>Ollama + VectorStore"]
+            Snapshots["Snapshots<br/>Code graph diffing"]
+        end
+    end
+
+    subgraph "Tool Layer"
+        subgraph "AgctorSDK.Tools"
+            CodeEditor["CodeEditorTool<br/>WriteFile, Insert, Replace"]
+            CodeExecutor["CodeExecutorTool<br/>C# and Python execution"]
+            Compiler["CompileTool<br/>Roslyn compilation"]
+            Formatter["FormatTool<br/>Code formatting"]
+            TestRunner["TestRunnerTool<br/>dotnet test"]
+        end
+    end
+
+    subgraph "Core Layer"
+        subgraph "AgctorSDK.Core"
+            subgraph "Actor Model"
+                IActor["IActor<br/>Lifecycle + Messaging"]
+                IAgent["IAgent<br/>Prompt + Subtasks"]
+                MsgEnvelope["MessageEnvelope<br/>MCP-compliant"]
+            end
+
+            subgraph "Runtime Adapters"
+                InMemory["InMemoryActorRuntime"]
+                ProtoActor["ProtoActorAdapter<br/>Distributed"]
+                Orleans["OrleansAdapter<br/>Placeholder"]
+            end
+
+            subgraph "Task & Goal Management"
+                Goals["Goals<br/>High-level objectives"]
+                Tasks["ProjectTask<br/>Task DAG"]
+                TaskFlow["TaskFlowEngine<br/>Dependency execution"]
+            end
+
+            subgraph "Observability"
+                Metrics["Metrics<br/>OpenTelemetry"]
+                Tracing["Activity Tracking<br/>Distributed traces"]
+                Visualization["Visualization<br/>Mermaid + HTML"]
+            end
+
+            subgraph "Timeout"
+                TimeoutSupervisor["TimeoutSupervisor<br/>Non-polling monitoring"]
+            end
+        end
+    end
+
+    subgraph "External Services"
+        Ollama["Ollama<br/>LLM + Embeddings<br/>localhost:11434"]
+        Roslyn["Microsoft.CodeAnalysis<br/>C# parsing + compilation"]
+        OTelBackend["OpenTelemetry Backends<br/>Jaeger, Zipkin, OTLP"]
+        FileSystem["File System<br/>Source code, snapshots"]
+        Git["Git<br/>Version control"]
+    end
+
+    %% Consumer to Application
+    HTTPClient --> RestAPI
+    MCPClient --> McpServer
+    CLIUser --> CLI
+    HTTPClient --> Swagger
+
+    %% Application to Extensions
+    RestAPI --> DIExtensions
+    CLI --> DIExtensions
+    BgServices --> TaskFlow
+
+    %% Extensions to Intelligence
+    DIExtensions --> AgentFactory
+    RuntimeFactory --> InMemory
+    RuntimeFactory --> ProtoActor
+    RuntimeFactory --> Orleans
+
+    %% Agent orchestration
+    AgentFactory --> Agent
+    AgentFactory --> LLMAgent
+    AgentFactory --> CoderAgent
+    Agent --> AgentRegistry
+
+    %% CodeGraph agents
+    IndexerAgent --> Embeddings
+    SearchAgent --> Embeddings
+    QueryAgent --> SearchAgent
+    RefactorAgent --> SearchAgent
+    RefactorAgent --> CoderAgent
+    ReviewAgent --> Ollama
+
+    %% Tools
+    CoderAgent --> CodeEditor
+    CoderAgent --> Compiler
+    CoderAgent --> TestRunner
+    CodeExecutor --> Roslyn
+
+    %% Core messaging
+    Agent --> MsgEnvelope
+    MsgEnvelope --> InMemory
+
+    %% Goal-Task flow
+    Goals --> Tasks
+    Tasks --> TaskFlow
+
+    %% Observability
+    Tracing --> OTelBackend
+    Metrics --> OTelBackend
+
+    %% External
+    LLMAgent --> Ollama
+    Embeddings --> Ollama
+    Analyzers --> Roslyn
+    GraphActors --> FileSystem
+
+    style IActor fill:#e1f5ff
+    style IAgent fill:#b3e5fc
+    style AgentFactory fill:#81d4fa
+    style RestAPI fill:#fff9c4
+    style McpServer fill:#fff9c4
+    style CLI fill:#fff9c4
+    style CodeEditor fill:#e8f5e9
+    style InMemory fill:#f3e5f5
+    style Ollama fill:#ffcdd2
+    style Goals fill:#ffe0b2
+    style TaskFlow fill:#ffe0b2

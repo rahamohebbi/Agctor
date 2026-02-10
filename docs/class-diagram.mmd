@@ -1,0 +1,153 @@
+classDiagram
+    %% ═══ Core Interfaces ═══
+    class IActor {
+        <<interface>>
+        +string Id
+        +string ActorType
+        +ActorState State
+        +InitializeAsync()
+        +ReceiveAsync(envelope)
+        +ShutdownAsync()
+    }
+
+    class IAgent {
+        <<interface>>
+        +AgentStatus Status
+        +string? CurrentPrompt
+        +string? ParentAgentId
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt)
+    }
+
+    class IAgentFactory {
+        <<interface>>
+        +SpawnAgentAsync(type, prompt)
+        +StopAgentAsync(agentId)
+        +GetAgentAsync(agentId)
+    }
+
+    class IActorRuntimeAdapter {
+        <<interface>>
+        +SpawnActorAsync(actorId, initData)
+        +SendMessageAsync(targetId, message)
+        +StopActorAsync(actorId)
+    }
+
+    class IMessageEnvelope {
+        <<interface>>
+        +object Payload
+        +IDictionary Metadata
+        +IDictionary Headers
+    }
+
+    %% ═══ Agents ═══
+    class Agent {
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt)
+        #ProcessPromptInternalAsync(prompt)
+        #FinalizeTask(result)
+    }
+
+    class LLMAgent {
+        +ProcessPromptAsync(prompt)
+    }
+
+    class CoderAgent {
+        +ProcessPromptAsync(prompt)
+        -HandleEditCompletionAsync()
+        -HandleCompileCompletionAsync()
+        -HandleTestCompletionAsync()
+    }
+
+    %% ═══ CodeGraph ═══
+    class CodeGraphActorBase {
+        <<abstract>>
+        +string Name
+        +string PhysicalPath
+        +IReadOnlyList Children
+    }
+
+    class SolutionActor { }
+    class ProjectActor { }
+    class FileActor { }
+    class ClassActor { }
+    class MethodActor { }
+
+    class IndexerAgent { }
+    class SearchAgent { }
+    class QueryAgent { }
+    class RefactorAgent { }
+
+    %% ═══ Tools ═══
+    class IToolActor {
+        <<interface>>
+        +Handle(request) ToolResult
+    }
+
+    class CodeEditorTool { }
+    class CodeExecutorTool { }
+    class CompileTool { }
+    class TestRunnerTool { }
+
+    %% ═══ Runtime ═══
+    class InMemoryActorRuntime { }
+    class ProtoActorAdapter { }
+    class OrleansAdapter { }
+
+    %% ═══ Tasks ═══
+    class TaskFlowEngine {
+        +RunAsync(goalId)
+    }
+
+    class Goal {
+        +Guid Id
+        +string Title
+        +GoalStatus Status
+    }
+
+    class ProjectTask {
+        +Guid Id
+        +string Title
+        +TaskStatus Status
+        +List DependsOn
+    }
+
+    %% ═══ Relationships ═══
+    IActor <|-- IAgent
+    IAgent <|.. Agent
+    Agent <|-- LLMAgent
+    Agent <|-- CoderAgent
+    Agent <|-- IndexerAgent
+    Agent <|-- SearchAgent
+    Agent <|-- QueryAgent
+    Agent <|-- RefactorAgent
+
+    IActor <|.. CodeGraphActorBase
+    CodeGraphActorBase <|-- SolutionActor
+    CodeGraphActorBase <|-- ProjectActor
+    CodeGraphActorBase <|-- FileActor
+    CodeGraphActorBase <|-- ClassActor
+    CodeGraphActorBase <|-- MethodActor
+
+    IToolActor <|.. CodeEditorTool
+    IToolActor <|.. CodeExecutorTool
+    IToolActor <|.. CompileTool
+    IToolActor <|.. TestRunnerTool
+
+    IActorRuntimeAdapter <|.. InMemoryActorRuntime
+    IActorRuntimeAdapter <|.. ProtoActorAdapter
+    IActorRuntimeAdapter <|.. OrleansAdapter
+
+    IAgentFactory --> IActorRuntimeAdapter : uses
+    Agent --> IAgentFactory : spawns children
+    CoderAgent --> IToolActor : delegates to
+    RefactorAgent --> SearchAgent : delegates to
+    QueryAgent --> SearchAgent : delegates to
+
+    SolutionActor --> ProjectActor : contains
+    ProjectActor --> FileActor : contains
+    FileActor --> ClassActor : contains
+    ClassActor --> MethodActor : contains
+
+    Goal --> ProjectTask : decomposes to
+    TaskFlowEngine --> ProjectTask : executes

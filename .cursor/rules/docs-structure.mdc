@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Documentation Structure
 
-The project must maintain a `docs` folder at the root level containing the following documentation files:
+Each project must maintain a `docs` folder containing the following documentation files. The `docs` folder should be located at the root of each project directory.
 
 ## Required Documentation Files
 
@@ -14,28 +14,52 @@ The project must maintain a `docs` folder at the root level containing the follo
 3. **Endpoints Diagram** - API endpoints documentation and visualization
 4. **Dependencies Diagram** - Visual representation of project dependencies and relationships
 
-## File Naming Conventions
+## File Structure
 
-- Use descriptive, clear names (e.g., `architecture-diagram.md`, `class-diagram.md`, `endpoints-diagram.md`, `dependencies-diagram.md`)
-- All diagrams must be created using **Mermaid** syntax within Markdown files
-- Keep documentation up to date when making architectural changes
+For each diagram, create three files in the `docs` folder:
+
+1. **Mermaid source file** (`.mmd` or `.mermaid`) - Contains the Mermaid diagram code
+2. **JPEG image file** (`.jpg`) - Generated image from the Mermaid file
+3. **Markdown documentation file** (`.md`) - References the JPEG image
+
+### File Naming Convention
+
+Use consistent naming across all three files:
+- `architecture-diagram.mmd` / `architecture-diagram.jpg` / `architecture-diagram.md`
+- `class-diagram.mmd` / `class-diagram.jpg` / `class-diagram.md`
+- `endpoints-diagram.mmd` / `endpoints-diagram.jpg` / `endpoints-diagram.md`
+- `dependencies-diagram.mmd` / `dependencies-diagram.jpg` / `dependencies-diagram.md`
 
 ## Diagram Format
 
-- Use **Mermaid** for all diagrams and visualizations
-- Embed Mermaid code blocks in Markdown files using the ` ```mermaid ` syntax
-- Mermaid diagrams are version-controlled, easy to update, and render in most Markdown viewers
-- Example format:
-  ```markdown
-  ```mermaid
-  graph TD
-      A[Component A] --> B[Component B]
-  ```
-  ```
+- Use **Mermaid** syntax for all diagram source files (`.mmd` or `.mermaid` extension)
+- **JPEG images** (`.jpg`) must be **automatically generated** from the Mermaid files
+  - Set up automated tooling (e.g., build scripts, CI/CD, file watchers, or pre-commit hooks) to generate images whenever Mermaid files are created or modified
+  - Images must be high resolution (minimum 300 DPI or equivalent) to allow easy zooming and detailed viewing
+  - Use appropriate scale/zoom settings when generating images to ensure text and details remain clear when zoomed
+  - The automatic generation process should run without manual intervention
+- Reference the JPEG image in the corresponding Markdown documentation file
+
+### Markdown Documentation Format
+
+Each `.md` file should reference the generated JPEG image:
+
+```markdown
+# Architecture Diagram
+
+![Architecture Diagram](./architecture-diagram.jpg)
+
+[Edit source](./architecture-diagram.mmd)
+```
 
 ## When Creating or Updating Documentation
 
-- Ensure all four diagram files exist in the `docs` folder
-- Use Mermaid syntax for all visualizations
-- Update relevant diagrams when making changes that affect architecture, classes, endpoints, or dependencies
+- Ensure all four diagrams have their three files (`.mmd`, `.jpg`, `.md`) in the `docs` folder of each project
+- When updating a diagram:
+  1. Edit the Mermaid source file (`.mmd`)
+  2. The JPEG image will be **automatically generated** from the updated Mermaid file (no manual step required)
+  3. Update the Markdown documentation if needed
+- Keep documentation up to date when making architectural changes
 - Maintain consistency across documentation files
+- Each project should have its own `docs` folder with its own set of documentation files
+- Ensure automatic image generation is configured for each project's `docs` folder

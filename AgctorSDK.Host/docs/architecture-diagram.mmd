@@ -1,0 +1,100 @@
+graph TB
+    subgraph "AgctorSDK.Host"
+        subgraph "HTTP API"
+            AgentsCtrl["AgentsController<br/>Agent CRUD + messaging"]
+            GoalsCtrl["GoalsController<br/>Goal CRUD"]
+            ToolsCtrl["ToolsController<br/>Tool invocation + discovery"]
+            TestCtrl["TestController<br/>Scenario setup"]
+            Swagger["Swagger UI<br/>OpenAPI docs"]
+        end
+
+        subgraph "MCP Protocol"
+            McpListener["McpListener<br/>TCP server port 8080<br/>JSON-delimited messages"]
+        end
+
+        subgraph "Services"
+            MessageDispatcher["MessageDispatcher<br/>Message routing to agents"]
+            ToolInvoker["ToolInvoker<br/>Direct tool execution"]
+            ScenarioFactory["ScenarioFactory<br/>Test scenario creation"]
+        end
+
+        subgraph "Background Services"
+            TaskScoper["TaskScoperHostedService<br/>Goal to task decomposition<br/>Every 30s"]
+            TaskFlow["TaskFlowHostedService<br/>Task DAG execution<br/>Every 10s"]
+        end
+
+        subgraph "Scenarios"
+            CodeGenScenario["CodeGenerationChainScenario<br/>LLM + CodeExecutor"]
+            CodeGraphScenario["CodeGraphDemoScenario<br/>Full CodeGraph pipeline"]
+        end
+
+        subgraph "Program"
+            ProgramCS["Program.cs<br/>DI setup + pipeline"]
+        end
+    end
+
+    subgraph "AgctorSDK.Core"
+        CoreInterfaces["Core Interfaces"]
+        GoalStore["IGoalStore"]
+        TaskStore["ITaskStore"]
+        TaskFlowEngine["TaskFlowEngine"]
+    end
+
+    subgraph "AgctorSDK.Agents"
+        AgentFactory["AgentFactory"]
+        RuntimeAdapter["IActorRuntimeAdapter"]
+    end
+
+    subgraph "AgctorSDK.Tools"
+        ToolActors["Tool Actors"]
+    end
+
+    subgraph "AgctorSDK.Extensions"
+        AddAgctor["AddAgctor DI Extensions"]
+    end
+
+    subgraph "AgctorSDK.CodeGraph"
+        CodeGraphAgents["CodeGraph Agents"]
+    end
+
+    subgraph "External"
+        HTTPClient["HTTP Clients"]
+        MCPClient["MCP Clients"]
+    end
+
+    %% HTTP flow
+    HTTPClient -->|REST API| AgentsCtrl
+    HTTPClient -->|REST API| GoalsCtrl
+    HTTPClient -->|REST API| ToolsCtrl
+    HTTPClient -->|REST API| TestCtrl
+
+    %% MCP flow
+    MCPClient -->|TCP JSON| McpListener
+
+    %% Internal routing
+    AgentsCtrl --> MessageDispatcher
+    ToolsCtrl --> ToolInvoker
+    McpListener --> MessageDispatcher
+
+    MessageDispatcher --> RuntimeAdapter
+    ToolInvoker --> ToolActors
+
+    %% Background services
+    TaskScoper --> GoalStore
+    TaskScoper --> TaskStore
+    TaskFlow --> TaskFlowEngine
+
+    %% DI
+    ProgramCS --> AddAgctor
+
+    %% Scenarios
+    TestCtrl --> ScenarioFactory
+    ScenarioFactory --> CodeGenScenario
+    ScenarioFactory --> CodeGraphScenario
+
+    style AgentsCtrl fill:#e1f5ff
+    style GoalsCtrl fill:#b3e5fc
+    style ToolsCtrl fill:#81d4fa
+    style McpListener fill:#fff9c4
+    style TaskScoper fill:#e8f5e9
+    style TaskFlow fill:#e8f5e9

@@ -1,0 +1,305 @@
+classDiagram
+    %% Core Interfaces (from AgctorSDK.Core)
+    class IActor {
+        <<interface>>
+        +string Id
+        +string ActorType
+        +ActorState State
+        +InitializeAsync()
+        +ReceiveAsync(envelope)
+        +ShutdownAsync()
+    }
+    
+    class IAgent {
+        <<interface>>
+        +AgentStatus Status
+        +string? CurrentPrompt
+        +string? ParentAgentId
+        +IReadOnlyList~string~ ChildAgentIds
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt)
+        +HandleSubtaskCompletionAsync(childId, result)
+        +HandleSubtaskFailureAsync(childId, error)
+    }
+    
+    class IAgentFactory {
+        <<interface>>
+        +IActorRuntimeAdapter RuntimeAdapter
+        +SpawnAgentAsync(agentType, prompt, parentId)
+        +StopAgentAsync(agentId)
+        +GetAgentAsync(agentId)
+        +GetAvailableAgentTypes()
+    }
+    
+    class IAgentRegistry {
+        <<interface>>
+        +RegisterAgentAsync(agent)
+        +UnregisterAgentAsync(agentId)
+        +GetAgentAsync(agentId)
+        +GetAllAgentIdsAsync()
+        +GetRootAgentIdsAsync()
+    }
+    
+    class IActorRuntimeAdapter {
+        <<interface>>
+        +string Name
+        +string Version
+        +bool IsInitialized
+        +InitializeAsync(config)
+        +ShutdownAsync()
+        +SpawnActorAsync(actorId, initData)
+        +GetActorAsync(actorId)
+        +SendMessageAsync(targetId, message)
+        +StopActorAsync(actorId)
+    }
+    
+    class ITaskExecutor {
+        <<interface>>
+        +ExecuteAsync(task)
+    }
+    
+    %% Base Classes
+    class BaseActor {
+        <<abstract>>
+        #string Id
+        #string ActorType
+        #ActorState State
+        +InitializeAsync()
+        #ReceiveAsync(envelope)*
+        +ShutdownAsync()
+        #ChangeState(newState, reason)
+    }
+    
+    class Agent {
+        -List~string~ _childAgentIds
+        -IAgentFactory _agentFactory
+        -string? _currentPrompt
+        -string? _parentAgentId
+        -AgentStatus _status
+        -int _hierarchyDepth
+        +string Id
+        +AgentStatus Status
+        +string? CurrentPrompt
+        +string? ParentAgentId
+        +IReadOnlyList~string~ ChildAgentIds
+        +ProcessPromptAsync(prompt)
+        +AssignSubtaskAsync(subtaskPrompt, agentType)
+        +HandleSubtaskCompletionAsync(childId, result)
+        +HandleSubtaskFailureAsync(childId, error)
+        +SetAgentFactory(factory)
+        +SetParentAgentId(parentId)
+        +SetHierarchyDepth(depth)
+        #ProcessPromptInternalAsync(prompt)
+        #ProcessNextSubtaskAsync()
+        #ProcessSubtaskResultAsync(childId, result)
+        #FinalizeTask(result)
+        #FinalizeTaskAsFailed(error)
+    }
+    
+    %% Specialized Agents
+    class LLMAgent {
+        -HttpClient _httpClient
+        -string _ollamaApiUrl
+        -string _defaultModel
+        +LLMAgent(id, httpClient, apiUrl, model)
+        +ProcessPromptAsync(prompt)
+        +ReceiveAsync(envelope)
+    }
+    
+    class CoderAgent {
+        -string _stage
+        Note: Stage can be Edit, Compile, Test, or Done
+        -string? _changedFilePath
+        -CoderResult _result
+        +ProcessPromptAsync(prompt)
+        +HandleSubtaskCompletionAsync(childId, result)
+        +HandleSubtaskFailureAsync(childId, error)
+        -HandleEditCompletionAsync(result)
+        -HandleCompileCompletionAsync(result)
+        -HandleTestCompletionAsync(result)
+    }
+    
+    class CoderResult {
+        +bool Success
+        +string? EditorOutput
+        +string? CompileOutput
+        +string? TestOutput
+        +string? Error
+    }
+    
+    class EchoAgent {
+        +string Id
+        +ProcessPromptAsync(prompt)
+        +ReceiveAsync(envelope)
+    }
+    
+    class TracedAgent {
+        -IAgent _wrappedAgent
+        +TracedAgent(agent)
+        +ProcessPromptAsync(prompt)
+    }
+    
+    class HumanAgentAdapter {
+        +HumanAgentAdapter(id, factory)
+        +ProcessPromptAsync(prompt)
+        +RequestHumanInputAsync(prompt, instructions)
+    }
+    
+    class PullRequestAgent {
+        +ProcessPromptAsync(prompt)
+    }
+    
+    class TaskScoperAgent {
+        +ProcessPromptAsync(prompt)
+    }
+    
+    %% Factories and Registries
+    class AgentFactory {
+        -IActorRuntimeAdapter _runtimeAdapter
+        -Dictionary~string,Type~ _agentTypes
+        -IServiceProvider _serviceProvider
+        -IAgctorLogger _logger
+        -IAgentRegistry _agentRegistry
+        +IActorRuntimeAdapter RuntimeAdapter
+        +SpawnAgentAsync(agentType, prompt, parentId)
+        +SpawnAgentAsync~TAgent~(prompt, parentId)
+        +StopAgentAsync(agentId)
+        +GetAgentAsync(agentId)
+        +RegisterAgentType~T~(typeName)
+        +GenerateAgentId(agentTypeName, parentId)
+    }
+    
+    class AgentInitializationData {
+        +string Prompt
+        +string? ParentAgentId
+        +IAgentFactory? AgentFactory
+    }
+    
+    class TracingAgentFactory {
+        -IAgentFactory _innerFactory
+        +SpawnAgentAsync~TAgent~(prompt, parentId)
+        +GetAgentAsync~TAgent~(agentId)
+    }
+    
+    class AgentRegistry {
+        -ConcurrentDictionary~string,IAgent~ _agents
+        -IAgctorLogger _logger
+        +RegisterAgentAsync(agent)
+        +UnregisterAgentAsync(agentId)
+        +GetAgentAsync~T~(agentId)
+        +GetAgentByIdAsync(agentId)
+        +GetAllAgentIdsAsync()
+        +GetRootAgentIdsAsync()
+    }
+    
+    class AgentTypeOptions {
+        +Dictionary~string,Type~ AgentTypes
+    }
+    
+    class AgentOptions {
+        +Dictionary~string,object~ Settings
+    }
+    
+    %% Runtime Adapters
+    class InMemoryActorRuntime {
+        -ConcurrentDictionary~string,ActorInstance~ _actors
+        -ConcurrentDictionary~string,TaskCompletionSource~ _pendingRequests
+        +InitializeAsync(config)
+        +ShutdownAsync()
+        +SpawnActorAsync~T~(actorId, initData)
+        +GetActorAsync~T~(actorId)
+        +SendMessageAsync(targetId, message)
+        +SendMessageAsync~TResponse~(targetId, message, timeout)
+        +StopActorAsync(actorId)
+        +GetActiveActorIdsAsync()
+        +GetStatisticsAsync()
+    }
+    
+    class ProtoActorAdapter {
+        -ActorSystem _system
+        -IRootContext _root
+        -ConcurrentDictionary~string,PID~ _pidMap
+        -ConcurrentDictionary~string,IActor~ _actorInstances
+        -GrpcNetRemote? _remote
+        +InitializeAsync(config)
+        +ShutdownAsync()
+        +SpawnActorAsync~T~(actorId, initData)
+        +GetActorAsync~T~(actorId)
+        +SendMessageAsync(targetId, message)
+        +SendMessageAsync~TResponse~(targetId, message, timeout)
+        +StopActorAsync(actorId)
+        +GetActiveActorIdsAsync()
+        +GetStatisticsAsync()
+    }
+    
+    class OrleansAdapter {
+        +InitializeAsync(config)
+        +SpawnActorAsync~T~(actorId, initData)
+        +GetActorAsync~T~(actorId)
+        +SendMessageAsync(targetId, message)
+    }
+    
+    %% Task Executors
+    class CodeGraphTaskExecutor {
+        -IAgentRegistry _registry
+        -IAgentFactory _factory
+        -ILogger _logger
+        -ITaskExecutor _fallback
+        +ExecuteAsync(task)
+    }
+    
+    class PullRequestTaskExecutor {
+        -IAgentRegistry _registry
+        -IAgentFactory _factory
+        +ExecuteAsync(task)
+    }
+    
+    %% Tool Models
+    class ToolRequest {
+        +string ToolName
+        +Dictionary~string,object~ Parameters
+    }
+    
+    class ToolResult {
+        +bool IsSuccess
+        +object? Output
+        +string? Error
+    }
+    
+    %% Relationships
+    IActor <|.. BaseActor
+    IAgent <|.. Agent
+    IAgentFactory <|.. AgentFactory
+    IAgentFactory <|.. TracingAgentFactory
+    IAgentRegistry <|.. AgentRegistry
+    IActorRuntimeAdapter <|.. InMemoryActorRuntime
+    IActorRuntimeAdapter <|.. ProtoActorAdapter
+    IActorRuntimeAdapter <|.. OrleansAdapter
+    ITaskExecutor <|.. CodeGraphTaskExecutor
+    ITaskExecutor <|.. PullRequestTaskExecutor
+    
+    BaseActor <|-- Agent
+    Agent <|-- LLMAgent
+    Agent <|-- CoderAgent
+    Agent <|-- HumanAgentAdapter
+    Agent <|-- PullRequestAgent
+    Agent <|-- TaskScoperAgent
+    IAgent <|.. EchoAgent
+    IAgent <|.. TracedAgent
+    
+    AgentFactory --> AgentInitializationData : creates
+    AgentFactory --> IAgentRegistry : uses
+    AgentFactory --> IActorRuntimeAdapter : uses
+    TracingAgentFactory --> IAgentFactory : wraps
+    
+    Agent --> IAgentFactory : uses
+    Agent --> ToolResult : produces
+    CoderAgent --> CoderResult : produces
+    
+    CodeGraphTaskExecutor --> IAgentRegistry : uses
+    CodeGraphTaskExecutor --> IAgentFactory : uses
+    PullRequestTaskExecutor --> IAgentRegistry : uses
+    PullRequestTaskExecutor --> IAgentFactory : uses
+    
+    LLMAgent --> ToolRequest : may create
+    LLMAgent --> ToolResult : produces
