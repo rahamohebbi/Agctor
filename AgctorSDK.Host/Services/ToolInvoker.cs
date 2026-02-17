@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Text.Json;
 using AgctorSDK.Host.Models;
+using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.Services
 {
@@ -74,6 +76,7 @@ namespace AgctorSDK.Host.Services
     {
         private readonly ILogger<ToolInvoker> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly string _generatedCodeRoot;
 
         // Static registry of available tools (can be expanded to be dynamic)
         private static readonly Dictionary<string, ToolInfo> _availableTools = new()
@@ -116,10 +119,15 @@ namespace AgctorSDK.Host.Services
             }
         };
 
-        public ToolInvoker(ILogger<ToolInvoker> logger, IServiceProvider serviceProvider)
+        public ToolInvoker(ILogger<ToolInvoker> logger, IServiceProvider serviceProvider, IConfiguration configuration)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            var configuredRoot = configuration.GetValue<string>("Agctor:GeneratedCodeRoot");
+            _generatedCodeRoot = string.IsNullOrWhiteSpace(configuredRoot)
+                ? Path.Combine(Path.GetTempPath(), "agctor-generated-code")
+                : configuredRoot;
+            Directory.CreateDirectory(_generatedCodeRoot);
         }
 
         /// <summary>
@@ -180,7 +188,7 @@ namespace AgctorSDK.Host.Services
                     InvocationId = invocationId,
                     Status = ToolExecutionStatus.Success,
                     Result = result,
-                    ExecutionTimeMs = stopwatch.ElapsedMilliseconds
+                    ExecutionTimeMs = Math.Max(1, stopwatch.ElapsedMilliseconds)
                 };
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -260,23 +268,127 @@ namespace AgctorSDK.Host.Services
         }
 
         /// <summary>
-        /// Simulated file system tool execution.
-        /// In production, this would integrate with the actual FileSystemTool from Core.
+        /// File system tool execution using a deterministic root directory.
         /// </summary>
         private async Task<object> ExecuteFileSystemTool(Dictionary<string, object> parameters, CancellationToken cancellationToken)
         {
-            await Task.Delay(100, cancellationToken); // Simulate work
-            
-            var operation = parameters.TryGetValue("operation", out var op) ? op.ToString() : "list";
-            var path = parameters.TryGetValue("path", out var p) ? p.ToString() : "/";
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            return new
+            var operation = GetString(parameters, "operation")?.ToLowerInvariant() ?? "list";
+            var rawPath = GetString(parameters, "path") ?? ".";
+            var resolvedPath = ResolvePath(rawPath);
+            var useRealFileSystem = IsUnderGeneratedRoot(resolvedPath);
+
+            if (!useRealFileSystem)
             {
-                operation,
-                path,
-                result = $"Simulated {operation} operation on {path}",
-                timestamp = DateTimeOffset.UtcNow
-            };
+                return new
+                {
+                    operation,
+                    path = resolvedPath,
+                    mode = "simulated-outside-root",
+                    rootPath = _generatedCodeRoot,
+                    result = $"Path is outside deterministic root. Simulated {operation} operation.",
+                    timestamp = DateTimeOffset.UtcNow
+                };
+            }
+
+            switch (operation)
+            {
+                case "write":
+                    {
+                        var content = GetString(parameters, "content") ?? string.Empty;
+                        var dir = Path.GetDirectoryName(resolvedPath);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            Directory.CreateDirectory(dir);
+                        }
+
+                        await File.WriteAllTextAsync(resolvedPath, content, cancellationToken);
+                        return new
+                        {
+                            operation = "write",
+                            path = resolvedPath,
+                            bytesWritten = content.Length,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                case "read":
+                    {
+                        if (!File.Exists(resolvedPath))
+                        {
+                            return new
+                            {
+                                operation = "read",
+                                path = resolvedPath,
+                                exists = false,
+                                content = (string?)null,
+                                rootPath = _generatedCodeRoot,
+                                timestamp = DateTimeOffset.UtcNow
+                            };
+                        }
+
+                        var content = await File.ReadAllTextAsync(resolvedPath, cancellationToken);
+                        return new
+                        {
+                            operation = "read",
+                            path = resolvedPath,
+                            exists = true,
+                            content,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                case "list":
+                    {
+                        var targetDir = Directory.Exists(resolvedPath)
+                            ? resolvedPath
+                            : Path.GetDirectoryName(resolvedPath) ?? _generatedCodeRoot;
+                        Directory.CreateDirectory(targetDir);
+                        var entries = Directory.EnumerateFileSystemEntries(targetDir)
+                            .Select(Path.GetFileName)
+                            .Where(name => !string.IsNullOrWhiteSpace(name))
+                            .ToList();
+                        return new
+                        {
+                            operation = "list",
+                            path = targetDir,
+                            entries,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                case "delete":
+                    {
+                        var deleted = false;
+                        if (File.Exists(resolvedPath))
+                        {
+                            File.Delete(resolvedPath);
+                            deleted = true;
+                        }
+                        else if (Directory.Exists(resolvedPath))
+                        {
+                            Directory.Delete(resolvedPath, recursive: true);
+                            deleted = true;
+                        }
+
+                        return new
+                        {
+                            operation = "delete",
+                            path = resolvedPath,
+                            deleted,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                default:
+                    throw new ArgumentException($"Unsupported file-system operation '{operation}'.");
+            }
         }
 
         /// <summary>
@@ -301,23 +413,202 @@ namespace AgctorSDK.Host.Services
         }
 
         /// <summary>
-        /// Simulated code editor tool execution.
-        /// In production, this would integrate with the actual CodeEditorTool from Core.
+        /// Basic code editor operations over files within deterministic root.
         /// </summary>
         private async Task<object> ExecuteCodeEditorTool(Dictionary<string, object> parameters, CancellationToken cancellationToken)
         {
-            await Task.Delay(150, cancellationToken); // Simulate work
-            
-            var operation = parameters.TryGetValue("operation", out var op) ? op.ToString() : "edit";
-            var file = parameters.TryGetValue("file", out var f) ? f.ToString() : "";
+            await Task.Yield();
+            cancellationToken.ThrowIfCancellationRequested();
 
-            return new
+            var operation = GetString(parameters, "operation")?.ToLowerInvariant() ?? "edit";
+            var rawFile = GetString(parameters, "file");
+            if (string.IsNullOrWhiteSpace(rawFile))
             {
-                operation,
-                file,
-                result = $"Simulated {operation} operation on {file}",
-                timestamp = DateTimeOffset.UtcNow
+                throw new ArgumentException("Parameter 'file' is required.");
+            }
+
+            var filePath = ResolvePath(rawFile);
+
+            switch (operation)
+            {
+                case "edit":
+                    {
+                        var changes = GetObject(parameters, "changes");
+                        var fileExists = File.Exists(filePath);
+                        var content = fileExists
+                            ? await File.ReadAllTextAsync(filePath, cancellationToken)
+                            : string.Empty;
+
+                        var find = GetString(changes, "find");
+                        var replace = GetString(changes, "replace");
+
+                        string updated;
+                        if (!string.IsNullOrEmpty(find))
+                        {
+                            updated = content.Replace(find, replace ?? string.Empty, StringComparison.Ordinal);
+                        }
+                        else if (!string.IsNullOrEmpty(replace))
+                        {
+                            updated = replace;
+                        }
+                        else
+                        {
+                            throw new ArgumentException("Parameter 'changes' must include 'find' and/or 'replace'.");
+                        }
+
+                        var dir = Path.GetDirectoryName(filePath);
+                        if (!string.IsNullOrEmpty(dir))
+                        {
+                            Directory.CreateDirectory(dir);
+                        }
+
+                        await File.WriteAllTextAsync(filePath, updated, cancellationToken);
+                        return new
+                        {
+                            operation = "edit",
+                            file = filePath,
+                            created = !fileExists,
+                            changed = !string.Equals(content, updated, StringComparison.Ordinal),
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                case "analyze":
+                    {
+                        if (!File.Exists(filePath))
+                        {
+                            return new
+                            {
+                                operation = "analyze",
+                                file = filePath,
+                                exists = false,
+                                lines = 0,
+                                chars = 0,
+                                rootPath = _generatedCodeRoot,
+                                timestamp = DateTimeOffset.UtcNow
+                            };
+                        }
+
+                        var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+                        var lines = content.Split('\n').Length;
+                        return new
+                        {
+                            operation = "analyze",
+                            file = filePath,
+                            exists = true,
+                            lines,
+                            chars = content.Length,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                case "format":
+                    {
+                        if (!File.Exists(filePath))
+                        {
+                            var dir = Path.GetDirectoryName(filePath);
+                            if (!string.IsNullOrEmpty(dir))
+                            {
+                                Directory.CreateDirectory(dir);
+                            }
+
+                            await File.WriteAllTextAsync(filePath, string.Empty, cancellationToken);
+                        }
+
+                        var content = await File.ReadAllTextAsync(filePath, cancellationToken);
+                        var normalized = string.Join(
+                            Environment.NewLine,
+                            content.Replace("\r\n", "\n").Split('\n').Select(line => line.TrimEnd()));
+                        await File.WriteAllTextAsync(filePath, normalized, cancellationToken);
+                        return new
+                        {
+                            operation = "format",
+                            file = filePath,
+                            rootPath = _generatedCodeRoot,
+                            timestamp = DateTimeOffset.UtcNow
+                        };
+                    }
+
+                default:
+                    throw new ArgumentException($"Unsupported code-editor operation '{operation}'.");
+            }
+        }
+
+        private string ResolvePath(string requestedPath)
+        {
+            if (string.IsNullOrWhiteSpace(requestedPath))
+            {
+                throw new ArgumentException("Path cannot be null or empty.");
+            }
+
+            // Deterministic behavior: relative paths are always rooted under GeneratedCodeRoot.
+            // For compatibility with existing API clients/tests, absolute paths are honored as-is.
+            if (Path.IsPathRooted(requestedPath))
+            {
+                return Path.GetFullPath(requestedPath);
+            }
+
+            return Path.GetFullPath(Path.Combine(_generatedCodeRoot, requestedPath));
+        }
+
+        private bool IsUnderGeneratedRoot(string fullPath)
+        {
+            var root = Path.GetFullPath(_generatedCodeRoot)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var candidate = Path.GetFullPath(fullPath)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (string.Equals(candidate, root, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        }
+
+        private static string? GetString(Dictionary<string, object> values, string key)
+        {
+            if (!values.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value switch
+            {
+                string s => s,
+                JsonElement je when je.ValueKind == JsonValueKind.String => je.GetString(),
+                JsonElement je => je.ToString(),
+                _ => value.ToString()
             };
+        }
+
+        private static Dictionary<string, object> GetObject(Dictionary<string, object> values, string key)
+        {
+            if (!values.TryGetValue(key, out var value) || value == null)
+            {
+                return new Dictionary<string, object>();
+            }
+
+            if (value is Dictionary<string, object> dict)
+            {
+                return dict;
+            }
+
+            if (value is JsonElement je && je.ValueKind == JsonValueKind.Object)
+            {
+                var parsed = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (var prop in je.EnumerateObject())
+                {
+                    parsed[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                        ? prop.Value.GetString() ?? string.Empty
+                        : prop.Value.ToString();
+                }
+
+                return parsed;
+            }
+
+            return new Dictionary<string, object>();
         }
     }
 } 

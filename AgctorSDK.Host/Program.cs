@@ -48,6 +48,10 @@ builder.Services.Configure<AgentTypeOptions>(options =>
 // Register AGCTOR Core services
 var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory");
 Console.WriteLine($"🔄 Configured actor runtime: {defaultRuntime}");
+var llmApiUrl = builder.Configuration.GetValue<string>("Agctor:LLM:OllamaApiUrl", "http://localhost:11434");
+var llmModel = builder.Configuration.GetValue<string>("Agctor:LLM:DefaultModel", "mistral");
+LLMAgent.ConfigureDefaults(llmApiUrl, llmModel);
+Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfiguredOllamaApiUrl()}, model={LLMAgent.GetConfiguredDefaultModel()}");
 
 switch (defaultRuntime)
 {

@@ -49,15 +49,21 @@ namespace AgctorSDK.Core.Agents
     /// </summary>
     public class LLMAgent : Agent // Inherit from Agent instead of IActor
     {
+        private const string DefaultOllamaApiUrl = "http://localhost:11434";
+        private const string DefaultModel = "mistral";
+        private static readonly object DefaultsLock = new();
+        private static string _configuredOllamaApiUrl = DefaultOllamaApiUrl;
+        private static string _configuredDefaultModel = DefaultModel;
+
         private readonly HttpClient _httpClient;
         private readonly string _ollamaApiUrl;
         private readonly string _defaultModel;
 
-        public LLMAgent(string id) : this(id, new HttpClient())
+        public LLMAgent(string id) : this(id, CreateClient(), GetConfiguredOllamaApiUrl(), GetConfiguredDefaultModel())
         {
         }
 
-        public LLMAgent(string id, HttpClient httpClient, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+        public LLMAgent(string id, HttpClient httpClient, string ollamaApiUrl = DefaultOllamaApiUrl, string defaultModel = DefaultModel)
             : base(id)
         {
             _httpClient = httpClient;
@@ -66,9 +72,42 @@ namespace AgctorSDK.Core.Agents
             _defaultModel = defaultModel;
         }
 
-        public LLMAgent(string id, string ollamaApiUrl = "http://localhost:11434", string defaultModel = "mistral")
+        public LLMAgent(string id, string ollamaApiUrl = DefaultOllamaApiUrl, string defaultModel = DefaultModel)
             : this(id, CreateClient(), ollamaApiUrl, defaultModel)
         {
+        }
+
+        /// <summary>
+        /// Configures LLMAgent defaults used by the single-argument constructor.
+        /// Intended to be called once at host startup from configuration.
+        /// </summary>
+        public static void ConfigureDefaults(string? ollamaApiUrl, string? defaultModel)
+        {
+            lock (DefaultsLock)
+            {
+                _configuredOllamaApiUrl = string.IsNullOrWhiteSpace(ollamaApiUrl)
+                    ? DefaultOllamaApiUrl
+                    : ollamaApiUrl.Trim();
+                _configuredDefaultModel = string.IsNullOrWhiteSpace(defaultModel)
+                    ? DefaultModel
+                    : defaultModel.Trim();
+            }
+        }
+
+        public static string GetConfiguredOllamaApiUrl()
+        {
+            lock (DefaultsLock)
+            {
+                return _configuredOllamaApiUrl;
+            }
+        }
+
+        public static string GetConfiguredDefaultModel()
+        {
+            lock (DefaultsLock)
+            {
+                return _configuredDefaultModel;
+            }
         }
 
         private static HttpClient CreateClient()
