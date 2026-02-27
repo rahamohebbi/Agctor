@@ -10,12 +10,18 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 
 ## REST API Endpoints
 
+### Config – Dashboard (PRD-006)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/Config` | Get full Host configuration (runtime, LLM, MCP, tools, scenarios, agent types) |
+
 ### Agents (`/api/agents`)
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/agents` | Create new agent |
 | GET | `/api/agents` | List all agents |
 | GET | `/api/agents/{id}` | Get agent info |
+| GET | `/api/agents/{id}/detail` | Get agent info + type-specific detail (PRD-006) |
 | POST | `/api/agents/{id}/message` | Send message to agent |
 | GET | `/api/agents/health` | Health check |
 
@@ -43,6 +49,17 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | POST | `/api/test/setup-scenario` | Setup test scenario |
 | GET | `/api/test/scenarios` | List available scenarios |
 | GET | `/api/test/scenarios/{name}` | Get scenario info |
+
+### CodeGraph – Dashboard (PRD-006)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/CodeGraph/current` | Get current CodeGraph context (actor tree + embedding summary) when code-graph-demo is active; 404 otherwise |
+
+## Dashboard (Razor Pages)
+- **GET /Dashboard** – Host configuration overview
+- **GET /Dashboard/Agents** – Agents list and registered types
+- **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
+- **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
 
 ## MCP Protocol
 - **TCP port 8080**: Accepts newline-delimited JSON messages

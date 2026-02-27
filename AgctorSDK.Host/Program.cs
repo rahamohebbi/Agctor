@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 builder.Services.AddControllers();
+builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -87,6 +88,17 @@ builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmC
 // Register scenario services
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 
+// Dashboard config service (PRD-006)
+builder.Services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
+
+// Agent detail providers for dashboard (PRD-006)
+builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.LLMAgentDetailProvider>();
+builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.CoderAgentDetailProvider>();
+builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProviderRegistry, AgentDetailProviderRegistry>();
+
+// CodeGraph context for dashboard (PRD-006); scenario sets context when code-graph-demo runs
+builder.Services.AddSingleton<ICodeGraphContextAccessor, CodeGraphContextAccessor>();
+
 // Register MCP services as hosted services
 builder.Services.AddHostedService<McpListener>();
 
@@ -149,7 +161,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
+app.UseStaticFiles();
 app.MapControllers();
+app.MapRazorPages();
 
 // The actual port may still be 0 here (ephemeral). Log configuration value only.
 var configuredPort = builder.Configuration.GetValue<int>("Mcp:Port", 8080);

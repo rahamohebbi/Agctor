@@ -113,6 +113,20 @@ namespace AgctorSDK.Host.Models
     }
 
     /// <summary>
+    /// Agent info plus type-specific detail for dashboard (PRD-006). GET /api/agents/{id}/detail.
+    /// </summary>
+    public class AgentDetailResponse
+    {
+        public string Id { get; set; } = null!;
+        public string Type { get; set; } = null!;
+        public AgentStatus Status { get; set; }
+        public Dictionary<string, object>? Metadata { get; set; }
+        public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
+        /// <summary>Type-specific detail (e.g. LLM URL/model, CoderAgent tools, etc.).</summary>
+        public object? Detail { get; set; }
+    }
+
+    /// <summary>
     /// Enumeration of possible agent status values.
     /// </summary>
     public enum AgentStatus

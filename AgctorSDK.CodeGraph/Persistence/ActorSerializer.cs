@@ -9,8 +9,9 @@ namespace AgctorSDK.CodeGraph.Persistence
     /// <summary>
     /// Static helper that converts <see cref="CodeGraphActorBase"/> hierarchies to/from DTOs that can be JSON-serialized.
     /// Stage-1 keeps things simple: a single JSON file representing the full tree.
+    /// Public so Host can use ToDto for dashboard CodeGraph context (PRD-006).
     /// </summary>
-    internal static class ActorSerializer
+    public static class ActorSerializer
     {
         private static readonly JsonSerializerOptions _options = new JsonSerializerOptions
         {
@@ -75,6 +76,7 @@ namespace AgctorSDK.CodeGraph.Persistence
         #endregion
 
         #region DTO
+        /// <summary>Serializable tree node for code graph actors (Solution → Project → File → Class → Method).</summary>
         public class ActorDto
         {
             public string Id { get; set; } = string.Empty;

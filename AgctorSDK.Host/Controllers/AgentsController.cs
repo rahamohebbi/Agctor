@@ -20,17 +20,20 @@ namespace AgctorSDK.Host.Controllers
         private readonly IMessageDispatcher _messageDispatcher;
         private readonly IAgentRegistry _agentRegistry;
         private readonly IAgentFactory _agentFactory;
+        private readonly IAgentDetailProviderRegistry _detailProviderRegistry;
         private readonly ILogger<AgentsController> _logger;
 
         public AgentsController(
             IMessageDispatcher messageDispatcher,
             IAgentRegistry agentRegistry,
             IAgentFactory agentFactory,
+            IAgentDetailProviderRegistry detailProviderRegistry,
             ILogger<AgentsController> logger)
         {
             _messageDispatcher = messageDispatcher ?? throw new ArgumentNullException(nameof(messageDispatcher));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
+            _detailProviderRegistry = detailProviderRegistry ?? throw new ArgumentNullException(nameof(detailProviderRegistry));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -222,6 +225,49 @@ namespace AgctorSDK.Host.Controllers
                     Code = "INTERNAL_ERROR",
                     Message = "An internal error occurred while retrieving agent information"
                 });
+            }
+        }
+
+        /// <summary>
+        /// Gets agent info plus type-specific detail for the dashboard (PRD-006).
+        /// </summary>
+        [HttpGet("{agentId}/detail")]
+        [ProducesResponseType(typeof(AgentDetailResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<AgentDetailResponse>> GetAgentDetailAsync(
+            [FromRoute] string agentId,
+            CancellationToken cancellationToken = default)
+        {
+            _logger.LogInformation("Retrieving detail for agent {AgentId}", agentId);
+            if (string.IsNullOrWhiteSpace(agentId))
+            {
+                return BadRequest(new ErrorResponse { Code = "INVALID_AGENT_ID", Message = "Agent ID cannot be null or empty" });
+            }
+            try
+            {
+                var agent = await _agentRegistry.GetAgentByIdAsync(agentId);
+                if (agent == null)
+                {
+                    return NotFound(new ErrorResponse { Code = "AGENT_NOT_FOUND", Message = $"Agent '{agentId}' not found" });
+                }
+                var detail = _detailProviderRegistry.GetDetail(agent);
+                var response = new AgentDetailResponse
+                {
+                    Id = agent.Id,
+                    Type = agent.GetType().Name,
+                    Status = Models.AgentStatus.Active,
+                    Metadata = new Dictionary<string, object> { ["capabilities"] = GetAgentCapabilities(agent) },
+                    LastUpdated = DateTimeOffset.UtcNow,
+                    Detail = detail
+                };
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving agent detail {AgentId}", agentId);
+                return StatusCode(500, new ErrorResponse { Code = "INTERNAL_ERROR", Message = "An internal error occurred while retrieving agent detail" });
             }
         }
 

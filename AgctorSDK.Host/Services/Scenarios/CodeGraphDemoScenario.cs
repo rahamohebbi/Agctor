@@ -10,6 +10,7 @@ using AgctorSDK.CodeGraph.Analyzers;
 using AgctorSDK.CodeGraph.Analyzers.Roslyn;
 using AgctorSDK.CodeGraph.Embeddings;
 using AgctorSDK.CodeGraph.Agents;
+using AgctorSDK.CodeGraph.Persistence;
 using AgctorSDK.Core.Utils.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using AgctorSDK.CodeGraph.Intents;
@@ -25,6 +26,7 @@ namespace AgctorSDK.Host.Services.Scenarios
     {
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
+        private readonly ICodeGraphContextAccessor _codeGraphContextAccessor;
         private readonly ILogger<CodeGraphDemoScenario> _logger;
 
         public string Name => "code-graph-demo";
@@ -33,10 +35,12 @@ namespace AgctorSDK.Host.Services.Scenarios
         public CodeGraphDemoScenario(
             IActorRuntimeAdapter runtimeAdapter,
             IAgentRegistry agentRegistry,
+            ICodeGraphContextAccessor codeGraphContextAccessor,
             ILogger<CodeGraphDemoScenario> logger)
         {
             _runtimeAdapter = runtimeAdapter;
             _agentRegistry = agentRegistry;
+            _codeGraphContextAccessor = codeGraphContextAccessor ?? throw new ArgumentNullException(nameof(codeGraphContextAccessor));
             _logger = logger;
         }
 
@@ -189,6 +193,15 @@ namespace AgctorSDK.Host.Services.Scenarios
                 await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
 
                 _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder, Refactor)");
+
+                // Register CodeGraph context for dashboard (PRD-006): actor tree + embedding store summary
+                var actorTree = ActorSerializer.ToDto(solution);
+                var vectorCount = await vectorStore.CountAsync();
+                _codeGraphContextAccessor.SetCurrent(new CodeGraphContextDto
+                {
+                    ActorTree = actorTree,
+                    EmbeddingStoreSummary = new EmbeddingStoreSummaryDto { VectorCount = vectorCount }
+                });
 
                 var created = new List<string> { indexerId, searchId, llmId, queryId, coderId, refactorId };
                 var roles = new Dictionary<string, string>
