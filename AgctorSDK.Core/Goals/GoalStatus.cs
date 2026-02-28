@@ -7,7 +7,9 @@ namespace AgctorSDK.Core.Goals
     {
         Pending,
         InProgress,
+        Paused,
         Completed,
-        Failed
+        Failed,
+        Cancelled
     }
 } 

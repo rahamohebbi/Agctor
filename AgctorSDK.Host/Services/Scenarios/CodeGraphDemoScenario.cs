@@ -202,6 +202,8 @@ namespace AgctorSDK.Host.Services.Scenarios
                     ActorTree = actorTree,
                     EmbeddingStoreSummary = new EmbeddingStoreSummaryDto { VectorCount = vectorCount }
                 });
+                // Live actor tree so dashboard shows Class/Method after Index and reflects code changes
+                _codeGraphContextAccessor.SetActorTreeProvider(() => ActorSerializer.ToDto(solution));
                 // Live embedding count so dashboard "Index now" updates the displayed count
                 _codeGraphContextAccessor.SetEmbeddingCountProvider(ct => vectorStore.CountAsync());
                 // Embedding records for debugging/visualization (GET /api/CodeGraph/embeddings)

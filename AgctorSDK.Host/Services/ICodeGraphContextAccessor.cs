@@ -1,3 +1,4 @@
+using AgctorSDK.CodeGraph.Persistence;
 using AgctorSDK.Host.Models;
 
 namespace AgctorSDK.Host.Services;
@@ -21,6 +22,12 @@ public interface ICodeGraphContextAccessor
     /// Sets the current context. Called by CodeGraphDemoScenario after setup.
     /// </summary>
     void SetCurrent(CodeGraphContextDto? context);
+
+    /// <summary>
+    /// Registers a provider that returns the current actor tree (e.g. live-serialized solution).
+    /// When set, GetCurrent/GetCurrentAsync use it so the tree reflects index and code changes.
+    /// </summary>
+    void SetActorTreeProvider(Func<ActorSerializer.ActorDto?>? provider);
 
     /// <summary>
     /// Registers a provider that returns the current embedding store vector count (e.g. from the scenario's vector store).

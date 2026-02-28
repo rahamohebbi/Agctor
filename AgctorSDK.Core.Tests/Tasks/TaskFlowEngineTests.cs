@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Goals;
 using AgctorSDK.Core.Tasks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using FluentAssertions;
@@ -59,5 +61,39 @@ public class TaskFlowEngineTests
         await engine.RunOnceAsync();
         var d = (await store.GetAllAsync()).First(t => t.Title == "D");
         d.Status.Should().Be(CoreTaskStatus.Completed);
+    }
+
+    [TestMethod]
+    public async Task RunOnceAsync_ShouldSkipTasks_WhenGoalIsPausedOrCancelled()
+    {
+        var goalPath = Path.Combine(Path.GetTempPath(), $"goals-skip-{Guid.NewGuid()}.json");
+        var goalStore = new InMemoryGoalStore(goalPath);
+        var goal = new Goal { Title = "Skip", Description = "X" };
+        await goalStore.CreateAsync(goal);
+        goal.Status = GoalStatus.Paused;
+        await goalStore.UpdateAsync(goal);
+
+        var store = new InMemoryTaskStore(filePath: null);
+        var task = new ProjectTask { GoalId = goal.Id, Title = "X", Description = "X" };
+        await store.CreateAsync(task);
+
+        var engine = new TaskFlowEngine(store, new SimpleTaskExecutor(), goalStore, maxParallelism: 2);
+        await engine.RunOnceAsync();
+
+        var updated = await store.GetAsync(task.Id);
+        updated.Should().NotBeNull();
+        updated!.Status.Should().Be(CoreTaskStatus.Pending, "tasks whose goal is Paused should be skipped");
+
+        goal.Status = GoalStatus.Cancelled;
+        await goalStore.UpdateAsync(goal);
+        await engine.RunOnceAsync();
+        updated = await store.GetAsync(task.Id);
+        updated!.Status.Should().Be(CoreTaskStatus.Pending, "tasks whose goal is Cancelled should be skipped");
+
+        goal.Status = GoalStatus.InProgress;
+        await goalStore.UpdateAsync(goal);
+        await engine.RunOnceAsync();
+        updated = await store.GetAsync(task.Id);
+        updated!.Status.Should().Be(CoreTaskStatus.Completed, "tasks whose goal is InProgress should run");
     }
 } 

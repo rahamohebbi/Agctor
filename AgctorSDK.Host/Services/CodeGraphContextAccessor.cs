@@ -1,3 +1,4 @@
+using AgctorSDK.CodeGraph.Persistence;
 using AgctorSDK.Host.Models;
 
 namespace AgctorSDK.Host.Services;
@@ -8,25 +9,38 @@ namespace AgctorSDK.Host.Services;
 public class CodeGraphContextAccessor : ICodeGraphContextAccessor
 {
     private volatile CodeGraphContextDto? _current;
+    private Func<ActorSerializer.ActorDto?>? _actorTreeProvider;
     private Func<CancellationToken, Task<int>>? _embeddingCountProvider;
     private Func<CancellationToken, Task<IReadOnlyList<EmbeddingRecordDto>>>? _embeddingRecordsProvider;
 
-    public CodeGraphContextDto? GetCurrent() => _current;
+    public CodeGraphContextDto? GetCurrent()
+    {
+        var ctx = _current;
+        if (ctx == null) return null;
+        var tree = _actorTreeProvider != null ? _actorTreeProvider() : ctx.ActorTree;
+        return new CodeGraphContextDto
+        {
+            ActorTree = tree ?? ctx.ActorTree,
+            EmbeddingStoreSummary = ctx.EmbeddingStoreSummary
+        };
+    }
 
     public async Task<CodeGraphContextDto?> GetCurrentAsync(CancellationToken cancellationToken = default)
     {
         var ctx = _current;
         if (ctx == null) return null;
-        if (_embeddingCountProvider == null) return ctx;
-        var count = await _embeddingCountProvider(cancellationToken);
+        var tree = _actorTreeProvider != null ? _actorTreeProvider() : ctx.ActorTree;
+        var count = _embeddingCountProvider != null ? await _embeddingCountProvider(cancellationToken) : (ctx.EmbeddingStoreSummary?.VectorCount ?? 0);
         return new CodeGraphContextDto
         {
-            ActorTree = ctx.ActorTree,
+            ActorTree = tree ?? ctx.ActorTree,
             EmbeddingStoreSummary = new EmbeddingStoreSummaryDto { VectorCount = count }
         };
     }
 
     public void SetCurrent(CodeGraphContextDto? context) => _current = context;
+
+    public void SetActorTreeProvider(Func<ActorSerializer.ActorDto?>? provider) => _actorTreeProvider = provider;
 
     public void SetEmbeddingCountProvider(Func<CancellationToken, Task<int>>? provider) => _embeddingCountProvider = provider;
 

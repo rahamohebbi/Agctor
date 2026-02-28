@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Goals;
 using AgctorSDK.Core.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -16,9 +17,9 @@ public sealed class TaskFlowHostedService : IHostedService, IDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _loop;
 
-    public TaskFlowHostedService(ITaskStore store, ITaskExecutor executor, ILogger<TaskFlowHostedService> logger, IOptions<TaskFlowOptions>? opts = null)
+    public TaskFlowHostedService(ITaskStore store, ITaskExecutor executor, IGoalStore? goalStore, ILogger<TaskFlowHostedService> logger, IOptions<TaskFlowOptions>? opts = null)
     {
-        _engine = new TaskFlowEngine(store, executor);
+        _engine = new TaskFlowEngine(store, executor, goalStore, maxParallelism: 4);
         _logger = logger;
         _interval = opts?.Value?.Interval ?? TimeSpan.FromSeconds(10);
     }
