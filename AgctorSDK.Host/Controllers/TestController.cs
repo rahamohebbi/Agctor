@@ -14,13 +14,16 @@ namespace AgctorSDK.Host.Controllers;
 public class TestController : ControllerBase
 {
     private readonly IScenarioFactory _scenarioFactory;
+    private readonly ICurrentScenarioStore _currentScenarioStore;
     private readonly ILogger<TestController> _logger;
 
     public TestController(
         IScenarioFactory scenarioFactory,
+        ICurrentScenarioStore currentScenarioStore,
         ILogger<TestController> logger)
     {
         _scenarioFactory = scenarioFactory ?? throw new ArgumentNullException(nameof(scenarioFactory));
+        _currentScenarioStore = currentScenarioStore ?? throw new ArgumentNullException(nameof(currentScenarioStore));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -72,6 +75,7 @@ public class TestController : ControllerBase
 
             if (response.Success)
             {
+                _currentScenarioStore.SetCurrentScenario(request.ScenarioName, scenario.Description);
                 _logger.LogInformation("Successfully set up scenario '{ScenarioName}' with {AgentCount} agents",
                     request.ScenarioName, response.CreatedAgentIds.Count);
             }
@@ -193,5 +197,21 @@ public class TestController : ControllerBase
                 Message = "An internal error occurred while retrieving scenario information"
             });
         }
+    }
+
+    /// <summary>
+    /// Gets the scenario that is currently active in this session (last applied via Apply on the dashboard).
+    /// </summary>
+    /// <returns>Current scenario name and description, or null if none has been applied</returns>
+    /// <response code="200">Current scenario info or null</response>
+    [HttpGet("current-scenario")]
+    [ProducesResponseType(typeof(CurrentScenarioResponse), StatusCodes.Status200OK)]
+    public ActionResult<CurrentScenarioResponse?> GetCurrentScenario()
+    {
+        var name = _currentScenarioStore.GetCurrentScenarioName();
+        if (string.IsNullOrEmpty(name))
+            return Ok((CurrentScenarioResponse?)null);
+
+        return Ok(new CurrentScenarioResponse(name, _currentScenarioStore.GetCurrentScenarioDescription()));
     }
 } 

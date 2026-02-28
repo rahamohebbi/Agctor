@@ -297,4 +297,12 @@ namespace AgctorSDK.Host.Models
         Dictionary<string, string> AgentRoles,
         string? ErrorMessage
     );
+
+    /// <summary>
+    /// Response for GET /api/test/current-scenario. The scenario last applied in this session.
+    /// </summary>
+    public record CurrentScenarioResponse(
+        string ScenarioName,
+        string? Description
+    );
 } 

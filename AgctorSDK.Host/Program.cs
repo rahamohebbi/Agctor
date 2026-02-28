@@ -87,6 +87,7 @@ builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmC
 
 // Register scenario services
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
+builder.Services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
 
 // Dashboard config service (PRD-006)
 builder.Services.AddSingleton<IHostConfigurationService, HostConfigurationService>();

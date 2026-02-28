@@ -5,7 +5,7 @@
 }
 <div class="mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">CodeGraph</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Actor tree and embedding store when code-graph-demo is active.</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Solution → Project → File → Class → Method actor hierarchy and embedding store summary (when code-graph-demo scenario is active).</p>
 </div>
 
 <div id="codegraph-content" class="space-y-6">
@@ -25,17 +25,78 @@
 (function() {
     const el = document.getElementById('codegraph-content');
     function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
-    fetch('/api/CodeGraph/current').then(r => { if (r.status === 404) return null; return r.ok ? r.json() : Promise.reject(r); })
+
+    function typeBadgeClass(type) {
+        const t = (type || '').toLowerCase();
+        if (t.includes('solution')) return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
+        if (t.includes('project')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+        if (t.includes('file')) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+        if (t.includes('class')) return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300';
+        if (t.includes('method')) return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    }
+
+    function renderActorNode(node, depth) {
+        if (!node) return '';
+        const indent = depth * 16;
+        const type = node.actorType || node.ActorType || '';
+        const name = node.name || node.Name || '(unnamed)';
+        const path = node.physicalPath || node.PhysicalPath || '';
+        const id = node.id || node.Id || '';
+        const children = node.children || node.Children || [];
+        const hasChildren = Array.isArray(children) && children.length > 0;
+        const badgeClass = typeBadgeClass(type);
+        const nodeId = 'node-' + (id || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '-');
+        let html = '<div class="border-l-2 border-gray-200 dark:border-gray-600 ml-2 pl-3 py-1" style="margin-left: ' + indent + 'px">';
+        html += '<div class="flex items-start gap-2 flex-wrap">';
+        html += '<span class="text-xs font-medium px-2 py-0.5 rounded ' + badgeClass + '">' + esc(type) + '</span>';
+        html += '<span class="font-medium text-gray-900 dark:text-white">' + esc(name) + '</span>';
+        if (path) html += '<span class="text-sm text-gray-500 dark:text-gray-400 truncate" title="' + esc(path) + '">' + esc(path) + '</span>';
+        html += '</div>';
+        if (hasChildren) {
+            html += '<div class="mt-1 space-y-0" id="' + esc(nodeId) + '-children">';
+            for (let i = 0; i < children.length; i++)
+                html += renderActorNode(children[i], depth + 1);
+            html += '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function renderActorTree(actorTree) {
+        if (!actorTree) return '<p class="text-gray-500 dark:text-gray-400">No actor tree.</p>';
+        return '<div class="space-y-0 text-sm">' + renderActorNode(actorTree, 0) + '</div>';
+    }
+
+    fetch('/api/CodeGraph/current')
+        .then(r => { if (r.status === 404) return null; return r.ok ? r.json() : Promise.reject(r); })
         .then(ctx => {
             if (!ctx) {
-                el.innerHTML = '<div class="p-6 bg-amber-50 border border-amber-200 rounded-lg dark:bg-gray-800 dark:border-amber-800"><p class="text-amber-800 dark:text-amber-200">CodeGraph not active. Run the code-graph-demo scenario first (POST /api/test/setup-scenario with scenarioName: code-graph-demo).</p></div>';
+                el.innerHTML = '<div class="p-6 bg-amber-50 border border-amber-200 rounded-lg dark:bg-gray-800 dark:border-amber-800">' +
+                    '<h2 class="text-lg font-semibold text-amber-900 dark:text-amber-200">CodeGraph not active</h2>' +
+                    '<p class="mt-2 text-amber-800 dark:text-amber-200">Run the <strong>code-graph-demo</strong> scenario to create the actor model and embedding store.</p>' +
+                    '<p class="mt-2 text-sm text-amber-700 dark:text-amber-300">Go to the <a href="/Dashboard/Agents" class="underline font-medium hover:no-underline">Agents</a> page, select &quot;code-graph-demo&quot; and click <strong>Apply</strong>.</p>' +
+                    '</div>';
                 return;
             }
             let html = '';
-            if (ctx.embeddingStoreSummary)
-                html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700"><h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Embedding store</h2><p class="text-gray-900 dark:text-white">Vector count: <span class="font-semibold">' + (ctx.embeddingStoreSummary.vectorCount ?? 0) + '</span></p></div>';
-            if (ctx.actorTree)
-                html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700"><h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Actor tree</h2><pre class="p-4 text-sm bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto">' + esc(JSON.stringify(ctx.actorTree, null, 2)) + '</pre></div>';
+            const summary = ctx.embeddingStoreSummary;
+            const vectorCount = summary && (summary.vectorCount !== undefined) ? summary.vectorCount : 0;
+            html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
+                '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Embedding store</h2>' +
+                '<p class="mb-1 text-sm text-gray-500 dark:text-gray-400">Code vectors stored for semantic search (e.g. by Indexer and Search agents).</p>' +
+                '<p class="text-gray-900 dark:text-white">Vector count: <span class="font-semibold text-lg">' + esc(String(vectorCount)) + '</span></p>' +
+                '</div>';
+            const tree = ctx.actorTree;
+            html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
+                '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Actor tree</h2>' +
+                '<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">Hierarchy: Solution → Project → File → Class → Method. Each node is an actor in the CodeGraph runtime.</p>' +
+                '<div class="overflow-x-auto">' + renderActorTree(tree) + '</div>' +
+                '</div>';
+            html += '<details class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
+                '<summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Raw JSON</summary>' +
+                '<pre class="mt-3 p-4 text-xs bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto max-h-96 overflow-y-auto">' + esc(JSON.stringify(ctx, null, 2)) + '</pre>' +
+                '</details>';
             el.innerHTML = html || '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700"><p class="text-gray-500 dark:text-gray-400">No context data.</p></div>';
         })
         .catch(() => {

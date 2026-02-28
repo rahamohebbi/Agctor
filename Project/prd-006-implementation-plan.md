@@ -128,7 +128,7 @@ This document breaks down the implementation of [PRD-006 (Host Configuration Das
 | Step | Action | Location |
 |------|--------|----------|
 | 4.2.1 | Create Index (overview) page with **Tailwind/Flowbite** styling: `Pages/Dashboard/Index.cshtml` and `Index.cshtml.cs`. Use Flowbite-style cards, badges, and grid layout; loading spinner while fetching. JS fetches GET /api/config and renders Runtime, LLM, MCP, Paths & Services, agent types, tools, and scenarios into card sections. | `AgctorSDK.Host/Pages/Dashboard/Index.cshtml`, `Index.cshtml.cs` |
-| 4.2.2 | Create Agents list page with Tailwind/Flowbite: `Pages/Dashboard/Agents.cshtml` (and PageModel). Cards for “Registered types” (badges) and “Active agents” (list with links); JS fetches GET /api/config and GET /api/agents, renders list and types. | `AgctorSDK.Host/Pages/Dashboard/Agents.cshtml`, `Agents.cshtml.cs` |
+| 4.2.2 | Create Agents list page with Tailwind/Flowbite: `Pages/Dashboard/Agents.cshtml` (and PageModel). **(a) Current scenario block** — fetch GET /api/Test/current-scenario; show “Current scenario: &lt;name&gt;” (and optional description) when set, or “No scenario active…” when null. **(b) Activate scenario** — scenario selector (dropdown) and Apply button. **(c) Registered types** — card with clear label “Agent types available in configuration (from appsettings). These can be instantiated when you apply a scenario.”; render badges from config.agentTypes. **(d) Active agents** — card with label “Agent instances created in this session (e.g. after applying a scenario above). Click an agent to view type-specific details.”; list with links to Agent detail. JS fetches GET /api/config, GET /api/agents, and GET /api/Test/current-scenario; populates scenario dropdown from config.scenarios or GET /api/test/scenarios. On Apply: POST /api/test/setup-scenario with `{ scenarioName: selectedValue, parameters: {} }`; on success, re-fetch GET /api/agents and GET /api/Test/current-scenario and re-render so “Current scenario” and “Active agents” update. | `AgctorSDK.Host/Pages/Dashboard/Agents.cshtml`, `Agents.cshtml.cs` |
 | 4.2.3 | Create Agent detail page with Tailwind/Flowbite: `Pages/Dashboard/AgentDetail.cshtml` with route template `{id}`. Card layout for info and type-specific detail block; JS fetches GET /api/agents/{id}/detail and renders base info + type-specific block (switch on `data.type` or detail shape). | `AgctorSDK.Host/Pages/Dashboard/AgentDetail.cshtml`, `AgentDetail.cshtml.cs` |
 | 4.2.4 | Create CodeGraph page with Tailwind/Flowbite: `Pages/Dashboard/CodeGraph.cshtml`. Cards for embedding store summary and actor tree; JS fetches GET /api/codegraph/current; on 200 render tree and summary; on 404 show “CodeGraph not active” in an alert/card. | `AgctorSDK.Host/Pages/Dashboard/CodeGraph.cshtml`, `CodeGraph.cshtml.cs` |
 
@@ -140,18 +140,35 @@ This document breaks down the implementation of [PRD-006 (Host Configuration Das
 | 4.3.2 | Implement renderers: `renderOverview(config)`, `renderAgentsList(agents, config)`, `renderAgentDetail(data)` with type-based branching (LLMAgent, CoderAgent, generic), `renderCodeGraph(context)`. Use DOM APIs or minimal templating (e.g. innerHTML with escaped data or createElement). | Same file or separate `dashboard-renderers.js` |
 | 4.3.3 | On each page load, call the appropriate fetch and render (e.g. on Index load call fetchConfig and renderOverview; on AgentDetail load call fetchAgentDetail(id) and renderAgentDetail). | Same file |
 
-### 4.4 Navigation and links
+### 4.4 Current scenario storage (session)
 
 | Step | Action | Location |
 |------|--------|----------|
-| 4.4.1 | From Agents list, link each agent to `/Dashboard/AgentDetail?id=llm-agent` (or route value `id`). From Overview or layout, link to Agents and CodeGraph. | Razor views + JS when building list |
+| 4.4.0 | Define **ICurrentScenarioStore** with `GetCurrentScenarioName()`, `GetCurrentScenarioDescription()`, `SetCurrentScenario(name, description?)`, `Clear()`. Implement **CurrentScenarioStore** (in-memory, thread-safe). Register as singleton in Program.cs. | `AgctorSDK.Host/Services/ICurrentScenarioStore.cs`, `CurrentScenarioStore.cs`, `Program.cs` |
+| 4.4.1 | In **TestController.SetupScenarioAsync**, after a successful scenario setup, call `_currentScenarioStore.SetCurrentScenario(request.ScenarioName, scenario.Description)`. Add **GET /api/Test/current-scenario** returning `CurrentScenarioResponse?` (ScenarioName, Description); return null when no scenario is set. Add `CurrentScenarioResponse` to ApiModels. | `AgctorSDK.Host/Controllers/TestController.cs`, `AgctorSDK.Host/Models/ApiModels.cs` |
 
-### 4.5 Verification
+### 4.5 Scenario activation on Agents tab
+
+| Step | Action | Location |
+|------|--------|----------|
+| 4.5.1 | On the Agents page, add a **“Activate scenario”** card/section: dropdown (or list) of available scenarios (e.g. `code-generation-chain`, `code-graph-demo`). Data source: `config.scenarios` from GET /api/config (keys = scenario names) or GET /api/test/scenarios. Optionally show scenario description via GET /api/test/scenarios/{name}. | `AgctorSDK.Host/Pages/Dashboard/Agents.cshtml` (markup + JS) |
+| 4.5.2 | Add an **Apply** button. On click: call **POST /api/test/setup-scenario** with body `{ scenarioName: "<selected>", parameters: {} }`. Handle success (e.g. show toast or inline message “Scenario applied; N agents created”) and failure (show error message). | Same file (JS) |
+| 4.5.3 | After successful Apply, **re-fetch GET /api/agents** and **GET /api/Test/current-scenario**; re-render the “Current scenario” block and the “Active agents” list so the newly created agents (e.g. llm-agent, code-executor-tool for code-generation-chain; indexer-agent, search-agent, etc. for code-graph-demo) appear. | Same file (JS) |
+
+### 4.6 Navigation and links
+
+| Step | Action | Location |
+|------|--------|----------|
+| 4.6.1 | From Agents list, link each agent to `/Dashboard/AgentDetail/{id}`. From Overview or layout, link to Agents and CodeGraph. | Razor views + JS when building list |
+
+### 4.7 Verification
 
 - Open /Dashboard (or /Dashboard/Index), confirm Overview shows runtime, LLM, MCP, etc.
-- Open /Dashboard/Agents, confirm agents list and registered types.
+- Open /Dashboard/Agents, confirm **Current scenario** block (shows “No scenario active” or the last applied scenario), **Registered types** (with description), **Active agents** (with description), and **scenario selector with Apply**.
+- Select scenario “code-generation-chain” (or “code-graph-demo”), click **Apply**; confirm POST /api/test/setup-scenario succeeds, “Current scenario” updates to the selected scenario, and the “Active agents” list refreshes with the new agents (e.g. llm-agent, code-executor-tool).
+- GET /api/Test/current-scenario returns the current scenario name and description after Apply, or null before any scenario is applied.
 - Click an agent, confirm Agent detail page shows type-specific block (e.g. LLM URL/model for llm-agent).
-- Open /Dashboard/CodeGraph; after running code-graph-demo, confirm tree and embedding summary; without scenario, confirm “not active” or 404 handling.
+- Open /Dashboard/CodeGraph; after applying code-graph-demo, confirm tree and embedding summary; without scenario, confirm “not active” or 404 handling.
 
 ---
 
@@ -159,7 +176,7 @@ This document breaks down the implementation of [PRD-006 (Host Configuration Das
 
 | Step | Action | Location |
 |------|--------|----------|
-| 5.1 | Update AgctorSDK.Host/docs: add `/api/config`, `/api/agents/{id}/detail`, `/api/codegraph/current` to endpoints diagram (endpoints-diagram.mmd) and endpoints-diagram.md; brief note in README. | `AgctorSDK.Host/docs/` |
+| 5.1 | Update AgctorSDK.Host/docs: add `/api/config`, `/api/agents/{id}/detail`, `/api/codegraph/current`, and **GET /api/Test/current-scenario** to endpoints diagram (endpoints-diagram.mmd) and endpoints-diagram.md; brief note in README. | `AgctorSDK.Host/docs/` |
 | 5.2 | Unit tests: HostConfigurationService (mocked deps); LLMAgentDetailProvider, CoderAgentDetailProvider (mock IAgent); AgentDetailProviderRegistry (multiple providers, unknown type). | `AgctorSDK.Host.Tests` or under existing test project for Host if present; otherwise AgctorSDK.Core.Tests for Core interfaces only. |
 | 5.3 | Integration test: GET /api/config (200, structure); GET /api/agents/{id}/detail after scenario (200, detail shape); GET /api/codegraph/current after code-graph-demo (200), before (404). | `AgctorSDK.Host.IntegrationTests` |
 
