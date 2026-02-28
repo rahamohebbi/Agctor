@@ -13,7 +13,28 @@ public interface ICodeGraphContextAccessor
     CodeGraphContextDto? GetCurrent();
 
     /// <summary>
+    /// Gets the current context asynchronously, with live embedding count if a provider is registered.
+    /// </summary>
+    Task<CodeGraphContextDto?> GetCurrentAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sets the current context. Called by CodeGraphDemoScenario after setup.
     /// </summary>
     void SetCurrent(CodeGraphContextDto? context);
+
+    /// <summary>
+    /// Registers a provider that returns the current embedding store vector count (e.g. from the scenario's vector store).
+    /// When set, GetCurrentAsync uses this for EmbeddingStoreSummary.VectorCount.
+    /// </summary>
+    void SetEmbeddingCountProvider(Func<CancellationToken, Task<int>>? provider);
+
+    /// <summary>
+    /// Registers a provider that returns all embedding records for debugging/visualization.
+    /// </summary>
+    void SetEmbeddingRecordsProvider(Func<CancellationToken, Task<IReadOnlyList<EmbeddingRecordDto>>>? provider);
+
+    /// <summary>
+    /// Gets all embedding records for debugging/visualization (when a provider is registered).
+    /// </summary>
+    Task<IReadOnlyList<EmbeddingRecordDto>> GetEmbeddingRecordsAsync(CancellationToken cancellationToken = default);
 }

@@ -30,6 +30,9 @@ namespace AgctorSDK.CodeGraph.Embeddings
 
         public Task<int> CountAsync() => Task.FromResult(_records.Count);
 
+        public Task<IReadOnlyList<VectorRecord>> GetAllAsync() =>
+            Task.FromResult<IReadOnlyList<VectorRecord>>(_records.Values.ToList());
+
         private static float Cosine(IReadOnlyList<float> a, IReadOnlyList<float> b)
         {
             float dot = 0, magA = 0, magB = 0;

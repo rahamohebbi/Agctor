@@ -85,7 +85,12 @@
             html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
                 '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Embedding store</h2>' +
                 '<p class="mb-1 text-sm text-gray-500 dark:text-gray-400">Code vectors stored for semantic search (e.g. by Indexer and Search agents).</p>' +
-                '<p class="text-gray-900 dark:text-white">Vector count: <span class="font-semibold text-lg">' + esc(String(vectorCount)) + '</span></p>' +
+                '<div class="flex flex-wrap items-center gap-3">' +
+                '<p class="text-gray-900 dark:text-white">Vector count: <span id="codegraph-vector-count" class="font-semibold text-lg">' + esc(String(vectorCount)) + '</span></p>' +
+                '<button type="button" id="index-now-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">Index now</button>' +
+                '<span id="index-message" class="text-sm min-w-[8rem]"></span>' +
+                '</div>' +
+                '<p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Click &quot;Index now&quot; to run the Indexer agent. It will walk the actor tree and populate the embedding store with vectors for classes and methods.</p>' +
                 '</div>';
             const tree = ctx.actorTree;
             html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
@@ -93,11 +98,94 @@
                 '<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">Hierarchy: Solution → Project → File → Class → Method. Each node is an actor in the CodeGraph runtime.</p>' +
                 '<div class="overflow-x-auto">' + renderActorTree(tree) + '</div>' +
                 '</div>';
+            html += '<details class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700" id="embedding-debug-details">' +
+                '<summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Embedding vectors (debug)</summary>' +
+                '<div id="embedding-debug-content" class="mt-3">' +
+                '<p class="text-sm text-gray-500 dark:text-gray-400 mb-2">Load stored vectors to inspect or visualize (table + 2D scatter using first two dimensions).</p>' +
+                '<button type="button" id="load-vectors-btn" class="px-3 py-1.5 text-sm font-medium text-white bg-gray-600 rounded hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-700">Load vectors</button>' +
+                '<div id="embedding-debug-result" class="mt-3"></div>' +
+                '</div></details>';
             html += '<details class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
                 '<summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Raw JSON</summary>' +
                 '<pre class="mt-3 p-4 text-xs bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto max-h-96 overflow-y-auto">' + esc(JSON.stringify(ctx, null, 2)) + '</pre>' +
                 '</details>';
             el.innerHTML = html || '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700"><p class="text-gray-500 dark:text-gray-400">No context data.</p></div>';
+            const indexBtn = document.getElementById('index-now-btn');
+            const indexMsg = document.getElementById('index-message');
+            if (indexBtn && indexMsg) {
+                indexBtn.addEventListener('click', async function() {
+                    indexBtn.disabled = true;
+                    indexMsg.textContent = 'Indexing...';
+                    indexMsg.className = 'text-sm text-gray-600 dark:text-gray-400';
+                    try {
+                        const res = await fetch('/api/agents/indexer-agent/message', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ payload: 'index' })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (res.ok) {
+                            indexMsg.textContent = 'Done. Refreshing...';
+                            indexMsg.className = 'text-sm text-green-600 dark:text-green-400';
+                            const updated = await fetch('/api/CodeGraph/current').then(r => r.ok ? r.json() : null);
+                            const countEl = document.getElementById('codegraph-vector-count');
+                            if (countEl && updated && updated.embeddingStoreSummary)
+                                countEl.textContent = String(updated.embeddingStoreSummary.vectorCount ?? 0);
+                            indexMsg.textContent = 'Indexing complete.';
+                        } else {
+                            indexMsg.textContent = data.message || 'Indexing failed.';
+                            indexMsg.className = 'text-sm text-red-600 dark:text-red-400';
+                        }
+                    } catch (e) {
+                        indexMsg.textContent = 'Error: ' + (e.message || 'Request failed');
+                        indexMsg.className = 'text-sm text-red-600 dark:text-red-400';
+                    }
+                    indexBtn.disabled = false;
+                });
+            }
+            const loadVectorsBtn = document.getElementById('load-vectors-btn');
+            const debugResult = document.getElementById('embedding-debug-result');
+            if (loadVectorsBtn && debugResult) {
+                loadVectorsBtn.addEventListener('click', async function() {
+                    loadVectorsBtn.disabled = true;
+                    loadVectorsBtn.textContent = 'Loading...';
+                    try {
+                        const r = await fetch('/api/CodeGraph/embeddings');
+                        if (!r.ok) { debugResult.innerHTML = '<p class="text-sm text-red-600">No embeddings or CodeGraph not active.</p>'; return; }
+                        const records = await r.json();
+                        if (!records || records.length === 0) {
+                            debugResult.innerHTML = '<p class="text-sm text-gray-500">No vectors in store. Click &quot;Index now&quot; first.</p>';
+                            return;
+                        }
+                        const previewLen = 8;
+                        let tableHtml = '<div class="overflow-x-auto max-h-64 overflow-y-auto"><table class="text-sm w-full border border-gray-200 dark:border-gray-600"><thead><tr class="bg-gray-100 dark:bg-gray-700"><th class="text-left p-2">Actor ID</th><th class="text-left p-2">Text</th><th class="text-left p-2">Dims</th><th class="text-left p-2">First ' + previewLen + ' values</th></tr></thead><tbody>';
+                        records.forEach(rec => {
+                            const vec = rec.vector || [];
+                            const preview = vec.slice(0, previewLen).map(v => Number(v).toFixed(3)).join(', ');
+                            tableHtml += '<tr class="border-t border-gray-200 dark:border-gray-600"><td class="p-2 font-mono text-xs">' + esc(rec.actorId) + '</td><td class="p-2">' + esc(rec.text) + '</td><td class="p-2">' + vec.length + '</td><td class="p-2 font-mono text-xs text-gray-600 dark:text-gray-400">' + esc(preview) + (vec.length > previewLen ? '...' : '') + '</td></tr>';
+                        });
+                        tableHtml += '</tbody></table></div>';
+                        const d0 = records.map(r => (r.vector && r.vector[0]) != null ? Number(r.vector[0]) : 0);
+                        const d1 = records.map(r => (r.vector && r.vector[1]) != null ? Number(r.vector[1]) : 0);
+                        const min0 = Math.min(...d0), max0 = Math.max(...d0), min1 = Math.min(...d1), max1 = Math.max(...d1);
+                        const range0 = max0 - min0 || 1, range1 = max1 - min1 || 1;
+                        const w = 400, h = 300, pad = 30;
+                        let svg = '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">2D preview: first dimension (x) vs second dimension (y). For full PCA/t-SNE use external tools (e.g. TensorBoard, Python).</p>';
+                        svg += '<svg width="' + w + '" height="' + h + '" class="border border-gray-200 dark:border-gray-600 rounded mt-1" viewBox="0 0 ' + w + ' ' + h + '">';
+                        records.forEach((rec, i) => {
+                            const x = pad + (d0[i] - min0) / range0 * (w - 2 * pad);
+                            const y = h - pad - (d1[i] - min1) / range1 * (h - 2 * pad);
+                            svg += '<circle cx="' + x + '" cy="' + y + '" r="4" fill="#3b82f6" opacity="0.8"/><title>' + esc(rec.text) + '</title>';
+                        });
+                        svg += '</svg>';
+                        debugResult.innerHTML = tableHtml + svg;
+                    } catch (e) {
+                        debugResult.innerHTML = '<p class="text-sm text-red-600">Error: ' + esc(e.message || 'Request failed') + '</p>';
+                    }
+                    loadVectorsBtn.disabled = false;
+                    loadVectorsBtn.textContent = 'Load vectors';
+                });
+            }
         })
         .catch(() => {
             el.innerHTML = '<div class="p-6 bg-red-50 border border-red-200 rounded-lg dark:bg-gray-800 dark:border-red-800"><p class="text-red-700 dark:text-red-400">Failed to load CodeGraph context.</p></div>';

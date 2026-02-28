@@ -202,6 +202,20 @@ namespace AgctorSDK.Host.Services.Scenarios
                     ActorTree = actorTree,
                     EmbeddingStoreSummary = new EmbeddingStoreSummaryDto { VectorCount = vectorCount }
                 });
+                // Live embedding count so dashboard "Index now" updates the displayed count
+                _codeGraphContextAccessor.SetEmbeddingCountProvider(ct => vectorStore.CountAsync());
+                // Embedding records for debugging/visualization (GET /api/CodeGraph/embeddings)
+                _codeGraphContextAccessor.SetEmbeddingRecordsProvider(async ct =>
+                {
+                    var records = await vectorStore.GetAllAsync();
+                    return records.Select(r => new EmbeddingRecordDto
+                    {
+                        ActorId = r.ActorId,
+                        Text = r.Text,
+                        VectorLength = r.Vector.Length,
+                        Vector = r.Vector
+                    }).ToList();
+                });
 
                 var created = new List<string> { indexerId, searchId, llmId, queryId, coderId, refactorId };
                 var roles = new Dictionary<string, string>

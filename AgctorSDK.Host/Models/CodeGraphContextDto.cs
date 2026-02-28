@@ -22,3 +22,14 @@ public class EmbeddingStoreSummaryDto
 {
     public int VectorCount { get; set; }
 }
+
+/// <summary>
+/// Single embedding record for debugging/visualization (e.g. GET /api/CodeGraph/embeddings).
+/// </summary>
+public class EmbeddingRecordDto
+{
+    public string ActorId { get; set; } = null!;
+    public string Text { get; set; } = null!;
+    public int VectorLength { get; set; }
+    public float[] Vector { get; set; } = null!;
+}

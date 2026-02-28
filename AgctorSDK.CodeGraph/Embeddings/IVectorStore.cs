@@ -10,5 +10,7 @@ namespace AgctorSDK.CodeGraph.Embeddings
         Task UpsertAsync(VectorRecord record);
         Task<IEnumerable<(string ActorId, float Score)>> QueryAsync(float[] vector, int k = 5);
         Task<int> CountAsync();
+        /// <summary>Returns all stored records for debugging and visualization.</summary>
+        Task<IReadOnlyList<VectorRecord>> GetAllAsync();
     }
 } 
