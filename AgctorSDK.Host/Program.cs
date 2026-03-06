@@ -1,4 +1,3 @@
-using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
@@ -8,8 +7,17 @@ using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Snippets;
 using AgctorSDK.Core.DependencyInjection;
+using AgctorSDK.Extensions.DependencyInjection;
+using AgctorSDK.Extensions.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Ensure a dedicated default HTTP URL so startup does not collide with macOS services on port 5000.
+if (string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]) &&
+    string.IsNullOrWhiteSpace(builder.WebHost.GetSetting("urls")))
+{
+    builder.WebHost.UseUrls("http://localhost:5274");
+}
 
 // Add services to the container
 builder.Services.AddControllers();
@@ -68,6 +76,13 @@ switch (defaultRuntime)
         break;
 }
 
+// Use the lightweight in-process tracker for host startup reliability.
+builder.Services.AddAgctorActivityTracking(opts =>
+{
+    opts.EnableToolTracing = true;
+});
+builder.Services.AddAgctorVisualization();
+
 // Register Host-specific services
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
@@ -76,8 +91,25 @@ builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 builder.Services.AddInMemoryTaskStore();
 // Code generation + pull-request automation
 builder.Services.AddPullRequestAutomation();
-// Background services: TaskScoper (goal → task DAG) + TaskFlow (task execution)
-builder.Services.AddAgctorBackgroundServices(builder.Configuration);
+// Configure background-service options, but start them after HTTP startup so the dashboard remains reachable.
+builder.Services.Configure<TaskScoperHostedService.TaskScoperOptions>(options =>
+{
+    var seconds = builder.Configuration.GetValue<int?>("TaskScoper:ScanInterval");
+    if (seconds.HasValue && seconds.Value > 0)
+    {
+        options.ScanInterval = TimeSpan.FromSeconds(seconds.Value);
+    }
+});
+builder.Services.Configure<TaskFlowHostedService.TaskFlowOptions>(options =>
+{
+    var seconds = builder.Configuration.GetValue<int?>("TaskFlow:Interval");
+    if (seconds.HasValue && seconds.Value > 0)
+    {
+        options.Interval = TimeSpan.FromSeconds(seconds.Value);
+    }
+});
+builder.Services.AddSingleton<TaskScoperHostedService>();
+builder.Services.AddSingleton<TaskFlowHostedService>();
 // Register InMemoryGoalStore
 builder.Services.AddInMemoryGoalStore();
 
@@ -100,8 +132,8 @@ builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProviderRegi
 // CodeGraph context for dashboard (PRD-006); scenario sets context when code-graph-demo runs
 builder.Services.AddSingleton<ICodeGraphContextAccessor, CodeGraphContextAccessor>();
 
-// Register MCP services as hosted services
-builder.Services.AddHostedService<McpListener>();
+// Register MCP listener as a singleton and start it after HTTP is up.
+builder.Services.AddSingleton<McpListener>();
 
 // Register endpoint info so tests can discover chosen port when 0 is used
 builder.Services.AddSingleton<AgctorSDK.Host.Models.McpEndpointInfo>();
@@ -160,15 +192,96 @@ if (app.Environment.IsDevelopment())
     app.UseCors("AllowAll");
 }
 
-app.UseHttpsRedirection();
 app.UseAuthorization();
 app.UseStaticFiles();
 app.MapControllers();
 app.MapRazorPages();
+app.MapGet("/", () => Results.Redirect("/swagger/"));
+app.MapGet("/swagger", () => Results.Redirect("/swagger/"));
 
-// The actual port may still be 0 here (ephemeral). Log configuration value only.
+// The MCP listener uses a separate TCP port from the HTTP server.
 var configuredPort = builder.Configuration.GetValue<int>("Mcp:Port", 8080);
 Console.WriteLine($"🔌 MCP listener configured to start on TCP port {configuredPort} (0 means dynamic)");
+
+// Advertise the expected HTTP URL before entering the host run loop.
+var configuredHttpUrls = builder.Configuration["ASPNETCORE_URLS"]
+    ?? builder.WebHost.GetSetting("urls")
+    ?? "http://localhost:5274";
+Console.WriteLine($"🌐 HTTP server starting on: {configuredHttpUrls}");
+
+var primaryHttpUrl = configuredHttpUrls
+    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .FirstOrDefault(url => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+if (!string.IsNullOrWhiteSpace(primaryHttpUrl))
+{
+    Console.WriteLine($"📘 Swagger UI: {primaryHttpUrl.TrimEnd('/')}/swagger");
+}
+
+// Keep MCP startup independent from the HTTP host so Swagger remains reachable.
+McpListener? mcpListener = null;
+TaskScoperHostedService? taskScoper = null;
+TaskFlowHostedService? taskFlow = null;
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    Console.WriteLine($"🌐 HTTP server listening on: {string.Join(", ", app.Urls)}");
+
+    mcpListener = app.Services.GetRequiredService<McpListener>();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await mcpListener.StartAsync(app.Lifetime.ApplicationStopping);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ MCP listener failed to start: {ex.Message}");
+        }
+    });
+
+    taskScoper = app.Services.GetRequiredService<TaskScoperHostedService>();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await taskScoper.StartAsync(app.Lifetime.ApplicationStopping);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Task scoper failed to start: {ex.Message}");
+        }
+    });
+
+    taskFlow = app.Services.GetRequiredService<TaskFlowHostedService>();
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            await taskFlow.StartAsync(app.Lifetime.ApplicationStopping);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Task flow failed to start: {ex.Message}");
+        }
+    });
+});
+
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    if (mcpListener != null)
+    {
+        _ = Task.Run(() => mcpListener.StopAsync(CancellationToken.None));
+    }
+
+    if (taskScoper != null)
+    {
+        _ = Task.Run(() => taskScoper.StopAsync(CancellationToken.None));
+    }
+
+    if (taskFlow != null)
+    {
+        _ = Task.Run(() => taskFlow.StopAsync(CancellationToken.None));
+    }
+});
 
 app.Run();
 

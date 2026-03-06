@@ -98,3 +98,9 @@ This project emphasizes:
 ## License
 
 [Add your license information here] 
+
+## How to run from Terminal
+
+dotnet run --project AgctorSDK.Host --launch-profile "AgctorSDK.Host InMemory"
+
+dotnet run --project AgctorSDK.Host --launch-profile "AgctorSDK.Host Proto"

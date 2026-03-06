@@ -54,6 +54,12 @@ namespace AgctorSDK.Host.Models
         public object? ResponseData { get; set; }
 
         /// <summary>
+        /// Optional trace identifier (from OpenTelemetry) for this message.
+        /// Used by the dashboard to render per-message traces.
+        /// </summary>
+        public string? TraceId { get; set; }
+
+        /// <summary>
         /// Optional error message if the operation failed.
         /// </summary>
         public string? ErrorMessage { get; set; }
@@ -305,4 +311,48 @@ namespace AgctorSDK.Host.Models
         string ScenarioName,
         string? Description
     );
+
+    /// <summary>
+    /// Response model for trace visualization (per-message flow diagram).
+    /// </summary>
+    public class TraceVisualizationResponse
+    {
+        /// <summary>Trace identifier (e.g. OpenTelemetry trace id).</summary>
+        public string TraceId { get; set; } = string.Empty;
+
+        /// <summary>Mermaid sequenceDiagram text representing the message flow.</summary>
+        public string Mermaid { get; set; } = string.Empty;
+
+        /// <summary>Optional external viewer URL (Jaeger/Zipkin) for this trace.</summary>
+        public string? ExternalViewerUrl { get; set; }
+    }
+
+    /// <summary>
+    /// Timeline response used by the dashboard trace timeline component.
+    /// </summary>
+    public class TraceTimelineResponse
+    {
+        public string TraceId { get; set; } = string.Empty;
+        public DateTimeOffset? StartedAtUtc { get; set; }
+        public double TotalDurationMs { get; set; }
+        public string? ExternalViewerUrl { get; set; }
+        public List<TraceTimelineEventDto> Events { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Single event/span in a trace timeline.
+    /// </summary>
+    public class TraceTimelineEventDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? ParentId { get; set; }
+        public string Label { get; set; } = string.Empty;
+        public string? Name { get; set; }
+        public int Sequence { get; set; }
+        public int Depth { get; set; }
+        public DateTimeOffset StartedAtUtc { get; set; }
+        public double StartOffsetMs { get; set; }
+        public double DurationMs { get; set; }
+        public bool HasResult { get; set; }
+    }
 } 

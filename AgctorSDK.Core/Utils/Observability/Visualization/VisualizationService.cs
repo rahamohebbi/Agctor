@@ -27,7 +27,7 @@ namespace AgctorSDK.Core.Utils.Observability.Visualization
         /// <param name="activityTracker">Activity tracker for accessing traces</param>
         /// <param name="logger">Logger for diagnostic information</param>
         /// <param name="options">Visualization configuration options</param>
-        public VisualizationService(
+        private VisualizationService(
             IAgentRegistry agentRegistry,
             IActivityTracker activityTracker,
             IAgctorLogger logger,

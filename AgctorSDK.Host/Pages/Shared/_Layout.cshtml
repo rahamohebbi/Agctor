@@ -8,6 +8,12 @@
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: {} } }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        if (window.mermaid) {
+            window.mermaid.initialize({ startOnLoad: false });
+        }
+    </script>
 </head>
 <body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
     <!-- Flowbite navbar -->

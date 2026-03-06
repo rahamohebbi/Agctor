@@ -5,6 +5,7 @@ using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
+using AgctorSDK.Core.Utils.ActivityTracking;
 
 namespace AgctorSDK.Host.Controllers
 {
@@ -22,19 +23,22 @@ namespace AgctorSDK.Host.Controllers
         private readonly IAgentFactory _agentFactory;
         private readonly IAgentDetailProviderRegistry _detailProviderRegistry;
         private readonly ILogger<AgentsController> _logger;
+        private readonly IActivityTracker? _activityTracker;
 
         public AgentsController(
             IMessageDispatcher messageDispatcher,
             IAgentRegistry agentRegistry,
             IAgentFactory agentFactory,
             IAgentDetailProviderRegistry detailProviderRegistry,
-            ILogger<AgentsController> logger)
+            ILogger<AgentsController> logger,
+            IActivityTracker? activityTracker = null)
         {
             _messageDispatcher = messageDispatcher ?? throw new ArgumentNullException(nameof(messageDispatcher));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
             _detailProviderRegistry = detailProviderRegistry ?? throw new ArgumentNullException(nameof(detailProviderRegistry));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _activityTracker = activityTracker;
         }
 
         /// <summary>
@@ -83,6 +87,20 @@ namespace AgctorSDK.Host.Controllers
 
                 // Send message through dispatcher
                 var response = await _messageDispatcher.SendMessageAsync(agentId, request, cancellationToken);
+
+                // Attach whichever activity id is available so the dashboard can request a trace visualization.
+                if (_activityTracker != null)
+                {
+                    var ctx = _activityTracker.ExtractContext();
+                    if (ctx.TryGetValue("trace-id", out var traceId) && !string.IsNullOrWhiteSpace(traceId))
+                    {
+                        response.TraceId = traceId;
+                    }
+                    else if (ctx.TryGetValue("activity-id", out var activityId) && !string.IsNullOrWhiteSpace(activityId))
+                    {
+                        response.TraceId = activityId;
+                    }
+                }
 
                 // Return appropriate HTTP status based on message status
                 return response.Status switch

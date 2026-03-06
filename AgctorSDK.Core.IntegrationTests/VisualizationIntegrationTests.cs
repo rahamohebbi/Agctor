@@ -5,6 +5,7 @@ using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.Observability.Visualization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using OpenTelemetry;
 using OpenTelemetry.Trace;
 using Xunit;
@@ -47,11 +48,11 @@ namespace AgctorSDK.Core.IntegrationTests
                     null!, // No agent registry needed for test
                     activityTracker,
                     logger,
-                    new VisualizationOptions
+                    Options.Create(new VisualizationOptions
                     {
                         TraceViewerType = TraceViewerType.Jaeger,
                         JaegerBaseUrl = "http://localhost:16686"
-                    });
+                    }));
                 
                 // Create a test trace
                 string traceId;

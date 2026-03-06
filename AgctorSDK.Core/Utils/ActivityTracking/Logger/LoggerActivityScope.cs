@@ -30,18 +30,24 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         /// <inheritdoc/>
         public void SetAttribute(string key, string value)
         {
+            if (string.Equals(key, "display.name", StringComparison.OrdinalIgnoreCase))
+            {
+                _activityInfo.DisplayName = value;
+            }
             _logger.Debug($"Activity [{_activityInfo.Id}] attribute: {key}={value}");
         }
         
         /// <inheritdoc/>
         public void SetStatus(ActivityStatus status, string? description = null)
         {
+            _activityInfo.Status = status;
             _logger.Debug($"Activity [{_activityInfo.Id}] status: {status} {description ?? ""}");
         }
         
         /// <inheritdoc/>
         public void RecordEvent(string name, IReadOnlyDictionary<string, object>? attributes = null)
         {
+            _activityInfo.DisplayName ??= _activityInfo.Name;
             var attrString = "";
             if (attributes != null && attributes.Count > 0)
             {
@@ -59,6 +65,7 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         /// <inheritdoc/>
         public void RecordException(Exception exception)
         {
+            _activityInfo.Status = ActivityStatus.Error;
             _logger.Error(exception, $"Activity [{_activityInfo.Id}] exception: {exception.Message}");
         }
         
@@ -67,6 +74,10 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         {
             if (!_disposed)
             {
+                if (_activityInfo.Status == ActivityStatus.InProgress)
+                {
+                    _activityInfo.Status = ActivityStatus.Completed;
+                }
                 _tracker.EndActivity(_activityInfo);
                 _disposed = true;
             }
