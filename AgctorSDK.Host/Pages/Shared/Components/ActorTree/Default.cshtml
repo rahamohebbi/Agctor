@@ -1,0 +1,88 @@
+@model AgctorSDK.Host.Models.ActorTreeComponentModel
+<div id="@Model.ComponentId"
+     data-empty-message="@Model.EmptyMessage"
+     class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+    <h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">@Model.Title</h2>
+    <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">@Model.Description</p>
+    <div data-role="content" class="overflow-x-auto">
+        <p class="text-gray-500 dark:text-gray-400">@Model.EmptyMessage</p>
+    </div>
+</div>
+
+<script>
+(function() {
+    if (!window.agctorActorTree) {
+        function esc(value) {
+            const div = document.createElement('div');
+            div.textContent = value ?? '';
+            return div.innerHTML;
+        }
+
+        function typeBadgeClass(type) {
+            const normalized = (type || '').toLowerCase();
+            if (normalized.includes('solution')) return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
+            if (normalized.includes('project')) return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+            if (normalized.includes('file')) return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
+            if (normalized.includes('class')) return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300';
+            if (normalized.includes('method')) return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-300';
+            return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        }
+
+        function renderNode(node, depth) {
+            if (!node) return '';
+
+            const indent = depth * 16;
+            const type = node.actorType || node.ActorType || '';
+            const name = node.name || node.Name || '(unnamed)';
+            const path = node.physicalPath || node.PhysicalPath || '';
+            const id = node.id || node.Id || '';
+            const children = node.children || node.Children || [];
+            const hasChildren = Array.isArray(children) && children.length > 0;
+            const nodeId = 'node-' + (id || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '-');
+
+            let html = '<div class="border-l-2 border-gray-200 dark:border-gray-600 ml-2 pl-3 py-1" style="margin-left: ' + indent + 'px">';
+            html += '<div class="flex items-start gap-2 flex-wrap">';
+            html += '<span class="text-xs font-medium px-2 py-0.5 rounded ' + typeBadgeClass(type) + '">' + esc(type) + '</span>';
+            html += '<span class="font-medium text-gray-900 dark:text-white">' + esc(name) + '</span>';
+            if (path) {
+                html += '<span class="text-sm text-gray-500 dark:text-gray-400 truncate" title="' + esc(path) + '">' + esc(path) + '</span>';
+            }
+            html += '</div>';
+
+            if (hasChildren) {
+                html += '<div class="mt-1 space-y-0" id="' + esc(nodeId) + '-children">';
+                for (let i = 0; i < children.length; i++) {
+                    html += renderNode(children[i], depth + 1);
+                }
+                html += '</div>';
+            }
+
+            html += '</div>';
+            return html;
+        }
+
+        function render(id, actorTree) {
+            const root = document.getElementById(id);
+            if (!root) return;
+
+            const content = root.querySelector('[data-role="content"]');
+            if (!content) return;
+
+            if (!actorTree) {
+                content.innerHTML = '<p class="text-gray-500 dark:text-gray-400">' + esc(root.dataset.emptyMessage || 'No actor tree available.') + '</p>';
+                return;
+            }
+
+            content.innerHTML = '<div class="space-y-0 text-sm">' + renderNode(actorTree, 0) + '</div>';
+        }
+
+        function clear(id) {
+            render(id, null);
+        }
+
+        window.agctorActorTree = { render, clear };
+    }
+
+    window.agctorActorTree.clear('@Model.ComponentId');
+})();
+</script>
