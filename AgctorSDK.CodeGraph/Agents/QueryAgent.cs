@@ -5,6 +5,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Messages;
 using System.Collections.Generic;
 using AgctorSDK.Core.Interfaces;
+using System.Text.RegularExpressions;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -82,6 +83,11 @@ namespace AgctorSDK.CodeGraph.Agents
                 headers: promptHeaders,
                 cancellationToken: cancellationToken);
 
+            if (string.IsNullOrWhiteSpace(context))
+            {
+                return BuildNoContextMessage(prompt);
+            }
+
             // short-circuit: if context already contains the direct answer for a purely structural query
             if (!string.IsNullOrWhiteSpace(context) && IsDirectAnswerPrompt(prompt))
                 return context;
@@ -105,7 +111,7 @@ ANSWER:";
                 return System.Text.RegularExpressions.Regex.IsMatch(
                     p,
                     @"\b(list|show|lines? of code|classes?)\b",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    RegexOptions.IgnoreCase);
             }
 
             // 3. Ask LLM
@@ -118,6 +124,30 @@ ANSWER:";
                 cancellationToken: cancellationToken);
 
             return answer;
+        }
+
+        private static string BuildNoContextMessage(string prompt)
+        {
+            if (IsCodeChangePrompt(prompt))
+            {
+                return "query-agent answers questions about existing indexed code and cannot create, edit, or delete files. Use coder-agent for code changes or refactor-agent for refactors.";
+            }
+
+            return "query-agent could not find matching indexed code for that question. Click Index now and ask about existing code, classes, methods, or files.";
+        }
+
+        private static bool IsCodeChangePrompt(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                return false;
+            }
+
+            // Treat create/edit/refactor wording as a code-change request so the user gets a routing hint.
+            return Regex.IsMatch(
+                prompt,
+                @"\b(create|add|write|implement|modify|edit|update|delete|remove|rename|refactor)\b",
+                RegexOptions.IgnoreCase);
         }
 
         protected override bool ShouldDecomposeTask(string prompt) => false; // orchestrator just forwards

@@ -11,6 +11,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.CodeGraph.Intents;
+using AgctorSDK.CodeGraph.Messages;
 using AgctorSDK.CodeGraph.Snippets;
 
 namespace AgctorSDK.CodeGraph.Agents
@@ -26,18 +27,21 @@ namespace AgctorSDK.CodeGraph.Agents
         private EmbeddingStoreActor _storeActor = null!;
         private CodeGraphActorBase _root = null!;
         private IReadOnlyList<IIntentResolver> _resolvers = Array.Empty<IIntentResolver>();
+        private string _embeddingCoordinatorAgentId = string.Empty;
 
         public SearchAgent(string id,
                            IEmbeddingGenerator generator,
                            EmbeddingStoreActor storeActor,
                            CodeGraphActorBase root,
-                           IEnumerable<IIntentResolver> resolvers)
+                           IEnumerable<IIntentResolver> resolvers,
+                           string embeddingCoordinatorAgentId = "")
             : base(id)
         {
             _generator = generator;
             _storeActor = storeActor;
             _root = root;
             _resolvers = resolvers?.ToList() ?? throw new ArgumentNullException(nameof(resolvers));
+            _embeddingCoordinatorAgentId = embeddingCoordinatorAgentId ?? string.Empty;
         }
 
         /// <summary>
@@ -48,12 +52,14 @@ namespace AgctorSDK.CodeGraph.Agents
         public void Configure(IEmbeddingGenerator generator,
                               EmbeddingStoreActor storeActor,
                               CodeGraphActorBase root,
-                              IEnumerable<IIntentResolver> resolvers)
+                              IEnumerable<IIntentResolver> resolvers,
+                              string embeddingCoordinatorAgentId = "")
         {
             _generator = generator ?? throw new ArgumentNullException(nameof(generator));
             _storeActor = storeActor ?? throw new ArgumentNullException(nameof(storeActor));
             _root = root ?? throw new ArgumentNullException(nameof(root));
             _resolvers = resolvers?.ToList() ?? throw new ArgumentNullException(nameof(resolvers));
+            _embeddingCoordinatorAgentId = embeddingCoordinatorAgentId ?? string.Empty;
         }
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -210,6 +216,12 @@ namespace AgctorSDK.CodeGraph.Agents
                     break; // fall-through to vector search below
             }
 
+            var readinessError = await EnsureEmbeddingsReadyAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(readinessError))
+            {
+                return readinessError;
+            }
+
             var vec = await _generator.GenerateEmbeddingAsync(prompt);
             var queryMsg = new QueryEmbeddingMessage(vec, 5);
             var envelope = new MessageEnvelope(queryMsg);
@@ -231,6 +243,34 @@ namespace AgctorSDK.CodeGraph.Agents
                 }
             }
             return sb.ToString().Trim();
+        }
+
+        private async Task<string?> EnsureEmbeddingsReadyAsync(CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(_embeddingCoordinatorAgentId))
+            {
+                return null;
+            }
+
+            if (AgentFactory?.RuntimeAdapter == null)
+            {
+                return "Semantic search is unavailable because the embedding coordinator is not configured with a runtime.";
+            }
+
+            var result = await AgentFactory.RuntimeAdapter.SendMessageAsync<EmbeddingReadyResult>(
+                _embeddingCoordinatorAgentId,
+                new EnsureEmbeddingsReadyMessage(ForceRefresh: false, Reason: "semantic-search"),
+                timeout: TimeSpan.FromSeconds(120),
+                senderId: Id,
+                headers: new Dictionary<string, string> { ["MessageType"] = "EnsureEmbeddingsReady" },
+                cancellationToken: cancellationToken);
+
+            if (result.IsReady)
+            {
+                return null;
+            }
+
+            return $"Semantic search is unavailable because embeddings are not ready. {result.LastError ?? "Indexing did not complete successfully."}";
         }
 
         protected override async Task ProcessPromptInternalAsync(string prompt, CancellationToken cancellationToken)

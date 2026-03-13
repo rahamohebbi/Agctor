@@ -7,7 +7,111 @@
     <div data-role="content" class="overflow-x-auto">
         <p class="text-gray-500 dark:text-gray-400">@Model.EmptyMessage</p>
     </div>
+
+    <div data-role="modal"
+         class="fixed inset-0 z-50 items-center justify-center bg-gray-900/60 p-4"
+         style="display:none;"
+         aria-hidden="true">
+        <div class="w-full max-w-5xl rounded-lg bg-white shadow-xl dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                <div>
+                    <h3 data-role="modal-title" class="text-lg font-semibold text-gray-900 dark:text-white">File preview</h3>
+                    <p data-role="modal-path" class="text-xs text-gray-500 dark:text-gray-400"></p>
+                </div>
+                <button type="button"
+                        data-role="close-modal"
+                        class="rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+                    Close
+                </button>
+            </div>
+            <div class="p-4">
+                <p data-role="modal-status" class="mb-3 text-sm text-gray-500 dark:text-gray-400">Select a file to preview.</p>
+                <pre data-role="modal-content"
+                     class="max-h-[70vh] overflow-auto rounded bg-gray-100 p-4 text-xs text-gray-800 dark:bg-gray-900 dark:text-gray-100"></pre>
+            </div>
+        </div>
+    </div>
 </div>
+
+<style>
+    .agctor-actor-tree-file {
+        display: flex;
+        width: 100%;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        border: 1px solid transparent;
+        padding: 0.35rem 0.5rem;
+        margin: 0;
+        background: rgba(59, 130, 246, 0.04);
+        cursor: pointer;
+        text-align: left;
+        border-radius: 0.375rem;
+        transition: background-color 120ms ease, border-color 120ms ease;
+    }
+
+    .agctor-actor-tree-file,
+    .agctor-actor-tree-file * {
+        cursor: pointer;
+    }
+
+    .agctor-actor-tree-file:hover,
+    .agctor-actor-tree-file:focus-visible {
+        background: rgba(59, 130, 246, 0.10);
+        border-color: rgba(59, 130, 246, 0.30);
+    }
+
+    .agctor-actor-tree-file:hover .agctor-actor-tree-file-name,
+    .agctor-actor-tree-file:focus-visible .agctor-actor-tree-file-name {
+        text-decoration: underline;
+    }
+
+    .agctor-actor-tree-file-main {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+        flex: 1 1 auto;
+    }
+
+    .agctor-actor-tree-file-name {
+        color: rgb(29 78 216);
+        font-weight: 600;
+    }
+
+    .agctor-actor-tree-file-path {
+        color: rgb(107 114 128);
+        font-size: 0.75rem;
+        line-height: 1.25rem;
+        word-break: break-all;
+    }
+
+    .dark .agctor-actor-tree-file-path {
+        color: rgb(156 163 175);
+    }
+
+    .agctor-actor-tree-file-action {
+        color: rgb(29 78 216);
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+        padding-top: 0.1rem;
+    }
+
+    .dark .agctor-actor-tree-file-action {
+        color: rgb(147 197 253);
+    }
+
+    .dark .agctor-actor-tree-file-name {
+        color: rgb(147 197 253);
+    }
+
+    .agctor-actor-tree-file:focus-visible {
+        outline: 2px solid rgb(59 130 246);
+        outline-offset: 2px;
+        border-radius: 0.25rem;
+    }
+}</style>
 
 <script>
 (function() {
@@ -33,19 +137,31 @@
 
             const indent = depth * 16;
             const type = node.actorType || node.ActorType || '';
+            const normalizedType = type.toLowerCase();
             const name = node.name || node.Name || '(unnamed)';
             const path = node.physicalPath || node.PhysicalPath || '';
             const id = node.id || node.Id || '';
             const children = node.children || node.Children || [];
             const hasChildren = Array.isArray(children) && children.length > 0;
+            const isFile = normalizedType.includes('file') && !!path;
             const nodeId = 'node-' + (id || Math.random().toString(36).slice(2)).replace(/[^a-z0-9]/gi, '-');
 
             let html = '<div class="border-l-2 border-gray-200 dark:border-gray-600 ml-2 pl-3 py-1" style="margin-left: ' + indent + 'px">';
             html += '<div class="flex items-start gap-2 flex-wrap">';
             html += '<span class="text-xs font-medium px-2 py-0.5 rounded ' + typeBadgeClass(type) + '">' + esc(type) + '</span>';
-            html += '<span class="font-medium text-gray-900 dark:text-white">' + esc(name) + '</span>';
-            if (path) {
+            if (isFile) {
+                html += '<button type="button" data-role="file-node" data-path="' + esc(path) + '" class="agctor-actor-tree-file">';
+                html += '<span class="agctor-actor-tree-file-main">';
+                html += '<span class="agctor-actor-tree-file-name">' + esc(name) + '</span>';
+                html += '<span class="agctor-actor-tree-file-path" title="' + esc(path) + '">' + esc(path) + '</span>';
+                html += '</span>';
+                html += '<span class="agctor-actor-tree-file-action">Preview</span>';
+                html += '</button>';
+            } else {
+                html += '<span class="font-medium text-gray-900 dark:text-white">' + esc(name) + '</span>';
+                if (path) {
                 html += '<span class="text-sm text-gray-500 dark:text-gray-400 truncate" title="' + esc(path) + '">' + esc(path) + '</span>';
+                }
             }
             html += '</div>';
 
@@ -80,9 +196,88 @@
             render(id, null);
         }
 
-        window.agctorActorTree = { render, clear };
+        function openModal(root) {
+            const modal = root.querySelector('[data-role="modal"]');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeModal(root) {
+            const modal = root.querySelector('[data-role="modal"]');
+            if (!modal) return;
+            modal.style.display = 'none';
+            modal.setAttribute('aria-hidden', 'true');
+        }
+
+        function setModalState(root, statusText, contentText, path, title) {
+            const status = root.querySelector('[data-role="modal-status"]');
+            const content = root.querySelector('[data-role="modal-content"]');
+            const pathEl = root.querySelector('[data-role="modal-path"]');
+            const titleEl = root.querySelector('[data-role="modal-title"]');
+
+            if (status) status.textContent = statusText || '';
+            if (content) content.textContent = contentText || '';
+            if (pathEl) pathEl.textContent = path || '';
+            if (titleEl) titleEl.textContent = title || 'File preview';
+        }
+
+        async function showFile(id, path) {
+            const root = document.getElementById(id);
+            if (!root || !path) return;
+
+            setModalState(root, 'Loading file content...', '', path, 'File preview');
+            openModal(root);
+
+            try {
+                const response = await fetch('/api/CodeGraph/file-content?path=' + encodeURIComponent(path));
+                if (!response.ok) {
+                    setModalState(root, 'Unable to load file content.', 'The selected file could not be loaded from the active actor tree.', path, 'File preview');
+                    return;
+                }
+
+                const data = await response.json();
+                setModalState(root, 'Showing file content.', data.content || '', data.path || path, data.fileName || 'File preview');
+            } catch (_) {
+                setModalState(root, 'Unable to load file content.', 'The selected file could not be loaded from the active actor tree.', path, 'File preview');
+            }
+        }
+
+        function attachEvents(id) {
+            const root = document.getElementById(id);
+            if (!root || root.dataset.actorTreeBound === 'true') return;
+            root.dataset.actorTreeBound = 'true';
+
+            root.addEventListener('click', function(event) {
+                const fileNode = event.target.closest('[data-role="file-node"]');
+                if (fileNode && root.contains(fileNode)) {
+                    showFile(id, fileNode.dataset.path || '');
+                    return;
+                }
+
+                const close = event.target.closest('[data-role="close-modal"]');
+                if (close && root.contains(close)) {
+                    closeModal(root);
+                    return;
+                }
+
+                const modal = root.querySelector('[data-role="modal"]');
+                if (modal && event.target === modal) {
+                    closeModal(root);
+                }
+            });
+
+            root.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    closeModal(root);
+                }
+            });
+        }
+
+        window.agctorActorTree = { render, clear, showFile, attachEvents };
     }
 
+    window.agctorActorTree.attachEvents('@Model.ComponentId');
     window.agctorActorTree.clear('@Model.ComponentId');
 })();
 </script>

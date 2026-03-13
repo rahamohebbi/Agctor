@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
@@ -15,6 +16,7 @@ using AgctorSDK.Core.Utils.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using AgctorSDK.CodeGraph.Intents;
 using AgctorSDK.CodeGraph.Llm;
+using AgctorSDK.CodeGraph.Messages;
 
 namespace AgctorSDK.Host.Services.Scenarios
 {
@@ -24,6 +26,18 @@ namespace AgctorSDK.Host.Services.Scenarios
     /// </summary>
     public sealed class CodeGraphDemoScenario : IScenario
     {
+        private static readonly string[] DemoAgentIds =
+        {
+            "indexer-agent",
+            "embedding-coordinator-agent",
+            "search-agent",
+            "llm-agent",
+            "intent-agent",
+            "query-agent",
+            "coder-agent",
+            "refactor-agent"
+        };
+
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
         private readonly ICodeGraphContextAccessor _codeGraphContextAccessor;
@@ -48,6 +62,13 @@ namespace AgctorSDK.Host.Services.Scenarios
         {
             try
             {
+                var useStubEmbeddings = parameters != null &&
+                    parameters.TryGetValue("useStubEmbeddings", out var useStubEmbeddingsValue) &&
+                    bool.TryParse(useStubEmbeddingsValue?.ToString(), out var parsedUseStubEmbeddings) &&
+                    parsedUseStubEmbeddings;
+
+                await ResetExistingDemoAgentsAsync();
+
                 // 1. Create a temporary workspace with a simple C# source file.
                 var tempDir = Path.Combine(Path.GetTempPath(), $"agctor-demo-{Guid.NewGuid():N}");
                 Directory.CreateDirectory(tempDir);
@@ -108,16 +129,19 @@ namespace AgctorSDK.Host.Services.Scenarios
 
                 var vectorStore = new InMemoryVectorStore();
                 var storeActor = new EmbeddingStoreActor("vector-store", vectorStore);
-                IEmbeddingGenerator embeddingGen;
-                try
+                IEmbeddingGenerator embeddingGen = new StubEmbeddingGenerator();
+                if (!useStubEmbeddings)
                 {
-                    var http = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
-                    embeddingGen = new OllamaEmbeddingGenerator(http);
-                }
-                catch (Exception)
-                {
-                    // Fallback for environments without Ollama running.
-                    embeddingGen = new StubEmbeddingGenerator();
+                    try
+                    {
+                        var http = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
+                        embeddingGen = new OllamaEmbeddingGenerator(http);
+                    }
+                    catch (Exception)
+                    {
+                        // Fallback for environments without Ollama running.
+                        embeddingGen = new StubEmbeddingGenerator();
+                    }
                 }
 
                 // 4. Spawn application agents.
@@ -128,9 +152,25 @@ namespace AgctorSDK.Host.Services.Scenarios
                 const string queryId   = "query-agent";
                 const string coderId   = "coder-agent";
                 const string refactorId = "refactor-agent";
+                const string embeddingCoordinatorId = "embedding-coordinator-agent";
+
+                // Inject an AgentFactory so agents can use the runtime for shared orchestration.
+                var consoleLogger = new AgctorConsoleLogger();
+                var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
+                var agentFactory = new AgctorSDK.Core.Agents.AgentFactory(_runtimeAdapter, sp, consoleLogger, _agentRegistry);
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CodeEditorTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
+                agentFactory.RegisterAgentType<AgctorSDK.CodeGraph.Agents.RefactorAgent>();
 
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
                 indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
+                indexerAgent.SetAgentFactory(agentFactory);
+
+                var embeddingCoordinatorAgent = new EmbeddingCoordinatorAgent(embeddingCoordinatorId, indexerId);
+                embeddingCoordinatorAgent.Configure(indexerId);
+                embeddingCoordinatorAgent.SetAgentFactory(agentFactory);
 
                 var resolvers = new List<IIntentResolver>
                 {
@@ -138,17 +178,20 @@ namespace AgctorSDK.Host.Services.Scenarios
                     new HeuristicIntentResolver(),
                     new ProxyIntentResolver(_runtimeAdapter, intentId)
                 };
-                var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution, resolvers);
+                var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution, resolvers, embeddingCoordinatorId);
+                searchAgent.SetAgentFactory(agentFactory);
 
                 var llmAgent     = new LLMAgent(llmId); // Uses default Ollama settings – OK for demo.
+                llmAgent.SetAgentFactory(agentFactory);
 
                 // IntentDetectionAgent (LLM-based)
                 var httpCli = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
                 ILlmClient llmClient = new OllamaLlmClient(httpCli);
                 var intentAgent = new IntentDetectionAgent(intentId, llmClient);
+                intentAgent.SetAgentFactory(agentFactory);
 
                 // Manually initialize and then register the prebuilt agents
-                foreach (var agent in new Agent[] { indexerAgent, searchAgent, llmAgent, intentAgent })
+                foreach (var agent in new Agent[] { indexerAgent, embeddingCoordinatorAgent, searchAgent, llmAgent, intentAgent })
                 {
                     await agent.InitializeAsync();
                     await _runtimeAdapter.RegisterActorAsync(agent);
@@ -160,19 +203,6 @@ namespace AgctorSDK.Host.Services.Scenarios
                     queryId,
                     id => new QueryAgent(id, searchId, llmId));
 
-                // Inject an AgentFactory so QueryAgent has access to the runtime for sub-messages.
-                // A lightweight factory is sufficient for the demo (no DI container required).
-                var consoleLogger = new AgctorConsoleLogger();
-                var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
-                var agentFactory = new AgctorSDK.Core.Agents.AgentFactory(_runtimeAdapter, sp, consoleLogger, _agentRegistry);
-
-                // Ensure factory knows core tool and coder agents
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CodeEditorTool>();
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
-                agentFactory.RegisterAgentType<AgctorSDK.CodeGraph.Agents.RefactorAgent>();
-
                 spawnedQuery.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedQuery);
 
@@ -182,6 +212,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                     id => new CoderAgent(id));
 
                 spawnedCoder.SetAgentFactory(agentFactory);
+                spawnedCoder.ConfigureEmbeddingCoordinator(embeddingCoordinatorId);
                 await _agentRegistry.RegisterAgentAsync(spawnedCoder);
 
                 // Spawn RefactorAgent
@@ -200,12 +231,41 @@ namespace AgctorSDK.Host.Services.Scenarios
                 _codeGraphContextAccessor.SetCurrent(new CodeGraphContextDto
                 {
                     ActorTree = actorTree,
-                    EmbeddingStoreSummary = new EmbeddingStoreSummaryDto { VectorCount = vectorCount }
+                    EmbeddingStoreSummary = new EmbeddingStoreSummaryDto
+                    {
+                        VectorCount = vectorCount,
+                        State = EmbeddingLifecycleState.NotReady.ToString(),
+                        IsReady = false,
+                        GraphVersion = 1,
+                        IndexedGraphVersion = 0
+                    }
                 });
                 // Live actor tree so dashboard shows Class/Method after Index and reflects code changes
                 _codeGraphContextAccessor.SetActorTreeProvider(() => ActorSerializer.ToDto(solution));
                 // Live embedding count so dashboard "Index now" updates the displayed count
                 _codeGraphContextAccessor.SetEmbeddingCountProvider(ct => vectorStore.CountAsync());
+                _codeGraphContextAccessor.SetEmbeddingSummaryProvider(async ct =>
+                {
+                    var status = await _runtimeAdapter.SendMessageAsync<EmbeddingStatusResult>(
+                        embeddingCoordinatorId,
+                        new GetEmbeddingStatusMessage(),
+                        timeout: TimeSpan.FromSeconds(15),
+                        senderId: Name,
+                        headers: new Dictionary<string, string> { ["MessageType"] = "GetEmbeddingStatus" },
+                        cancellationToken: ct);
+
+                    var count = await vectorStore.CountAsync();
+                    return new EmbeddingStoreSummaryDto
+                    {
+                        VectorCount = count,
+                        State = status.State.ToString(),
+                        IsReady = status.IsReady,
+                        GraphVersion = status.GraphVersion,
+                        IndexedGraphVersion = status.IndexedGraphVersion,
+                        LastIndexedAt = status.LastIndexedAt,
+                        LastError = status.LastError
+                    };
+                });
                 // Embedding records for debugging/visualization (GET /api/CodeGraph/embeddings)
                 _codeGraphContextAccessor.SetEmbeddingRecordsProvider(async ct =>
                 {
@@ -219,23 +279,78 @@ namespace AgctorSDK.Host.Services.Scenarios
                     }).ToList();
                 });
 
-                var created = new List<string> { indexerId, searchId, llmId, queryId, coderId, refactorId };
+                var activeDemoAgentIds = (await _agentRegistry.GetAllAgentIdsAsync())
+                    .Where(id => DemoAgentIds.Contains(id, StringComparer.Ordinal))
+                    .OrderBy(id => Array.IndexOf(DemoAgentIds, id))
+                    .ToList();
+
+                var missingAgentIds = DemoAgentIds
+                    .Except(activeDemoAgentIds, StringComparer.Ordinal)
+                    .ToList();
+
+                _logger.LogInformation(
+                    "CodeGraph demo active agents after setup: {AgentIds}",
+                    string.Join(", ", activeDemoAgentIds));
+
+                if (missingAgentIds.Count > 0)
+                {
+                    var error = $"CodeGraph demo setup incomplete. Missing agents: {string.Join(", ", missingAgentIds)}";
+                    _logger.LogError(error);
+                    return new ScenarioSetupResponse(false, Name, activeDemoAgentIds, new Dictionary<string, string>(), error);
+                }
+
                 var roles = new Dictionary<string, string>
                 {
                     [indexerId] = "Indexes CodeGraph and stores embeddings",
+                    [embeddingCoordinatorId] = "Coordinates embedding lifecycle and freshness",
                     [searchId]  = "Vector search over CodeGraph",
                     [llmId]     = "Large-language-model interface (Ollama)",
+                    [intentId]  = "Intent detection for code search prompts",
                     [queryId]   = "Query orchestrator",
                     [coderId]   = "Code editing / compile / test orchestration",
                     [refactorId] = "End-to-end refactor orchestrator"
                 };
 
-                return new ScenarioSetupResponse(true, Name, created, roles, null);
+                return new ScenarioSetupResponse(true, Name, activeDemoAgentIds, roles, null);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to set up CodeGraph demo scenario");
                 return new ScenarioSetupResponse(false, Name, new List<string>(), new Dictionary<string, string>(), ex.Message);
+            }
+        }
+
+        private async Task ResetExistingDemoAgentsAsync()
+        {
+            _logger.LogInformation("Resetting existing CodeGraph demo agents before setup");
+
+            _codeGraphContextAccessor.SetCurrent(null);
+            _codeGraphContextAccessor.SetActorTreeProvider(null);
+            _codeGraphContextAccessor.SetEmbeddingCountProvider(null);
+            _codeGraphContextAccessor.SetEmbeddingSummaryProvider(null);
+            _codeGraphContextAccessor.SetEmbeddingRecordsProvider(null);
+
+            foreach (var agentId in DemoAgentIds)
+            {
+                try
+                {
+                    await _runtimeAdapter.StopActorAsync(agentId);
+                    _logger.LogInformation("Stopped existing demo agent {AgentId}", agentId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Ignoring stop failure for demo agent {AgentId}", agentId);
+                }
+
+                try
+                {
+                    await _agentRegistry.UnregisterAgentAsync(agentId);
+                    _logger.LogInformation("Unregistered existing demo agent {AgentId}", agentId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Ignoring registry cleanup failure for demo agent {AgentId}", agentId);
+                }
             }
         }
 

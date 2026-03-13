@@ -27,8 +27,43 @@
     let configData = null;
     let agentsData = [];
     let currentScenario = null;
+    let lastLoadedAt = null;
+    const backendErrors = new Map();
+    let refreshTimer = null;
+    let selectedScenarioName = '';
 
     function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+    function setBackendError(key, message) {
+        if (!message) {
+            backendErrors.delete(key);
+            return;
+        }
+        backendErrors.set(key, message);
+    }
+
+    function clearBackendError(key) {
+        backendErrors.delete(key);
+    }
+
+    function renderBackendErrors() {
+        const errors = Array.from(backendErrors.entries());
+        if (errors.length === 0) return '';
+        return '<div class="p-4 mb-4 rounded-lg bg-red-50 border border-red-200 dark:bg-red-900/20 dark:border-red-800">' +
+            '<p class="text-sm font-medium text-red-800 dark:text-red-200">Backend issues</p>' +
+            '<ul class="mt-2 space-y-1 text-sm text-red-700 dark:text-red-300">' +
+            errors.map(([key, msg]) => '<li><strong>' + esc(key) + ':</strong> ' + esc(msg) + '</li>').join('') +
+            '</ul>' +
+            '</div>';
+    }
+
+    function refreshMetaText(list) {
+        const count = Array.isArray(list) ? list.length : 0;
+        const loaded = lastLoadedAt
+            ? new Date(lastLoadedAt).toLocaleTimeString()
+            : 'Not loaded yet';
+        return 'Showing ' + count + ' active agent(s). Last refreshed at ' + esc(loaded) + '.';
+    }
 
     function scenarioOptions(config) {
         const scenarios = config.scenarios || {};
@@ -42,10 +77,12 @@
     function render(config, agents, current) {
         const list = Array.isArray(agents) ? agents : [];
         const types = config.agentTypes ? Object.keys(config.agentTypes) : [];
+        const errorBlock = renderBackendErrors();
+        const effectiveSelectedScenario = selectedScenarioName || (current && current.scenarioName) || '';
         const currentBlock = current
             ? '<div class="p-4 mb-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"><p class="text-sm font-medium text-amber-800 dark:text-amber-200">Current scenario</p><p class="mt-1 font-semibold text-amber-900 dark:text-white">' + esc(current.scenarioName) + '</p>' + (current.description ? '<p class="mt-1 text-sm text-amber-700 dark:text-amber-300">' + esc(current.description) + '</p>' : '') + '</div>'
             : '<div class="p-4 mb-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700"><p class="text-sm text-gray-500 dark:text-gray-400">No scenario active for this session. Select a scenario below and click Apply to create and register its agents.</p></div>';
-        el.innerHTML = currentBlock + `
+        el.innerHTML = errorBlock + currentBlock + `
             <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
                 <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">Activate scenario</h2>
                 <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">Select a scenario and click Apply to create and register its agents in this session.</p>
@@ -59,6 +96,9 @@
                     <button type="button" data-apply-scenario class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
                         Apply
                     </button>
+                    <button type="button" data-refresh-agents class="px-4 py-2.5 text-sm font-medium text-gray-900 bg-gray-100 rounded-lg hover:bg-gray-200 focus:ring-4 focus:ring-gray-200 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 dark:focus:ring-gray-700">
+                        Refresh
+                    </button>
                 </div>
                 <div id="scenario-message" class="mt-3 min-h-[1.5rem] text-sm"></div>
             </div>
@@ -69,10 +109,17 @@
             </div>
             <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
                 <h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Active agents</h2>
-                <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">Agent instances created in this session (e.g. after applying a scenario above). Click an agent to view type-specific details.</p>
+                <p class="mb-1 text-sm text-gray-500 dark:text-gray-400">Agent instances created in this session (e.g. after applying a scenario above). Click an agent to view type-specific details.</p>
+                <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">${refreshMetaText(list)}</p>
                 ${list.length ? '<ul class="divide-y divide-gray-200 dark:divide-gray-700">' + list.map(a => '<li class="py-3"><a href="/Dashboard/AgentDetail/' + encodeURIComponent(a.id) + '" class="font-medium text-blue-600 dark:text-blue-500 hover:underline">' + esc(a.id) + '</a><span class="text-gray-500 dark:text-gray-400 text-sm ml-2">' + esc(a.type) + '</span></li>').join('') + '</ul>' : '<p class="text-gray-500 dark:text-gray-400">No agents. Select a scenario above and click Apply to activate agents.</p>'}
             </div>
         `;
+
+        const select = document.getElementById('scenario-select');
+        if (select) {
+            select.value = effectiveSelectedScenario;
+            selectedScenarioName = select.value || '';
+        }
     }
 
     function showScenarioMessage(msg, isError) {
@@ -82,6 +129,42 @@
         msgEl.className = 'mt-3 min-h-[1.5rem] text-sm ' + (isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
     }
 
+    async function fetchJson(url, errorKey, fallbackValue) {
+        try {
+            const res = await fetch(url);
+            const data = await res.json().catch(() => null);
+            if (!res.ok) {
+                const msg = (data && (data.message || data.errorMessage || data.title)) || ('Request failed with status ' + res.status);
+                setBackendError(errorKey, msg);
+                return fallbackValue;
+            }
+            clearBackendError(errorKey);
+            return data;
+        } catch (e) {
+            setBackendError(errorKey, e.message || 'Request failed');
+            return fallbackValue;
+        }
+    }
+
+    async function refreshRuntimeData(showInlineError) {
+        const [agents, current] = await Promise.all([
+            fetchJson('/api/agents', 'agents-api', agentsData),
+            fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario)
+        ]);
+
+        agentsData = Array.isArray(agents) ? agents : [];
+        currentScenario = current;
+        lastLoadedAt = Date.now();
+
+        if (configData) {
+            render(configData, agentsData, currentScenario);
+        }
+
+        if (showInlineError && backendErrors.size > 0) {
+            showScenarioMessage('One or more backend issues were detected. See the red panel above.', true);
+        }
+    }
+
     async function applyScenario() {
         const select = document.getElementById('scenario-select');
         if (!select || !select.value) {
@@ -89,6 +172,7 @@
             return;
         }
         const scenarioName = select.value;
+        selectedScenarioName = scenarioName;
         showScenarioMessage('Applying...', false);
         try {
             const res = await fetch('/api/Test/setup-scenario', {
@@ -97,35 +181,52 @@
                 body: JSON.stringify({ scenarioName: scenarioName, parameters: {} })
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) {
-                showScenarioMessage(data.message || 'Failed to apply scenario.', true);
+            if (!res.ok || data.success === false) {
+                const msg = data.errorMessage || data.message || 'Failed to apply scenario.';
+                setBackendError('scenario-apply', msg);
+                await refreshRuntimeData(false);
+                showScenarioMessage(msg, true);
                 return;
             }
+            clearBackendError('scenario-apply');
             const count = data.createdAgentIds ? data.createdAgentIds.length : 0;
             const successMsg = 'Scenario applied. ' + count + ' agent(s) created.';
-            agentsData = await fetch('/api/agents').then(r => r.json());
-            currentScenario = await fetch('/api/Test/current-scenario').then(r => r.json()).catch(() => null);
-            if (configData) render(configData, agentsData, currentScenario);
+            await refreshRuntimeData(false);
             showScenarioMessage(successMsg, false);
         } catch (e) {
-            showScenarioMessage('Error: ' + (e.message || 'Request failed.'), true);
+            const msg = 'Error: ' + (e.message || 'Request failed.');
+            setBackendError('scenario-apply', msg);
+            await refreshRuntimeData(false);
+            showScenarioMessage(msg, true);
         }
     }
 
     el.addEventListener('click', function(e) {
         if (e.target.matches('button[data-apply-scenario]')) applyScenario();
+        if (e.target.matches('button[data-refresh-agents]')) refreshRuntimeData(true);
     });
 
-    Promise.all([
-        fetch('/api/Config').then(r => r.json()),
-        fetch('/api/agents').then(r => r.json()),
-        fetch('/api/Test/current-scenario').then(r => r.json()).catch(() => null)
-    ])
-        .then(([config, agents, current]) => {
+    el.addEventListener('change', function(e) {
+        if (e.target.matches('#scenario-select')) {
+            selectedScenarioName = e.target.value || '';
+        }
+    });
+
+    fetchJson('/api/Config', 'config-api', null)
+        .then(async config => {
+            if (!config) {
+                el.innerHTML = '<div class="p-6 bg-red-50 border border-red-200 rounded-lg dark:bg-gray-800 dark:border-red-800"><p class="text-red-700 dark:text-red-400">Failed to load configuration. See the backend issues panel when available.</p></div>';
+                return;
+            }
+
             configData = config;
-            agentsData = agents;
-            currentScenario = current;
-            render(config, agents, current);
+            selectedScenarioName = (currentScenario && currentScenario.scenarioName) || selectedScenarioName;
+            await refreshRuntimeData(false);
+
+            if (refreshTimer) window.clearInterval(refreshTimer);
+            refreshTimer = window.setInterval(function() {
+                refreshRuntimeData(false);
+            }, 5000);
         })
         .catch(() => {
             el.innerHTML = '<div class="p-6 bg-red-50 border border-red-200 rounded-lg dark:bg-gray-800 dark:border-red-800"><p class="text-red-700 dark:text-red-400">Failed to load agents.</p></div>';

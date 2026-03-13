@@ -21,6 +21,12 @@ public class CodeGraphContextDto
 public class EmbeddingStoreSummaryDto
 {
     public int VectorCount { get; set; }
+    public string State { get; set; } = "NotReady";
+    public bool IsReady { get; set; }
+    public int GraphVersion { get; set; }
+    public int IndexedGraphVersion { get; set; }
+    public DateTimeOffset? LastIndexedAt { get; set; }
+    public string? LastError { get; set; }
 }
 
 /// <summary>

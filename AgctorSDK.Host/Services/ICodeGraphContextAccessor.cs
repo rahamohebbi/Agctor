@@ -36,6 +36,11 @@ public interface ICodeGraphContextAccessor
     void SetEmbeddingCountProvider(Func<CancellationToken, Task<int>>? provider);
 
     /// <summary>
+    /// Registers a provider that returns the current embedding lifecycle summary.
+    /// </summary>
+    void SetEmbeddingSummaryProvider(Func<CancellationToken, Task<EmbeddingStoreSummaryDto>>? provider);
+
+    /// <summary>
     /// Registers a provider that returns all embedding records for debugging/visualization.
     /// </summary>
     void SetEmbeddingRecordsProvider(Func<CancellationToken, Task<IReadOnlyList<EmbeddingRecordDto>>>? provider);

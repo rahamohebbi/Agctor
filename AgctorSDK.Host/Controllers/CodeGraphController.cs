@@ -1,6 +1,7 @@
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.IO;
 
 namespace AgctorSDK.Host.Controllers;
 
@@ -56,5 +57,68 @@ public class CodeGraphController : ControllerBase
         }
         var records = await _contextAccessor.GetEmbeddingRecordsAsync(cancellationToken);
         return Ok(records);
+    }
+
+    /// <summary>
+    /// Returns the content of a file that belongs to the active CodeGraph actor tree.
+    /// </summary>
+    [HttpGet("file-content")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<object>> GetFileContentAsync([FromQuery] string path, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return BadRequest(new { message = "A file path is required." });
+        }
+
+        var context = await _contextAccessor.GetCurrentAsync(cancellationToken);
+        if (context?.ActorTree == null)
+        {
+            _logger.LogDebug("File content requested but no CodeGraph context is active");
+            return NotFound(new { message = "CodeGraph context is not active." });
+        }
+
+        var fileNode = FindFileNode(context.ActorTree, path);
+        if (fileNode?.PhysicalPath == null || !System.IO.File.Exists(fileNode.PhysicalPath))
+        {
+            _logger.LogDebug("File content requested for path {Path} but it is not in the active actor tree", path);
+            return NotFound(new { message = "The selected file is not available in the active actor tree." });
+        }
+
+        var content = await System.IO.File.ReadAllTextAsync(fileNode.PhysicalPath, cancellationToken);
+        return Ok(new
+        {
+            fileName = fileNode.Name,
+            path = fileNode.PhysicalPath,
+            content
+        });
+    }
+
+    private static AgctorSDK.CodeGraph.Persistence.ActorSerializer.ActorDto? FindFileNode(
+        AgctorSDK.CodeGraph.Persistence.ActorSerializer.ActorDto node,
+        string path)
+    {
+        if (string.Equals(node.PhysicalPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return node;
+        }
+
+        if (node.Children == null)
+        {
+            return null;
+        }
+
+        foreach (var child in node.Children)
+        {
+            var match = FindFileNode(child, path);
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        return null;
     }
 }

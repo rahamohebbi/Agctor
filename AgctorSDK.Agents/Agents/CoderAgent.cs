@@ -26,8 +26,14 @@ namespace AgctorSDK.Core.Agents
         private string? _originalSenderId;
         private string? _correlationId;
         private TaskCompletionSource<ToolResult>? _responseTcs;
+        private string? _embeddingCoordinatorAgentId;
 
         public CoderAgent(string id) : base(id) { }
+
+        public void ConfigureEmbeddingCoordinator(string? embeddingCoordinatorAgentId)
+        {
+            _embeddingCoordinatorAgentId = embeddingCoordinatorAgentId;
+        }
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
@@ -170,6 +176,7 @@ namespace AgctorSDK.Core.Agents
 
             if (tr.IsSuccess)
             {
+                await MarkEmbeddingsStaleAsync(ct);
                 await FinalizeTask(_result, ct);
             }
             else
@@ -225,6 +232,29 @@ namespace AgctorSDK.Core.Agents
 
             await AgentFactory.RuntimeAdapter.SendMessageAsync(_originalSenderId, tr, Id, headers, ct);
             LogInfo($"[CoderAgent] Reply sent to {_originalSenderId}. Correlation={_correlationId} Success={tr.IsSuccess}");
+        }
+
+        private async Task MarkEmbeddingsStaleAsync(CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(_embeddingCoordinatorAgentId) || AgentFactory?.RuntimeAdapter == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(
+                    _embeddingCoordinatorAgentId,
+                    "mark embeddings stale",
+                    senderId: Id,
+                    headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
+                    cancellationToken: cancellationToken);
+                LogInfo($"[CoderAgent] Marked embeddings stale via {_embeddingCoordinatorAgentId}");
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"[CoderAgent] Failed to mark embeddings stale: {ex.Message}");
+            }
         }
     }
 
