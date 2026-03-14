@@ -35,6 +35,13 @@ classDiagram
         +GetScenario(name) ActionResult
     }
 
+    class CodeGraphController {
+        -ICodeGraphContextAccessor _contextAccessor
+        +GetCurrentAsync() ActionResult
+        +GetEmbeddingsAsync() ActionResult
+        +GetFileContentAsync(path) ActionResult
+    }
+
     class McpListener {
         -IActorRuntimeAdapter _runtime
         -int _port
@@ -63,6 +70,13 @@ classDiagram
         +GetAvailableScenarios() IEnumerable
     }
 
+    class CurrentScenarioStore {
+        +GetCurrentScenarioName() string
+        +GetCurrentScenarioDescription() string
+        +SetCurrentScenario(name, description)
+        +Clear()
+    }
+
     class IScenario {
         <<interface>>
         +string Name
@@ -87,4 +101,6 @@ classDiagram
     AgentsController --> MessageDispatcher : uses
     ToolsController --> ToolInvoker : uses
     TestController --> IScenarioFactory : uses
+    TestController --> CurrentScenarioStore : uses
+    CodeGraphController --> ICodeGraphContextAccessor : uses
     TaskScoperHostedService --> IScenario : uses

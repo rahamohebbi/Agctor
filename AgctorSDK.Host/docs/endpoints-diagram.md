@@ -49,11 +49,14 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | POST | `/api/test/setup-scenario` | Setup test scenario |
 | GET | `/api/test/scenarios` | List available scenarios |
 | GET | `/api/test/scenarios/{name}` | Get scenario info |
+| GET | `/api/test/current-scenario` | Get the current dashboard scenario |
 
 ### CodeGraph – Dashboard (PRD-006)
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/CodeGraph/current` | Get current CodeGraph context (actor tree + embedding summary) when code-graph-demo is active; 404 otherwise |
+| GET | `/api/CodeGraph/embeddings` | Get embedding records for debugging and visualization |
+| GET | `/api/CodeGraph/file-content?path=...` | Preview file content for a file in the active actor tree |
 
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview

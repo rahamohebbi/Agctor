@@ -83,13 +83,25 @@ classDiagram
         -IndexClassAsync(classActor)
     }
 
+    class EmbeddingCoordinatorAgent {
+        -string _indexerAgentId
+        -EmbeddingLifecycleState _state
+        -int _graphVersion
+        -int _indexedGraphVersion
+        +ReceiveAsync(envelope)
+        -EnsureEmbeddingsReadyAsync(request)
+        -HandleMarkStale(request)
+    }
+
     class SearchAgent {
         -IEmbeddingGenerator _embedder
         -EmbeddingStoreActor _store
         -CodeGraphActorBase _root
         -IIntentResolver[] _resolvers
+        -string _embeddingCoordinatorAgentId
         +ExecuteSearchAsync(prompt)
         -ResolveIntent(prompt)
+        -EnsureEmbeddingsReadyAsync()
     }
 
     class QueryAgent {
@@ -182,6 +194,15 @@ classDiagram
         +QueryAsync(vector, k)
     }
 
+    class EmbeddingLifecycleState {
+        <<enumeration>>
+        NotReady
+        Indexing
+        Ready
+        Stale
+        Failed
+    }
+
     %% ── Intent Resolution ──
     class IIntentResolver {
         <<interface>>
@@ -206,6 +227,32 @@ classDiagram
         -IActorRuntimeAdapter _runtime
         -string _agentId
         +Resolve(prompt)
+    }
+
+    class EnsureEmbeddingsReadyMessage {
+        +bool ForceRefresh
+        +string Reason
+    }
+
+    class MarkEmbeddingsStaleMessage {
+        +string Reason
+    }
+
+    class GetEmbeddingStatusMessage
+
+    class EmbeddingReadyResult {
+        +bool IsReady
+        +bool TriggeredIndexing
+        +EmbeddingLifecycleState State
+        +int GraphVersion
+        +int IndexedGraphVersion
+    }
+
+    class EmbeddingStatusResult {
+        +EmbeddingLifecycleState State
+        +int GraphVersion
+        +int IndexedGraphVersion
+        +bool IsReady
     }
 
     %% ── LLM ──
@@ -302,6 +349,7 @@ classDiagram
     %% Agent inheritance
     IAgent <|.. Agent
     Agent <|-- IndexerAgent
+    Agent <|-- EmbeddingCoordinatorAgent
     Agent <|-- SearchAgent
     Agent <|-- QueryAgent
     Agent <|-- RefactorAgent
@@ -325,8 +373,10 @@ classDiagram
     EmbeddingStoreActor --> IVectorStore : wraps
     IndexerAgent --> IEmbeddingGenerator : uses
     IndexerAgent --> EmbeddingStoreActor : stores in
+    EmbeddingCoordinatorAgent --> IndexerAgent : triggers
     SearchAgent --> IEmbeddingGenerator : uses
     SearchAgent --> EmbeddingStoreActor : queries
+    SearchAgent --> EmbeddingCoordinatorAgent : ensures ready
 
     %% Intent relationships
     IIntentResolver <|.. HeuristicIntentResolver
@@ -357,6 +407,12 @@ classDiagram
     RefactorAgent --> SearchAgent : delegates search
     TestPlannerAgent --> SnapshotDiffService : uses
     GitWatcherAgent --> SnapshotService : uses
+
+    EmbeddingCoordinatorAgent --> EnsureEmbeddingsReadyMessage : handles
+    EmbeddingCoordinatorAgent --> MarkEmbeddingsStaleMessage : handles
+    EmbeddingCoordinatorAgent --> GetEmbeddingStatusMessage : handles
+    EmbeddingCoordinatorAgent --> EmbeddingReadyResult : returns
+    EmbeddingCoordinatorAgent --> EmbeddingStatusResult : returns
 
     %% Hierarchy containment
     SolutionActor --> ProjectActor : contains

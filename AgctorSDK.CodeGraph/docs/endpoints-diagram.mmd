@@ -19,6 +19,7 @@ graph LR
     subgraph "Search and Query Flow"
         SearchExec["SearchAgent.ExecuteSearchAsync<br/>prompt string"]
         IntentResolve["IIntentResolver.Resolve<br/>prompt string"]
+        EnsureReady["EmbeddingCoordinatorAgent<br/>EnsureEmbeddingsReadyMessage"]
         VectorQuery["EmbeddingStoreActor<br/>QueryEmbeddingMessage"]
         QueryExec["QueryAgent.ExecuteQueryAsync<br/>prompt string"]
     end
@@ -80,6 +81,7 @@ graph LR
     %% Search flow
     SearchReceive --> SearchExec
     SearchExec --> IntentResolve
+    SearchExec --> EnsureReady
     SearchExec --> VectorQuery
     SearchExec --> GetMethod
     SearchExec --> GetClass
@@ -92,6 +94,7 @@ graph LR
     IndexAsync --> AnalyzeFile
     IndexAsync --> GenEmbed
     GenEmbed --> VectorUpsert
+    EnsureReady --> IndexerReceive
 
     %% Refactoring flow
     RefactorReceive --> RefactorExec

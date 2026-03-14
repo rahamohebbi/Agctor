@@ -6,7 +6,7 @@
 
 ## Overview
 
-AgctorSDK.CodeGraph models an entire codebase as an actor hierarchy and provides agents that index, search, refactor, review, and test that codebase using the actor model.
+AgctorSDK.CodeGraph models a codebase as an actor hierarchy and layers search, indexing, refactoring, review, and test automation on top of that graph.
 
 ## Key Components
 
@@ -19,6 +19,7 @@ AgctorSDK.CodeGraph models an entire codebase as an actor hierarchy and provides
 
 ### Agents (Intelligence Layer)
 - **IndexerAgent**: Walks the graph, generates embeddings, and stores them
+- **EmbeddingCoordinatorAgent**: Ensures embeddings are ready and marks them stale after edits
 - **SearchAgent**: Semantic (vector) and structural (intent-based) search
 - **QueryAgent**: Orchestrates SearchAgent + LLMAgent for natural-language answers
 - **RefactorAgent**: Orchestrates SearchAgent + LLMAgent + CoderAgent for automated refactoring
@@ -36,6 +37,7 @@ AgctorSDK.CodeGraph models an entire codebase as an actor hierarchy and provides
 ### Embeddings
 - **IEmbeddingGenerator / OllamaEmbeddingGenerator**: Generates vector embeddings via Ollama
 - **IVectorStore / InMemoryVectorStore**: Stores and queries vectors using cosine similarity
+- **EmbeddingLifecycleMessages**: Shared readiness, status, and stale notifications
 
 ### Intent Resolution
 - **HeuristicIntentResolver**: Fast keyword/regex-based intent detection

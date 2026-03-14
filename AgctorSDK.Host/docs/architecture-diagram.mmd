@@ -5,6 +5,7 @@ graph TB
             GoalsCtrl["GoalsController<br/>Goal CRUD"]
             ToolsCtrl["ToolsController<br/>Tool invocation + discovery"]
             TestCtrl["TestController<br/>Scenario setup"]
+            CodeGraphCtrl["CodeGraphController<br/>CodeGraph status + file preview"]
             Swagger["Swagger UI<br/>OpenAPI docs"]
         end
 
@@ -16,6 +17,7 @@ graph TB
             MessageDispatcher["MessageDispatcher<br/>Message routing to agents"]
             ToolInvoker["ToolInvoker<br/>Direct tool execution"]
             ScenarioFactory["ScenarioFactory<br/>Test scenario creation"]
+            CurrentScenarioStore["CurrentScenarioStore<br/>Active scenario state"]
         end
 
         subgraph "Background Services"
@@ -25,7 +27,7 @@ graph TB
 
         subgraph "Scenarios"
             CodeGenScenario["CodeGenerationChainScenario<br/>LLM + CodeExecutor"]
-            CodeGraphScenario["CodeGraphDemoScenario<br/>Full CodeGraph pipeline"]
+            CodeGraphScenario["CodeGraphDemoScenario<br/>CodeGraph + embedding lifecycle"]
         end
 
         subgraph "Program"
@@ -67,6 +69,7 @@ graph TB
     HTTPClient -->|REST API| GoalsCtrl
     HTTPClient -->|REST API| ToolsCtrl
     HTTPClient -->|REST API| TestCtrl
+    HTTPClient -->|REST API| CodeGraphCtrl
 
     %% MCP flow
     MCPClient -->|TCP JSON| McpListener
@@ -75,6 +78,7 @@ graph TB
     AgentsCtrl --> MessageDispatcher
     ToolsCtrl --> ToolInvoker
     McpListener --> MessageDispatcher
+    TestCtrl --> CurrentScenarioStore
 
     MessageDispatcher --> RuntimeAdapter
     ToolInvoker --> ToolActors

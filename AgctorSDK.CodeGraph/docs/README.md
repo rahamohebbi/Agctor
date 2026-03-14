@@ -1,13 +1,13 @@
 # AgctorSDK.CodeGraph Documentation
 
-This directory contains documentation for the AgctorSDK.CodeGraph project.
+This directory contains concise documentation for `AgctorSDK.CodeGraph`.
 
 ## Documentation Files
 
-- **architecture-diagram**: High-level system architecture showing actors, agents, analyzers, embeddings, and their relationships
-- **class-diagram**: Detailed UML class structure with inheritance and interface implementations
-- **endpoints-diagram**: Message-based API endpoints and data flows between agents and services
-- **dependencies-diagram**: Project dependencies, NuGet packages, and external services
+- **architecture-diagram**: Actor and agent flow, including embedding readiness
+- **class-diagram**: Main types and their relationships
+- **endpoints-diagram**: Message flows between search, query, indexing, and refactoring
+- **dependencies-diagram**: Project, package, and runtime dependencies
 
 Each diagram consists of three files:
 - `.mmd` - Mermaid diagram source code
@@ -22,8 +22,9 @@ Run the shared generation script from the project root:
 ../../scripts/generate-images.sh AgctorSDK.CodeGraph/docs
 ```
 
-## Updating Diagrams
+## Recent Update
 
-1. Edit the `.mmd` file (Mermaid syntax)
-2. Regenerate the `.jpg` image using the script above
-3. Update the `.md` file if documentation changes are needed
+The CodeGraph runtime now includes `EmbeddingCoordinatorAgent`, which:
+- ensures embeddings are ready before semantic search
+- marks embeddings stale after code changes
+- centralizes embedding lifecycle state for all agents

@@ -33,23 +33,12 @@ graph LR
             SetupScenario["POST /api/test/setup-scenario<br/>Setup scenario"]
             ListScenarios["GET /api/test/scenarios<br/>List scenarios"]
             GetScenario["GET /api/test/scenarios/name<br/>Get scenario"]
+            CurrentScenario["GET /api/test/current-scenario<br/>Current scenario"]
         end
 
         subgraph "CodeGraph PRD006"
             GetCodeGraph["GET /api/CodeGraph/current<br/>CodeGraph context"]
+            GetEmbeddings["GET /api/CodeGraph/embeddings<br/>Embedding records"]
+            GetFileContent["GET /api/CodeGraph/file-content<br/>Preview actor-tree file"]
         end
     end
-
-    subgraph "MCP Protocol"
-        McpTcp["TCP port 8080<br/>JSON-delimited messages"]
-    end
-
-    subgraph "Swagger"
-        SwaggerUI["GET /swagger<br/>OpenAPI UI"]
-    end
-
-    style CreateAgent fill:#e1f5ff
-    style SendMsg fill:#b3e5fc
-    style CreateGoal fill:#fff9c4
-    style InvokeTool fill:#f3e5f5
-    style McpTcp fill:#e8f5e9

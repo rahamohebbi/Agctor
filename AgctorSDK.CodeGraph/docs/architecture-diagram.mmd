@@ -14,6 +14,7 @@ graph TB
 
         subgraph "Agents"
             IndexerAgent["IndexerAgent<br/>Embedding indexer"]
+            EmbeddingCoordinatorAgent["EmbeddingCoordinatorAgent<br/>Embedding lifecycle coordinator"]
             SearchAgent["SearchAgent<br/>Semantic + structural search"]
             QueryAgent["QueryAgent<br/>Search + LLM orchestrator"]
             RefactorAgent["RefactorAgent<br/>Refactoring orchestrator"]
@@ -73,6 +74,7 @@ graph TB
 
         subgraph "Messages"
             IntentMessages["IntentMessages<br/>Intent request/response"]
+            EmbeddingLifecycleMessages["EmbeddingLifecycleMessages<br/>Ensure ready / stale / status"]
             CodeReviewMessages["CodeReviewMessages<br/>Review request/result"]
             TestScaffoldingMessages["TestScaffoldingMessages<br/>Test plan/scaffold"]
             GitWatcherMessages["GitWatcherMessages<br/>Snapshot request/created"]
@@ -114,7 +116,10 @@ graph TB
     %% Agent dependencies
     IndexerAgent -->|indexes| EmbeddingStoreActor
     IndexerAgent -->|traverses| CodeGraphActorBase
+    EmbeddingCoordinatorAgent -->|triggers| IndexerAgent
+    EmbeddingCoordinatorAgent -->|tracks state for| EmbeddingStoreActor
     SearchAgent -->|queries| EmbeddingStoreActor
+    SearchAgent -->|ensures ready via| EmbeddingCoordinatorAgent
     SearchAgent -->|resolves| IIntentResolver
     QueryAgent -->|delegates| SearchAgent
     QueryAgent -->|asks| LLMAgent
@@ -146,16 +151,7 @@ graph TB
     %% Core
     CodeGraphActorBase -.->|implements| CoreInterfaces
     IndexerAgent -.->|extends| AgentsAgent
+    EmbeddingCoordinatorAgent -.->|extends| AgentsAgent
     SearchAgent -.->|extends| AgentsAgent
     QueryAgent -.->|extends| AgentsAgent
     RefactorAgent -.->|extends| AgentsAgent
-
-    style CodeGraphActorBase fill:#e1f5ff
-    style SolutionActor fill:#b3e5fc
-    style IndexerAgent fill:#fff9c4
-    style SearchAgent fill:#fff9c4
-    style QueryAgent fill:#fff9c4
-    style RefactorAgent fill:#fff9c4
-    style AnalyzerRegistry fill:#e8f5e9
-    style EmbeddingStoreActor fill:#f3e5f5
-    style OllamaLlmClient fill:#ffcdd2

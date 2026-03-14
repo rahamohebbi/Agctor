@@ -6,7 +6,7 @@
 
 ## Overview
 
-AgctorSDK.Host is the ASP.NET Core Web API + MCP server that serves as the HTTP and MCP gateway for the AGCTOR agent framework.
+AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 
 ## Key Components
 
@@ -15,6 +15,7 @@ AgctorSDK.Host is the ASP.NET Core Web API + MCP server that serves as the HTTP 
 - **GoalsController** (`/api/goals`): Goal CRUD
 - **ToolsController** (`/api/tools`): Tool invocation and discovery
 - **TestController** (`/api/test`): Test scenario setup
+- **CodeGraphController** (`/api/CodeGraph`): CodeGraph status, embeddings, and file preview
 
 ### MCP Protocol
 - **McpListener**: TCP server (port 8080) accepting JSON-delimited messages
@@ -23,6 +24,7 @@ AgctorSDK.Host is the ASP.NET Core Web API + MCP server that serves as the HTTP 
 - **MessageDispatcher**: Routes messages to agents via actor runtime
 - **ToolInvoker**: Direct tool execution without agent wrapper
 - **ScenarioFactory**: Creates predefined test scenarios
+- **CurrentScenarioStore**: Tracks the active scenario for the dashboard
 
 ### Background Services (provided by AgctorSDK.Extensions)
 
@@ -41,4 +43,4 @@ The background hosted services are defined in `AgctorSDK.Extensions/Services/` a
 
 ### Scenarios
 - **CodeGenerationChainScenario**: LLM + CodeExecutor demo
-- **CodeGraphDemoScenario**: Full CodeGraph pipeline with indexing, search, and refactoring
+- **CodeGraphDemoScenario**: CodeGraph pipeline with indexing, embedding coordination, search, and refactoring

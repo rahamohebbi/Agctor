@@ -6,7 +6,7 @@
 
 ## Overview
 
-This UML class diagram shows the complete class structure, inheritance, and relationships in the AgctorSDK.CodeGraph project.
+This UML class diagram shows the main types and relationships in `AgctorSDK.CodeGraph`.
 
 ## Inheritance Hierarchy
 
@@ -28,6 +28,7 @@ IActor
 IAgent
   └── Agent (from AgctorSDK.Agents)
        ├── IndexerAgent
+       ├── EmbeddingCoordinatorAgent
        ├── SearchAgent
        ├── QueryAgent
        ├── RefactorAgent
@@ -54,7 +55,8 @@ ISnippetProvider    → CSharpSnippetProvider, PythonSnippetProvider, SnippetRes
 
 - **SolutionActor → ProjectActor → FileActor → ClassActor → MethodActor**: Tree containment mirroring the codebase
 - **IndexerAgent → EmbeddingStoreActor**: Indexes graph nodes as vectors
-- **SearchAgent → EmbeddingStoreActor + IIntentResolver**: Semantic and structural search
+- **EmbeddingCoordinatorAgent → IndexerAgent**: Central embedding readiness and freshness
+- **SearchAgent → EmbeddingCoordinatorAgent + EmbeddingStoreActor + IIntentResolver**: Semantic and structural search
 - **QueryAgent → SearchAgent + LLMAgent**: Combines search results with LLM reasoning
 - **RefactorAgent → SearchAgent + LLMAgent + CoderAgent**: Full refactoring pipeline
 - **FileActor → AnalyzerRegistry**: Parses source files on demand

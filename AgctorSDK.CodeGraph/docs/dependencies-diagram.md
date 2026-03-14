@@ -6,7 +6,7 @@
 
 ## Overview
 
-This diagram shows the dependency relationships for the AgctorSDK.CodeGraph project, including project references, NuGet packages, and runtime services.
+This diagram shows the dependency relationships for `AgctorSDK.CodeGraph`, including project references, packages, and runtime services.
 
 ## Project References
 
@@ -58,12 +58,12 @@ Used for:
 
 ## Internal Modules
 
-The project is organized into 10 internal modules:
+The project is organized into the main modules below:
 
 | Module | Files | Key Responsibility |
 |--------|-------|--------------------|
 | **Actors** | 9 | Code graph hierarchy (Solution → Method) |
-| **Agents** | 8 | Intelligence layer (Index, Search, Refactor, etc.) |
+| **Agents** | 9 | Intelligence layer, including embedding lifecycle coordination |
 | **Analyzers** | 5 | Source code parsing (Roslyn, LLM, TreeSitter) |
 | **Embeddings** | 4 | Vector generation and storage |
 | **Intents** | 7 | Natural-language intent resolution |
@@ -71,7 +71,7 @@ The project is organized into 10 internal modules:
 | **Persistence** | 3 | Actor state storage |
 | **Snapshots** | 2 | Code graph snapshots and diffing |
 | **Snippets** | 6 | Source code snippet extraction |
-| **Messages** | 5 | Message types for agent communication |
+| **Messages** | 6 | Message types for agent communication and embedding lifecycle |
 
 ## Dependency Flow
 
