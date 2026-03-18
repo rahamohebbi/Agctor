@@ -58,6 +58,13 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | GET | `/api/CodeGraph/embeddings` | Get embedding records for debugging and visualization |
 | GET | `/api/CodeGraph/file-content?path=...` | Preview file content for a file in the active actor tree |
 
+### Chat Sessions (`/api/chat/sessions`)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/chat/sessions` | Create a new chat session |
+| GET | `/api/chat/sessions` | List chat sessions (newest first) |
+| GET | `/api/chat/sessions/{id}` | Load session transcript (metadata + turns + summary) |
+
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview
 - **GET /Dashboard/Agents** – Agents list and registered types

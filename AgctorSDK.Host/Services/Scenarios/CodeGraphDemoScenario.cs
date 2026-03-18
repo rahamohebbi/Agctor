@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using AgctorSDK.CodeGraph.Intents;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Messages;
+using AgctorSDK.Core.Sessions;
 
 namespace AgctorSDK.Host.Services.Scenarios
 {
@@ -35,12 +36,16 @@ namespace AgctorSDK.Host.Services.Scenarios
             "intent-agent",
             "query-agent",
             "coder-agent",
-            "refactor-agent"
+            "refactor-agent",
+            "session-coordinator-agent"
         };
 
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
         private readonly ICodeGraphContextAccessor _codeGraphContextAccessor;
+        private readonly ISessionStore _sessionStore;
+        private readonly ISessionContextComposer _sessionContextComposer;
+        private readonly SessionMemoryOptions _sessionMemoryOptions;
         private readonly ILogger<CodeGraphDemoScenario> _logger;
 
         public string Name => "code-graph-demo";
@@ -50,11 +55,17 @@ namespace AgctorSDK.Host.Services.Scenarios
             IActorRuntimeAdapter runtimeAdapter,
             IAgentRegistry agentRegistry,
             ICodeGraphContextAccessor codeGraphContextAccessor,
+            ISessionStore sessionStore,
+            ISessionContextComposer sessionContextComposer,
+            SessionMemoryOptions sessionMemoryOptions,
             ILogger<CodeGraphDemoScenario> logger)
         {
             _runtimeAdapter = runtimeAdapter;
             _agentRegistry = agentRegistry;
             _codeGraphContextAccessor = codeGraphContextAccessor ?? throw new ArgumentNullException(nameof(codeGraphContextAccessor));
+            _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
+            _sessionContextComposer = sessionContextComposer ?? throw new ArgumentNullException(nameof(sessionContextComposer));
+            _sessionMemoryOptions = sessionMemoryOptions ?? throw new ArgumentNullException(nameof(sessionMemoryOptions));
             _logger = logger;
         }
 
@@ -153,6 +164,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                 const string coderId   = "coder-agent";
                 const string refactorId = "refactor-agent";
                 const string embeddingCoordinatorId = "embedding-coordinator-agent";
+                const string sessionCoordinatorId = "session-coordinator-agent";
 
                 // Inject an AgentFactory so agents can use the runtime for shared orchestration.
                 var consoleLogger = new AgctorConsoleLogger();
@@ -163,6 +175,7 @@ namespace AgctorSDK.Host.Services.Scenarios
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
                 agentFactory.RegisterAgentType<AgctorSDK.CodeGraph.Agents.RefactorAgent>();
+                agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.SessionCoordinatorAgent>();
 
                 var indexerAgent = new IndexerAgent(indexerId, registry, embeddingGen, storeActor);
                 indexerAgent.Configure(registry, embeddingGen, storeActor, solution);
@@ -222,6 +235,12 @@ namespace AgctorSDK.Host.Services.Scenarios
 
                 spawnedRefactor.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
+
+                var sessionCoordinator = await _runtimeAdapter.SpawnActorAsync<SessionCoordinatorAgent>(
+                    sessionCoordinatorId,
+                    id => new SessionCoordinatorAgent(id, _sessionStore, _sessionContextComposer, _sessionMemoryOptions));
+                sessionCoordinator.SetAgentFactory(agentFactory);
+                await _agentRegistry.RegisterAgentAsync(sessionCoordinator);
 
                 _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder, Refactor)");
 
@@ -308,7 +327,8 @@ namespace AgctorSDK.Host.Services.Scenarios
                     [intentId]  = "Intent detection for code search prompts",
                     [queryId]   = "Query orchestrator",
                     [coderId]   = "Code editing / compile / test orchestration",
-                    [refactorId] = "End-to-end refactor orchestrator"
+                    [refactorId] = "End-to-end refactor orchestrator",
+                    [sessionCoordinatorId] = "Session memory coordinator for chat continuity"
                 };
 
                 return new ScenarioSetupResponse(true, Name, activeDemoAgentIds, roles, null);

@@ -300,6 +300,44 @@ namespace AgctorSDK.Core.Tests.Runtime
         }
 
         [TestMethod]
+        public async Task SendMessageAsync_WithMessageEnvelope_ShouldPreserveCorrelationAndPayload()
+        {
+            // Arrange
+            await _runtime.InitializeAsync(new Dictionary<string, object>());
+            var actorId = "inspect-actor-envelope";
+            var actor = await _runtime.SpawnActorAsync<InspectableActor>(actorId);
+
+            var correlationId = "corr-envelope-123";
+            var sourceEnvelope = new MessageEnvelope(
+                id: "existing-envelope-id",
+                payload: "final-result",
+                metadata: new Dictionary<string, object>
+                {
+                    ["Timestamp"] = DateTimeOffset.UtcNow,
+                    ["CorrelationId"] = correlationId
+                },
+                headers: new Dictionary<string, string>
+                {
+                    ["SenderId"] = "refactor-agent",
+                    ["ReceiverId"] = actorId,
+                    ["MessageType"] = "Result"
+                });
+
+            // Act
+            await _runtime.SendMessageAsync(actorId, sourceEnvelope, senderId: "ignored-sender");
+            await Task.Delay(100);
+
+            // Assert
+            Assert.IsNotNull(actor.LastReceivedEnvelope);
+            Assert.AreEqual("final-result", actor.LastReceivedEnvelope.Payload);
+            Assert.AreEqual("Result", actor.LastReceivedEnvelope.Headers["MessageType"]);
+            Assert.AreEqual("refactor-agent", actor.LastReceivedEnvelope.Headers["SenderId"]);
+            Assert.AreEqual(actorId, actor.LastReceivedEnvelope.Headers["ReceiverId"]);
+            Assert.AreEqual(correlationId, actor.LastReceivedEnvelope.Metadata["CorrelationId"]);
+            Assert.AreEqual("1.0", actor.LastReceivedEnvelope.Headers["Version"]);
+        }
+
+        [TestMethod]
         public async Task SendMessageAsync_RequestResponse_ShouldReturnResponse_MCP()
         {
             // Arrange

@@ -31,6 +31,11 @@ namespace AgctorSDK.Host.Models
         /// If not provided, will be set to "http-api".
         /// </summary>
         public string? SenderId { get; set; }
+
+        /// <summary>
+        /// Optional chat session identifier used for session memory.
+        /// </summary>
+        public string? SessionId { get; set; }
     }
 
     /// <summary>
@@ -311,6 +316,15 @@ namespace AgctorSDK.Host.Models
         string ScenarioName,
         string? Description
     );
+
+    /// <summary>
+    /// Request payload for creating a new chat session.
+    /// </summary>
+    public class CreateChatSessionRequest
+    {
+        public string? Title { get; set; }
+        public string? SessionId { get; set; }
+    }
 
     /// <summary>
     /// Response model for trace visualization (per-message flow diagram).

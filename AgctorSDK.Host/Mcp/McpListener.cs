@@ -94,7 +94,7 @@ namespace AgctorSDK.Host.Mcp
                 {
                     try
                     {
-                        var tcpClient = await _tcpListener.AcceptTcpClientAsync();
+                        var tcpClient = await _tcpListener.AcceptTcpClientAsync(stoppingToken);
                         _logger.LogInformation("New MCP client connected from {RemoteEndpoint}", 
                             tcpClient.Client.RemoteEndPoint);
 
@@ -113,12 +113,30 @@ namespace AgctorSDK.Host.Mcp
                         // Expected when shutting down
                         break;
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected when host is stopping
+                        break;
+                    }
+                    catch (System.Net.Sockets.SocketException sex) when (sex.SocketErrorCode == System.Net.Sockets.SocketError.OperationAborted || sex.NativeErrorCode == 89)
+                    {
+                        // SocketError 89 = Operation canceled (macOS/Linux). Expected during shutdown.
+                        break;
+                    }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error accepting MCP client connection");
-                        await Task.Delay(1000, stoppingToken); // Brief delay before retrying
+                        try { await Task.Delay(1000, stoppingToken); } catch (OperationCanceledException) { break; }
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogDebug("MCP listener stopped (cancellation requested)");
+            }
+            catch (ObjectDisposedException)
+            {
+                _logger.LogDebug("MCP listener stopped (listener disposed)");
             }
             catch (Exception ex)
             {

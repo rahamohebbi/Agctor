@@ -9,6 +9,8 @@ using AgctorSDK.CodeGraph.Snippets;
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Services;
+using AgctorSDK.Core.Sessions;
+using AgctorSDK.Host.Services.Sessions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,6 +54,8 @@ builder.Services.Configure<AgentTypeOptions>(options =>
     options.RegisterAgentType("CompileTool", typeof(CompileTool));
     options.RegisterAgentType("TestRunnerTool", typeof(TestRunnerTool));
     options.RegisterAgentType("CoderAgent", typeof(CoderAgent));
+    options.RegisterAgentType("SessionCoordinatorAgent", typeof(SessionCoordinatorAgent));
+    options.RegisterAgentType("SessionMemoryAgent", typeof(SessionMemoryAgent));
 });
 
 // Register AGCTOR Core services
@@ -87,6 +91,16 @@ builder.Services.AddAgctorVisualization();
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
+var sessionStorePath = builder.Configuration.GetValue<string>("Agctor:SessionStorePath")
+    ?? Path.Combine(AppContext.BaseDirectory, "data", "agctor-sessions.db");
+builder.Services.AddSingleton(new SessionMemoryOptions
+{
+    RecentTurnWindow = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:RecentTurnWindow") ?? 8,
+    SummaryRefreshTurns = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:SummaryRefreshTurns") ?? 12,
+    MaxContextChars = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:MaxContextChars") ?? 12000
+});
+builder.Services.AddSingleton<ISessionStore>(_ => new SqliteSessionStore(sessionStorePath));
+builder.Services.AddSingleton<ISessionContextComposer, SessionContextComposer>();
 // Register InMemoryTaskStore
 builder.Services.AddInMemoryTaskStore();
 // Code generation + pull-request automation

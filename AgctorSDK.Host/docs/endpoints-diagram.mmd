@@ -41,4 +41,10 @@ graph LR
             GetEmbeddings["GET /api/CodeGraph/embeddings<br/>Embedding records"]
             GetFileContent["GET /api/CodeGraph/file-content<br/>Preview actor-tree file"]
         end
+
+        subgraph "Chat Sessions /api/chat/sessions"
+            CreateChatSession["POST /api/chat/sessions<br/>Create session"]
+            ListChatSessions["GET /api/chat/sessions<br/>List sessions"]
+            GetChatSession["GET /api/chat/sessions/id<br/>Load transcript"]
+        end
     end

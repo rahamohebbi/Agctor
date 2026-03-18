@@ -27,6 +27,8 @@ namespace AgctorSDK.Core.Agents
         private string? _correlationId;
         private TaskCompletionSource<ToolResult>? _responseTcs;
         private string? _embeddingCoordinatorAgentId;
+        private readonly SemaphoreSlim _requestLock = new(1, 1);
+        private bool _requestLockHeld;
 
         public CoderAgent(string id) : base(id) { }
 
@@ -37,9 +39,18 @@ namespace AgctorSDK.Core.Agents
 
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
+            // Passthrough: self-sent result so ReplyProxy completes the pending HTTP request
+            if (envelope.Headers.TryGetValue("MessageType", out var msgType) &&
+                (msgType == "ToolResult" || msgType == "Result" || msgType == "Error"))
+            {
+                return envelope;
+            }
+
             // Capture sender + correlation id for later reply
             if (envelope.Payload is string prompt && envelope.Headers.TryGetValue("MessageType", out var mt) && mt == "Prompt")
             {
+                await _requestLock.WaitAsync(cancellationToken);
+                _requestLockHeld = true;
                 // Attempt to capture SenderId (case-insensitive) and CorrelationId
                 _originalSenderId = envelope.Headers.GetValueOrDefault("SenderId")
                                    ?? envelope.Headers.GetValueOrDefault("senderId")
@@ -94,7 +105,9 @@ namespace AgctorSDK.Core.Agents
         {
             if (result is not ToolResult tr)
             {
-                await FinalizeTaskAsFailed(new Exception("Unexpected subtask result type"), cancellationToken);
+                var err = new ToolResult { IsSuccess = false, Error = "Unexpected subtask result type" };
+                await FinalizeTaskAsFailed(new Exception(err.Error), cancellationToken);
+                await SendReplyAsync(err, cancellationToken);
                 return;
             }
 
@@ -116,7 +129,6 @@ namespace AgctorSDK.Core.Agents
         {
             LogError($"Subtask {childAgentId} failed: {error.Message}");
 
-            // Surface the failure as a ToolResult so the parent awaiting SendMessageAsync<ToolResult>() gets a response.
             var failed = new ToolResult
             {
                 IsSuccess = false,
@@ -124,7 +136,6 @@ namespace AgctorSDK.Core.Agents
                 Output = _result.TestOutput ?? _result.CompileOutput ?? _result.EditorOutput
             };
 
-            // Send failure result to parent and, if applicable, to the original synchronous caller.
             await FinalizeTask(failed, cancellationToken);
             await SendReplyAsync(failed, cancellationToken);
         }
@@ -135,13 +146,16 @@ namespace AgctorSDK.Core.Agents
             if (!tr.IsSuccess)
             {
                 await FinalizeTaskAsFailed(new Exception(tr.Error ?? "Edit failed"), ct);
+                await SendReplyAsync(tr, ct);
                 return;
             }
 
             _changedFilePath = ExtractPathFromEditorOutput(tr.Output?.ToString());
             if (string.IsNullOrWhiteSpace(_changedFilePath))
             {
-                await FinalizeTaskAsFailed(new Exception("Could not determine changed file path."), ct);
+                var err = new ToolResult { IsSuccess = false, Error = "Could not determine changed file path." };
+                await FinalizeTaskAsFailed(new Exception(err.Error), ct);
+                await SendReplyAsync(err, ct);
                 return;
             }
 
@@ -157,6 +171,7 @@ namespace AgctorSDK.Core.Agents
             if (!tr.IsSuccess)
             {
                 await FinalizeTaskAsFailed(new Exception(tr.Error ?? "Compilation failed"), ct);
+                await SendReplyAsync(tr, ct);
                 return;
             }
 
@@ -214,24 +229,40 @@ namespace AgctorSDK.Core.Agents
             }
         }
 
+        /// <summary>
+        /// Sends the final result back so the HTTP client receives it.
+        /// Uses same pattern as RefactorAgent: send to self with correlation ID so ReplyProxy completes the pending request.
+        /// </summary>
         private async Task SendReplyAsync(ToolResult tr, CancellationToken ct)
         {
-            if (_originalSenderId == null || _correlationId == null || AgentFactory?.RuntimeAdapter == null)
+            if (_correlationId == null || AgentFactory?.RuntimeAdapter == null)
             {
-                LogWarning("Cannot send reply – missing routing info or runtime adapter");
+                LogWarning("Cannot send reply – missing correlation or runtime adapter");
+                ReleaseRequestLockIfHeld();
                 return;
             }
 
-            var headers = new Dictionary<string,string>
+            try
             {
-                {"SenderId", Id},
-                {"ReceiverId", _originalSenderId},
-                {"MessageType","ToolResult"},
-                {"CorrelationId", _correlationId}
-            };
-
-            await AgentFactory.RuntimeAdapter.SendMessageAsync(_originalSenderId, tr, Id, headers, ct);
-            LogInfo($"[CoderAgent] Reply sent to {_originalSenderId}. Correlation={_correlationId} Success={tr.IsSuccess}");
+                var meta = new Dictionary<string, object>
+                {
+                    ["Timestamp"] = DateTimeOffset.UtcNow,
+                    ["CorrelationId"] = _correlationId
+                };
+                var headers = new Dictionary<string, string>
+                {
+                    ["SenderId"] = Id,
+                    ["ReceiverId"] = Id,
+                    ["MessageType"] = "ToolResult"
+                };
+                var envelope = new MessageEnvelope(tr, meta, null, headers);
+                await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
+                LogInfo($"[CoderAgent] Reply enqueued for correlation {_correlationId} Success={tr.IsSuccess}");
+            }
+            finally
+            {
+                ReleaseRequestLockIfHeld();
+            }
         }
 
         private async Task MarkEmbeddingsStaleAsync(CancellationToken cancellationToken)
@@ -254,6 +285,15 @@ namespace AgctorSDK.Core.Agents
             catch (Exception ex)
             {
                 LogWarning($"[CoderAgent] Failed to mark embeddings stale: {ex.Message}");
+            }
+        }
+
+        private void ReleaseRequestLockIfHeld()
+        {
+            if (_requestLockHeld)
+            {
+                _requestLockHeld = false;
+                _requestLock.Release();
             }
         }
     }

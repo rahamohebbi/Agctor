@@ -105,13 +105,15 @@ namespace AgctorSDK.Host.IntegrationTests
             secondPayload!.Success.Should().BeTrue();
             secondPayload.CreatedAgentIds.Should().Contain("embedding-coordinator-agent");
             secondPayload.CreatedAgentIds.Should().Contain("intent-agent");
-            secondPayload.CreatedAgentIds.Count.Should().Be(8);
+            secondPayload.CreatedAgentIds.Should().Contain("session-coordinator-agent");
+            secondPayload.CreatedAgentIds.Count.Should().Be(9);
 
             var agents = await _client.GetFromJsonAsync<List<AgentInfo>>("/api/agents");
             agents.Should().NotBeNull();
             agents!.Select(a => a.Id).Should().Contain("embedding-coordinator-agent");
             agents.Select(a => a.Id).Should().Contain("intent-agent");
             agents.Select(a => a.Id).Should().Contain("query-agent");
+            agents.Select(a => a.Id).Should().Contain("session-coordinator-agent");
         }
     }
 } 

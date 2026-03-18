@@ -1,5 +1,6 @@
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
+using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Host.Models;
 
 namespace AgctorSDK.Host.Services
@@ -37,15 +38,18 @@ namespace AgctorSDK.Host.Services
     {
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
+        private readonly ISessionStore _sessionStore;
         private readonly ILogger<MessageDispatcher> _logger;
 
         public MessageDispatcher(
             IActorRuntimeAdapter runtimeAdapter,
             IAgentRegistry agentRegistry,
+            ISessionStore sessionStore,
             ILogger<MessageDispatcher> logger)
         {
             _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
+            _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -59,6 +63,22 @@ namespace AgctorSDK.Host.Services
 
             try
             {
+                var sessionId = ExtractSessionId(request);
+                // Route natural-language prompts from coder-agent to refactor-agent (which has LLM to convert to CodeEditorTool commands)
+                var payloadStr = request.Payload is string s ? s : (request.Payload is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString() : null);
+                var senderId = request.SenderId ?? "http-api";
+                if (!string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(payloadStr))
+                {
+                    await TryAppendSessionTurnAsync(sessionId, SessionRole.User, payloadStr, senderId, cancellationToken);
+                }
+
+                if (agentId == "coder-agent" && !string.IsNullOrWhiteSpace(payloadStr) &&
+                    !payloadStr.TrimStart().StartsWith("CodeEditorTool", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Routing natural-language prompt from coder-agent to refactor-agent");
+                    agentId = "refactor-agent";
+                }
+
                 // Validate agent exists
                 var agent = await _agentRegistry.GetAgentByIdAsync(agentId);
                 if (agent == null)
@@ -73,8 +93,7 @@ namespace AgctorSDK.Host.Services
                 }
 
                 // Create message envelope from HTTP request
-                var envelope = CreateMessageEnvelope(request);
-                var senderId = request.SenderId ?? "http-api";
+                var envelope = CreateMessageEnvelope(request, sessionId);
 
                 // Send message and wait for response (request-response pattern)
                 var timeout = TimeSpan.FromSeconds(600); // Allow up to 10 minutes for complex refactor pipelines
@@ -106,6 +125,10 @@ namespace AgctorSDK.Host.Services
                 }
 
                 var isError = false; // If we got a string response, it's successful (errors would throw exceptions)
+                if (!string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(responseData))
+                {
+                    await TryAppendSessionTurnAsync(sessionId, SessionRole.Assistant, responseData, agentId, cancellationToken);
+                }
 
                 return new MessageResponse
                 {
@@ -237,7 +260,7 @@ namespace AgctorSDK.Host.Services
         /// Creates a message envelope from an HTTP request.
         /// Applies Model Context Protocol (MCP) conventions for metadata and headers.
         /// </summary>
-        private IMessageEnvelope CreateMessageEnvelope(MessageRequest request)
+        private IMessageEnvelope CreateMessageEnvelope(MessageRequest request, string? sessionId)
         {
             // Create base headers with HTTP API context
             var headers = new Dictionary<string, string>
@@ -255,6 +278,10 @@ namespace AgctorSDK.Host.Services
                     headers[header.Key] = header.Value;
                 }
             }
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                headers["session-id"] = sessionId;
+            }
 
             // Create metadata with default values
             var metadata = new Dictionary<string, object>
@@ -270,6 +297,10 @@ namespace AgctorSDK.Host.Services
                 {
                     metadata[meta.Key] = meta.Value;
                 }
+            }
+            if (!string.IsNullOrWhiteSpace(sessionId))
+            {
+                metadata["sessionId"] = sessionId;
             }
 
             // Ensure MessageType header exists; treat raw string payloads as Prompt.
@@ -307,6 +338,69 @@ namespace AgctorSDK.Host.Services
                 payload: payload,
                 metadata: metadata,
                 headers: headers);
+        }
+
+        private static string? ExtractSessionId(MessageRequest request)
+        {
+            if (!string.IsNullOrWhiteSpace(request.SessionId))
+            {
+                return request.SessionId.Trim();
+            }
+
+            if (request.Headers != null)
+            {
+                if (request.Headers.TryGetValue("session-id", out var headerVal) && !string.IsNullOrWhiteSpace(headerVal))
+                {
+                    return headerVal.Trim();
+                }
+                if (request.Headers.TryGetValue("SessionId", out var altHeader) && !string.IsNullOrWhiteSpace(altHeader))
+                {
+                    return altHeader.Trim();
+                }
+            }
+
+            if (request.Metadata != null)
+            {
+                if (request.Metadata.TryGetValue("sessionId", out var metaVal) && metaVal != null && !string.IsNullOrWhiteSpace(metaVal.ToString()))
+                {
+                    return metaVal.ToString()!.Trim();
+                }
+                if (request.Metadata.TryGetValue("session-id", out var altMetaVal) && altMetaVal != null && !string.IsNullOrWhiteSpace(altMetaVal.ToString()))
+                {
+                    return altMetaVal.ToString()!.Trim();
+                }
+            }
+
+            return null;
+        }
+
+        private async Task TryAppendSessionTurnAsync(string sessionId, SessionRole role, string content, string? actorId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    return;
+                }
+
+                var existing = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                if (existing == null)
+                {
+                    await _sessionStore.CreateSessionAsync(sessionId, null, cancellationToken);
+                }
+
+                await _sessionStore.AppendTurnAsync(new SessionTurn
+                {
+                    SessionId = sessionId,
+                    Role = role,
+                    Content = content,
+                    AgentId = actorId
+                }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to append session turn for session {SessionId}", sessionId);
+            }
         }
     }
 } 

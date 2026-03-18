@@ -285,36 +285,95 @@ namespace AgctorSDK.Core.Adapters
                 return Task.CompletedTask; // Or throw new InvalidOperationException($"Target actor '{targetActorId}' not found");
             }
 
-            var messageId = Guid.NewGuid().ToString();
-            
-            var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
-            mcpHeaders["SenderId"] = senderId ?? "system"; // Per MCP, use originating agent or "system"
-            mcpHeaders["ReceiverId"] = targetActorId;    // Per MCP
-            if (!mcpHeaders.ContainsKey("MessageType"))
+            IMessageEnvelope envelope;
+            string messageId;
+            string messageType;
+            var effectiveSenderId = senderId ?? "system";
+
+            if (message is IMessageEnvelope existingEnvelope)
             {
-                mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+                // Preserve caller-provided envelope (payload, metadata, correlation) to keep
+                // request-response matching intact for async self-messaging patterns.
+                var mergedHeaders = new Dictionary<string, string>(existingEnvelope.Headers);
+                if (headers != null)
+                {
+                    foreach (var kvp in headers)
+                    {
+                        mergedHeaders[kvp.Key] = kvp.Value;
+                    }
+                }
+
+                if (!mergedHeaders.ContainsKey("SenderId"))
+                {
+                    mergedHeaders["SenderId"] = effectiveSenderId;
+                }
+                if (!mergedHeaders.ContainsKey("ReceiverId"))
+                {
+                    mergedHeaders["ReceiverId"] = targetActorId;
+                }
+                if (!mergedHeaders.ContainsKey("MessageType"))
+                {
+                    mergedHeaders["MessageType"] = existingEnvelope.Payload is string
+                        ? "Prompt"
+                        : (existingEnvelope.Payload?.GetType().Name ?? "Unknown");
+                }
+                mergedHeaders["Version"] = "1.0";
+
+                var mergedMetadata = new Dictionary<string, object>(existingEnvelope.Metadata);
+                if (!mergedMetadata.ContainsKey("Timestamp"))
+                {
+                    mergedMetadata["Timestamp"] = DateTimeOffset.UtcNow;
+                }
+                if (!mergedMetadata.ContainsKey("CorrelationId") &&
+                    mergedHeaders.TryGetValue("CorrelationId", out var headerCorr))
+                {
+                    mergedMetadata["CorrelationId"] = headerCorr;
+                }
+
+                messageId = string.IsNullOrWhiteSpace(existingEnvelope.Id) ? Guid.NewGuid().ToString() : existingEnvelope.Id;
+                messageType = mergedHeaders.GetValueOrDefault("MessageType", "Unknown");
+
+                envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
+                    id: messageId,
+                    payload: existingEnvelope.Payload ?? new object(),
+                    metadata: mergedMetadata,
+                    headers: mergedHeaders
+                );
             }
-            mcpHeaders["Version"] = "1.0"; // Example default version
-
-            var mcpMetadata = new Dictionary<string, object>
+            else
             {
-                ["Timestamp"] = DateTimeOffset.UtcNow // Per MCP, timestamp of creation/dispatch
-            };
+                messageId = Guid.NewGuid().ToString();
 
-            // Propagate correlation ID from headers if present so responders can match request-response.
-            if (mcpHeaders.TryGetValue("CorrelationId", out var corr))
-            {
-                mcpMetadata["CorrelationId"] = corr;
+                var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
+                mcpHeaders["SenderId"] = effectiveSenderId; // Per MCP, use originating agent or "system"
+                mcpHeaders["ReceiverId"] = targetActorId;   // Per MCP
+                if (!mcpHeaders.ContainsKey("MessageType"))
+                {
+                    mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+                }
+                mcpHeaders["Version"] = "1.0";
+
+                var mcpMetadata = new Dictionary<string, object>
+                {
+                    ["Timestamp"] = DateTimeOffset.UtcNow
+                };
+
+                // Propagate correlation ID from headers if present so responders can match request-response.
+                if (mcpHeaders.TryGetValue("CorrelationId", out var corr))
+                {
+                    mcpMetadata["CorrelationId"] = corr;
+                }
+
+                messageType = mcpHeaders["MessageType"];
+                envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
+                    id: messageId,
+                    payload: message ?? new object(),
+                    metadata: mcpMetadata,
+                    headers: mcpHeaders
+                );
             }
 
-            var envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
-                id: messageId,
-                payload: message ?? new object(), // Ensure payload is not null
-                metadata: mcpMetadata,
-                headers: mcpHeaders
-            );
-
-            LogTrace($"Attempting to send message '{messageId}' from '{senderId ?? "system"}' to '{targetActorId}' (Type: {mcpHeaders["MessageType"]})");
+            LogTrace($"Attempting to send message '{messageId}' from '{effectiveSenderId}' to '{targetActorId}' (Type: {messageType})");
 
             if (!actorInstance.MessageQueue.Writer.TryWrite(envelope))
             {
@@ -325,7 +384,7 @@ namespace AgctorSDK.Core.Adapters
             else
             {
                 Interlocked.Increment(ref _totalMessagesProcessed);
-                MessageSent?.Invoke(this, new MessageSentEventArgs(messageId, senderId, targetActorId, mcpHeaders["MessageType"]));
+                MessageSent?.Invoke(this, new MessageSentEventArgs(messageId, senderId, targetActorId, messageType));
                 LogTrace($"Successfully enqueued message '{messageId}' to '{targetActorId}'");
             }
             

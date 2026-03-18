@@ -9,6 +9,8 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using System.IO;
 using System.Text;
+using AgctorSDK.Core.Sessions.Messages;
+using AgctorSDK.Core.Sessions.Models;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -21,10 +23,13 @@ namespace AgctorSDK.CodeGraph.Agents
         // Track original caller for async reply
         private string? _originalSenderId;
         private string? _rootCorrelationId;
+        private string? _sessionId;
 
         private readonly string _searchAgentId;
         private readonly string _llmAgentId;
         private readonly string _coderAgentId;
+        private const string SessionCoordinatorAgentId = "session-coordinator-agent";
+        private readonly SemaphoreSlim _requestLock = new(1, 1);
 
         public RefactorAgent(string id, string searchAgentId, string llmAgentId, string coderAgentId) : base(id)
         {
@@ -46,12 +51,14 @@ namespace AgctorSDK.CodeGraph.Agents
                 // --- PROMPT (entry point) -----------------------------------------------------
                 if (mt == "Prompt" && env.Payload is string prompt)
                 {
+                    await _requestLock.WaitAsync(ct);
                     // Capture routing so we can reply asynchronously
                     _originalSenderId = env.Headers.GetValueOrDefault("SenderId");
                     if (env.Metadata?.TryGetValue("CorrelationId", out var cidObj) == true)
                         _rootCorrelationId = cidObj?.ToString();
                     else if (env.Headers.TryGetValue("CorrelationId", out var cidHdr))
                         _rootCorrelationId = cidHdr;
+                    _sessionId = ExtractSessionId(env);
 
                     // Kick off orchestration without blocking the actor message loop
                     _ = Task.Run(() => OrchestrateRefactorAsync(prompt, ct), ct);
@@ -103,6 +110,7 @@ namespace AgctorSDK.CodeGraph.Agents
                     var envelope = new MessageEnvelope(resultString, meta, null, hdr);
                     await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
                     LogInfo($"[RefactorAgent] Final result enqueued for correlation {_rootCorrelationId}");
+                    await Task.Yield(); // Allow processing loop to pick up the message before returning
                 }
             }
             catch (Exception ex)
@@ -125,6 +133,10 @@ namespace AgctorSDK.CodeGraph.Agents
                     await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
                 }
             }
+            finally
+            {
+                _requestLock.Release();
+            }
         }
 
         private async Task<string> ExecuteRefactorAsync(string prompt, CancellationToken ct)
@@ -141,6 +153,32 @@ namespace AgctorSDK.CodeGraph.Agents
                 senderId: Id,
                 headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
                 cancellationToken: ct);
+
+            // 1b. Pull session context for follow-up disambiguation and continuity.
+            string sessionContext = string.Empty;
+            if (!string.IsNullOrWhiteSpace(_sessionId))
+            {
+                try
+                {
+                    var package = await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionContextPackage>(
+                        SessionCoordinatorAgentId,
+                        new GetSessionContextMessage
+                        {
+                            SessionId = _sessionId,
+                            CurrentPrompt = prompt
+                        },
+                        timeout: TimeSpan.FromSeconds(20),
+                        senderId: Id,
+                        headers: new Dictionary<string, string> { ["MessageType"] = "SessionContextRequest" },
+                        cancellationToken: ct);
+                    sessionContext = package.PromptContext ?? string.Empty;
+                    LogInfo($"[RefactorAgent] Session context loaded for session {_sessionId}; length={sessionContext.Length}");
+                }
+                catch (Exception ex)
+                {
+                    LogWarning($"[RefactorAgent] Could not load session context for '{_sessionId}': {ex.Message}");
+                }
+            }
 
             // 2. Build LLM prompt – instruct to output JSON with path+code only
             LogInfo("[RefactorAgent] Step 2: sending prompt to LLM agent");
@@ -215,6 +253,12 @@ namespace AgctorSDK.CodeGraph.Agents
             sbPrompt.AppendLine();
             sbPrompt.AppendLine("CONTEXT:");
             sbPrompt.AppendLine(context);
+            if (!string.IsNullOrWhiteSpace(sessionContext))
+            {
+                sbPrompt.AppendLine();
+                sbPrompt.AppendLine("SESSION_CONTEXT:");
+                sbPrompt.AppendLine(sessionContext);
+            }
             sbPrompt.AppendLine();
             sbPrompt.AppendLine($"REQUEST: {prompt}");
             sbPrompt.AppendLine("JSON:");
@@ -242,7 +286,8 @@ namespace AgctorSDK.CodeGraph.Agents
             int? endLine = null;
             try
             {
-                using var doc = JsonDocument.Parse(llmResponse);
+                var normalized = NormalizeJsonCandidate(llmResponse);
+                using var doc = JsonDocument.Parse(normalized);
                 var root = doc.RootElement;
                 if (root.TryGetProperty("error", out var errProp))
                     return $"LLM error: {errProp.GetString()}";
@@ -396,6 +441,46 @@ namespace AgctorSDK.CodeGraph.Agents
                 return true;
             }
             catch { return false; }
+        }
+
+        private static string? ExtractSessionId(IMessageEnvelope env)
+        {
+            if (env.Metadata.TryGetValue("sessionId", out var mdVal) && mdVal != null && !string.IsNullOrWhiteSpace(mdVal.ToString()))
+            {
+                return mdVal.ToString();
+            }
+            if (env.Metadata.TryGetValue("session-id", out var mdAlt) && mdAlt != null && !string.IsNullOrWhiteSpace(mdAlt.ToString()))
+            {
+                return mdAlt.ToString();
+            }
+            if (env.Headers.TryGetValue("session-id", out var headerVal) && !string.IsNullOrWhiteSpace(headerVal))
+            {
+                return headerVal;
+            }
+            if (env.Headers.TryGetValue("SessionId", out var headerAlt) && !string.IsNullOrWhiteSpace(headerAlt))
+            {
+                return headerAlt;
+            }
+            return null;
+        }
+
+        private static string NormalizeJsonCandidate(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return raw;
+            }
+
+            var text = raw.Trim();
+            // Strip fenced markdown payloads (```json ... ``` or ``` ... ```).
+            if (text.StartsWith("```", StringComparison.Ordinal))
+            {
+                text = Regex.Replace(text, "^```(?:json)?\\s*", string.Empty, RegexOptions.IgnoreCase);
+                text = Regex.Replace(text, "\\s*```$", string.Empty, RegexOptions.IgnoreCase);
+                text = text.Trim();
+            }
+
+            return text;
         }
     }
 } 

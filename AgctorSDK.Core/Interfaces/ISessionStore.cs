@@ -1,0 +1,21 @@
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using AgctorSDK.Core.Sessions.Models;
+
+namespace AgctorSDK.Core.Interfaces
+{
+    /// <summary>
+    /// Persists session metadata and ordered turns.
+    /// </summary>
+    public interface ISessionStore
+    {
+        Task<SessionInfo> CreateSessionAsync(string? sessionId = null, string? title = null, CancellationToken cancellationToken = default);
+        Task<SessionInfo?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SessionInfo>> ListSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SessionTurn>> GetTurnsAsync(string sessionId, int? lastTurns = null, CancellationToken cancellationToken = default);
+        Task<SessionTurn> AppendTurnAsync(SessionTurn turn, CancellationToken cancellationToken = default);
+        Task<SessionSummary?> GetSummaryAsync(string sessionId, CancellationToken cancellationToken = default);
+        Task UpsertSummaryAsync(SessionSummary summary, CancellationToken cancellationToken = default);
+    }
+}
