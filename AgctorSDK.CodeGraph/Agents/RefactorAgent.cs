@@ -30,6 +30,7 @@ namespace AgctorSDK.CodeGraph.Agents
         private readonly string _coderAgentId;
         private const string SessionCoordinatorAgentId = "session-coordinator-agent";
         private readonly SemaphoreSlim _requestLock = new(1, 1);
+        private readonly Dictionary<string, string> _promptHeaders = new() { ["MessageType"] = "Prompt" };
 
         public RefactorAgent(string id, string searchAgentId, string llmAgentId, string coderAgentId) : base(id)
         {
@@ -144,6 +145,12 @@ namespace AgctorSDK.CodeGraph.Agents
             if (AgentFactory?.RuntimeAdapter == null)
                 throw new InvalidOperationException("RuntimeAdapter missing in RefactorAgent");
 
+            // Preserve deterministic behavior when a prebuilt tool command is already provided.
+            if (IsCodeEditorCommand(prompt))
+            {
+                return await ExecuteEditorCommandAsync(prompt, ct);
+            }
+
             // 1. Ask SearchAgent for context (optional but helps the LLM)
             LogInfo("[RefactorAgent] Step 1: requesting context from SearchAgent");
             var context = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
@@ -151,33 +158,28 @@ namespace AgctorSDK.CodeGraph.Agents
                 prompt,
                 timeout: TimeSpan.FromSeconds(20),
                 senderId: Id,
-                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
+                headers: _promptHeaders,
                 cancellationToken: ct);
 
             // 1b. Pull session context for follow-up disambiguation and continuity.
-            string sessionContext = string.Empty;
-            if (!string.IsNullOrWhiteSpace(_sessionId))
+            var sessionContext = await TryLoadSessionContextAsync(prompt, ct);
+
+            // Preserve original indexed behavior first; use session-augmented search only when needed.
+            if (string.IsNullOrWhiteSpace(context) && !string.IsNullOrWhiteSpace(sessionContext))
             {
-                try
-                {
-                    var package = await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionContextPackage>(
-                        SessionCoordinatorAgentId,
-                        new GetSessionContextMessage
-                        {
-                            SessionId = _sessionId,
-                            CurrentPrompt = prompt
-                        },
-                        timeout: TimeSpan.FromSeconds(20),
-                        senderId: Id,
-                        headers: new Dictionary<string, string> { ["MessageType"] = "SessionContextRequest" },
-                        cancellationToken: ct);
-                    sessionContext = package.PromptContext ?? string.Empty;
-                    LogInfo($"[RefactorAgent] Session context loaded for session {_sessionId}; length={sessionContext.Length}");
-                }
-                catch (Exception ex)
-                {
-                    LogWarning($"[RefactorAgent] Could not load session context for '{_sessionId}': {ex.Message}");
-                }
+                var fallbackPrompt = BuildSearchPrompt(prompt, sessionContext);
+                context = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
+                    _searchAgentId,
+                    fallbackPrompt,
+                    timeout: TimeSpan.FromSeconds(20),
+                    senderId: Id,
+                    headers: _promptHeaders,
+                    cancellationToken: ct);
+            }
+
+            if (string.IsNullOrWhiteSpace(context) && !string.IsNullOrWhiteSpace(sessionContext))
+            {
+                context = $"No direct indexed match was found for this turn.\nUse the previous chat context below to resolve references.\n\n{sessionContext}";
             }
 
             // 2. Build LLM prompt – instruct to output JSON with path+code only
@@ -217,6 +219,7 @@ namespace AgctorSDK.CodeGraph.Agents
             sbPrompt.AppendLine($"You are an expert {langName} refactoring assistant.");
             sbPrompt.AppendLine("INSTRUCTIONS:");
             sbPrompt.AppendLine("- Decide whether the REQUEST requires a brand-new file, an insertion, or a patch to existing code.");
+            sbPrompt.AppendLine("- Use ONLY CONTEXT and SESSION_CONTEXT for existing-code assumptions; do not invent file/class names.");
             sbPrompt.AppendLine();
             sbPrompt.AppendLine("Return a ONE-LINE JSON object with these keys (omit keys that are not needed):");
             sbPrompt.AppendLine("  operation  : 'WriteFile' | 'InsertIntoFile' | 'ReplaceInFile'");
@@ -270,10 +273,15 @@ namespace AgctorSDK.CodeGraph.Agents
                 llmPrompt,
                 timeout: TimeSpan.FromSeconds(180),
                 senderId: Id,
-                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
+                headers: _promptHeaders,
                 cancellationToken: ct);
 
             LogInfo("[RefactorAgent] LLM response received. Parsing …");
+
+            if (IsLlmFailure(llmResponse))
+            {
+                return "Refactor failed: LLM was unavailable or returned an empty response.";
+            }
 
             // 3. Parse JSON
             string path;
@@ -317,7 +325,48 @@ namespace AgctorSDK.CodeGraph.Agents
             {
                 // Attempt lenient extraction – tolerate missing escapes or stray characters
                 if (!TryExtractPathAndCode(llmResponse, out path, out code))
-                    return $"Failed to parse LLM response. Raw: {llmResponse}";
+                {
+                    var repaired = await TryRepairJsonAsync(llmResponse, llmPrompt, ct);
+                    if (string.IsNullOrWhiteSpace(repaired))
+                    {
+                        return $"Failed to parse LLM response. Raw: {llmResponse}";
+                    }
+
+                    try
+                    {
+                        using var repairDoc = JsonDocument.Parse(NormalizeJsonCandidate(repaired));
+                        var repairRoot = repairDoc.RootElement;
+                        if (repairRoot.TryGetProperty("error", out var repairErr))
+                        {
+                            return $"LLM error: {repairErr.GetString()}";
+                        }
+
+                        operation = repairRoot.TryGetProperty("operation", out var repairOpProp) ? repairOpProp.GetString() ?? "WriteFile" : "WriteFile";
+                        path = repairRoot.GetProperty("path").GetString() ?? throw new Exception("path missing");
+                        if (repairRoot.TryGetProperty("content", out var repairContProp))
+                        {
+                            code = repairContProp.GetString() ?? string.Empty;
+                        }
+                        else if (repairRoot.TryGetProperty("code", out var repairCodeProp))
+                        {
+                            code = repairCodeProp.GetString() ?? string.Empty;
+                        }
+                        else
+                        {
+                            code = string.Empty;
+                        }
+
+                        if (repairRoot.TryGetProperty("selector", out var repairSelProp)) selector = repairSelProp.GetString();
+                        if (repairRoot.TryGetProperty("anchor", out var repairAncProp)) anchor = repairAncProp.GetString();
+                        if (repairRoot.TryGetProperty("lineNumber", out var repairLnProp) && repairLnProp.TryGetInt32(out var repairLnVal)) lineNumber = repairLnVal;
+                        if (repairRoot.TryGetProperty("startLine", out var repairSlProp) && repairSlProp.TryGetInt32(out var repairSlVal)) startLine = repairSlVal;
+                        if (repairRoot.TryGetProperty("endLine", out var repairElProp) && repairElProp.TryGetInt32(out var repairElVal)) endLine = repairElVal;
+                    }
+                    catch
+                    {
+                        return $"Failed to parse LLM response. Raw: {llmResponse}";
+                    }
+                }
             }
 
             // Sanitize path – remove stray quotes/backticks produced by some LLMs
@@ -407,7 +456,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 editorCmd,
                 timeout: TimeSpan.FromMinutes(8),
                 senderId: Id,
-                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
+                headers: BuildCoderHeaders(),
                 cancellationToken: ct);
 
             LogInfo($"[RefactorAgent] ToolResult received – success: {toolResult.IsSuccess}");
@@ -481,6 +530,130 @@ namespace AgctorSDK.CodeGraph.Agents
             }
 
             return text;
+        }
+
+        private async Task<string> ExecuteEditorCommandAsync(string editorCommand, CancellationToken ct)
+        {
+            var toolResult = await AgentFactory!.RuntimeAdapter.SendMessageAsync<AgctorSDK.Core.Tools.Models.ToolResult>(
+                _coderAgentId,
+                editorCommand,
+                timeout: TimeSpan.FromMinutes(8),
+                senderId: Id,
+                headers: BuildCoderHeaders(),
+                cancellationToken: ct);
+
+            return toolResult.IsSuccess
+                ? "Command executed and build/tests succeeded."
+                : $"Refactor failed: {toolResult.Error}";
+        }
+
+        private IDictionary<string, string> BuildCoderHeaders()
+        {
+            var headers = new Dictionary<string, string>(_promptHeaders);
+            if (!string.IsNullOrWhiteSpace(_sessionId))
+            {
+                headers["session-id"] = _sessionId!;
+                headers["SessionId"] = _sessionId!;
+            }
+            return headers;
+        }
+
+        private async Task<string> TryLoadSessionContextAsync(string prompt, CancellationToken ct)
+        {
+            if (AgentFactory?.RuntimeAdapter == null || string.IsNullOrWhiteSpace(_sessionId))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var package = await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionContextPackage>(
+                    SessionCoordinatorAgentId,
+                    new GetSessionContextMessage
+                    {
+                        SessionId = _sessionId,
+                        CurrentPrompt = prompt
+                    },
+                    timeout: TimeSpan.FromSeconds(20),
+                    senderId: Id,
+                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionContextRequest" },
+                    cancellationToken: ct);
+                var context = package.PromptContext ?? string.Empty;
+                LogInfo($"[RefactorAgent] Session context loaded for session {_sessionId}; length={context.Length}");
+                return context;
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"[RefactorAgent] Could not load session context for '{_sessionId}': {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        private async Task<string?> TryRepairJsonAsync(string rawResponse, string originalPrompt, CancellationToken ct)
+        {
+            if (AgentFactory?.RuntimeAdapter == null || string.IsNullOrWhiteSpace(rawResponse))
+            {
+                return null;
+            }
+
+            var repairPrompt = $@"You output an invalid or malformed JSON object.
+Return ONLY valid one-line JSON with keys:
+operation, path, content, selector, anchor, lineNumber, startLine, endLine, error.
+Do not include markdown fences or commentary.
+
+ORIGINAL_PROMPT:
+{originalPrompt}
+
+MALFORMED_OUTPUT:
+{rawResponse}
+
+JSON:";
+
+            try
+            {
+                var repaired = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
+                    _llmAgentId,
+                    repairPrompt,
+                    timeout: TimeSpan.FromSeconds(120),
+                    senderId: Id,
+                    headers: _promptHeaders,
+                    cancellationToken: ct);
+                return NormalizeJsonCandidate(repaired);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string BuildSearchPrompt(string prompt, string sessionContext)
+        {
+            if (string.IsNullOrWhiteSpace(sessionContext))
+            {
+                return prompt;
+            }
+
+            return $@"CURRENT_QUESTION:
+{prompt}
+
+RECENT_SESSION_CONTEXT:
+{sessionContext}";
+        }
+
+        private static bool IsLlmFailure(string answer)
+        {
+            if (string.IsNullOrWhiteSpace(answer))
+            {
+                return true;
+            }
+
+            return answer.StartsWith("Error:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsCodeEditorCommand(string prompt)
+        {
+            return !string.IsNullOrWhiteSpace(prompt) &&
+                   prompt.TrimStart().StartsWith("CodeEditorTool", StringComparison.OrdinalIgnoreCase);
         }
     }
 } 

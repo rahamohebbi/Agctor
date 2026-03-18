@@ -71,6 +71,28 @@ namespace AgctorSDK.Core.Agents
 
                 LogInfo($"[CoderAgent] Prompt received from {_originalSenderId}, correlation={_correlationId}");
 
+                if (!IsCodeEditorCommand(prompt))
+                {
+                    var guidance = new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = "coder-agent expects a CodeEditorTool command. For natural-language requests and follow-ups, use refactor-agent so session context and LLM planning can resolve intent safely."
+                    };
+                    _ = SendReplyAsync(guidance, cancellationToken);
+
+                    var guidanceAckHeaders = new Dictionary<string, string>
+                    {
+                        { "SenderId", Id },
+                        { "ReceiverId", _originalSenderId ?? "unknown" },
+                        { "MessageType", "Acknowledgment" }
+                    };
+                    var guidanceAckMeta = new Dictionary<string, object>
+                    {
+                        { "Timestamp", DateTimeOffset.UtcNow }
+                    };
+                    return new MessageEnvelope("Started", guidanceAckMeta, null, guidanceAckHeaders);
+                }
+
                 _ = ProcessPromptAsync(prompt, cancellationToken); // fire-and-forget orchestration
 
                 // Return immediate ACK so this ReceiveAsync completes and actor can process further messages
@@ -295,6 +317,12 @@ namespace AgctorSDK.Core.Agents
                 _requestLockHeld = false;
                 _requestLock.Release();
             }
+        }
+
+        private static bool IsCodeEditorCommand(string prompt)
+        {
+            return !string.IsNullOrWhiteSpace(prompt) &&
+                   prompt.TrimStart().StartsWith("CodeEditorTool", StringComparison.OrdinalIgnoreCase);
         }
     }
 

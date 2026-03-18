@@ -2,6 +2,12 @@
 
 This document breaks down the implementation of [PRD-006 (Session Memory and Persistence)](./prd-006-session.md) into ordered, actionable steps. Work is placed only under existing assemblies: **AgctorSDK.Core**, **AgctorSDK.Agents**, **AgctorSDK.Host**, **AgctorSDK.Core.Tests**, **AgctorSDK.Core.IntegrationTests**, and **AgctorSDK.Host.IntegrationTests**.
 
+## Implementation Status
+
+- **Overall status:** Completed.
+- **Execution status:** All plan phases 1-7 completed.
+- **Post-plan hardening completed:** Query/Refactor/Coder behavior aligned to the same robust session-follow-up pattern (indexed behavior first, session-aware fallback, deterministic guardrails).
+
 ---
 
 ## Phase 1: Core contracts and persistence abstraction
@@ -27,6 +33,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 
 - Add unit tests for model invariants (ordering, required fields, serialization safety).
 - Add unit tests for context composition policy with deterministic truncation.
+- **Status:** Completed.
 
 ---
 
@@ -54,6 +61,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 
 - Unit tests: coordinator routing, session actor creation, and session isolation.
 - Concurrency test: parallel append/read across different sessions remains independent.
+- **Status:** Completed.
 
 ---
 
@@ -79,6 +87,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 ### 3.3 Verification
 
 - Host integration test: store writes and reads are durable across process restart boundary (or simulated reinitialization).
+- **Status:** Completed.
 
 ---
 
@@ -106,6 +115,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 
 - API integration tests for create/list/load.
 - API integration test for message send with `sessionId` writes both user + assistant turns.
+- **Status:** Completed.
 
 ---
 
@@ -131,6 +141,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 
 - Integration test: ambiguous follow-up (`"add it to MathUtils"`) succeeds in same session after prior turn.
 - Integration test: same follow-up in a fresh session remains ambiguous (expected behavior).
+- **Status:** Completed, then expanded with additional agent hardening patterns.
 
 ---
 
@@ -157,6 +168,7 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 
 - Manual test: create two sessions, send different context, verify no cross-session bleed.
 - Manual test: reload page, reopen old session, history appears.
+- **Status:** Completed, with additional UI hardening for transcript rendering and actor-tree file preview rebinding.
 
 ---
 
@@ -170,6 +182,22 @@ This document breaks down the implementation of [PRD-006 (Session Memory and Per
 | 7.2 | Add trace/log enrichment with `sessionId` for diagnostics. | Host + agent logging points |
 | 7.3 | Update docs/endpoints diagrams for session APIs and flow. | `AgctorSDK.Host/docs/*` and PRD docs |
 | 7.4 | Add/finish unit + integration test suites for session lifecycle and isolation. | `AgctorSDK.Core.Tests`, `AgctorSDK.Core.IntegrationTests`, `AgctorSDK.Host.IntegrationTests` |
+
+- **Status:** Completed.
+
+---
+
+## Post-Plan Enhancements (Implemented)
+
+These are refinements applied after the base plan was completed, based on runtime behavior and user feedback:
+
+| Area | Enhancement | Location |
+|------|-------------|----------|
+| Query behavior | LLM-first with deterministic backup for structured failures, preserving indexed-search-first behavior and session fallback search when primary context is empty. | `AgctorSDK.CodeGraph/Agents/QueryAgent.cs` |
+| Refactor behavior | Applied the same pattern used in query flow: primary indexed behavior first, session-aware search fallback, stronger LLM failure detection, malformed JSON repair pass, and safe direct command path for prebuilt `CodeEditorTool` prompts. | `AgctorSDK.CodeGraph/Agents/RefactorAgent.cs` |
+| Coder behavior | Deterministic guidance path for non-`CodeEditorTool` prompts so natural-language requests are routed to `refactor-agent` rather than failing with opaque tool errors. | `AgctorSDK.Agents/Agents/CoderAgent.cs` |
+| Dashboard chat UX | Markdown-safe rendering with sanitizer/fallback parser, plus consistent transcript rendering and actor-tree file-node rebinding after refresh. | `AgctorSDK.Host/Pages/Dashboard/CodeGraph.cshtml` |
+| Regression tests | Added dedicated tests for query follow-up, refactor fallback/repair behavior, coder routing guidance, and post-chat file-preview continuity. | `AgctorSDK.CodeGraph.Tests`, `AgctorSDK.Core.Tests`, `AgctorSDK.Host.IntegrationTests` |
 
 ---
 

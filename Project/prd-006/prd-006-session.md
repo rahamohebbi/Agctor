@@ -23,14 +23,16 @@ Provide robust, session-scoped conversational memory for agent chat so follow-up
 - Adding external vector databases in the first release.
 - Redesigning the full dashboard information architecture.
 
-## Current State (Summary)
+## Implemented State (March 2026)
 
-- The dashboard chat currently posts only the current prompt payload and no explicit `sessionId`, so follow-up prompts may lose prior turn context.
-- `MessageDispatcher` and runtime request-response/correlation behavior are in place, but there is no dedicated session-memory pipeline.
-- `RefactorAgent` builds LLM prompt context from code search context plus current request, not from historical user turns.
-- No Host API currently exists to create/list/load chat sessions.
+- Session memory is implemented end-to-end with strict session isolation and durable persistence.
+- Dashboard chat sends and tracks `sessionId`; sessions can be created, listed, selected, and reloaded.
+- Session turns (user + assistant) are persisted and replayed through dedicated session APIs.
+- `SessionCoordinatorAgent` and `SessionMemoryAgent` are active in the runtime and used by agent orchestration flows.
+- `QueryAgent` and `RefactorAgent` use session context in LLM flows with fallback behavior that preserves indexed-search-first semantics.
+- `CoderAgent` and `RefactorAgent` include concurrency and parsing hardening for safer multi-turn/multi-request behavior.
 
-## Requirements
+## Requirements and Implementation Status
 
 ### 1. Session Lifecycle API
 
@@ -41,12 +43,14 @@ Provide robust, session-scoped conversational memory for agent chat so follow-up
 - **Behavior:**
   - Session IDs are stable and unique.
   - Session metadata is stored separately from turn events for efficient listing.
+- **Status:** Implemented via `ChatSessionsController` and validated by integration tests.
 
 ### 2. Session-aware Messaging
 
 - Every chat message routed from UI to agents must include `sessionId` in headers/metadata.
 - If `sessionId` is missing in chat endpoints, Host may create a new one (configurable) or reject with validation error.
 - Existing non-chat message paths remain backward compatible.
+- **Status:** Implemented in `MessageDispatcher` with extraction from request payload/metadata/headers and session turn append for user + assistant.
 
 ### 3. Actor-based Session Memory
 
@@ -56,12 +60,14 @@ Provide robust, session-scoped conversational memory for agent chat so follow-up
   - summary snapshot
   - retrieval for prompt context
 - Session actors are isolated by session ID to match Actor Model encapsulation.
+- **Status:** Implemented with coordinator-routed per-session memory actors.
 
 ### 4. Durable Session Storage
 
 - Persist session metadata and turns so sessions survive Host restart.
 - Recommended first implementation: SQLite-backed `ISessionStore` in Host.
 - Support append-only writes and ordered replay by turn timestamp/index.
+- **Status:** Implemented using `SqliteSessionStore`.
 
 ### 5. Prompt Context Composition
 
@@ -71,6 +77,7 @@ Provide robust, session-scoped conversational memory for agent chat so follow-up
   - current user message
 - Enforce token/size budget with deterministic truncation.
 - Add configurable policy values (window size, summary refresh cadence).
+- **Status:** Implemented via `SessionContextComposer` + `SessionMemoryOptions`.
 
 ### 6. Dashboard Session UX
 
@@ -80,12 +87,14 @@ Provide robust, session-scoped conversational memory for agent chat so follow-up
   - current session indicator
 - Sending a prompt uses selected session.
 - Loading a session displays historical messages in chat panel.
+- **Status:** Implemented in `CodeGraph.cshtml`, including transcript loading and session labeling.
 
 ### 7. Reliability, Observability, and Safety
 
 - Trace logs/events include `sessionId` for diagnostics.
 - Session isolation is enforced in retrieval path.
 - Parsing/normalization hardening for LLM JSON responses (strip fenced markdown, whitespace normalization) so ambiguity errors are surfaced cleanly.
+- **Status:** Implemented and extended with request serialization in `CoderAgent`/`RefactorAgent`, query/refactor fallback behavior, and response rendering hardening in dashboard chat.
 
 ## Architecture (High Level)
 
@@ -132,38 +141,37 @@ flowchart LR
 - **AgctorSDK.Core.Tests:** unit tests for contracts, composition logic, and session actor behavior where applicable.
 - **AgctorSDK.Core.IntegrationTests / AgctorSDK.Host.IntegrationTests:** end-to-end and API integration coverage.
 
-## Implementation Phases
+## Implementation Phases (Completed)
 
-- **Phase 1 – Contracts + Store:** define session models/interfaces and implement durable `ISessionStore`.
-- **Phase 2 – Session Agents:** implement coordinator + memory agents and actor messaging contracts.
-- **Phase 3 – Host/API Integration:** add session endpoints and propagate `sessionId` through message dispatcher path.
-- **Phase 4 – Agent Prompt Integration:** use session context package in `refactor-agent` / related LLM paths before generation.
-- **Phase 5 – Dashboard UX:** add session picker/new-session/load behavior in chat UI.
-- **Phase 6 – Quality Gate:** unit + integration tests, docs update, and validation under realistic multi-turn scenarios.
+- **Phase 1 – Contracts + Store:** Completed.
+- **Phase 2 – Session Agents:** Completed.
+- **Phase 3 – Host/API Integration:** Completed.
+- **Phase 4 – Agent Prompt Integration:** Completed (initially `refactor-agent`, then strengthened in `query-agent` and `refactor-agent` with session-aware fallback paths).
+- **Phase 5 – Dashboard UX:** Completed (session controls + transcript loading + chat markdown rendering).
+- **Phase 6 – Quality Gate:** Completed (unit/integration coverage and docs updates).
 
 ## Documentation and Tests
 
-- Update Host docs/endpoints diagrams with session APIs.
-- Unit tests:
-  - context composition windowing/summarization
-  - session store CRUD + ordering
-  - session isolation enforcement
-- Integration tests:
-  - create -> chat -> follow-up pronoun resolution within same session
-  - same prompt in different sessions yields independent context
-  - restart/load session preserves history
+- Host endpoint docs updated to include session API routes.
+- Unit tests include session context packaging and agent follow-up behavior:
+  - `AgctorSDK.CodeGraph.Tests/Agents/QueryAgentSessionFollowupTests.cs`
+  - `AgctorSDK.CodeGraph.Tests/Agents/RefactorAgentSessionBehaviorTests.cs`
+  - `AgctorSDK.Core.Tests/Runtime/CoderAgentRoutingGuidanceTests.cs`
+- Integration tests include session API and UX regression paths:
+  - `AgctorSDK.Host.IntegrationTests/ChatSessionsControllerIntegrationTests.cs`
+  - `AgctorSDK.Host.IntegrationTests/CodeGraphFilePreviewAfterChatIntegrationTests.cs`
 
-## Key Files to Add or Touch
+## Key Files Added or Updated
 
 | Area | Files |
 | ---- | ----- |
-| Core contracts | `AgctorSDK.Core/Interfaces/ISessionStore.cs`, `AgctorSDK.Core/Interfaces/ISessionContextComposer.cs`, session DTO/message files under `AgctorSDK.Core` |
-| Session agents | `AgctorSDK.Agents/Agents/SessionCoordinatorAgent.cs`, `AgctorSDK.Agents/Agents/SessionMemoryAgent.cs` |
-| Host services | `AgctorSDK.Host/Services/SessionStore/*` (SQLite or equivalent), DI registration in `AgctorSDK.Host/Program.cs` |
+| Core contracts | `AgctorSDK.Core/Interfaces/ISessionStore.cs`, `AgctorSDK.Core/Interfaces/ISessionContextComposer.cs`, session DTO/message files under `AgctorSDK.Core/Sessions/*` |
+| Session agents | `AgctorSDK.Agents/Agents/SessionCoordinatorAgent.cs`, `AgctorSDK.Agents/Agents/SessionMemoryAgent.cs`, `AgctorSDK.Agents/Agents/CoderAgent.cs` |
+| Host services | `AgctorSDK.Host/Services/Sessions/SqliteSessionStore.cs`, `AgctorSDK.Host/Services/Sessions/SessionContextComposer.cs`, DI registration in `AgctorSDK.Host/Program.cs` |
 | Host APIs | new chat session controller(s) under `AgctorSDK.Host/Controllers` |
-| Agent integration | `AgctorSDK.CodeGraph/Agents/RefactorAgent.cs` (session context injection before LLM call), optional related agent updates |
-| Dashboard | `AgctorSDK.Host/Pages/Dashboard/CodeGraph.cshtml` (session selector/new session/load), optional page model/helpers |
-| Tests | `AgctorSDK.Core.Tests/*Session*`, `AgctorSDK.Core.IntegrationTests/*Session*`, `AgctorSDK.Host.IntegrationTests/*Session*` |
+| Agent integration | `AgctorSDK.CodeGraph/Agents/RefactorAgent.cs`, `AgctorSDK.CodeGraph/Agents/QueryAgent.cs` |
+| Dashboard | `AgctorSDK.Host/Pages/Dashboard/CodeGraph.cshtml` (session selector/new session/load + markdown render + actor-tree click rebind) |
+| Tests | `AgctorSDK.Core.Tests/*Session*`, `AgctorSDK.Core.Tests/Runtime/CoderAgentRoutingGuidanceTests.cs`, `AgctorSDK.CodeGraph.Tests/Agents/*Session*`, `AgctorSDK.Host.IntegrationTests/*Session*` |
 | Docs | `AgctorSDK.Host/docs/endpoints-diagram.*` and PRD-linked docs updates |
 
 ## References
