@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Http;
 
 namespace AgctorSDK.Core.Utils.Observability.Visualization
 {
@@ -30,10 +28,7 @@ namespace AgctorSDK.Core.Utils.Observability.Visualization
             
             // Register the visualization service
             services.AddSingleton<IVisualizationService, VisualizationService>();
-            
-            // Add HttpClient for API calls
-            services.AddHttpClient<IVisualizationService, VisualizationService>();
-            
+
             return services;
         }
         

@@ -1,0 +1,16 @@
+@model AgctorSDK.Host.Models.EmbeddingDebugComponentModel
+<details id="@Model.ComponentId"
+         class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+    <summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">@Model.Title</summary>
+    <div id="embedding-debug-content" class="mt-3">
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-2">@Model.Description</p>
+        <button type="button"
+                id="load-vectors-btn"
+                class="px-3 py-1.5 text-sm font-medium text-white bg-gray-400 rounded cursor-not-allowed dark:bg-gray-500"
+                disabled
+                title="No vectors in the embedding store yet">
+            Load vectors
+        </button>
+        <div id="embedding-debug-result" class="mt-3"></div>
+    </div>
+</details>

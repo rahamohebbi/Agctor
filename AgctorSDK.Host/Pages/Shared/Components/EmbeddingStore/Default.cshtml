@@ -1,0 +1,20 @@
+@model AgctorSDK.Host.Models.EmbeddingStoreComponentModel
+<div id="@Model.ComponentId"
+     class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+    <h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">@Model.Title</h2>
+    <p class="mb-1 text-sm text-gray-500 dark:text-gray-400">@Model.Description</p>
+    <div class="flex flex-wrap items-center gap-3">
+        <p class="text-gray-900 dark:text-white">Vector count: <span id="codegraph-vector-count" class="font-semibold text-lg">0</span></p>
+        <p class="text-gray-900 dark:text-white">State: <span id="codegraph-embedding-state" class="font-medium">NotReady</span></p>
+        <button type="button"
+                id="index-now-btn"
+                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">
+            Index now
+        </button>
+        <span id="index-message" class="text-sm min-w-[8rem]"></span>
+    </div>
+    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Graph version: <span id="codegraph-graph-version">0</span> | Indexed version: <span id="codegraph-indexed-graph-version">0</span></p>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Last indexed: <span id="codegraph-last-indexed-at">Not yet indexed</span></p>
+    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400" id="codegraph-embedding-error"></p>
+    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Click "Index now" to ask the embedding coordinator to refresh semantic-search embeddings.</p>
+</div>

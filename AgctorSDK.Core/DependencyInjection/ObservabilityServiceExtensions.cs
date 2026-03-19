@@ -2,8 +2,6 @@ using System;
 using AgctorSDK.Core.Utils.Observability.Metrics;
 using AgctorSDK.Core.Utils.Observability.Visualization;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Http;
 
 namespace AgctorSDK.Core.DependencyInjection
 {
@@ -54,10 +52,7 @@ namespace AgctorSDK.Core.DependencyInjection
             
             // Register the visualization service
             services.AddSingleton<IVisualizationService, VisualizationService>();
-            
-            // Add HttpClient for API calls
-            services.AddHttpClient<IVisualizationService, VisualizationService>();
-            
+
             return services;
         }
     }

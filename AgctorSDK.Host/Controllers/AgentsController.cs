@@ -63,6 +63,7 @@ namespace AgctorSDK.Host.Controllers
             CancellationToken cancellationToken = default)
         {
             _logger.LogInformation("Received message request for agent {AgentId}", agentId);
+            using var requestActivity = _activityTracker?.StartActivity("http.agents.send-message");
 
             try
             {
@@ -88,19 +89,19 @@ namespace AgctorSDK.Host.Controllers
                 // Send message through dispatcher
                 var response = await _messageDispatcher.SendMessageAsync(agentId, request, cancellationToken);
 
-                // Attach whichever activity id is available so the dashboard can request a trace visualization.
+                // Attach a trace id for timeline visualization when dispatcher did not provide one.
                 if (_activityTracker != null)
                 {
-                    var ctx = _activityTracker.ExtractContext();
-                    if (ctx.TryGetValue("trace-id", out var traceId) && !string.IsNullOrWhiteSpace(traceId))
+                    if (string.IsNullOrWhiteSpace(response.TraceId))
                     {
-                        response.TraceId = traceId;
-                    }
-                    else if (ctx.TryGetValue("activity-id", out var activityId) && !string.IsNullOrWhiteSpace(activityId))
-                    {
-                        response.TraceId = activityId;
+                        var ctx = _activityTracker.ExtractContext();
+                        if (ctx.TryGetValue("trace-id", out var traceId) && !string.IsNullOrWhiteSpace(traceId))
+                        {
+                            response.TraceId = traceId;
+                        }
                     }
                 }
+                requestActivity?.SetStatus(ActivityStatus.Ok);
 
                 // Return appropriate HTTP status based on message status
                 return response.Status switch
@@ -126,6 +127,8 @@ namespace AgctorSDK.Host.Controllers
             }
             catch (Exception ex)
             {
+                requestActivity?.RecordException(ex);
+                requestActivity?.SetStatus(ActivityStatus.Error, ex.Message);
                 _logger.LogError(ex, "Error sending message to agent {AgentId}", agentId);
                 return StatusCode(500, new ErrorResponse
                 {

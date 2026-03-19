@@ -20,6 +20,42 @@
     </div>
 </div>
 
+<div id="codegraph-panels" class="hidden space-y-6">
+    @await Component.InvokeAsync("EmbeddingStore", new
+    {
+        componentId = "codegraph-embedding-store",
+        title = "Embedding store",
+        description = "Code vectors stored for semantic search (e.g. by Indexer and Search agents)."
+    })
+
+    @await Component.InvokeAsync("AgentChat", new
+    {
+        componentId = "codegraph-agent-chat",
+        title = "Chat with agents"
+    })
+
+    @await Component.InvokeAsync("ActorTree", new
+    {
+        componentId = "codegraph-actor-tree",
+        title = "Actor tree",
+        description = "Hierarchy: Solution → Project → File → Class → Method. Each node is an actor in the CodeGraph runtime. Refreshes after chat and Index now.",
+        emptyMessage = "No actor tree."
+    })
+
+    @await Component.InvokeAsync("EmbeddingDebug", new
+    {
+        componentId = "embedding-debug-details",
+        title = "Embedding vectors (debug)",
+        description = "Load stored vectors to inspect or visualize (table + 2D scatter using first two dimensions)."
+    })
+
+    @await Component.InvokeAsync("RawJson", new
+    {
+        componentId = "codegraph-raw-json-panel",
+        title = "Raw JSON"
+    })
+</div>
+
 <div class="hidden">
     @await Component.InvokeAsync("TraceTimeline", new
     {
@@ -31,70 +67,6 @@
 </div>
 
 <style>
-    .codegraph-file-node {
-        display: flex;
-        width: 100%;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 0.75rem;
-        border: 1px solid transparent;
-        padding: 0.35rem 0.5rem;
-        margin: 0;
-        background: rgba(59, 130, 246, 0.04);
-        cursor: pointer;
-        text-align: left;
-        border-radius: 0.375rem;
-        transition: background-color 120ms ease, border-color 120ms ease;
-    }
-
-    .codegraph-file-node,
-    .codegraph-file-node * {
-        cursor: pointer;
-    }
-
-    .codegraph-file-node:hover,
-    .codegraph-file-node:focus-visible {
-        background: rgba(59, 130, 246, 0.10);
-        border-color: rgba(59, 130, 246, 0.30);
-    }
-
-    .codegraph-file-node-main {
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.1rem;
-        flex: 1 1 auto;
-    }
-
-    .codegraph-file-node-name {
-        color: rgb(29 78 216);
-        font-weight: 600;
-    }
-
-    .codegraph-file-node-path {
-        color: rgb(107 114 128);
-        font-size: 0.75rem;
-        line-height: 1.25rem;
-        word-break: break-all;
-    }
-
-    .codegraph-file-node-action {
-        color: rgb(29 78 216);
-        font-size: 0.75rem;
-        font-weight: 600;
-        white-space: nowrap;
-        padding-top: 0.1rem;
-    }
-
-    .dark .codegraph-file-node-name,
-    .dark .codegraph-file-node-action {
-        color: rgb(147 197 253);
-    }
-
-    .dark .codegraph-file-node-path {
-        color: rgb(156 163 175);
-    }
-
     .codegraph-chat-markdown p {
         margin: 0;
     }
@@ -120,6 +92,7 @@
 <script>
 (function() {
     const el = document.getElementById('codegraph-content');
+    const panels = document.getElementById('codegraph-panels');
     function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
     function normalizeMarkdownInput(text) {
         if (!text) return '';
@@ -317,6 +290,8 @@
         .then(r => { if (r.status === 404) return null; return r.ok ? r.json() : Promise.reject(r); })
         .then(ctx => {
             if (!ctx) {
+                if (panels) panels.classList.add('hidden');
+                el.classList.remove('hidden');
                 el.innerHTML = '<div class="p-6 bg-amber-50 border border-amber-200 rounded-lg dark:bg-gray-800 dark:border-amber-800">' +
                     '<h2 class="text-lg font-semibold text-amber-900 dark:text-amber-200">CodeGraph not active</h2>' +
                     '<p class="mt-2 text-amber-800 dark:text-amber-200">Run the <strong>code-graph-demo</strong> scenario to create the actor model and embedding store.</p>' +
@@ -324,7 +299,6 @@
                     '</div>';
                 return;
             }
-            let html = '';
             const summary = ctx.embeddingStoreSummary;
             const vectorCount = summary && (summary.vectorCount !== undefined) ? summary.vectorCount : 0;
             const embeddingState = summary && summary.state ? summary.state : 'NotReady';
@@ -332,73 +306,41 @@
             const indexedGraphVersion = summary && summary.indexedGraphVersion !== undefined ? summary.indexedGraphVersion : 0;
             const lastIndexedAt = summary && summary.lastIndexedAt ? summary.lastIndexedAt : '';
             const lastError = summary && summary.lastError ? summary.lastError : '';
-            const loadVectorsBtnClass = vectorCount > 0
-                ? 'px-3 py-1.5 text-sm font-medium text-white bg-gray-600 rounded hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-700'
-                : 'px-3 py-1.5 text-sm font-medium text-white bg-gray-400 rounded cursor-not-allowed dark:bg-gray-500';
-            html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
-                '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Embedding store</h2>' +
-                '<p class="mb-1 text-sm text-gray-500 dark:text-gray-400">Code vectors stored for semantic search (e.g. by Indexer and Search agents).</p>' +
-                '<div class="flex flex-wrap items-center gap-3">' +
-                '<p class="text-gray-900 dark:text-white">Vector count: <span id="codegraph-vector-count" class="font-semibold text-lg">' + esc(String(vectorCount)) + '</span></p>' +
-                '<p class="text-gray-900 dark:text-white">State: <span id="codegraph-embedding-state" class="font-medium">' + esc(String(embeddingState)) + '</span></p>' +
-                '<button type="button" id="index-now-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 focus:ring-4 focus:ring-blue-300 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">Index now</button>' +
-                '<span id="index-message" class="text-sm min-w-[8rem]"></span>' +
-                '</div>' +
-                '<p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Graph version: <span id="codegraph-graph-version">' + esc(String(graphVersion)) + '</span> | Indexed version: <span id="codegraph-indexed-graph-version">' + esc(String(indexedGraphVersion)) + '</span></p>' +
-                (lastIndexedAt ? '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Last indexed: <span id="codegraph-last-indexed-at">' + esc(String(lastIndexedAt)) + '</span></p>' : '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Last indexed: <span id="codegraph-last-indexed-at">Not yet indexed</span></p>') +
-                (lastError ? '<p class="mt-1 text-xs text-red-600 dark:text-red-400" id="codegraph-embedding-error">Last error: ' + esc(String(lastError)) + '</p>' : '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400" id="codegraph-embedding-error"></p>') +
-                '<p class="mt-2 text-xs text-gray-500 dark:text-gray-400">Click &quot;Index now&quot; to ask the embedding coordinator to refresh semantic-search embeddings.</p>' +
-                '</div>';
+            el.classList.add('hidden');
+            if (panels) panels.classList.remove('hidden');
             const tree = ctx.actorTree;
-            html += '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
-                '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Chat with agents</h2>' +
-                '<p id="codegraph-chat-help" class="mb-3 text-sm text-gray-500 dark:text-gray-400">query-agent answers questions about indexed code. Use coder-agent to write or edit code, and refactor-agent for refactors. Click Index now before asking code questions.</p>' +
-                '<div class="flex flex-wrap items-center gap-2 mb-3">' +
-                '<label for="codegraph-chat-session" class="text-xs text-gray-500 dark:text-gray-400">Session</label>' +
-                '<select id="codegraph-chat-session" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white min-w-[220px]"></select>' +
-                '<button type="button" id="codegraph-chat-new-session" class="px-3 py-2 text-sm font-medium text-white bg-gray-600 rounded-lg hover:bg-gray-700 dark:bg-gray-600 dark:hover:bg-gray-700">New session</button>' +
-                '<span id="codegraph-chat-session-label" class="text-xs text-gray-500 dark:text-gray-400"></span>' +
-                '</div>' +
-                '<div class="flex flex-wrap gap-2 mb-3">' +
-                '<label for="codegraph-chat-agent" class="sr-only">Agent</label>' +
-                '<select id="codegraph-chat-agent" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-white">' +
-                '<option value="query-agent">query-agent (Q&amp;A, code questions)</option>' +
-                '<option value="coder-agent">coder-agent (write/edit code)</option>' +
-                '<option value="refactor-agent">refactor-agent (refactor)</option>' +
-                '</select>' +
-                '<textarea id="codegraph-chat-input" rows="2" placeholder="e.g. Where is Square defined?" class="flex-1 min-w-[200px] bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:placeholder-gray-400"></textarea>' +
-                '<button type="button" id="codegraph-chat-send" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700">Send</button>' +
-                '</div>' +
-                '<div id="codegraph-chat-status" class="mt-2 hidden"></div>' +
-                '<div id="codegraph-chat-messages" class="mt-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 max-h-64 overflow-y-auto text-sm space-y-2"></div>' +
-                '<div id="codegraph-chat-completion-banner" class="mt-3 hidden"></div>' +
-                '<div id="codegraph-trace-host" class="mt-4"></div>' +
-                '</div>' +
-                '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
-                '<h2 class="mb-2 text-lg font-semibold text-gray-900 dark:text-white">Actor tree</h2>' +
-                '<p class="mb-4 text-sm text-gray-500 dark:text-gray-400">Hierarchy: Solution → Project → File → Class → Method. Each node is an actor in the CodeGraph runtime. Refreshes after chat and Index now.</p>' +
-                '<div id="codegraph-actor-tree-container" class="overflow-x-auto">' + renderActorTree(tree) + '</div>' +
-                '</div>';
-            html += '<details class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700" id="embedding-debug-details">' +
-                '<summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Embedding vectors (debug)</summary>' +
-                '<div id="embedding-debug-content" class="mt-3">' +
-                '<p class="text-sm text-gray-500 dark:text-gray-400 mb-2">Load stored vectors to inspect or visualize (table + 2D scatter using first two dimensions).</p>' +
-                '<button type="button" id="load-vectors-btn" class="' + loadVectorsBtnClass + '"' + (vectorCount > 0 ? '' : ' disabled title="No vectors in the embedding store yet"') + '>Load vectors</button>' +
-                '<div id="embedding-debug-result" class="mt-3"></div>' +
-                '</div></details>';
-            html += '<details class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">' +
-                '<summary class="cursor-pointer text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">Raw JSON</summary>' +
-                '<pre class="mt-3 p-4 text-xs bg-gray-100 dark:bg-gray-700 rounded overflow-x-auto max-h-96 overflow-y-auto">' + esc(JSON.stringify(ctx, null, 2)) + '</pre>' +
-                '</details>';
-            html += renderFilePreviewModal();
-            el.innerHTML = html || '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700"><p class="text-gray-500 dark:text-gray-400">No context data.</p></div>';
-            const traceHost = document.getElementById('codegraph-trace-host');
-            const traceTimeline = document.getElementById('codegraph-trace-timeline');
-            if (traceHost && traceTimeline) {
-                traceHost.appendChild(traceTimeline);
-                if (window.agctorTraceTimeline) {
-                    window.agctorTraceTimeline.clear('codegraph-trace-timeline');
+            const rawJsonPre = document.getElementById('codegraph-raw-json');
+            if (rawJsonPre) rawJsonPre.textContent = JSON.stringify(ctx, null, 2);
+            const countEl = document.getElementById('codegraph-vector-count');
+            const stateEl = document.getElementById('codegraph-embedding-state');
+            const graphVersionEl = document.getElementById('codegraph-graph-version');
+            const indexedVersionEl = document.getElementById('codegraph-indexed-graph-version');
+            const lastIndexedEl = document.getElementById('codegraph-last-indexed-at');
+            const errorEl = document.getElementById('codegraph-embedding-error');
+            if (countEl) countEl.textContent = String(vectorCount);
+            if (stateEl) stateEl.textContent = String(embeddingState);
+            if (graphVersionEl) graphVersionEl.textContent = String(graphVersion);
+            if (indexedVersionEl) indexedVersionEl.textContent = String(indexedGraphVersion);
+            if (lastIndexedEl) lastIndexedEl.textContent = String(lastIndexedAt || 'Not yet indexed');
+            if (errorEl) {
+                errorEl.textContent = lastError ? ('Last error: ' + lastError) : '';
+                errorEl.className = lastError
+                    ? 'mt-1 text-xs text-red-600 dark:text-red-400'
+                    : 'mt-1 text-xs text-gray-500 dark:text-gray-400';
+            }
+            if (window.agctorActorTree) {
+                window.agctorActorTree.render('codegraph-actor-tree', tree);
+            }
+            function ensureTraceTimelineMounted() {
+                const host = document.getElementById('codegraph-trace-host');
+                const timeline = document.getElementById('codegraph-trace-timeline');
+                if (host && timeline && timeline.parentElement !== host) {
+                    host.appendChild(timeline);
                 }
+            }
+            ensureTraceTimelineMounted();
+            if (window.agctorTraceTimeline) {
+                window.agctorTraceTimeline.clear('codegraph-trace-timeline');
             }
             const indexBtn = document.getElementById('index-now-btn');
             const indexMsg = document.getElementById('index-message');
@@ -497,8 +439,6 @@
             const chatSessionLabel = document.getElementById('codegraph-chat-session-label');
             const chatHelp = document.getElementById('codegraph-chat-help');
             const chatMessages = document.getElementById('codegraph-chat-messages');
-            const fileModal = document.getElementById('codegraph-file-modal');
-            const fileModalClose = document.getElementById('codegraph-file-modal-close');
             if (chatSend && chatInput && chatAgent && chatHelp && chatMessages && chatSession && chatNewSession) {
                 let activeSessionId = null;
 
@@ -645,6 +585,7 @@
                     chatMessages.innerHTML += '<div class="text-gray-600 dark:text-gray-300"><strong>You</strong>: ' + esc(prompt) + '</div>';
                     chatInput.value = '';
                     if (window.agctorTraceTimeline) {
+                        ensureTraceTimelineMounted();
                         window.agctorTraceTimeline.clear('codegraph-trace-timeline');
                     }
                     try {
@@ -654,6 +595,20 @@
                             body: JSON.stringify({ payload: prompt, sessionId: activeSessionId })
                         });
                         const data = await res.json().catch(function() { return {}; });
+                        const traceId = data.traceId || data.TraceId || data.traceID || data.trace_id;
+                        if (window.agctorTraceTimeline) {
+                            ensureTraceTimelineMounted();
+                            if (traceId) {
+                                window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId);
+                            } else if (res.ok && isCodingAgent) {
+                                window.agctorTraceTimeline.render('codegraph-trace-timeline', {
+                                    events: [
+                                        { sequence: 1, depth: 0, startOffsetMs: 0, durationMs: 1, label: 'Edit/Process', hasResult: true }
+                                    ],
+                                    totalDurationMs: 1
+                                });
+                            }
+                        }
                         function formatReply(rd) {
                             if (rd == null) return 'No response.';
                             if (typeof rd === 'string') {
@@ -701,7 +656,6 @@
                         }
                         var updated = await fetch('/api/CodeGraph/current').then(function(r) { return r.ok ? r.json() : null; });
                         if (updated) {
-                            var treeEl = document.getElementById('codegraph-actor-tree-container');
                             var countEl = document.getElementById('codegraph-vector-count');
                             var stateEl = document.getElementById('codegraph-embedding-state');
                             var graphVersionEl = document.getElementById('codegraph-graph-version');
@@ -709,9 +663,8 @@
                             var lastIndexedEl = document.getElementById('codegraph-last-indexed-at');
                             var errorEl = document.getElementById('codegraph-embedding-error');
                             var updatedCount = updated.embeddingStoreSummary != null ? (updated.embeddingStoreSummary.vectorCount ?? 0) : 0;
-                            if (treeEl && updated.actorTree) {
-                                treeEl.innerHTML = renderActorTree(updated.actorTree);
-                                bindFileNodeButtons(treeEl);
+                            if (updated.actorTree && window.agctorActorTree) {
+                                window.agctorActorTree.render('codegraph-actor-tree', updated.actorTree);
                             }
                             if (countEl) countEl.textContent = String(updatedCount);
                             if (stateEl && updated.embeddingStoreSummary) stateEl.textContent = String(updated.embeddingStoreSummary.state ?? 'Unknown');
@@ -744,10 +697,8 @@
                                     setTimeout(function() { idxStatus.remove(); }, 3000);
                                 }
                                 if (refreshed && refreshed.actorTree) {
-                                    var treeEl = document.getElementById('codegraph-actor-tree-container');
-                                    if (treeEl) {
-                                        treeEl.innerHTML = renderActorTree(refreshed.actorTree);
-                                        bindFileNodeButtons(treeEl);
+                                    if (window.agctorActorTree) {
+                                        window.agctorActorTree.render('codegraph-actor-tree', refreshed.actorTree);
                                     }
                                 }
                                 if (refreshed && refreshed.embeddingStoreSummary) {
@@ -765,24 +716,10 @@
                                     if (err) err.textContent = refreshed.embeddingStoreSummary.lastError ? ('Last error: ' + refreshed.embeddingStoreSummary.lastError) : '';
                                     setLoadVectorsButtonState(document.getElementById('load-vectors-btn'), refreshed.embeddingStoreSummary.vectorCount ?? 0);
                                 }
-                                var container = document.getElementById('codegraph-actor-tree-container');
-                                if (container) bindFileNodeButtons(container);
                               })
                               .catch(function() { if (idxStatus) idxStatus.remove(); });
                         }
-                        var traceId = data.traceId || data.TraceId;
-                        if (traceId && window.agctorTraceTimeline) {
-                            window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId);
-                        } else if (res.ok && isCodingAgent && isSuccess && window.agctorTraceTimeline) {
-                            window.agctorTraceTimeline.render('codegraph-trace-timeline', {
-                                events: [
-                                    { sequence: 1, depth: 0, startOffsetMs: 0, durationMs: 1, label: 'Edit ✓', hasResult: true },
-                                    { sequence: 2, depth: 1, startOffsetMs: 1, durationMs: 1, label: 'Compile ✓', hasResult: true },
-                                    { sequence: 3, depth: 2, startOffsetMs: 2, durationMs: 1, label: 'Test ✓', hasResult: true }
-                                ],
-                                totalDurationMs: 3
-                            });
-                        }
+                        // Trace timeline is rendered early so later refresh errors do not hide visualization.
                     } catch (e) {
                         chatMessages.innerHTML += '<div class="text-red-600 dark:text-red-400"><strong>Error</strong>: ' + esc(e.message || 'Request failed') + '</div>';
                         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -792,15 +729,10 @@
                     chatSend.innerHTML = 'Send';
                 });
             }
-            if (fileModal && fileModalClose) {
-                fileModalClose.addEventListener('click', closeFileModal);
-                fileModal.addEventListener('click', function(e) {
-                    if (e.target === fileModal) closeFileModal();
-                });
-            }
-            bindFileNodeButtons(document);
         })
         .catch(() => {
+            if (panels) panels.classList.add('hidden');
+            el.classList.remove('hidden');
             el.innerHTML = '<div class="p-6 bg-red-50 border border-red-200 rounded-lg dark:bg-gray-800 dark:border-red-800"><p class="text-red-700 dark:text-red-400">Failed to load CodeGraph context.</p></div>';
         });
 })();

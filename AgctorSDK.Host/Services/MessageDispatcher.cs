@@ -1,6 +1,7 @@
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Host.Models;
 
 namespace AgctorSDK.Host.Services
@@ -39,18 +40,21 @@ namespace AgctorSDK.Host.Services
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
         private readonly ISessionStore _sessionStore;
+        private readonly IActivityTracker? _activityTracker;
         private readonly ILogger<MessageDispatcher> _logger;
 
         public MessageDispatcher(
             IActorRuntimeAdapter runtimeAdapter,
             IAgentRegistry agentRegistry,
             ISessionStore sessionStore,
-            ILogger<MessageDispatcher> logger)
+            ILogger<MessageDispatcher> logger,
+            IActivityTracker? activityTracker = null)
         {
             _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _activityTracker = activityTracker;
         }
 
         /// <summary>
@@ -135,6 +139,7 @@ namespace AgctorSDK.Host.Services
                     MessageId = envelope.Id,
                     Status = isError ? MessageStatus.Failed : MessageStatus.Success,
                     ResponseData = responseData,
+                    TraceId = envelope.Headers.TryGetValue("trace-id", out var traceId) ? traceId : null,
                     ErrorMessage = isError ? responseData : null
                 };
             }
@@ -277,6 +282,10 @@ namespace AgctorSDK.Host.Services
                 {
                     headers[header.Key] = header.Value;
                 }
+            }
+            if (!headers.ContainsKey("trace-id") && _activityTracker != null)
+            {
+                _activityTracker.PropagateContext(headers);
             }
             if (!string.IsNullOrWhiteSpace(sessionId))
             {
