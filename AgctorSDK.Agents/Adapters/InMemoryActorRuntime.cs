@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
 
@@ -25,6 +26,7 @@ namespace AgctorSDK.Core.Adapters
         private readonly object _lockObject = new();
         private readonly CancellationTokenSource _shutdownTokenSource = new();
         private readonly IAgctorLogger _logger;
+        private readonly IActivityTracker? _activityTracker;
         private readonly ErrorHandlingMiddleware _errorHandler;
         
         public InMemoryActorRuntime()
@@ -33,9 +35,10 @@ namespace AgctorSDK.Core.Adapters
             _errorHandler = new ErrorHandlingMiddleware(_logger);
         }
         
-        public InMemoryActorRuntime(IAgctorLogger logger)
+        public InMemoryActorRuntime(IAgctorLogger logger, IActivityTracker? activityTracker = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _activityTracker = activityTracker;
             _errorHandler = new ErrorHandlingMiddleware(_logger);
         }
         
@@ -317,6 +320,10 @@ namespace AgctorSDK.Core.Adapters
                         ? "Prompt"
                         : (existingEnvelope.Payload?.GetType().Name ?? "Unknown");
                 }
+                if (!mergedHeaders.ContainsKey("trace-id") && _activityTracker != null)
+                {
+                    _activityTracker.PropagateContext(mergedHeaders);
+                }
                 mergedHeaders["Version"] = "1.0";
 
                 var mergedMetadata = new Dictionary<string, object>(existingEnvelope.Metadata);
@@ -350,6 +357,10 @@ namespace AgctorSDK.Core.Adapters
                 if (!mcpHeaders.ContainsKey("MessageType"))
                 {
                     mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+                }
+                if (!mcpHeaders.ContainsKey("trace-id") && _activityTracker != null)
+                {
+                    _activityTracker.PropagateContext(mcpHeaders);
                 }
                 mcpHeaders["Version"] = "1.0";
 
@@ -419,6 +430,10 @@ namespace AgctorSDK.Core.Adapters
             if (!mcpHeaders.ContainsKey("MessageType"))
             {
                 mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+            }
+            if (!mcpHeaders.ContainsKey("trace-id") && _activityTracker != null)
+            {
+                _activityTracker.PropagateContext(mcpHeaders);
             }
             mcpHeaders["Version"] = "1.0";
             // mcpHeaders["ReplyTo"] could be added if a specific reply path is known, e.g. runtime's own address.
@@ -681,6 +696,11 @@ namespace AgctorSDK.Core.Adapters
                         }
                         
                         LogTrace($"Processing message ID '{envelope.Id}' for actor '{actorId}'. Headers: {string.Join(", ", envelope.Headers?.Select(h => $"{h.Key}={h.Value}") ?? Array.Empty<string>())}");
+                        using var messageActivity = _activityTracker?.StartActivity($"actor.{actorId}.receive", envelope.ExtractActivityContext());
+                        messageActivity?.SetAttribute("actor.id", actorId);
+                        messageActivity?.SetAttribute("actor.type", actorType);
+                        messageActivity?.SetAttribute("message.id", envelope.Id);
+                        messageActivity?.SetAttribute("message.type", envelope.PayloadType());
                         
                         string? senderId = null;
                         if (envelope.Headers != null && envelope.Headers.TryGetValue("SenderId", out var sid))
@@ -699,10 +719,13 @@ namespace AgctorSDK.Core.Adapters
                         try
                         {
                             responseEnvelope = await actor.ReceiveAsync(envelope, cancellationToken);
+                            messageActivity?.SetStatus(ActivityStatus.Ok);
                             LogTrace($"Actor '{actorId}' processed message '{envelope.Id}' successfully.");
                         }
                         catch (Exception ex)
                         {
+                            messageActivity?.SetStatus(ActivityStatus.Error);
+                            messageActivity?.RecordException(ex);
                             // Use error handler middleware for centralized error handling
                             LogError(ex, $"Error in actor '{actorId}' processing message '{envelope.Id}'");
                             
