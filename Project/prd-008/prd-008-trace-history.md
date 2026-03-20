@@ -206,3 +206,7 @@ The exact final route names can be finalized during implementation, but the PRD 
 - Historical timeline payloads are loaded from the OpenTelemetry backend.
 - Session-to-trace correlation is durable and actor-owned.
 - Sessions without trace metadata still render normally and show a clear non-breaking empty state.
+
+## See also
+
+- [PRD-009: Trace Timeline experience improvements](../prd-009/prd-009-trace-timeline-improvements.md) — navigation, search, performance, and richer span inspection on top of historical trace loading.
