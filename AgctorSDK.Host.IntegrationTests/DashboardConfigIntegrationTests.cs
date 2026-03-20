@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Collections.Generic;
+using System.Threading;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.IntegrationTests;
 
@@ -11,10 +14,22 @@ namespace AgctorSDK.Host.IntegrationTests;
 public class DashboardConfigIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
+    private static int _portCounter = 14080;
 
     public DashboardConfigIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _client = factory.CreateClient();
+        var configured = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                var uniquePort = Interlocked.Increment(ref _portCounter);
+                config.AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                });
+            });
+        });
+        _client = configured.CreateClient();
     }
 
     [Fact]

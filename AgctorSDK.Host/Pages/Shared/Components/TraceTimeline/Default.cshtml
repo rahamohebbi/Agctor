@@ -11,6 +11,7 @@
         </div>
         <span data-role="status" class="text-xs text-gray-500 dark:text-gray-400">Waiting for trace...</span>
     </div>
+    <p data-role="selection" class="mt-2 text-sm text-gray-600 dark:text-gray-300">No trace selected.</p>
     <div class="mt-4 overflow-x-auto">
         <svg data-role="chart"
              class="w-full min-w-[720px] rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40"
@@ -43,6 +44,13 @@
             return registry[id];
         }
 
+        function applySelection(root, selectionLabel) {
+            const selection = root.querySelector('[data-role="selection"]');
+            if (selection) {
+                selection.textContent = selectionLabel || 'No trace selected.';
+            }
+        }
+
         function colorForDepth(depth, hasResult) {
             if (depth === 0) return hasResult ? '#7c3aed' : '#8b5cf6';
             if (depth === 1) return hasResult ? '#2563eb' : '#3b82f6';
@@ -50,10 +58,11 @@
             return hasResult ? '#059669' : '#10b981';
         }
 
-        function renderEmpty(root, message) {
+        function renderEmpty(root, message, selectionLabel) {
             const chart = root.querySelector('[data-role="chart"]');
             const status = root.querySelector('[data-role="status"]');
             const details = root.querySelector('[data-role="details"]');
+            applySelection(root, selectionLabel);
             if (status) status.textContent = message;
             if (chart) {
                 chart.innerHTML = '<text x="24" y="40" fill="#6b7280" font-size="14">' + esc(message) + '</text>';
@@ -63,20 +72,22 @@
             }
         }
 
-        function render(id, data) {
+        function render(id, data, options) {
             const root = getRoot(id);
             if (!root) return;
 
             const state = getState(id);
             state.data = data;
+            state.options = options || state.options || {};
 
             const chart = root.querySelector('[data-role="chart"]');
             const status = root.querySelector('[data-role="status"]');
             const details = root.querySelector('[data-role="details"]');
             const emptyMessage = root.dataset.emptyMessage || 'No trace selected.';
+            const selectionLabel = state.options.selectionLabel || '';
 
             if (!data || !Array.isArray(data.events) || data.events.length === 0) {
-                renderEmpty(root, emptyMessage);
+                renderEmpty(root, state.options.emptyMessage || emptyMessage, selectionLabel);
                 return;
             }
 
@@ -96,6 +107,7 @@
                     : totalDuration.toFixed(1) + 'ms';
                 status.textContent = events.length + ' events across ' + durationLabel;
             }
+            applySelection(root, selectionLabel);
 
             let svg = '';
             svg += '<rect x="0" y="0" width="' + width + '" height="' + chartHeight + '" fill="transparent"></rect>';
@@ -146,34 +158,37 @@
             }
         }
 
-        async function load(id, traceId) {
+        async function load(id, traceId, options) {
             const root = getRoot(id);
             if (!root || !traceId) {
-                clear(id);
+                clear(id, options && options.emptyMessage, options && options.selectionLabel);
                 return;
             }
 
+            const state = getState(id);
+            state.options = options || {};
             const status = root.querySelector('[data-role="status"]');
+            applySelection(root, state.options.selectionLabel);
             if (status) status.textContent = 'Loading trace ' + traceId + '…';
 
             try {
                 const response = await fetch('/api/Visualization/trace/' + encodeURIComponent(traceId) + '/timeline');
                 if (!response.ok) {
-                    renderEmpty(root, 'Trace timeline is unavailable for this request.');
+                    renderEmpty(root, state.options.errorMessage || 'Trace timeline is unavailable for this request.', state.options.selectionLabel);
                     return;
                 }
 
                 const data = await response.json();
-                render(id, data);
+                render(id, data, state.options);
             } catch (_) {
-                renderEmpty(root, 'Failed to load trace timeline.');
+                renderEmpty(root, state.options.errorMessage || 'Failed to load trace timeline.', state.options.selectionLabel);
             }
         }
 
-        function clear(id) {
+        function clear(id, message, selectionLabel) {
             const root = getRoot(id);
             if (!root) return;
-            renderEmpty(root, root.dataset.emptyMessage || 'Select a trace to visualize.');
+            renderEmpty(root, message || root.dataset.emptyMessage || 'Select a trace to visualize.', selectionLabel);
         }
 
         function init(id) {

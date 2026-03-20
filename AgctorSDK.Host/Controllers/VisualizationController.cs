@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Core.Utils.Observability.Visualization;
 using AgctorSDK.Host.Models;
+using AgctorSDK.Host.Services.Traces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgctorSDK.Host.Controllers
@@ -20,11 +22,19 @@ namespace AgctorSDK.Host.Controllers
     public class VisualizationController : ControllerBase
     {
         private readonly IVisualizationService _visualizationService;
+        private readonly ISessionStore? _sessionStore;
+        private readonly ITraceTimelineStore? _traceTimelineStore;
         private readonly IActivityTracker? _activityTracker;
 
-        public VisualizationController(IVisualizationService visualizationService, IActivityTracker? activityTracker = null)
+        public VisualizationController(
+            IVisualizationService visualizationService,
+            ISessionStore? sessionStore = null,
+            ITraceTimelineStore? traceTimelineStore = null,
+            IActivityTracker? activityTracker = null)
         {
             _visualizationService = visualizationService ?? throw new ArgumentNullException(nameof(visualizationService));
+            _sessionStore = sessionStore;
+            _traceTimelineStore = traceTimelineStore;
             _activityTracker = activityTracker;
         }
 
@@ -72,6 +82,20 @@ namespace AgctorSDK.Host.Controllers
                 return BadRequest("traceId is required.");
             }
 
+            if (_traceTimelineStore != null)
+            {
+                var stored = await _traceTimelineStore.GetAsync(traceId, cancellationToken);
+                if (stored != null)
+                {
+                    if (string.IsNullOrWhiteSpace(stored.ExternalViewerUrl))
+                    {
+                        stored.ExternalViewerUrl = _visualizationService.GetTraceViewerUrl(traceId);
+                    }
+
+                    return Ok(stored);
+                }
+            }
+
             var activities = _activityTracker == null
                 ? Array.Empty<IActivity>()
                 : (await _activityTracker.GetTraceActivitiesAsync(traceId)).ToArray();
@@ -115,6 +139,78 @@ namespace AgctorSDK.Host.Controllers
             return Ok(response);
         }
 
+        /// <summary>
+        /// Resolves a historical timeline by a specific message turn identifier.
+        /// </summary>
+        [HttpGet("sessions/{sessionId}/messages/{turnId}/timeline")]
+        [ProducesResponseType(typeof(TraceTimelineResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<TraceTimelineResponse>> GetTimelineByMessageAsync(
+            [FromRoute] string sessionId,
+            [FromRoute] string turnId,
+            CancellationToken cancellationToken = default)
+        {
+            if (_sessionStore == null)
+            {
+                return NotFound(new ErrorResponse
+                {
+                    Code = "TRACE_LOOKUP_UNAVAILABLE",
+                    Message = "Trace lookup is not available."
+                });
+            }
+
+            var link = await _sessionStore.GetTraceLinkByTurnIdAsync(sessionId, turnId, cancellationToken);
+            if (link == null)
+            {
+                return NotFound(new ErrorResponse
+                {
+                    Code = "TRACE_LINK_NOT_FOUND",
+                    Message = $"No trace link was found for turn '{turnId}'."
+                });
+            }
+
+            var resolvedTraceId = ResolveTraceIdForTurn(link, turnId);
+            if (string.IsNullOrWhiteSpace(resolvedTraceId))
+            {
+                return Ok(new TraceTimelineResponse());
+            }
+
+            return await GetTimelineAsync(resolvedTraceId, cancellationToken);
+        }
+
+        /// <summary>
+        /// Resolves a historical timeline by the logical turn group.
+        /// </summary>
+        [HttpGet("sessions/{sessionId}/turns/{turnId}/timeline")]
+        [ProducesResponseType(typeof(TraceTimelineResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<TraceTimelineResponse>> GetTimelineByTurnAsync(
+            [FromRoute] string sessionId,
+            [FromRoute] string turnId,
+            CancellationToken cancellationToken = default)
+        {
+            if (_sessionStore == null)
+            {
+                return NotFound(new ErrorResponse
+                {
+                    Code = "TRACE_LOOKUP_UNAVAILABLE",
+                    Message = "Trace lookup is not available."
+                });
+            }
+
+            var link = await _sessionStore.GetTraceLinkByTurnIdAsync(sessionId, turnId, cancellationToken);
+            if (link == null || string.IsNullOrWhiteSpace(link.PrimaryTraceId))
+            {
+                return NotFound(new ErrorResponse
+                {
+                    Code = "TRACE_LINK_NOT_FOUND",
+                    Message = $"No turn-level trace was found for turn '{turnId}'."
+                });
+            }
+
+            return await GetTimelineAsync(link.PrimaryTraceId, cancellationToken);
+        }
+
         private static Dictionary<string, int> BuildDepthMap(IReadOnlyCollection<IActivity> activities)
         {
             var activityMap = activities.ToDictionary(activity => activity.Id);
@@ -144,6 +240,23 @@ namespace AgctorSDK.Host.Controllers
             }
 
             return GetDepth(parent, activityMap, cache) + 1;
+        }
+
+        private static string? ResolveTraceIdForTurn(AgctorSDK.Core.Sessions.Models.SessionTraceLink link, string turnId)
+        {
+            if (string.Equals(link.RequestTurnId, turnId, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(link.RequestTraceId))
+            {
+                return link.RequestTraceId;
+            }
+
+            if (string.Equals(link.ResponseTurnId, turnId, StringComparison.Ordinal) &&
+                !string.IsNullOrWhiteSpace(link.ResponseTraceId))
+            {
+                return link.ResponseTraceId;
+            }
+
+            return link.PrimaryTraceId;
         }
     }
 }

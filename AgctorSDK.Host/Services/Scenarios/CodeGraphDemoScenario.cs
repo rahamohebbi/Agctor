@@ -236,11 +236,19 @@ namespace AgctorSDK.Host.Services.Scenarios
                 spawnedRefactor.SetAgentFactory(agentFactory);
                 await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
 
-                var sessionCoordinator = await _runtimeAdapter.SpawnActorAsync<SessionCoordinatorAgent>(
-                    sessionCoordinatorId,
-                    id => new SessionCoordinatorAgent(id, _sessionStore, _sessionContextComposer, _sessionMemoryOptions));
-                sessionCoordinator.SetAgentFactory(agentFactory);
-                await _agentRegistry.RegisterAgentAsync(sessionCoordinator);
+                var existingSessionCoordinator = await _agentRegistry.GetAgentByIdAsync(sessionCoordinatorId);
+                if (existingSessionCoordinator is SessionCoordinatorAgent registeredSessionCoordinator)
+                {
+                    registeredSessionCoordinator.SetAgentFactory(agentFactory);
+                }
+                else
+                {
+                    var sessionCoordinator = await _runtimeAdapter.SpawnActorAsync<SessionCoordinatorAgent>(
+                        sessionCoordinatorId,
+                        id => new SessionCoordinatorAgent(id, _sessionStore, _sessionContextComposer, _sessionMemoryOptions));
+                    sessionCoordinator.SetAgentFactory(agentFactory);
+                    await _agentRegistry.RegisterAgentAsync(sessionCoordinator);
+                }
 
                 _logger.LogInformation("CodeGraph demo scenario set up – agents ready (Indexer, Search, LLM, Query, Coder, Refactor)");
 

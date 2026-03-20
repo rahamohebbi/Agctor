@@ -236,6 +236,7 @@
             const chatMessages = document.getElementById('codegraph-chat-messages');
             if (chatSend && chatInput && chatAgent && chatHelp && chatMessages && chatSession && chatNewSession) {
                 let activeSessionId = null;
+                let selectedTraceTarget = '';
 
                 function sessionLabelText(sessionId) {
                     if (!sessionId) return 'No session selected';
@@ -244,6 +245,65 @@
 
                 function setSessionLabel(sessionId) {
                     if (chatSessionLabel) chatSessionLabel.textContent = sessionLabelText(sessionId);
+                }
+
+                function updateSelectedTraceState(target) {
+                    selectedTraceTarget = target || '';
+                    chatMessages.querySelectorAll('[data-chat-trace-target]').forEach(function(node) {
+                        const isSelected = selectedTraceTarget && node.dataset.chatTraceTarget === selectedTraceTarget;
+                        node.classList.toggle('ring-2', !!isSelected);
+                        node.classList.toggle('ring-violet-500', !!isSelected);
+                        node.classList.toggle('border-violet-400', !!isSelected);
+                    });
+                }
+
+                function normalizeRole(roleRaw) {
+                    return typeof roleRaw === 'number'
+                        ? (roleRaw === 0 ? 'user' : roleRaw === 1 ? 'assistant' : roleRaw === 2 ? 'system' : 'tool')
+                        : String(roleRaw || '').toLowerCase();
+                }
+
+                function roleLabel(role, turn) {
+                    if (role === 'user') return 'You';
+                    return turn && turn.agentId ? String(turn.agentId) : 'assistant';
+                }
+
+                function resolveTraceLink(traceLinks, turnId) {
+                    return (traceLinks || []).find(function(link) {
+                        return link.requestTurnId === turnId || link.responseTurnId === turnId;
+                    }) || null;
+                }
+
+                function groupTranscriptTurns(turns, traceLinks) {
+                    const groups = [];
+                    let current = null;
+                    (turns || []).forEach(function(turn) {
+                        const turnGroupId = turn.turnGroupId || turn.turnId;
+                        const traceLink = resolveTraceLink(traceLinks, turn.turnId);
+                        if (!current || current.turnGroupId !== turnGroupId) {
+                            current = {
+                                turnGroupId: turnGroupId,
+                                turnTraceId: traceLink ? (traceLink.primaryTraceId || traceLink.responseTraceId || traceLink.requestTraceId || '') : '',
+                                turns: []
+                            };
+                            groups.push(current);
+                        }
+
+                        current.turns.push({
+                            turn: turn,
+                            traceLink: traceLink
+                        });
+                    });
+
+                    return groups;
+                }
+
+                function buildTraceButton(label, traceId, target, selectionLabel, extraClass) {
+                    if (!traceId) return '';
+                    return '<button type="button" class="' + (extraClass || 'px-2 py-1 rounded border border-violet-200 text-violet-700 dark:text-violet-300 dark:border-violet-700 text-xs hover:bg-violet-50 dark:hover:bg-violet-900/30') + '"' +
+                        ' data-trace-id="' + esc(traceId) + '"' +
+                        ' data-trace-target="' + esc(target) + '"' +
+                        ' data-selection-label="' + esc(selectionLabel) + '">' + esc(label) + '</button>';
                 }
 
                 async function createSession() {
@@ -256,7 +316,7 @@
                     return await response.json();
                 }
 
-                async function loadSessionTranscript(sessionId) {
+                async function loadSessionTranscript(sessionId, preferredTraceTarget, preferredTraceId) {
                     if (!sessionId) return;
                     const response = await fetch('/api/chat/sessions/' + encodeURIComponent(sessionId));
                     if (!response.ok) {
@@ -265,27 +325,82 @@
                     }
                     const transcript = await response.json();
                     const turns = transcript && transcript.turns ? transcript.turns : [];
+                    const traceLinks = transcript && transcript.traceLinks ? transcript.traceLinks : [];
                     if (!Array.isArray(turns) || turns.length === 0) {
                         chatMessages.innerHTML = '<div class="text-gray-500 dark:text-gray-400">No messages yet in this session.</div>';
+                        updateSelectedTraceState('');
+                        if (window.agctorTraceTimeline) {
+                            ensureTraceTimelineMounted();
+                            window.agctorTraceTimeline.clear('codegraph-trace-timeline', 'Select a prompt or response to visualize its trace.', 'No trace selected.');
+                        }
                         return;
                     }
 
                     let html = '';
-                    turns.forEach(function(turn) {
-                        const roleRaw = turn.role;
-                        const role = typeof roleRaw === 'number'
-                            ? (roleRaw === 0 ? 'user' : roleRaw === 1 ? 'assistant' : roleRaw === 2 ? 'system' : 'tool')
-                            : String(roleRaw || '').toLowerCase();
-                        const content = turn.content || '';
-                        if (role === 'user') {
-                            html += '<div class="text-gray-600 dark:text-gray-300"><strong>You</strong>: ' + esc(content) + '</div>';
-                        } else {
-                            const name = esc(turn.agentId || 'assistant');
-                            html += '<div class="text-green-700 dark:text-green-300"><strong>' + name + '</strong>: <span class="codegraph-chat-markdown">' + renderChatMarkdown(content) + '</span></div>';
-                        }
+                    groupTranscriptTurns(turns, traceLinks).forEach(function(group, groupIndex) {
+                        const turnTarget = 'turn:' + group.turnGroupId;
+                        const turnTraceId = group.turnTraceId || '';
+                        html += '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-gray-50/70 dark:bg-gray-900/20 space-y-2 transition" data-chat-trace-target="' + esc(turnTarget) + '">' +
+                            '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                            '<div class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Turn ' + esc(String(groupIndex + 1)) + '</div>' +
+                            '<div class="flex flex-wrap items-center gap-1">' +
+                            (turnTraceId ? buildTraceButton('Turn trace', turnTraceId, turnTarget, 'Turn trace • interaction ' + String(groupIndex + 1)) : '') +
+                            (!turnTraceId ? '<span class="px-2 py-1 rounded border border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-400 text-xs">No trace</span>' : '') +
+                            '</div>' +
+                            '</div>';
+
+                        group.turns.forEach(function(entry) {
+                            const turn = entry.turn;
+                            const traceLink = entry.traceLink;
+                            const role = normalizeRole(turn.role);
+                            const content = turn.content || '';
+                            const messageTraceId = traceLink
+                                ? ((traceLink.requestTurnId === turn.turnId
+                                    ? (traceLink.requestTraceId || traceLink.primaryTraceId || '')
+                                    : (traceLink.responseTraceId || traceLink.primaryTraceId || '')))
+                                : '';
+                            const hasTrace = !!(messageTraceId || turnTraceId);
+                            const messageTarget = 'message:' + turn.turnId;
+                            const selectionLabel = (role === 'user' ? 'Request trace' : 'Response trace') + ' • ' + roleLabel(role, turn);
+                            const bubbleClass = role === 'user'
+                                ? 'border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800 text-gray-700 dark:text-gray-200'
+                                : 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 text-green-800 dark:text-green-200';
+                            html += '<div class="rounded-lg border p-3 transition ' + bubbleClass + (hasTrace ? ' cursor-pointer hover:border-violet-400 dark:hover:border-violet-500' : '') + '"' +
+                                (hasTrace ? ' data-trace-id="' + esc(messageTraceId || turnTraceId) + '"' : '') +
+                                (hasTrace ? ' data-selection-label="' + esc(selectionLabel) + '"' : '') +
+                                (hasTrace ? ' data-trace-target="' + esc(messageTarget) + '"' : '') +
+                                ' data-chat-trace-target="' + esc(messageTarget) + '">' +
+                                '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                                '<strong>' + esc(roleLabel(role, turn)) + '</strong>' +
+                                '<div class="flex flex-wrap items-center gap-1">' +
+                                (messageTraceId && messageTraceId !== turnTraceId ? buildTraceButton('Message trace', messageTraceId, messageTarget, selectionLabel) : '') +
+                                (!hasTrace ? '<span class="px-2 py-1 rounded border border-gray-200 text-gray-500 dark:border-gray-600 dark:text-gray-400 text-xs">No trace</span>' : '') +
+                                '</div>' +
+                                '</div>' +
+                                '<div class="mt-2">' + (role === 'user' ? esc(content) : '<span class="codegraph-chat-markdown">' + renderChatMarkdown(content) + '</span>') + '</div>' +
+                                '</div>';
+                        });
+
+                        html += '</div>';
                     });
                     chatMessages.innerHTML = html;
                     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                    updateSelectedTraceState('');
+                    if (preferredTraceTarget) {
+                        const targetButton = chatMessages.querySelector('[data-trace-target="' + preferredTraceTarget.replace(/"/g, '\\"') + '"]');
+                        if (targetButton) {
+                            targetButton.click();
+                            return;
+                        }
+                    }
+
+                    if (preferredTraceId) {
+                        const traceButton = chatMessages.querySelector('[data-trace-id="' + preferredTraceId.replace(/"/g, '\\"') + '"]');
+                        if (traceButton) {
+                            traceButton.click();
+                        }
+                    }
                 }
 
                 async function refreshSessions(preferredSessionId) {
@@ -333,6 +448,22 @@
 
                 syncChatAgentUi();
                 chatAgent.addEventListener('change', syncChatAgentUi);
+                chatMessages.addEventListener('click', function(event) {
+                    const traceTrigger = event.target.closest('[data-trace-id]');
+                    if (!traceTrigger) return;
+                    const traceId = traceTrigger.dataset.traceId;
+                    const traceTarget = traceTrigger.dataset.traceTarget || traceTrigger.dataset.chatTraceTarget || '';
+                    const selectionLabel = traceTrigger.dataset.selectionLabel || 'Selected trace';
+                    updateSelectedTraceState(traceTarget);
+                    if (window.agctorTraceTimeline) {
+                        ensureTraceTimelineMounted();
+                        window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId, {
+                            selectionLabel: selectionLabel,
+                            emptyMessage: 'No timeline is available for this historical trace.',
+                            errorMessage: 'Trace timeline is unavailable for this request.'
+                        });
+                    }
+                });
                 chatSession.addEventListener('change', async function() {
                     activeSessionId = chatSession.value;
                     setSessionLabel(activeSessionId);
@@ -381,7 +512,7 @@
                     chatInput.value = '';
                     if (window.agctorTraceTimeline) {
                         ensureTraceTimelineMounted();
-                        window.agctorTraceTimeline.clear('codegraph-trace-timeline');
+                        window.agctorTraceTimeline.clear('codegraph-trace-timeline', 'Processing trace…', 'Latest prompt in progress');
                     }
                     try {
                         const res = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/message', {
@@ -394,14 +525,18 @@
                         if (window.agctorTraceTimeline) {
                             ensureTraceTimelineMounted();
                             if (traceId) {
-                                window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId);
+                                window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId, {
+                                    selectionLabel: 'Latest live trace',
+                                    emptyMessage: 'No timeline is available for this request.',
+                                    errorMessage: 'Trace timeline is unavailable for this request.'
+                                });
                             } else if (res.ok && isCodingAgent) {
                                 window.agctorTraceTimeline.render('codegraph-trace-timeline', {
                                     events: [
                                         { sequence: 1, depth: 0, startOffsetMs: 0, durationMs: 1, label: 'Edit/Process', hasResult: true }
                                     ],
                                     totalDurationMs: 1
-                                });
+                                }, { selectionLabel: 'Latest live trace' });
                             }
                         }
                         function formatReply(rd) {
@@ -432,8 +567,7 @@
                                 isSuccess = r.indexOf('Success:') === 0 || (r.indexOf('File ') === 0 && r.indexOf('updated') >= 0) || (r.indexOf('Error:') !== 0 && r.indexOf('Refactor failed') !== 0);
                             }
                         }
-                        chatMessages.innerHTML += '<div class="' + status + ' flex items-start gap-2"><span class="flex-shrink-0 mt-0.5">' + (res.ok && isSuccess ? '<span class="inline-block w-4 h-4 rounded-full bg-green-500 text-white text-xs flex items-center justify-center" title="Completed">✓</span>' : '') + '</span><span><strong>' + esc(agentId) + '</strong>: <span class="codegraph-chat-markdown">' + renderChatMarkdown(reply) + '</span></span></div>';
-                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                        await loadSessionTranscript(activeSessionId, null, traceId || null);
 
                         if (statusEl) statusEl.classList.add('hidden');
 

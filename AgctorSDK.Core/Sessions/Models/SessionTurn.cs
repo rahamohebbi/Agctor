@@ -8,6 +8,11 @@ namespace AgctorSDK.Core.Sessions.Models
     public sealed class SessionTurn
     {
         public string TurnId { get; set; } = Guid.NewGuid().ToString();
+        /// <summary>
+        /// Logical chat turn shared by a user prompt and its assistant response.
+        /// Keeps request/response drill-down tied to one parent turn.
+        /// </summary>
+        public string TurnGroupId { get; set; } = Guid.NewGuid().ToString();
         public string SessionId { get; set; } = string.Empty;
         public int Sequence { get; set; }
         public SessionRole Role { get; set; }

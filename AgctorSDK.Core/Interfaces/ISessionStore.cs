@@ -15,6 +15,9 @@ namespace AgctorSDK.Core.Interfaces
         Task<IReadOnlyList<SessionInfo>> ListSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SessionTurn>> GetTurnsAsync(string sessionId, int? lastTurns = null, CancellationToken cancellationToken = default);
         Task<SessionTurn> AppendTurnAsync(SessionTurn turn, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<SessionTraceLink>> GetTraceLinksAsync(string sessionId, CancellationToken cancellationToken = default);
+        Task<SessionTraceLink?> GetTraceLinkByTurnIdAsync(string sessionId, string turnId, CancellationToken cancellationToken = default);
+        Task<SessionTraceLink> UpsertTraceLinkAsync(SessionTraceLink traceLink, CancellationToken cancellationToken = default);
         Task<SessionSummary?> GetSummaryAsync(string sessionId, CancellationToken cancellationToken = default);
         Task UpsertSummaryAsync(SessionSummary summary, CancellationToken cancellationToken = default);
     }

@@ -2,6 +2,8 @@ graph TB
     subgraph "AgctorSDK.Host"
         subgraph "HTTP API"
             AgentsCtrl["AgentsController<br/>Agent CRUD + messaging"]
+            ChatSessionsCtrl["ChatSessionsController<br/>Session transcript + history"]
+            VisualizationCtrl["VisualizationController<br/>Trace timeline + message flow"]
             GoalsCtrl["GoalsController<br/>Goal CRUD"]
             ToolsCtrl["ToolsController<br/>Tool invocation + discovery"]
             TestCtrl["TestController<br/>Scenario setup"]
@@ -15,6 +17,8 @@ graph TB
 
         subgraph "Services"
             MessageDispatcher["MessageDispatcher<br/>Message routing to agents"]
+            SessionStore["SqliteSessionStore<br/>Session turns + trace links"]
+            TraceStore["SqliteTraceTimelineStore<br/>Durable timeline snapshots"]
             ToolInvoker["ToolInvoker<br/>Direct tool execution"]
             ScenarioFactory["ScenarioFactory<br/>Test scenario creation"]
             CurrentScenarioStore["CurrentScenarioStore<br/>Active scenario state"]
@@ -66,6 +70,8 @@ graph TB
 
     %% HTTP flow
     HTTPClient -->|REST API| AgentsCtrl
+    HTTPClient -->|REST API| ChatSessionsCtrl
+    HTTPClient -->|REST API| VisualizationCtrl
     HTTPClient -->|REST API| GoalsCtrl
     HTTPClient -->|REST API| ToolsCtrl
     HTTPClient -->|REST API| TestCtrl
@@ -76,6 +82,11 @@ graph TB
 
     %% Internal routing
     AgentsCtrl --> MessageDispatcher
+    ChatSessionsCtrl --> SessionStore
+    VisualizationCtrl --> SessionStore
+    VisualizationCtrl --> TraceStore
+    MessageDispatcher --> SessionStore
+    MessageDispatcher --> TraceStore
     ToolsCtrl --> ToolInvoker
     McpListener --> MessageDispatcher
     TestCtrl --> CurrentScenarioStore

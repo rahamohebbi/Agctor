@@ -1,8 +1,11 @@
+using System.Collections.Generic;
+using System.Linq;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Host.Models;
+using AgctorSDK.Host.Services.Traces;
 
 namespace AgctorSDK.Host.Services
 {
@@ -37,9 +40,11 @@ namespace AgctorSDK.Host.Services
     /// </summary>
     public class MessageDispatcher : IMessageDispatcher
     {
+        private const string SessionCoordinatorAgentId = "session-coordinator-agent";
         private readonly IActorRuntimeAdapter _runtimeAdapter;
         private readonly IAgentRegistry _agentRegistry;
         private readonly ISessionStore _sessionStore;
+        private readonly ITraceTimelineStore _traceTimelineStore;
         private readonly IActivityTracker? _activityTracker;
         private readonly ILogger<MessageDispatcher> _logger;
 
@@ -47,12 +52,14 @@ namespace AgctorSDK.Host.Services
             IActorRuntimeAdapter runtimeAdapter,
             IAgentRegistry agentRegistry,
             ISessionStore sessionStore,
+            ITraceTimelineStore traceTimelineStore,
             ILogger<MessageDispatcher> logger,
             IActivityTracker? activityTracker = null)
         {
             _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
+            _traceTimelineStore = traceTimelineStore ?? throw new ArgumentNullException(nameof(traceTimelineStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;
         }
@@ -68,12 +75,16 @@ namespace AgctorSDK.Host.Services
             try
             {
                 var sessionId = ExtractSessionId(request);
+                var turnGroupId = !string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString() : null;
                 // Route natural-language prompts from coder-agent to refactor-agent (which has LLM to convert to CodeEditorTool commands)
                 var payloadStr = request.Payload is string s ? s : (request.Payload is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString() : null);
                 var senderId = request.SenderId ?? "http-api";
+                var envelope = CreateMessageEnvelope(request, sessionId);
+                var requestTraceId = envelope.Headers.TryGetValue("trace-id", out var liveTraceId) ? liveTraceId : null;
+                SessionTurn? requestTurn = null;
                 if (!string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(payloadStr))
                 {
-                    await TryAppendSessionTurnAsync(sessionId, SessionRole.User, payloadStr, senderId, cancellationToken);
+                    requestTurn = await TryAppendSessionTurnAsync(sessionId, SessionRole.User, payloadStr, senderId, turnGroupId, cancellationToken);
                 }
 
                 if (agentId == "coder-agent" && !string.IsNullOrWhiteSpace(payloadStr) &&
@@ -88,16 +99,24 @@ namespace AgctorSDK.Host.Services
                 if (agent == null)
                 {
                     _logger.LogWarning("Agent {AgentId} not found in registry", agentId);
+                    await TryCaptureTraceHistoryAsync(
+                        sessionId,
+                        turnGroupId,
+                        requestTurn,
+                        responseTurn: null,
+                        primaryTraceId: requestTraceId,
+                        requestTraceId: requestTraceId,
+                        responseTraceId: null,
+                        agentId,
+                        cancellationToken);
                     return new MessageResponse
                     {
                         MessageId = Guid.NewGuid().ToString(),
                         Status = MessageStatus.AgentNotFound,
+                        TraceId = requestTraceId,
                         ErrorMessage = $"Agent '{agentId}' not found"
                     };
                 }
-
-                // Create message envelope from HTTP request
-                var envelope = CreateMessageEnvelope(request, sessionId);
 
                 // Send message and wait for response (request-response pattern)
                 var timeout = TimeSpan.FromSeconds(600); // Allow up to 10 minutes for complex refactor pipelines
@@ -129,17 +148,32 @@ namespace AgctorSDK.Host.Services
                 }
 
                 var isError = false; // If we got a string response, it's successful (errors would throw exceptions)
+                SessionTurn? responseTurn = null;
                 if (!string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(responseData))
                 {
-                    await TryAppendSessionTurnAsync(sessionId, SessionRole.Assistant, responseData, agentId, cancellationToken);
+                    responseTurn = await TryAppendSessionTurnAsync(sessionId, SessionRole.Assistant, responseData, agentId, turnGroupId, cancellationToken);
                 }
+
+                var traceId = envelope.Headers.TryGetValue("trace-id", out var responseTraceId)
+                    ? responseTraceId
+                    : ExtractTraceIdFromCurrentContext();
+                await TryCaptureTraceHistoryAsync(
+                    sessionId,
+                    turnGroupId,
+                    requestTurn,
+                    responseTurn,
+                    traceId,
+                    requestTraceId ?? traceId,
+                    traceId,
+                    agentId,
+                    cancellationToken);
 
                 return new MessageResponse
                 {
                     MessageId = envelope.Id,
                     Status = isError ? MessageStatus.Failed : MessageStatus.Success,
                     ResponseData = responseData,
-                    TraceId = envelope.Headers.TryGetValue("trace-id", out var traceId) ? traceId : null,
+                    TraceId = traceId,
                     ErrorMessage = isError ? responseData : null
                 };
             }
@@ -314,7 +348,7 @@ namespace AgctorSDK.Host.Services
 
             // Ensure MessageType header exists; treat raw string payloads as Prompt.
             // We must base this on the final payload that will be placed in the envelope (may differ after JsonElement conversion).
-            object tentativePayload = request.Payload;
+            object tentativePayload = request.Payload ?? string.Empty;
             if (tentativePayload is System.Text.Json.JsonElement je)
             {
                 tentativePayload = je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString()! : tentativePayload;
@@ -326,7 +360,7 @@ namespace AgctorSDK.Host.Services
 
             // Convert payload to appropriate type
             // If it's a JsonElement (from HTTP JSON deserialization), extract the actual value
-            object payload = request.Payload;
+            object payload = request.Payload ?? string.Empty;
             if (request.Payload is System.Text.Json.JsonElement jsonElement)
             {
                 payload = jsonElement.ValueKind switch
@@ -336,7 +370,7 @@ namespace AgctorSDK.Host.Services
                     System.Text.Json.JsonValueKind.Number when jsonElement.TryGetDouble(out var doubleValue) => doubleValue,
                     System.Text.Json.JsonValueKind.True => true,
                     System.Text.Json.JsonValueKind.False => false,
-                    System.Text.Json.JsonValueKind.Null => null!,
+                    System.Text.Json.JsonValueKind.Null => string.Empty,
                     System.Text.Json.JsonValueKind.Object or System.Text.Json.JsonValueKind.Array => jsonElement.GetRawText(),
                     _ => jsonElement.ToString()
                 };
@@ -383,13 +417,13 @@ namespace AgctorSDK.Host.Services
             return null;
         }
 
-        private async Task TryAppendSessionTurnAsync(string sessionId, SessionRole role, string content, string? actorId, CancellationToken cancellationToken)
+        private async Task<SessionTurn?> TryAppendSessionTurnAsync(string sessionId, SessionRole role, string content, string? actorId, string? turnGroupId, CancellationToken cancellationToken)
         {
             try
             {
                 if (string.IsNullOrWhiteSpace(content))
                 {
-                    return;
+                    return null;
                 }
 
                 var existing = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
@@ -398,18 +432,169 @@ namespace AgctorSDK.Host.Services
                     await _sessionStore.CreateSessionAsync(sessionId, null, cancellationToken);
                 }
 
-                await _sessionStore.AppendTurnAsync(new SessionTurn
+                var turn = new SessionTurn
                 {
                     SessionId = sessionId,
+                    TurnGroupId = string.IsNullOrWhiteSpace(turnGroupId) ? Guid.NewGuid().ToString() : turnGroupId,
                     Role = role,
                     Content = content,
                     AgentId = actorId
-                }, cancellationToken);
+                };
+
+                if (await _agentRegistry.GetAgentByIdAsync(SessionCoordinatorAgentId) != null)
+                {
+                    return await _runtimeAdapter.SendMessageAsync<SessionTurn>(
+                        SessionCoordinatorAgentId,
+                        new AgctorSDK.Core.Sessions.Messages.AppendSessionTurnMessage { Turn = turn },
+                        timeout: TimeSpan.FromSeconds(20),
+                        senderId: nameof(MessageDispatcher),
+                        headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                        cancellationToken: cancellationToken);
+                }
+
+                return await _sessionStore.AppendTurnAsync(turn, cancellationToken);
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Failed to append session turn for session {SessionId}", sessionId);
+                return null;
             }
+        }
+
+        private string? ExtractTraceIdFromCurrentContext()
+        {
+            if (_activityTracker == null)
+            {
+                return null;
+            }
+
+            var context = _activityTracker.ExtractContext();
+            return context.TryGetValue("trace-id", out var traceId) && !string.IsNullOrWhiteSpace(traceId)
+                ? traceId
+                : null;
+        }
+
+        private async Task TryCaptureTraceHistoryAsync(
+            string? sessionId,
+            string? turnGroupId,
+            SessionTurn? requestTurn,
+            SessionTurn? responseTurn,
+            string? primaryTraceId,
+            string? requestTraceId,
+            string? responseTraceId,
+            string? agentId,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) ||
+                string.IsNullOrWhiteSpace(turnGroupId) ||
+                requestTurn == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var link = new SessionTraceLink
+                {
+                    SessionId = sessionId,
+                    TurnGroupId = turnGroupId,
+                    RequestTurnId = requestTurn.TurnId,
+                    ResponseTurnId = responseTurn?.TurnId,
+                    PrimaryTraceId = primaryTraceId,
+                    RequestTraceId = requestTraceId,
+                    ResponseTraceId = responseTraceId,
+                    AgentId = agentId
+                };
+
+                if (await _agentRegistry.GetAgentByIdAsync(SessionCoordinatorAgentId) != null)
+                {
+                    await _runtimeAdapter.SendMessageAsync<SessionTraceLink>(
+                        SessionCoordinatorAgentId,
+                        new AgctorSDK.Core.Sessions.Messages.UpsertSessionTraceLinkMessage { TraceLink = link },
+                        timeout: TimeSpan.FromSeconds(20),
+                        senderId: nameof(MessageDispatcher),
+                        headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                        cancellationToken: cancellationToken);
+                }
+                else
+                {
+                    await _sessionStore.UpsertTraceLinkAsync(link, cancellationToken);
+                }
+
+                if (string.IsNullOrWhiteSpace(primaryTraceId) || _activityTracker == null)
+                {
+                    return;
+                }
+
+                var activities = (await _activityTracker.GetTraceActivitiesAsync(primaryTraceId)).ToArray();
+                if (activities.Length == 0)
+                {
+                    return;
+                }
+
+                var ordered = activities
+                    .OrderBy(a => a.Timestamp)
+                    .ThenBy(a => string.IsNullOrWhiteSpace(a.ParentId) ? 0 : 1)
+                    .ToList();
+                var start = ordered.Min(a => a.Timestamp);
+                var end = ordered.Max(a => a.Timestamp.Add(a.Duration));
+                var depthMap = BuildDepthMap(ordered);
+                var timeline = new TraceTimelineResponse
+                {
+                    TraceId = primaryTraceId,
+                    StartedAtUtc = start,
+                    TotalDurationMs = Math.Max(1, (end - start).TotalMilliseconds),
+                    Events = ordered.Select((activity, index) => new TraceTimelineEventDto
+                    {
+                        Id = activity.Id,
+                        ParentId = activity.ParentId,
+                        Label = activity.DisplayName ?? activity.Name ?? "Activity",
+                        Name = activity.Name,
+                        Sequence = index + 1,
+                        Depth = depthMap.TryGetValue(activity.Id, out var depth) ? depth : 0,
+                        StartedAtUtc = activity.Timestamp,
+                        StartOffsetMs = Math.Max(0, (activity.Timestamp - start).TotalMilliseconds),
+                        DurationMs = Math.Max(1, activity.Duration.TotalMilliseconds),
+                        HasResult = activity.HasResult
+                    }).ToList()
+                };
+
+                await _traceTimelineStore.SaveAsync(timeline, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to capture historical trace for session {SessionId}", sessionId);
+            }
+        }
+
+        private static Dictionary<string, int> BuildDepthMap(IReadOnlyCollection<AgctorSDK.Core.Utils.Observability.Visualization.IActivity> activities)
+        {
+            var map = activities.ToDictionary(activity => activity.Id);
+            var depth = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var activity in activities)
+            {
+                depth[activity.Id] = GetDepth(activity, map, depth);
+            }
+
+            return depth;
+        }
+
+        private static int GetDepth(
+            AgctorSDK.Core.Utils.Observability.Visualization.IActivity activity,
+            IReadOnlyDictionary<string, AgctorSDK.Core.Utils.Observability.Visualization.IActivity> activities,
+            IDictionary<string, int> cache)
+        {
+            if (cache.TryGetValue(activity.Id, out var cached))
+            {
+                return cached;
+            }
+
+            if (string.IsNullOrWhiteSpace(activity.ParentId) || !activities.TryGetValue(activity.ParentId, out var parent))
+            {
+                return 0;
+            }
+
+            return GetDepth(parent, activities, cache) + 1;
         }
     }
 } 

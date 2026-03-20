@@ -89,11 +89,13 @@ namespace AgctorSDK.Host.Controllers
                 }
 
                 var turns = await _sessionStore.GetTurnsAsync(sessionId, lastTurns, cancellationToken);
+                var traceLinks = await _sessionStore.GetTraceLinksAsync(sessionId, cancellationToken);
                 var summary = await _sessionStore.GetSummaryAsync(sessionId, cancellationToken);
                 return Ok(new SessionTranscript
                 {
                     Session = session,
                     Turns = turns,
+                    TraceLinks = traceLinks,
                     Summary = summary
                 });
             }

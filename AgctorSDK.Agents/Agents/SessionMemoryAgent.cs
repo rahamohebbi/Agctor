@@ -53,16 +53,36 @@ namespace AgctorSDK.Core.Agents
                     result = await _store.AppendTurnAsync(append.Turn, cancellationToken);
                     break;
 
+                case UpsertSessionTraceLinkMessage upsertTrace:
+                    if (!string.Equals(upsertTrace.TraceLink.SessionId, _sessionId, StringComparison.Ordinal))
+                    {
+                        throw new InvalidOperationException($"Trace link session '{upsertTrace.TraceLink.SessionId}' does not match memory actor session '{_sessionId}'.");
+                    }
+                    result = await _store.UpsertTraceLinkAsync(upsertTrace.TraceLink, cancellationToken);
+                    break;
+
+                case GetSessionTraceLinksMessage traceLinksReq:
+                    EnsureSession(traceLinksReq.SessionId);
+                    result = await _store.GetTraceLinksAsync(_sessionId, cancellationToken);
+                    break;
+
+                case GetSessionTraceLinkByTurnMessage traceByTurnReq:
+                    EnsureSession(traceByTurnReq.SessionId);
+                    result = await _store.GetTraceLinkByTurnIdAsync(_sessionId, traceByTurnReq.TurnId, cancellationToken);
+                    break;
+
                 case GetSessionTranscriptMessage transcriptReq:
                     EnsureSession(transcriptReq.SessionId);
                     var session = await _store.GetSessionAsync(_sessionId, cancellationToken)
                                   ?? throw new InvalidOperationException($"Session '{_sessionId}' does not exist.");
                     var turns = await _store.GetTurnsAsync(_sessionId, transcriptReq.LastTurns, cancellationToken);
+                    var traceLinks = await _store.GetTraceLinksAsync(_sessionId, cancellationToken);
                     var summary = await _store.GetSummaryAsync(_sessionId, cancellationToken);
                     result = new SessionTranscript
                     {
                         Session = session,
                         Turns = turns,
+                        TraceLinks = traceLinks,
                         Summary = summary
                     };
                     break;

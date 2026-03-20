@@ -138,9 +138,9 @@ LIMIT $limit OFFSET $offset;";
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = lastTurns.HasValue
                 ? @"
-SELECT turn_id, session_id, sequence, role, content, agent_id, created_at
+SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
 FROM (
-  SELECT turn_id, session_id, sequence, role, content, agent_id, created_at
+  SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
   FROM session_turns
   WHERE session_id = $id
   ORDER BY sequence DESC
@@ -148,7 +148,7 @@ FROM (
 )
 ORDER BY sequence ASC;"
                 : @"
-SELECT turn_id, session_id, sequence, role, content, agent_id, created_at
+SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
 FROM session_turns
 WHERE session_id = $id
 ORDER BY sequence ASC;";
@@ -165,12 +165,13 @@ ORDER BY sequence ASC;";
                 turns.Add(new SessionTurn
                 {
                     TurnId = reader.GetString(0),
-                    SessionId = reader.GetString(1),
-                    Sequence = reader.GetInt32(2),
-                    Role = ParseRole(reader.GetString(3)),
-                    Content = reader.GetString(4),
-                    AgentId = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    CreatedAt = DateTimeOffset.Parse(reader.GetString(6))
+                    TurnGroupId = reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1),
+                    SessionId = reader.GetString(2),
+                    Sequence = reader.GetInt32(3),
+                    Role = ParseRole(reader.GetString(4)),
+                    Content = reader.GetString(5),
+                    AgentId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    CreatedAt = DateTimeOffset.Parse(reader.GetString(7))
                 });
             }
 
@@ -209,6 +210,9 @@ ORDER BY sequence ASC;";
                 var normalized = new SessionTurn
                 {
                     TurnId = string.IsNullOrWhiteSpace(turn.TurnId) ? Guid.NewGuid().ToString() : turn.TurnId,
+                    TurnGroupId = string.IsNullOrWhiteSpace(turn.TurnGroupId)
+                        ? (string.IsNullOrWhiteSpace(turn.TurnId) ? Guid.NewGuid().ToString() : turn.TurnId)
+                        : turn.TurnGroupId,
                     SessionId = turn.SessionId,
                     Sequence = nextSequence,
                     Role = turn.Role,
@@ -220,9 +224,10 @@ ORDER BY sequence ASC;";
                 await using (var insertCmd = conn.CreateCommand())
                 {
                     insertCmd.CommandText = @"
-INSERT INTO session_turns (turn_id, session_id, sequence, role, content, agent_id, created_at)
-VALUES ($turnId, $sessionId, $sequence, $role, $content, $agentId, $createdAt);";
+INSERT INTO session_turns (turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at)
+VALUES ($turnId, $turnGroupId, $sessionId, $sequence, $role, $content, $agentId, $createdAt);";
                     insertCmd.Parameters.AddWithValue("$turnId", normalized.TurnId);
+                    insertCmd.Parameters.AddWithValue("$turnGroupId", normalized.TurnGroupId);
                     insertCmd.Parameters.AddWithValue("$sessionId", normalized.SessionId);
                     insertCmd.Parameters.AddWithValue("$sequence", normalized.Sequence);
                     insertCmd.Parameters.AddWithValue("$role", normalized.Role.ToString());
@@ -242,6 +247,141 @@ WHERE session_id = $sessionId;";
                     sessionCmd.Parameters.AddWithValue("$sessionId", normalized.SessionId);
                     await sessionCmd.ExecuteNonQueryAsync(cancellationToken);
                 }
+
+                return normalized;
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
+        public async Task<IReadOnlyList<SessionTraceLink>> GetTraceLinksAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                return Array.Empty<SessionTraceLink>();
+            }
+
+            var links = new List<SessionTraceLink>();
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT trace_link_id, session_id, turn_group_id, request_turn_id, response_turn_id, primary_trace_id,
+       request_trace_id, response_trace_id, agent_id, created_at, updated_at
+FROM session_trace_links
+WHERE session_id = $sessionId
+ORDER BY created_at ASC;";
+            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                links.Add(ReadTraceLink(reader));
+            }
+
+            return links;
+        }
+
+        public async Task<SessionTraceLink?> GetTraceLinkByTurnIdAsync(string sessionId, string turnId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) || string.IsNullOrWhiteSpace(turnId))
+            {
+                return null;
+            }
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT trace_link_id, session_id, turn_group_id, request_turn_id, response_turn_id, primary_trace_id,
+       request_trace_id, response_trace_id, agent_id, created_at, updated_at
+FROM session_trace_links
+WHERE session_id = $sessionId
+  AND (request_turn_id = $turnId OR response_turn_id = $turnId)
+LIMIT 1;";
+            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+            cmd.Parameters.AddWithValue("$turnId", turnId);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            return ReadTraceLink(reader);
+        }
+
+        public async Task<SessionTraceLink> UpsertTraceLinkAsync(SessionTraceLink traceLink, CancellationToken cancellationToken = default)
+        {
+            if (traceLink == null) throw new ArgumentNullException(nameof(traceLink));
+            if (string.IsNullOrWhiteSpace(traceLink.SessionId))
+            {
+                throw new InvalidOperationException("TraceLink SessionId is required.");
+            }
+            if (string.IsNullOrWhiteSpace(traceLink.TurnGroupId))
+            {
+                throw new InvalidOperationException("TraceLink TurnGroupId is required.");
+            }
+            if (string.IsNullOrWhiteSpace(traceLink.RequestTurnId))
+            {
+                throw new InvalidOperationException("TraceLink RequestTurnId is required.");
+            }
+
+            await _dbLock.WaitAsync(cancellationToken);
+            try
+            {
+                await EnsureSessionAsync(traceLink.SessionId, cancellationToken);
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken);
+
+                var normalized = new SessionTraceLink
+                {
+                    TraceLinkId = string.IsNullOrWhiteSpace(traceLink.TraceLinkId) ? Guid.NewGuid().ToString() : traceLink.TraceLinkId,
+                    SessionId = traceLink.SessionId,
+                    TurnGroupId = traceLink.TurnGroupId,
+                    RequestTurnId = traceLink.RequestTurnId,
+                    ResponseTurnId = string.IsNullOrWhiteSpace(traceLink.ResponseTurnId) ? null : traceLink.ResponseTurnId,
+                    PrimaryTraceId = string.IsNullOrWhiteSpace(traceLink.PrimaryTraceId) ? null : traceLink.PrimaryTraceId,
+                    RequestTraceId = string.IsNullOrWhiteSpace(traceLink.RequestTraceId) ? null : traceLink.RequestTraceId,
+                    ResponseTraceId = string.IsNullOrWhiteSpace(traceLink.ResponseTraceId) ? null : traceLink.ResponseTraceId,
+                    AgentId = string.IsNullOrWhiteSpace(traceLink.AgentId) ? null : traceLink.AgentId,
+                    CreatedAt = traceLink.CreatedAt == default ? DateTimeOffset.UtcNow : traceLink.CreatedAt,
+                    UpdatedAt = DateTimeOffset.UtcNow
+                };
+
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+INSERT INTO session_trace_links (
+  trace_link_id, session_id, turn_group_id, request_turn_id, response_turn_id, primary_trace_id,
+  request_trace_id, response_trace_id, agent_id, created_at, updated_at
+)
+VALUES (
+  $traceLinkId, $sessionId, $turnGroupId, $requestTurnId, $responseTurnId, $primaryTraceId,
+  $requestTraceId, $responseTraceId, $agentId, $createdAt, $updatedAt
+)
+ON CONFLICT(session_id, turn_group_id)
+DO UPDATE SET
+  request_turn_id = excluded.request_turn_id,
+  response_turn_id = excluded.response_turn_id,
+  primary_trace_id = excluded.primary_trace_id,
+  request_trace_id = excluded.request_trace_id,
+  response_trace_id = excluded.response_trace_id,
+  agent_id = excluded.agent_id,
+  updated_at = excluded.updated_at;";
+                cmd.Parameters.AddWithValue("$traceLinkId", normalized.TraceLinkId);
+                cmd.Parameters.AddWithValue("$sessionId", normalized.SessionId);
+                cmd.Parameters.AddWithValue("$turnGroupId", normalized.TurnGroupId);
+                cmd.Parameters.AddWithValue("$requestTurnId", normalized.RequestTurnId);
+                cmd.Parameters.AddWithValue("$responseTurnId", (object?)normalized.ResponseTurnId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$primaryTraceId", (object?)normalized.PrimaryTraceId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$requestTraceId", (object?)normalized.RequestTraceId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$responseTraceId", (object?)normalized.ResponseTraceId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$agentId", (object?)normalized.AgentId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$createdAt", normalized.CreatedAt.ToString("O"));
+                cmd.Parameters.AddWithValue("$updatedAt", normalized.UpdatedAt.ToString("O"));
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
 
                 return normalized;
             }
@@ -329,6 +469,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE TABLE IF NOT EXISTS session_turns (
   turn_id TEXT PRIMARY KEY,
+  turn_group_id TEXT NULL,
   session_id TEXT NOT NULL,
   sequence INTEGER NOT NULL,
   role TEXT NOT NULL,
@@ -350,8 +491,39 @@ CREATE TABLE IF NOT EXISTS session_summaries (
   last_included_sequence INTEGER NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
-);";
+);
+
+CREATE TABLE IF NOT EXISTS session_trace_links (
+  trace_link_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  turn_group_id TEXT NOT NULL,
+  request_turn_id TEXT NOT NULL,
+  response_turn_id TEXT NULL,
+  primary_trace_id TEXT NULL,
+  request_trace_id TEXT NULL,
+  response_trace_id TEXT NULL,
+  agent_id TEXT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_session_trace_links_session_group
+ON session_trace_links(session_id, turn_group_id);
+
+CREATE INDEX IF NOT EXISTS idx_session_trace_links_session_request_turn
+ON session_trace_links(session_id, request_turn_id);
+
+CREATE INDEX IF NOT EXISTS idx_session_trace_links_session_response_turn
+ON session_trace_links(session_id, response_turn_id);
+;";
             cmd.ExecuteNonQuery();
+            EnsureTurnGroupColumn(conn);
+            using var indexCmd = conn.CreateCommand();
+            indexCmd.CommandText = @"
+CREATE INDEX IF NOT EXISTS idx_session_turns_session_group
+ON session_turns(session_id, turn_group_id);";
+            indexCmd.ExecuteNonQuery();
         }
 
         private async Task EnsureSessionAsync(string sessionId, CancellationToken cancellationToken)
@@ -377,6 +549,50 @@ VALUES ($id, $title, $createdAt, $updatedAt, 0);";
                 return role;
             }
             return SessionRole.User;
+        }
+
+        private static SessionTraceLink ReadTraceLink(SqliteDataReader reader)
+        {
+            return new SessionTraceLink
+            {
+                TraceLinkId = reader.GetString(0),
+                SessionId = reader.GetString(1),
+                TurnGroupId = reader.GetString(2),
+                RequestTurnId = reader.GetString(3),
+                ResponseTurnId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                PrimaryTraceId = reader.IsDBNull(5) ? null : reader.GetString(5),
+                RequestTraceId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                ResponseTraceId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                AgentId = reader.IsDBNull(8) ? null : reader.GetString(8),
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(9)),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(10))
+            };
+        }
+
+        private static void EnsureTurnGroupColumn(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(session_turns);";
+            var hasTurnGroupId = false;
+            {
+                using var reader = pragma.ExecuteReader();
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), "turn_group_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasTurnGroupId = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasTurnGroupId)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_turns ADD COLUMN turn_group_id TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
+
         }
     }
 }

@@ -42,6 +42,22 @@ classDiagram
         +GetFileContentAsync(path) ActionResult
     }
 
+    class ChatSessionsController {
+        -ISessionStore _sessionStore
+        +CreateAsync(request) ActionResult
+        +ListAsync(limit, offset) ActionResult
+        +GetAsync(sessionId, lastTurns) ActionResult
+    }
+
+    class VisualizationController {
+        -IVisualizationService _visualizationService
+        -ISessionStore _sessionStore
+        -ITraceTimelineStore _traceTimelineStore
+        +GetTimelineAsync(traceId) ActionResult
+        +GetTimelineByMessageAsync(sessionId, turnId) ActionResult
+        +GetTimelineByTurnAsync(sessionId, turnId) ActionResult
+    }
+
     class EmbeddingStoreViewComponent {
         +Invoke(componentId, title, description) IViewComponentResult
     }
@@ -75,7 +91,29 @@ classDiagram
 
     class MessageDispatcher {
         -IActorRuntimeAdapter _runtime
+        -ISessionStore _sessionStore
+        -ITraceTimelineStore _traceTimelineStore
         +DispatchAsync(targetId, message, headers)
+    }
+
+    class SqliteSessionStore {
+        +AppendTurnAsync(turn) Task
+        +GetTraceLinksAsync(sessionId) Task
+        +UpsertTraceLinkAsync(traceLink) Task
+    }
+
+    class SqliteTraceTimelineStore {
+        +SaveAsync(timeline) Task
+        +GetAsync(traceId) Task
+    }
+
+    class SessionTraceLink {
+        +TraceLinkId string
+        +SessionId string
+        +TurnGroupId string
+        +RequestTurnId string
+        +ResponseTurnId string
+        +PrimaryTraceId string
     }
 
     class ToolInvoker {
@@ -127,6 +165,9 @@ classDiagram
     TestController --> IScenarioFactory : uses
     TestController --> CurrentScenarioStore : uses
     CodeGraphController --> ICodeGraphContextAccessor : uses
+    ChatSessionsController --> SqliteSessionStore : uses
+    VisualizationController --> SqliteSessionStore : uses
+    VisualizationController --> SqliteTraceTimelineStore : uses
     EmbeddingStoreViewComponent ..> CodeGraphController : renders with
     AgentChatViewComponent ..> CodeGraphController : renders with
     ActorTreeViewComponent ..> CodeGraphController : renders with

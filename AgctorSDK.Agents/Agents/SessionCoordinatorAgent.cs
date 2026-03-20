@@ -69,6 +69,22 @@ namespace AgctorSDK.Core.Agents
                     result = await RouteToMemoryActorAsync(append.Turn.SessionId, append, cancellationToken);
                     break;
 
+                case UpsertSessionTraceLinkMessage upsertTrace:
+                    if (string.IsNullOrWhiteSpace(upsertTrace.TraceLink.SessionId))
+                    {
+                        throw new InvalidOperationException("UpsertSessionTraceLinkMessage requires a non-empty SessionId.");
+                    }
+                    result = await RouteToMemoryActorAsync(upsertTrace.TraceLink.SessionId, upsertTrace, cancellationToken);
+                    break;
+
+                case GetSessionTraceLinksMessage getTraceLinks:
+                    result = await RouteToMemoryActorAsync(getTraceLinks.SessionId, getTraceLinks, cancellationToken);
+                    break;
+
+                case GetSessionTraceLinkByTurnMessage traceByTurn:
+                    result = await RouteToMemoryActorAsync(traceByTurn.SessionId, traceByTurn, cancellationToken);
+                    break;
+
                 default:
                     return await base.ReceiveAsync(envelope, cancellationToken);
             }
@@ -101,6 +117,27 @@ namespace AgctorSDK.Core.Agents
                     headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 AppendSessionTurnMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTurn>(
+                    actorId,
+                    command,
+                    timeout: TimeSpan.FromSeconds(20),
+                    senderId: Id,
+                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    cancellationToken: cancellationToken),
+                UpsertSessionTraceLinkMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTraceLink>(
+                    actorId,
+                    command,
+                    timeout: TimeSpan.FromSeconds(20),
+                    senderId: Id,
+                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    cancellationToken: cancellationToken),
+                GetSessionTraceLinksMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<IReadOnlyList<SessionTraceLink>>(
+                    actorId,
+                    command,
+                    timeout: TimeSpan.FromSeconds(20),
+                    senderId: Id,
+                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    cancellationToken: cancellationToken),
+                GetSessionTraceLinkByTurnMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTraceLink>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),

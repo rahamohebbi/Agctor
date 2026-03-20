@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http;
+using System.Collections.Generic;
+using System.Threading;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 using FluentAssertions;
 
@@ -12,10 +15,22 @@ namespace AgctorSDK.Host.IntegrationTests;
 public class CodeGraphDashboardPageIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
+    private static int _portCounter = 14180;
 
     public CodeGraphDashboardPageIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _client = factory.CreateClient();
+        var configured = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                var uniquePort = Interlocked.Increment(ref _portCounter);
+                config.AddInMemoryCollection(new[]
+                {
+                    new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                });
+            });
+        });
+        _client = configured.CreateClient();
     }
 
     [Fact]

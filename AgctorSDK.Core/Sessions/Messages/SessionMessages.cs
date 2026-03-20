@@ -39,6 +39,31 @@ namespace AgctorSDK.Core.Sessions.Messages
     }
 
     /// <summary>
+    /// Upserts durable trace lookup metadata for one logical chat turn.
+    /// </summary>
+    public sealed class UpsertSessionTraceLinkMessage
+    {
+        public SessionTraceLink TraceLink { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Loads trace link metadata for one session.
+    /// </summary>
+    public sealed class GetSessionTraceLinksMessage
+    {
+        public string SessionId { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Loads a trace link by either request or response turn id.
+    /// </summary>
+    public sealed class GetSessionTraceLinkByTurnMessage
+    {
+        public string SessionId { get; set; } = string.Empty;
+        public string TurnId { get; set; } = string.Empty;
+    }
+
+    /// <summary>
     /// Builds a prompt context package from an existing session.
     /// </summary>
     public sealed class GetSessionContextMessage

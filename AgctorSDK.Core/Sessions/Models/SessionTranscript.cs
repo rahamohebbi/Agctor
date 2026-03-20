@@ -9,6 +9,7 @@ namespace AgctorSDK.Core.Sessions.Models
     {
         public SessionInfo Session { get; set; } = new();
         public IReadOnlyList<SessionTurn> Turns { get; set; } = new List<SessionTurn>();
+        public IReadOnlyList<SessionTraceLink> TraceLinks { get; set; } = new List<SessionTraceLink>();
         public SessionSummary? Summary { get; set; }
     }
 }

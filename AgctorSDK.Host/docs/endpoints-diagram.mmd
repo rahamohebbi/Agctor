@@ -47,4 +47,11 @@ graph LR
             ListChatSessions["GET /api/chat/sessions<br/>List sessions"]
             GetChatSession["GET /api/chat/sessions/id<br/>Load transcript"]
         end
+
+        subgraph "Visualization /api/Visualization"
+            GetTraceTimeline["GET /api/Visualization/trace/traceId/timeline<br/>Load trace timeline"]
+            GetTraceFlow["GET /api/Visualization/trace/traceId/message-flow<br/>Trace message flow"]
+            GetMessageTimeline["GET /api/Visualization/sessions/sessionId/messages/turnId/timeline<br/>Historical message trace"]
+            GetTurnTimeline["GET /api/Visualization/sessions/sessionId/turns/turnId/timeline<br/>Historical turn trace"]
+        end
     end

@@ -11,6 +11,7 @@ using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Services;
 using AgctorSDK.Core.Sessions;
 using AgctorSDK.Host.Services.Sessions;
+using AgctorSDK.Host.Services.Traces;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +64,7 @@ var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRunti
 Console.WriteLine($"🔄 Configured actor runtime: {defaultRuntime}");
 var llmApiUrl = builder.Configuration.GetValue<string>("Agctor:LLM:OllamaApiUrl", "http://localhost:11434");
 var llmModel = builder.Configuration.GetValue<string>("Agctor:LLM:DefaultModel", "mistral");
+var configuredMcpPort = builder.Configuration.GetValue<int?>("Mcp:Port") ?? 8080;
 LLMAgent.ConfigureDefaults(llmApiUrl, llmModel);
 Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfiguredOllamaApiUrl()}, model={LLMAgent.GetConfiguredDefaultModel()}");
 
@@ -92,7 +94,7 @@ builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 var sessionStorePath = builder.Configuration.GetValue<string>("Agctor:SessionStorePath")
-    ?? Path.Combine(AppContext.BaseDirectory, "data", "agctor-sessions.db");
+    ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");
 builder.Services.AddSingleton(new SessionMemoryOptions
 {
     RecentTurnWindow = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:RecentTurnWindow") ?? 8,
@@ -100,6 +102,9 @@ builder.Services.AddSingleton(new SessionMemoryOptions
     MaxContextChars = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:MaxContextChars") ?? 12000
 });
 builder.Services.AddSingleton<ISessionStore>(_ => new SqliteSessionStore(sessionStorePath));
+var traceStorePath = builder.Configuration.GetValue<string>("Agctor:TraceStorePath")
+    ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-traces-{configuredMcpPort}.db");
+builder.Services.AddSingleton<ITraceTimelineStore>(_ => new SqliteTraceTimelineStore(traceStorePath));
 builder.Services.AddSingleton<ISessionContextComposer, SessionContextComposer>();
 // Register InMemoryTaskStore
 builder.Services.AddInMemoryTaskStore();
@@ -180,12 +185,27 @@ var runtimeConfig = new Dictionary<string, object>
 
 if (runtime.Name == "Proto.Actor")
 {
-    runtimeConfig["remoteHost"] = builder.Configuration.GetValue<string>("Agctor:ProtoHost", "127.0.0.1");
+    runtimeConfig["remoteHost"] = builder.Configuration.GetValue<string>("Agctor:ProtoHost", "127.0.0.1") ?? "127.0.0.1";
     runtimeConfig["remotePort"] = builder.Configuration.GetValue("Agctor:ProtoPort", 12000);
 }
 
 await runtime.InitializeAsync(runtimeConfig);
 Console.WriteLine("✅ Actor Runtime initialized successfully");
+
+// Keep session coordination available even before a demo scenario is applied.
+var startupAgentFactory = app.Services.GetRequiredService<IAgentFactory>();
+var startupAgentRegistry = app.Services.GetRequiredService<IAgentRegistry>();
+if (await startupAgentRegistry.GetAgentByIdAsync("session-coordinator-agent") == null)
+{
+    var sessionStore = app.Services.GetRequiredService<ISessionStore>();
+    var sessionComposer = app.Services.GetRequiredService<ISessionContextComposer>();
+    var sessionOptions = app.Services.GetRequiredService<SessionMemoryOptions>();
+    var startupSessionCoordinator = await runtime.SpawnActorAsync<SessionCoordinatorAgent>(
+        "session-coordinator-agent",
+        id => new SessionCoordinatorAgent(id, sessionStore, sessionComposer, sessionOptions));
+    startupSessionCoordinator.SetAgentFactory(startupAgentFactory);
+    await startupAgentRegistry.RegisterAgentAsync(startupSessionCoordinator);
+}
 
 // Spawn SnippetResolverAgent (LLM fallback for snippets)
 var llmClient = app.Services.GetRequiredService<ILlmClient>();
@@ -214,7 +234,7 @@ app.MapGet("/", () => Results.Redirect("/swagger/"));
 app.MapGet("/swagger", () => Results.Redirect("/swagger/"));
 
 // The MCP listener uses a separate TCP port from the HTTP server.
-var configuredPort = builder.Configuration.GetValue<int>("Mcp:Port", 8080);
+var configuredPort = builder.Configuration.GetValue<int>("Mcp:Port", configuredMcpPort);
 Console.WriteLine($"🔌 MCP listener configured to start on TCP port {configuredPort} (0 means dynamic)");
 
 // Advertise the expected HTTP URL before entering the host run loop.
