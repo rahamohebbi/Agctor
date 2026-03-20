@@ -37,3 +37,5 @@ Define a clear inventory of CodeGraph page UI elements and group related element
 - Keep page-level data orchestration in `CodeGraph.cshtml` initially.
 - Extract component-specific rendering and event handling first, then progressively move per-component JavaScript to scoped modules.
 - This grouping follows the existing functionality boundaries visible on the page today and reduces duplication while keeping each component focused.
+
+**Implementation tracking:** [`prd-007-implementation-status.md`](./prd-007-implementation-status.md).

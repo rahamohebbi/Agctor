@@ -42,6 +42,30 @@ classDiagram
         +GetFileContentAsync(path) ActionResult
     }
 
+    class EmbeddingStoreViewComponent {
+        +Invoke(componentId, title, description) IViewComponentResult
+    }
+
+    class AgentChatViewComponent {
+        +Invoke(componentId, title, helpText) IViewComponentResult
+    }
+
+    class ActorTreeViewComponent {
+        +Invoke(componentId, title, description, emptyMessage) IViewComponentResult
+    }
+
+    class TraceTimelineViewComponent {
+        +Invoke(componentId, title, emptyMessage, heightPx) IViewComponentResult
+    }
+
+    class EmbeddingDebugViewComponent {
+        +Invoke(componentId, title, description) IViewComponentResult
+    }
+
+    class RawJsonViewComponent {
+        +Invoke(componentId, title) IViewComponentResult
+    }
+
     class McpListener {
         -IActorRuntimeAdapter _runtime
         -int _port
@@ -103,4 +127,10 @@ classDiagram
     TestController --> IScenarioFactory : uses
     TestController --> CurrentScenarioStore : uses
     CodeGraphController --> ICodeGraphContextAccessor : uses
+    EmbeddingStoreViewComponent ..> CodeGraphController : renders with
+    AgentChatViewComponent ..> CodeGraphController : renders with
+    ActorTreeViewComponent ..> CodeGraphController : renders with
+    TraceTimelineViewComponent ..> CodeGraphController : renders with
+    EmbeddingDebugViewComponent ..> CodeGraphController : renders with
+    RawJsonViewComponent ..> CodeGraphController : renders with
     TaskScoperHostedService --> IScenario : uses

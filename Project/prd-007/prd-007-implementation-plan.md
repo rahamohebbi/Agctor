@@ -2,6 +2,8 @@
 
 This plan turns the CodeGraph UI inventory into incremental Razor component extraction tasks.
 
+**Status:** Complete — see [`prd-007-implementation-status.md`](./prd-007-implementation-status.md) for verification details.
+
 ## Phase 1: Component boundaries
 
 | Step | Action |
