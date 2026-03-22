@@ -1,5 +1,11 @@
 # PRD-009: Trace Timeline Experience Improvements
 
+## Specification status
+
+**Complete (documentation).** This PRD defines the **target** timeline experience; it does **not** imply all items are implemented. What exists today is a **baseline** timeline shipped with **PRD-008** (load trace, simple chart, event list, optional external viewer URL). See [prd-009-implementation-status.md](./prd-009-implementation-status.md) for shipped vs backlog.
+
+---
+
 ## Purpose
 
 Evolve the Dashboard **Trace Timeline** beyond “load and list spans” so operators can debug long agent runs quickly: navigate large trees, spot failures, correlate with chat context, and stay performant on heavy traces. This PRD builds on **PRD-008** (historical chat ↔ trace linking); it does not replace durable correlation or session ownership.
@@ -157,3 +163,11 @@ Session/trace **correlation** remains as in PRD-008; this PRD focuses on **prese
 - Enriched DTOs may **bloat responses**; need caps and optional `?include=` query flags if necessary.
 - External viewer URLs are **deployment-specific**; must not leak secrets in templates.
 - **Snapshot vs live OTel** may disagree; UI should not imply stronger consistency than the backend provides.
+
+---
+
+## Wrap-up (folder closure)
+
+- **PRD-009** is **accepted as the enhancement spec** for the trace timeline.
+- **No further edits** to requirements are expected unless product priorities change; track delivery in **implementation-status** and the phase checklist in **implementation-plan**.
+- **Entry point:** [prd-009-readme.md](./prd-009-readme.md).

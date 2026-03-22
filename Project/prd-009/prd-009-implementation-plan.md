@@ -2,7 +2,7 @@
 
 This plan breaks **PRD-009** into data, API, UI, and quality work so timeline debugging scales with real agent traces. Depends on **PRD-008** for chat ↔ trace selection and durable correlation.
 
-**Status:** Draft.
+**Status:** **Planning complete — execution paused.** The PRD and phase breakdown are ready to use when the enhancement backlog is prioritized. Baseline timeline behavior is documented in [prd-009-implementation-status.md](./prd-009-implementation-status.md).
 
 ## Phase 1: Requirements freeze and DTO audit
 

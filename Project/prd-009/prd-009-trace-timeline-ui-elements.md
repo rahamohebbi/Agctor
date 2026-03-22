@@ -4,7 +4,17 @@
 
 List UI elements, behaviors, and API/DTO hooks needed for **PRD-009** timeline improvements so frontend and backend stay aligned. Complements **PRD-008** chat trace affordances.
 
-**Related:** [PRD-008 Chat Trace UI](../prd-008/prd-008-chat-trace-ui-elements.md)
+**Related:** [PRD-008 Chat Trace UI](../prd-008/prd-008-chat-trace-ui-elements.md) · [PRD-009 readme](./prd-009-readme.md)
+
+## Current implementation snapshot (baseline)
+
+Today the timeline is implemented as a **single ViewComponent** with inline script — not yet split into the named subcomponents below:
+
+- **Toolbar / search / filters:** not present.
+- **Chart + details:** `TraceTimeline/Default.cshtml` — SVG chart (`data-role="chart"`) and stacked event cards (`data-role="details"`).
+- **API:** `TraceTimelineResponse` / `TraceTimelineEventDto` — see `ApiModels.cs`; no `truncated`, no per-span error payload yet.
+
+Use this section as the **Phase 1.1** baseline when starting PRD-009 implementation.
 
 ## Scope
 
