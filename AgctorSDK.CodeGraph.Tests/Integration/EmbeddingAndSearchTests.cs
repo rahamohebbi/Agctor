@@ -126,6 +126,28 @@ namespace AgctorSDK.CodeGraph.Tests.Integration
         }
 
         [TestMethod]
+        public async Task Indexer_ShouldDiscoverNewMarkdownFile_OnDisk_WithoutExtraEmbeddings()
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), $"embedding-sync-{Guid.NewGuid():N}");
+            var solution = BuildSearchableSolution(tempDir);
+            await File.WriteAllTextAsync(Path.Combine(tempDir, "NEW.md"), "# Title\n\nBody.");
+
+            var indexer = new IndexerAgent("idx", _registry, _generator, _storeActor);
+            await indexer.IndexAsync(solution);
+
+            var fileNames = solution.Children
+                .SelectMany(p => p.Children)
+                .OfType<FileActor>()
+                .Select(f => f.Name)
+                .ToList();
+            CollectionAssert.Contains(fileNames, "NEW.md");
+
+            // Only .cs files produce class/method embeddings (Roslyn); .md is tree-only.
+            int count = await _store.CountAsync();
+            Assert.AreEqual(4, count, "Expected 2 classes + 2 methods from .cs files only.");
+        }
+
+        [TestMethod]
         public async Task VectorSearchActor_ShouldReturnSemanticMatches()
         {
             var tempDir = Path.Combine(Path.GetTempPath(), $"embedding-search-{Guid.NewGuid():N}");

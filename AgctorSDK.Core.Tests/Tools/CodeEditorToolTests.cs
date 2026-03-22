@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Tools.Abstractions;
@@ -6,7 +8,6 @@ using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
-using System.IO;
 
 namespace AgctorSDK.Core.Tests.Tools
 {
@@ -155,6 +156,85 @@ namespace AgctorSDK.Core.Tests.Tools
 
             Assert.IsFalse(result.IsSuccess);
             Assert.AreEqual("Line number is out of range.", result.Error);
+        }
+
+        [TestMethod]
+        public async Task Handle_InsertIntoFile_MissingFileNoPlacement_CreatesViaFallback()
+        {
+            var sandbox = Path.Combine(Path.GetTempPath(), "agctor-editor-insert-fallback-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(sandbox);
+            var prev = Directory.GetCurrentDirectory();
+            try
+            {
+                Directory.SetCurrentDirectory(sandbox);
+                var tool = new CodeEditorTool("t", new DefaultFileSystem());
+                var request = new ToolRequest
+                {
+                    Operation = "InsertIntoFile",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        { "path", "documentation/project.md" },
+                        { "content", "# Doc\n" }
+                    }
+                };
+                var result = await tool.Handle(request);
+                Assert.IsTrue(result.IsSuccess, result.Error);
+                var full = Path.Combine(sandbox, "documentation", "project.md");
+                Assert.IsTrue(File.Exists(full));
+                StringAssert.Contains(await File.ReadAllTextAsync(full), "Doc");
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(prev);
+                try
+                {
+                    if (Directory.Exists(sandbox))
+                        Directory.Delete(sandbox, true);
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task Handle_InsertIntoFile_MissingFileWithSelector_StillErrors()
+        {
+            var sandbox = Path.Combine(Path.GetTempPath(), "agctor-editor-insert-sel-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(sandbox);
+            var prev = Directory.GetCurrentDirectory();
+            try
+            {
+                Directory.SetCurrentDirectory(sandbox);
+                var tool = new CodeEditorTool("t", new DefaultFileSystem());
+                var request = new ToolRequest
+                {
+                    Operation = "InsertIntoFile",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        { "path", "Missing.cs" },
+                        { "content", "void F(){}" },
+                        { "selector", "class:Foo" }
+                    }
+                };
+                var result = await tool.Handle(request);
+                Assert.IsFalse(result.IsSuccess);
+                StringAssert.Contains(result.Error ?? "", "Could not find file");
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(prev);
+                try
+                {
+                    if (Directory.Exists(sandbox))
+                        Directory.Delete(sandbox, true);
+                }
+                catch
+                {
+                    // best-effort
+                }
+            }
         }
 
         [TestMethod]

@@ -194,6 +194,8 @@ namespace AgctorSDK.CodeGraph.Agents
                     ".ts" => "TypeScript",
                     ".js" => "JavaScript",
                     ".java" => "Java",
+                    ".md" or ".markdown" => "Markdown",
+                    ".json" => "JSON",
                     _ => "code"
                 };
             }
@@ -201,7 +203,7 @@ namespace AgctorSDK.CodeGraph.Agents
             // Attempts to infer language by scanning the prompt for any filename with a known extension.
             static string DetectLanguageFromPrompt(string text)
             {
-                var m = Regex.Match(text, @"\w+\.(cs|py|ts|js|java)", RegexOptions.IgnoreCase);
+                var m = Regex.Match(text, @"\w+\.(cs|py|ts|js|java|md|markdown|txt|json)", RegexOptions.IgnoreCase);
                 if (m.Success)
                 {
                     return DetectLanguage(m.Value);
@@ -216,10 +218,12 @@ namespace AgctorSDK.CodeGraph.Agents
 
             // Build LLM prompt with StringBuilder to avoid brace-escaping complications
             var sbPrompt = new StringBuilder();
-            sbPrompt.AppendLine($"You are an expert {langName} refactoring assistant.");
+            sbPrompt.AppendLine($"You are an expert {langName} assistant for code and project files.");
             sbPrompt.AppendLine("INSTRUCTIONS:");
             sbPrompt.AppendLine("- Decide whether the REQUEST requires a brand-new file, an insertion, or a patch to existing code.");
-            sbPrompt.AppendLine("- Use ONLY CONTEXT and SESSION_CONTEXT for existing-code assumptions; do not invent file/class names.");
+            sbPrompt.AppendLine("- NEW FILE: If the user asks to create/add/write a new file and names the path (e.g. project.md), respond with WriteFile. Empty CONTEXT is normal — propose minimal sensible file content from the REQUEST. Do NOT return {\"error\":\"insufficient_context\"} only because CONTEXT is empty.");
+            sbPrompt.AppendLine("- MARKDOWN / DOCS (.md, .txt): Prefer WriteFile when the file may not exist or the user only names a doc (e.g. \"add to project.md\"). Use InsertIntoFile/ReplaceInFile only when CONTEXT or SESSION_CONTEXT includes that file's existing content or a clear path from search. Do not invent folders like documentation/ unless the user or context asked for them; prefer the path the user stated (e.g. project.md at repo root).");
+            sbPrompt.AppendLine("- EXISTING CODE: For InsertIntoFile or ReplaceInFile, use CONTEXT and SESSION_CONTEXT; do not invent file paths that are not implied by the user or context.");
             sbPrompt.AppendLine();
             sbPrompt.AppendLine("Return a ONE-LINE JSON object with these keys (omit keys that are not needed):");
             sbPrompt.AppendLine("  operation  : 'WriteFile' | 'InsertIntoFile' | 'ReplaceInFile'");
@@ -236,7 +240,8 @@ namespace AgctorSDK.CodeGraph.Agents
             sbPrompt.AppendLine("- For InsertIntoFile, give either 'selector', 'anchor', or 'lineNumber'. Prefer 'selector'.");
             sbPrompt.AppendLine("- For ReplaceInFile, prefer 'selector'; otherwise use 'anchor' or the startLine/endLine pair.");
             sbPrompt.AppendLine("- Do NOT wrap the JSON in markdown. NO comments. NO ellipsis.");
-            sbPrompt.AppendLine("- If the request is ambiguous, reply with {\"error\":\"reason\"}.");
+            sbPrompt.AppendLine("- If you must return {\"error\":\"...\"}, the value must be ONE JSON string with escaped newlines (\\\\n); never put markdown code fences or multi-line templates inside the JSON string.");
+            sbPrompt.AppendLine("- If the request is ambiguous (no target file and no create intent), reply with {\"error\":\"reason\"}.");
             sbPrompt.AppendLine();
             sbPrompt.AppendLine("EXAMPLES:");
             sbPrompt.AppendLine("  # Add a method to an existing static class declared inside a namespace");
@@ -298,8 +303,19 @@ namespace AgctorSDK.CodeGraph.Agents
                 using var doc = JsonDocument.Parse(normalized);
                 var root = doc.RootElement;
                 if (root.TryGetProperty("error", out var errProp))
-                    return $"LLM error: {errProp.GetString()}";
-
+                {
+                    if (TryNewFileFallbackFromPrompt(prompt, out path, out code))
+                    {
+                        operation = "WriteFile";
+                        LogInfo($"[RefactorAgent] LLM returned error '{errProp.GetString()}'; using deterministic new-file fallback for path '{path}'.");
+                    }
+                    else
+                    {
+                        return $"LLM error: {errProp.GetString()}";
+                    }
+                }
+                else
+                {
                 operation = root.TryGetProperty("operation", out var opProp) ? opProp.GetString() ?? "WriteFile" : "WriteFile";
                 path = root.GetProperty("path").GetString() ?? throw new Exception("path missing");
                 if (root.TryGetProperty("content", out var contProp))
@@ -320,6 +336,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 if (root.TryGetProperty("lineNumber", out var lnProp) && lnProp.TryGetInt32(out var lnVal)) lineNumber = lnVal;
                 if (root.TryGetProperty("startLine", out var slProp) && slProp.TryGetInt32(out var slVal)) startLine = slVal;
                 if (root.TryGetProperty("endLine", out var elProp) && elProp.TryGetInt32(out var elVal)) endLine = elVal;
+                }
             }
             catch (Exception)
             {
@@ -329,18 +346,36 @@ namespace AgctorSDK.CodeGraph.Agents
                     var repaired = await TryRepairJsonAsync(llmResponse, llmPrompt, ct);
                     if (string.IsNullOrWhiteSpace(repaired))
                     {
-                        return $"Failed to parse LLM response. Raw: {llmResponse}";
+                        if (TryNewFileFallbackFromPrompt(prompt, out path, out code))
+                        {
+                            operation = "WriteFile";
+                            LogInfo("[RefactorAgent] LLM output not JSON (repair empty); using deterministic new-file fallback.");
+                        }
+                        else
+                        {
+                            return $"Failed to parse LLM response. Raw: {llmResponse}";
+                        }
                     }
-
+                    else
+                    {
                     try
                     {
                         using var repairDoc = JsonDocument.Parse(NormalizeJsonCandidate(repaired));
                         var repairRoot = repairDoc.RootElement;
                         if (repairRoot.TryGetProperty("error", out var repairErr))
                         {
-                            return $"LLM error: {repairErr.GetString()}";
+                            if (TryNewFileFallbackFromPrompt(prompt, out path, out code))
+                            {
+                                operation = "WriteFile";
+                                LogInfo($"[RefactorAgent] Repair LLM returned error '{repairErr.GetString()}'; using deterministic new-file fallback for path '{path}'.");
+                            }
+                            else
+                            {
+                                return $"LLM error: {repairErr.GetString()}";
+                            }
                         }
-
+                        else
+                        {
                         operation = repairRoot.TryGetProperty("operation", out var repairOpProp) ? repairOpProp.GetString() ?? "WriteFile" : "WriteFile";
                         path = repairRoot.GetProperty("path").GetString() ?? throw new Exception("path missing");
                         if (repairRoot.TryGetProperty("content", out var repairContProp))
@@ -361,10 +396,20 @@ namespace AgctorSDK.CodeGraph.Agents
                         if (repairRoot.TryGetProperty("lineNumber", out var repairLnProp) && repairLnProp.TryGetInt32(out var repairLnVal)) lineNumber = repairLnVal;
                         if (repairRoot.TryGetProperty("startLine", out var repairSlProp) && repairSlProp.TryGetInt32(out var repairSlVal)) startLine = repairSlVal;
                         if (repairRoot.TryGetProperty("endLine", out var repairElProp) && repairElProp.TryGetInt32(out var repairElVal)) endLine = repairElVal;
+                        }
                     }
                     catch
                     {
-                        return $"Failed to parse LLM response. Raw: {llmResponse}";
+                        if (TryNewFileFallbackFromPrompt(prompt, out path, out code))
+                        {
+                            operation = "WriteFile";
+                            LogInfo("[RefactorAgent] Repair JSON still invalid; using deterministic new-file fallback.");
+                        }
+                        else
+                        {
+                            return $"Failed to parse LLM response. Raw: {llmResponse}";
+                        }
+                    }
                     }
                 }
             }
@@ -381,8 +426,10 @@ namespace AgctorSDK.CodeGraph.Agents
             }
 
             // If the snippet lacks 'class' or 'namespace' keywords, it probably represents member-only code.
+            // Only apply this for typical OOP source files. Markdown, JSON, configs, etc. often have no class keyword
+            // but are still full-file WriteFile payloads — converting those to InsertIntoFile breaks "create new file" flows.
             bool looksLikeMemberSnippet = code.Trim().Length > 0 && !Regex.IsMatch(code, "\\b(class|namespace)\\b", RegexOptions.IgnoreCase);
-            if (looksLikeMemberSnippet && (operation == "WriteFile" || operation == "ReplaceInFile"))
+            if (looksLikeMemberSnippet && IsLikelyClassScopedSourcePath(path) && (operation == "WriteFile" || operation == "ReplaceInFile"))
             {
                 var inferredClass = Path.GetFileNameWithoutExtension(path);
                 if (string.IsNullOrWhiteSpace(selector))
@@ -461,12 +508,31 @@ namespace AgctorSDK.CodeGraph.Agents
 
             LogInfo($"[RefactorAgent] ToolResult received – success: {toolResult.IsSuccess}");
 
-            return toolResult.IsSuccess
-                ? $"File {path} updated and build/tests {(toolResult.IsSuccess ? "succeeded" : "failed")}."
-                : $"Refactor failed: {toolResult.Error}";
+            if (!toolResult.IsSuccess)
+            {
+                return $"Refactor failed: {toolResult.Error}";
+            }
+
+            // CoderAgent may return a specific success line (e.g. non-.cs files skip compile/test).
+            var outText = toolResult.Output?.ToString();
+            if (!string.IsNullOrWhiteSpace(outText))
+            {
+                return outText.Trim();
+            }
+
+            return $"File {path} updated and build/tests succeeded.";
         }
 
         protected override bool ShouldDecomposeTask(string prompt) => false;
+
+        /// <summary>
+        /// Member-snippet heuristics (InsertIntoFile with class: selector) target C#/VB/Java-style trees only.
+        /// </summary>
+        private static bool IsLikelyClassScopedSourcePath(string path)
+        {
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext is ".cs" or ".vb" or ".java";
+        }
 
         static bool TryExtractPathAndCode(string raw, out string path, out string code)
         {
@@ -542,9 +608,15 @@ namespace AgctorSDK.CodeGraph.Agents
                 headers: BuildCoderHeaders(),
                 cancellationToken: ct);
 
-            return toolResult.IsSuccess
-                ? "Command executed and build/tests succeeded."
-                : $"Refactor failed: {toolResult.Error}";
+            if (!toolResult.IsSuccess)
+            {
+                return $"Refactor failed: {toolResult.Error}";
+            }
+
+            var outText = toolResult.Output?.ToString();
+            return !string.IsNullOrWhiteSpace(outText)
+                ? outText.Trim()
+                : "Command executed and build/tests succeeded.";
         }
 
         private IDictionary<string, string> BuildCoderHeaders()
@@ -654,6 +726,72 @@ RECENT_SESSION_CONTEXT:
         {
             return !string.IsNullOrWhiteSpace(prompt) &&
                    prompt.TrimStart().StartsWith("CodeEditorTool", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// When the LLM refuses (e.g. empty search context), still honor explicit "create X.ext" requests.
+        /// </summary>
+        private static bool TryNewFileFallbackFromPrompt(string prompt, out string path, out string code)
+        {
+            path = string.Empty;
+            code = string.Empty;
+            if (string.IsNullOrWhiteSpace(prompt))
+            {
+                return false;
+            }
+
+            if (!Regex.IsMatch(prompt, @"\b(create|add|new|make|write|generate)\b", RegexOptions.IgnoreCase))
+            {
+                return false;
+            }
+
+            var m = Regex.Match(prompt, @"\b([\w][\w./\-]*\.[a-zA-Z0-9]{1,12})\b");
+            if (!m.Success)
+            {
+                return false;
+            }
+
+            path = m.Groups[1].Value.Replace('\\', '/').Trim();
+            if (path.Contains("..", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            if (string.IsNullOrEmpty(ext))
+            {
+                return false;
+            }
+
+            var stem = Path.GetFileNameWithoutExtension(path);
+            var title = string.IsNullOrEmpty(stem)
+                ? "Project"
+                : (char.ToUpperInvariant(stem[0]) + (stem.Length > 1 ? stem.Substring(1) : string.Empty));
+
+            code = ext switch
+            {
+                ".md" or ".markdown" => $"# {title}\n\n",
+                ".txt" or ".log" => string.Empty,
+                ".json" => "{\n}\n",
+                ".cs" => $"namespace Demo;\n\npublic class {SanitizeTypeName(stem)}\n{{\n}}\n",
+                ".ts" or ".tsx" => $"// {path}\nexport {{}};\n",
+                ".js" or ".jsx" => $"// {path}\n",
+                ".py" => $"# {path}\n",
+                _ => $"# {path}\n\n"
+            };
+
+            return true;
+        }
+
+        private static string SanitizeTypeName(string stem)
+        {
+            var s = Regex.Replace(stem, @"[^\w]", "_");
+            if (string.IsNullOrEmpty(s) || char.IsDigit(s[0]))
+            {
+                s = "Generated" + s;
+            }
+
+            return s;
         }
     }
 } 

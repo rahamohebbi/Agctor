@@ -17,7 +17,7 @@ public class AgentChatViewComponent : ViewComponent
         {
             ComponentId = componentId,
             Title = title ?? "Chat with agents",
-            HelpText = helpText ?? "query-agent answers questions about indexed code. Use coder-agent to write or edit code, and refactor-agent for refactors. Click Index now before asking code questions."
+            HelpText = helpText ?? "query-agent answers questions about indexed code. coder-agent: natural-language prompts are planned by refactor-agent then applied by coder-agent. refactor-agent: refactors. Click Index before code questions."
         };
 
         return View(model);

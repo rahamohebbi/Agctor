@@ -267,8 +267,12 @@ namespace AgctorSDK.Host.Services.Scenarios
                         IndexedGraphVersion = 0
                     }
                 });
-                // Live actor tree so dashboard shows Class/Method after Index and reflects code changes
-                _codeGraphContextAccessor.SetActorTreeProvider(() => ActorSerializer.ToDto(solution));
+                // Live actor tree: merge new files from disk (e.g. after WriteFile) then serialize.
+                _codeGraphContextAccessor.SetActorTreeProvider(() =>
+                {
+                    WorkspaceGraphSync.SyncSolutionFromDisk(solution);
+                    return ActorSerializer.ToDto(solution);
+                });
                 // Live embedding count so dashboard "Index now" updates the displayed count
                 _codeGraphContextAccessor.SetEmbeddingCountProvider(ct => vectorStore.CountAsync());
                 _codeGraphContextAccessor.SetEmbeddingSummaryProvider(async ct =>

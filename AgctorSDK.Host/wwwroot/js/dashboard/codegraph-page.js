@@ -81,6 +81,163 @@
             : 'px-3 py-1.5 text-sm font-medium text-white bg-gray-400 rounded cursor-not-allowed dark:bg-gray-500';
     }
 
+    /** mm:ss for progress UI */
+    function formatElapsedClock(totalSec) {
+        const s = Math.max(0, Math.floor(totalSec));
+        const m = Math.floor(s / 60);
+        const r = s % 60;
+        return m + ':' + (r < 10 ? '0' : '') + r;
+    }
+
+    /** Maps chat agent id → progress profile (copy + last pipeline step label). */
+    function resolveChatProgressProfile(agentId) {
+        if (agentId === 'query-agent') return 'query';
+        if (agentId === 'coder-agent' || agentId === 'refactor-agent') return 'coding';
+        return 'agent';
+    }
+
+    /**
+     * Time-based phases (server does not stream progress yet). LLM is highlighted as the usual bottleneck.
+     */
+    function updateAgentPipelineUi(statusEl, elapsedSec) {
+        const profile = statusEl.dataset.chatProgressProfile || 'agent';
+        const primary = statusEl.querySelector('[data-role="chat-progress-primary"]');
+        const sub = statusEl.querySelector('[data-role="chat-progress-sub"]');
+        const steps = statusEl.querySelectorAll('[data-pipeline-step]');
+        if (!primary || !sub) return;
+
+        const inactive = 'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800/45 dark:text-blue-200/35';
+        const active = 'rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-blue-200/90 text-blue-950 dark:bg-blue-900/70 dark:text-blue-50';
+        const activeLlm = active + ' ring-2 ring-amber-400/80 dark:ring-amber-500/60 shadow-sm animate-pulse';
+
+        let phase = 0;
+        if (elapsedSec >= 2) phase = 1;
+        if (elapsedSec >= 5) phase = 2;
+
+        steps.forEach(function(node) {
+            const idx = parseInt(node.getAttribute('data-pipeline-step') || '0', 10);
+            const isLlm = node.getAttribute('data-llm') === '1';
+            if (idx === phase && phase === 2 && isLlm) {
+                node.className = activeLlm;
+            } else if (idx === phase) {
+                node.className = active;
+            } else {
+                node.className = inactive;
+            }
+        });
+
+        if (phase === 0) {
+            primary.textContent = 'Session & context…';
+            sub.textContent = profile === 'query'
+                ? 'Loading session for Q&A (usually seconds).'
+                : profile === 'coding'
+                    ? 'Loading chat session for the planner (usually seconds).'
+                    : 'Loading session and routing your request (usually seconds).';
+        } else if (phase === 1) {
+            if (profile === 'query') {
+                primary.textContent = 'Retrieving code context…';
+                sub.textContent = 'Search and embeddings narrow what the model sees — usually faster than the LLM.';
+            } else if (profile === 'coding') {
+                primary.textContent = 'Search & retrieval…';
+                sub.textContent = 'Semantic search over the workspace — typically faster than the model.';
+            } else {
+                primary.textContent = 'Routing & tools…';
+                sub.textContent = 'Session, routing, or retrieval — depends on the agent; often quicker than the LLM.';
+            }
+        } else {
+            if (profile === 'query') {
+                primary.textContent = 'LLM is answering…';
+                if (elapsedSec >= 90) {
+                    sub.textContent = 'Still generating the answer — slow hosts or long reasoning can extend this.';
+                } else {
+                    sub.textContent = 'The model turns retrieved code into your reply — this step usually uses most of the wait (often 30s–3+ min).';
+                }
+            } else {
+                primary.textContent = 'LLM is working…';
+                if (elapsedSec >= 90) {
+                    sub.textContent = profile === 'coding'
+                        ? 'Still in the model pass — slow hosts, long outputs, or JSON repair can push this past a few minutes.'
+                        : 'Still in the model pass — slow hosts or long chains of calls can extend this.';
+                } else {
+                    sub.textContent = profile === 'coding'
+                        ? 'The language model plans the change — this step usually uses most of the wait (often 30s–3+ min).'
+                        : 'The language model (or chained calls) usually dominates wait time (often 30s–3+ min).';
+                }
+            }
+        }
+    }
+
+    /**
+     * Rich progress card for every agent type. {@param profile} 'coding' | 'query' | 'agent'.
+     */
+    function startChatProgressUi(statusEl, profile) {
+        const started = Date.now();
+        statusEl.dataset.chatProgressProfile = profile;
+
+        const lastLabels = { coding: 'Edit', query: 'Answer', agent: 'Reply' };
+        const lastLabel = lastLabels[profile] || lastLabels.agent;
+
+        const footers = {
+            coding: '<strong class="text-amber-800 dark:text-amber-200">Why it waits:</strong> one HTTP call runs the full pipeline; the <strong>LLM</strong> pass is almost always the longest slice. Compile/tests (for .cs only) run after the file edit.',
+            query: '<strong class="text-amber-800 dark:text-amber-200">Why it waits:</strong> one HTTP call runs retrieval + answer; the <strong>LLM</strong> step usually dominates (often 30s–3+ min) after context is gathered.',
+            agent: '<strong class="text-amber-800 dark:text-amber-200">Why it waits:</strong> one HTTP call runs the whole agent turn; the <strong>LLM</strong> (or chained model calls) is usually the slowest part.'
+        };
+        const footer = footers[profile] || footers.agent;
+
+        const startSubs = {
+            coding: 'Starting the coding workflow.',
+            query: 'Starting Q&amp;A over indexed code.',
+            agent: 'Starting the selected agent…'
+        };
+        const startSub = startSubs[profile] || startSubs.agent;
+
+        statusEl.className = 'mt-2 px-3 py-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-sm text-blue-900 dark:text-blue-100';
+        statusEl.innerHTML =
+            '<div class="flex flex-col gap-2">' +
+                '<div class="flex items-start gap-3">' +
+                    '<svg class="animate-spin h-5 w-5 flex-shrink-0 mt-0.5 text-blue-600 dark:text-blue-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">' +
+                        '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+                        '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>' +
+                    '</svg>' +
+                    '<div class="min-w-0 flex-1" aria-live="polite" aria-atomic="true">' +
+                        '<div data-role="chat-progress-primary" class="font-semibold text-blue-950 dark:text-blue-50 leading-snug">Session & context…</div>' +
+                        '<div data-role="chat-progress-sub" class="text-xs mt-1 text-blue-800/90 dark:text-blue-200/90 leading-relaxed">' + startSub + '</div>' +
+                    '</div>' +
+                    '<div class="flex flex-col items-end flex-shrink-0 gap-0.5">' +
+                        '<span class="text-[10px] uppercase tracking-wide text-blue-700/80 dark:text-blue-300/80">Elapsed</span>' +
+                        '<span data-role="chat-progress-elapsed" class="tabular-nums text-sm font-semibold text-blue-700 dark:text-blue-200">0:00</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-8 text-blue-900/80 dark:text-blue-100/80" role="status" aria-label="Typical agent pipeline">' +
+                    '<span data-pipeline-step="0" class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Context</span>' +
+                    '<span class="text-blue-600/50 dark:text-blue-400/40" aria-hidden="true">→</span>' +
+                    '<span data-pipeline-step="1" class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">Search</span>' +
+                    '<span class="text-blue-600/50 dark:text-blue-400/40" aria-hidden="true">→</span>' +
+                    '<span data-pipeline-step="2" data-llm="1" class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">LLM</span>' +
+                    '<span class="text-blue-600/50 dark:text-blue-400/40" aria-hidden="true">→</span>' +
+                    '<span data-pipeline-step="3" class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">' + esc(lastLabel) + '</span>' +
+                '</div>' +
+                '<p class="text-[11px] leading-snug text-blue-800/75 dark:text-blue-300/75 pl-8 border-l-2 border-amber-400/60 dark:border-amber-500/50 ml-1 pl-3">' +
+                    footer +
+                '</p>' +
+            '</div>';
+
+        updateAgentPipelineUi(statusEl, 0);
+
+        const tickMs = 400;
+        const intervalId = setInterval(function() {
+            const elapsedSec = (Date.now() - started) / 1000;
+            const el = statusEl.querySelector('[data-role="chat-progress-elapsed"]');
+            if (el) el.textContent = formatElapsedClock(elapsedSec);
+            updateAgentPipelineUi(statusEl, elapsedSec);
+        }, tickMs);
+
+        return function stopChatProgressUi() {
+            clearInterval(intervalId);
+            delete statusEl.dataset.chatProgressProfile;
+        };
+    }
+
     fetch('/api/CodeGraph/current')
         .then(r => { if (r.status === 404) return null; return r.ok ? r.json() : Promise.reject(r); })
         .then(ctx => {
@@ -431,13 +588,13 @@
                 function syncChatAgentUi() {
                     const agentId = chatAgent.value;
                     if (agentId === 'query-agent') {
-                        chatHelp.textContent = 'query-agent answers questions about indexed code. Use coder-agent to write or edit code, and refactor-agent for refactors. Click Index now before asking code questions.';
+                        chatHelp.textContent = 'query-agent answers questions about indexed code. coder-agent: NL is planned by refactor-agent then applied by coder-agent. refactor-agent: refactors. Click Index before code questions.';
                         chatInput.placeholder = 'e.g. Where is Square defined?';
                         return;
                     }
 
                     if (agentId === 'coder-agent') {
-                        chatHelp.textContent = 'coder-agent is for creating or editing code in the demo workspace.';
+                        chatHelp.textContent = 'coder-agent: natural-language requests are planned by refactor-agent (LLM → CodeEditorTool), then applied by coder-agent. For raw tool commands only, start the message with CodeEditorTool.';
                         chatInput.placeholder = 'e.g. Create a new file named Geometry.cs with a Triangle class';
                         return;
                     }
@@ -499,12 +656,13 @@
                     const statusEl = document.getElementById('codegraph-chat-status');
                     const bannerEl = document.getElementById('codegraph-chat-completion-banner');
                     const isCodingAgent = agentId === 'coder-agent' || agentId === 'refactor-agent';
+                    const chatProgressProfile = resolveChatProgressProfile(agentId);
 
+                    var stopChatProgressUi = function() {};
                     chatSend.disabled = true;
                     chatSend.innerHTML = '<span class="inline-flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Processing...</span>';
                     if (statusEl) {
-                        statusEl.className = 'mt-2 flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 text-sm';
-                        statusEl.innerHTML = '<svg class="animate-spin h-4 w-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span>' + (isCodingAgent ? 'Edit → Compile → Test pipeline running…' : 'Agent working…') + '</span>';
+                        stopChatProgressUi = startChatProgressUi(statusEl, chatProgressProfile);
                         statusEl.classList.remove('hidden');
                     }
                     if (bannerEl) { bannerEl.classList.add('hidden'); bannerEl.innerHTML = ''; }
@@ -530,10 +688,10 @@
                                     emptyMessage: 'No timeline is available for this request.',
                                     errorMessage: 'Trace timeline is unavailable for this request.'
                                 });
-                            } else if (res.ok && isCodingAgent) {
+                            } else if (res.ok && (isCodingAgent || agentId === 'query-agent')) {
                                 window.agctorTraceTimeline.render('codegraph-trace-timeline', {
                                     events: [
-                                        { sequence: 1, depth: 0, startOffsetMs: 0, durationMs: 1, label: 'Edit/Process', hasResult: true }
+                                        { sequence: 1, depth: 0, startOffsetMs: 0, durationMs: 1, label: 'Agent turn', hasResult: true }
                                     ],
                                     totalDurationMs: 1
                                 }, { selectionLabel: 'Latest live trace' });
@@ -653,9 +811,11 @@
                         chatMessages.innerHTML += '<div class="text-red-600 dark:text-red-400"><strong>Error</strong>: ' + esc(e.message || 'Request failed') + '</div>';
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                         if (statusEl) statusEl.classList.add('hidden');
+                    } finally {
+                        stopChatProgressUi();
+                        chatSend.disabled = false;
+                        chatSend.innerHTML = 'Send';
                     }
-                    chatSend.disabled = false;
-                    chatSend.innerHTML = 'Send';
                 });
             }
         })

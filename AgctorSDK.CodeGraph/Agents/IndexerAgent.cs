@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using AgctorSDK.CodeGraph.Actors;
@@ -57,8 +58,21 @@ namespace AgctorSDK.CodeGraph.Agents
 
         public async Task IndexAsync(CodeGraphActorBase root)
         {
+            // Pick up files created after scenario setup (e.g. new .md / .cs from chat) so Actor tree + index match disk.
+            if (root is SolutionActor solution)
+            {
+                WorkspaceGraphSync.SyncSolutionFromDisk(solution);
+            }
+
             if (root is FileActor file)
             {
+                var ext = Path.GetExtension(file.PhysicalPath ?? string.Empty).ToLowerInvariant();
+                if (_registry.GetAnalyzerForExtension(ext) == null)
+                {
+                    // File is listed in the graph for the dashboard; no embeddings for this extension.
+                    return;
+                }
+
                 // Prefer explicit class/method children if they already exist (e.g., constructed via tests).
                 if (file.Children.Count > 0)
                 {

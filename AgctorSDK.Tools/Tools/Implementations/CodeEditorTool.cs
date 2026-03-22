@@ -30,6 +30,81 @@ namespace AgctorSDK.Core.Tools.Implementations
             _fileSystem = fileSystem ?? new DefaultFileSystem();
         }
 
+        /// <summary>
+        /// <see cref="Directory.GetFiles"/> throws <see cref="DirectoryNotFoundException"/> when the pattern
+        /// includes a subdirectory that does not exist yet (e.g. <c>documentation/project.md</c>) — the enumerator
+        /// walks that path before matching. Treat that as "no matches" so WriteFile can create nested paths.
+        /// </summary>
+        private static string[] SafeEnumerateFiles(string directory, string searchPattern, SearchOption option)
+        {
+            try
+            {
+                return Directory.GetFiles(directory, searchPattern, option);
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return Array.Empty<string>();
+            }
+        }
+
+        /// <summary>
+        /// InsertIntoFile requires a selector, anchor, or line number to locate the edit inside existing text.
+        /// </summary>
+        private static bool HasInsertPlacement(IDictionary<string, object> parameters)
+        {
+            if (parameters.TryGetValue("selector", out var selObj) && selObj is string sel && !string.IsNullOrWhiteSpace(sel))
+                return true;
+            if (parameters.TryGetValue("anchor", out var ancObj) && ancObj is string anc && !string.IsNullOrWhiteSpace(anc))
+                return true;
+            if (parameters.TryGetValue("lineNumber", out var lnObj) && lnObj != null && int.TryParse(lnObj.ToString(), out _))
+                return true;
+            return false;
+        }
+
+        /// <summary>
+        /// ReplaceInFile requires a selector, anchor, or line range to know what to replace.
+        /// </summary>
+        private static bool HasReplacePlacement(IDictionary<string, object> parameters)
+        {
+            if (parameters.TryGetValue("selector", out var selObj) && selObj is string sel && !string.IsNullOrWhiteSpace(sel))
+                return true;
+            if (parameters.TryGetValue("anchor", out var ancObj) && ancObj is string anc && !string.IsNullOrWhiteSpace(anc))
+                return true;
+            if (parameters.TryGetValue("startLine", out var slObj) && parameters.TryGetValue("endLine", out var elObj)
+                && int.TryParse(slObj?.ToString(), out _) && int.TryParse(elObj?.ToString(), out _))
+                return true;
+            return false;
+        }
+
+        /// <summary>
+        /// LLMs often emit InsertIntoFile/ReplaceInFile for "add to project.md" even when the file does not exist yet.
+        /// If there is no structured placement, treat the payload as the full new file (same as WriteFile).
+        /// </summary>
+        private async Task<ToolResult> CreateMissingFileForInsertOrReplaceFallbackAsync(string relativePath, string content)
+        {
+            LogInfo($"[CodeEditorTool] Target file missing and no structured placement — creating '{relativePath}'.");
+            var cwd = Directory.GetCurrentDirectory();
+            var filePath = Path.Combine(cwd, relativePath);
+            try
+            {
+                var directory = Path.GetDirectoryName(filePath);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+
+                await _fileSystem.WriteAllTextAsync(filePath, content);
+                return new ToolResult
+                {
+                    IsSuccess = true,
+                    Output = $"Created new file {filePath} (insert/replace target was missing; used full content)."
+                };
+            }
+            catch (Exception ex)
+            {
+                LogError($"Error creating missing target file: {ex.Message}");
+                return new ToolResult { IsSuccess = false, Error = $"Error creating file: {ex.Message}" };
+            }
+        }
+
         // Fallback: if runtime failed to set ParentAgentId, derive it from the hierarchical ID (parent.child)
         private void EnsureParentId()
         {
@@ -318,7 +393,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             if (!Path.IsPathRooted(filePath))
             {
                 var cwd = Directory.GetCurrentDirectory();
-                var matches = Directory.GetFiles(cwd, filePath, SearchOption.AllDirectories);
+                var matches = SafeEnumerateFiles(cwd, filePath, SearchOption.AllDirectories);
                 if (matches.Length == 1)
                 {
                     LogInfo($"Resolved relative path '{filePath}' to '{matches[0]}'");
@@ -470,7 +545,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                     LogInfo($"[CodeEditorTool] Failed to read '{path}' directly: {ex.Message}. Trying path resolution.");
                     
                     var cwd = Directory.GetCurrentDirectory();
-                    var matches = Directory.GetFiles(cwd, path, SearchOption.AllDirectories);
+                    var matches = SafeEnumerateFiles(cwd, path, SearchOption.AllDirectories);
                     if (matches.Length == 1)
                     {
                         LogInfo($"[CodeEditorTool] Resolved relative path '{path}' to '{matches[0]}'");
@@ -482,7 +557,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                     {
                         // Also check system temp directory for temporary files
                         var tempDir = Path.GetTempPath();
-                        var tempMatches = Directory.GetFiles(tempDir, path, SearchOption.TopDirectoryOnly);
+                        var tempMatches = SafeEnumerateFiles(tempDir, path, SearchOption.TopDirectoryOnly);
                         if (tempMatches.Length == 1)
                         {
                             LogInfo($"[CodeEditorTool] Found in temp directory: '{tempMatches[0]}'");
@@ -493,6 +568,8 @@ namespace AgctorSDK.Core.Tools.Implementations
                         else
                         {
                             LogInfo($"[CodeEditorTool] No existing file named '{path}' found in current directory or temp directory.");
+                            if (!HasInsertPlacement(parameters))
+                                return await CreateMissingFileForInsertOrReplaceFallbackAsync(path, content);
                             return new ToolResult { IsSuccess = false, Error = $"Could not find file '{path}'." };
                         }
                     }
@@ -631,7 +708,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                     LogInfo($"[CodeEditorTool] Failed to read '{path}' directly: {ex.Message}. Trying path resolution.");
                     
                     var cwd = Directory.GetCurrentDirectory();
-                    var matches = Directory.GetFiles(cwd, path, SearchOption.AllDirectories);
+                    var matches = SafeEnumerateFiles(cwd, path, SearchOption.AllDirectories);
                     if (matches.Length == 1)
                     {
                         LogInfo($"[CodeEditorTool] Resolved relative path '{path}' to '{matches[0]}'");
@@ -642,7 +719,7 @@ namespace AgctorSDK.Core.Tools.Implementations
                     {
                         // Also check system temp directory for temporary files
                         var tempDir = Path.GetTempPath();
-                        var tempMatches = Directory.GetFiles(tempDir, path, SearchOption.TopDirectoryOnly);
+                        var tempMatches = SafeEnumerateFiles(tempDir, path, SearchOption.TopDirectoryOnly);
                         if (tempMatches.Length == 1)
                         {
                             LogInfo($"[CodeEditorTool] Found in temp directory: '{tempMatches[0]}'");
@@ -652,6 +729,8 @@ namespace AgctorSDK.Core.Tools.Implementations
                         else
                         {
                             LogInfo($"[CodeEditorTool] No existing file named '{path}' found in current directory or temp directory.");
+                            if (!HasReplacePlacement(parameters))
+                                return await CreateMissingFileForInsertOrReplaceFallbackAsync(path, content);
                             return new ToolResult { IsSuccess = false, Error = $"Could not find file '{path}'." };
                         }
                     }

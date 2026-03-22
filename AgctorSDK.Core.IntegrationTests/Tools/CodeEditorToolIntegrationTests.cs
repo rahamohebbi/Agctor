@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -78,6 +79,103 @@ namespace AgctorSDK.Core.IntegrationTests.Tools
                 {
                     File.Delete(filePath);
                 }
+                await _runtime.StopActorAsync(toolId);
+            }
+        }
+
+        [TestMethod]
+        public async Task CodeEditorTool_WriteFile_RelativeNestedPath_CreatesDirectories_WhenSubfolderMissing()
+        {
+            // Regression: Directory.GetFiles(cwd, "documentation/x.md", AllDirectories) threw DirectoryNotFoundException
+            // if "documentation" did not exist, blocking WriteFile from creating nested new files.
+            var sandbox = Path.Combine(Path.GetTempPath(), "agctor-nested-write-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(sandbox);
+            var prevCwd = Directory.GetCurrentDirectory();
+            var toolId = "editor-tool-nested";
+            var tool = await _runtime.SpawnActorAsync(toolId, (id) => new CodeEditorTool(id));
+
+            try
+            {
+                Directory.SetCurrentDirectory(sandbox);
+                var writeRequest = new ToolRequest
+                {
+                    Operation = "WriteFile",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        { "path", "documentation/project.md" },
+                        { "content", "# Project\n" }
+                    }
+                };
+                var envelope = await tool.ReceiveAsync(new MessageEnvelope(writeRequest, headers: new Dictionary<string, string> { { "ReceiverId", toolId } }));
+                var result = (ToolResult)envelope.Payload;
+                Assert.IsTrue(result.IsSuccess, result.Error);
+                var full = Path.Combine(sandbox, "documentation", "project.md");
+                Assert.IsTrue(File.Exists(full));
+                StringAssert.Contains(await File.ReadAllTextAsync(full), "Project");
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(prevCwd);
+                try
+                {
+                    if (Directory.Exists(sandbox))
+                    {
+                        Directory.Delete(sandbox, true);
+                    }
+                }
+                catch
+                {
+                    // best-effort cleanup
+                }
+
+                await _runtime.StopActorAsync(toolId);
+            }
+        }
+
+        [TestMethod]
+        public async Task CodeEditorTool_InsertIntoFile_MissingFile_NoPlacement_CreatesFile()
+        {
+            // LLM often returns InsertIntoFile for "add to project.md" when the file does not exist yet.
+            var sandbox = Path.Combine(Path.GetTempPath(), "agctor-insert-missing-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(sandbox);
+            var prevCwd = Directory.GetCurrentDirectory();
+            var toolId = "editor-tool-insert-missing";
+            var tool = await _runtime.SpawnActorAsync(toolId, (id) => new CodeEditorTool(id));
+
+            try
+            {
+                Directory.SetCurrentDirectory(sandbox);
+                var request = new ToolRequest
+                {
+                    Operation = "InsertIntoFile",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        { "path", "documentation/project.md" },
+                        { "content", "# Project details\n" }
+                    }
+                };
+                var envelope = await tool.ReceiveAsync(new MessageEnvelope(request, headers: new Dictionary<string, string> { { "ReceiverId", toolId } }));
+                var result = (ToolResult)envelope.Payload;
+                Assert.IsTrue(result.IsSuccess, result.Error);
+                var full = Path.Combine(sandbox, "documentation", "project.md");
+                Assert.IsTrue(File.Exists(full));
+                StringAssert.Contains(await File.ReadAllTextAsync(full), "Project details");
+            }
+            finally
+            {
+                Directory.SetCurrentDirectory(prevCwd);
+                try
+                {
+                    if (Directory.Exists(sandbox))
+                    {
+                        Directory.Delete(sandbox, true);
+                    }
+                }
+                catch
+                {
+                    // best-effort cleanup
+                }
+
                 await _runtime.StopActorAsync(toolId);
             }
         }

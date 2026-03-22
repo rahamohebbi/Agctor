@@ -7,5 +7,5 @@ public class AgentChatComponentModel
 {
     public string ComponentId { get; set; } = "agent-chat";
     public string Title { get; set; } = "Chat with agents";
-    public string HelpText { get; set; } = "query-agent answers questions about indexed code. Use coder-agent to write or edit code, and refactor-agent for refactors. Click Index now before asking code questions.";
+    public string HelpText { get; set; } = "query-agent answers questions about indexed code. coder-agent: natural-language prompts are planned by refactor-agent then applied by coder-agent. refactor-agent: refactors. Click Index before code questions.";
 }

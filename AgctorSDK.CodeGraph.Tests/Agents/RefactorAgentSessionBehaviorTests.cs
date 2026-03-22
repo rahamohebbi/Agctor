@@ -40,6 +40,71 @@ namespace AgctorSDK.CodeGraph.Tests.Agents
         }
 
         [TestMethod]
+        public async Task RefactorAgent_UnparseableLlmJson_UsesNewFileFallback()
+        {
+            // Models often emit ```json … ``` with invalid JSON (multi-line "error" with embedded ```).
+            var bad = "```json\n{\"error\": \"Insufficient context\n```";
+            var runtime = new RefactorStubRuntimeAdapter(repairMode: false, fixedLlmJson: bad);
+            var agent = CreateAgent(runtime);
+
+            var envelope = new MessageEnvelope(
+                "create a project.md file for me",
+                metadata: new Dictionary<string, object> { ["sessionId"] = "session-a", ["CorrelationId"] = "corr-badjson" },
+                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt", ["SenderId"] = "http-api" });
+
+            await agent.ReceiveAsync(envelope, CancellationToken.None);
+            await runtime.WaitForFinalResultAsync();
+
+            StringAssert.Contains(runtime.LastCoderCommand ?? string.Empty, "WriteFile", StringComparison.Ordinal);
+            StringAssert.Contains(runtime.LastCoderCommand ?? string.Empty, "project.md", StringComparison.Ordinal);
+            StringAssert.Contains(runtime.LastResultPayload ?? string.Empty, "File project.md updated");
+        }
+
+        [TestMethod]
+        public async Task RefactorAgent_LlmErrorInsufficientContext_UsesDeterministicNewFileFallback()
+        {
+            var llmJson = "{\"error\":\"insufficient_context\"}";
+            var runtime = new RefactorStubRuntimeAdapter(repairMode: false, fixedLlmJson: llmJson);
+            var agent = CreateAgent(runtime);
+
+            var envelope = new MessageEnvelope(
+                "create a project.md file for me",
+                metadata: new Dictionary<string, object> { ["sessionId"] = "session-a", ["CorrelationId"] = "corr-fb" },
+                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt", ["SenderId"] = "http-api" });
+
+            await agent.ReceiveAsync(envelope, CancellationToken.None);
+            await runtime.WaitForFinalResultAsync();
+
+            Assert.IsFalse(string.IsNullOrEmpty(runtime.LastCoderCommand), "Expected WriteFile after fallback.");
+            StringAssert.Contains(runtime.LastCoderCommand, "WriteFile", StringComparison.Ordinal);
+            StringAssert.Contains(runtime.LastCoderCommand, "project.md", StringComparison.Ordinal);
+            StringAssert.Contains(runtime.LastResultPayload ?? string.Empty, "File project.md updated");
+        }
+
+        [TestMethod]
+        public async Task RefactorAgent_WriteFile_Markdown_NewFile_StaysWriteFile_NotInsertIntoFile()
+        {
+            // Regression: markdown has no class/namespace — must not become InsertIntoFile (file missing).
+            var llmJson = "{\"operation\":\"WriteFile\",\"path\":\"project.md\",\"content\":\"# My Project\\n\\nOverview.\"}";
+            var runtime = new RefactorStubRuntimeAdapter(repairMode: false, fixedLlmJson: llmJson);
+            var agent = CreateAgent(runtime);
+
+            var envelope = new MessageEnvelope(
+                "create a project.md file for me",
+                metadata: new Dictionary<string, object> { ["sessionId"] = "session-a", ["CorrelationId"] = "corr-md" },
+                headers: new Dictionary<string, string> { ["MessageType"] = "Prompt", ["SenderId"] = "http-api" });
+
+            await agent.ReceiveAsync(envelope, CancellationToken.None);
+            await runtime.WaitForFinalResultAsync();
+
+            Assert.IsFalse(string.IsNullOrEmpty(runtime.LastCoderCommand), "Expected a CodeEditorTool command to coder-agent.");
+            StringAssert.Contains(runtime.LastCoderCommand, "WriteFile", StringComparison.Ordinal);
+            StringAssert.Contains(runtime.LastCoderCommand, "project.md", StringComparison.Ordinal);
+            Assert.IsFalse(runtime.LastCoderCommand!.Contains("InsertIntoFile", StringComparison.OrdinalIgnoreCase));
+            StringAssert.Contains(runtime.LastResultPayload ?? string.Empty, "File project.md updated");
+        }
+
+        [TestMethod]
         public async Task RefactorAgent_MalformedLlmResponse_UsesRepairPass()
         {
             var runtime = new RefactorStubRuntimeAdapter(repairMode: true);
@@ -69,16 +134,20 @@ namespace AgctorSDK.CodeGraph.Tests.Agents
         private sealed class RefactorStubRuntimeAdapter : IActorRuntimeAdapter
         {
             private readonly bool _repairMode;
+            private readonly string? _fixedLlmJson;
             private readonly TaskCompletionSource<bool> _resultTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public List<string> SearchPrompts { get; } = new();
             public int LlmCallCount { get; private set; }
             public string? LastResultPayload { get; private set; }
             public string? LastCoderSessionHeader { get; private set; }
+            /// <summary>String command sent to coder-agent (CodeEditorTool …).</summary>
+            public string? LastCoderCommand { get; private set; }
 
-            public RefactorStubRuntimeAdapter(bool repairMode)
+            public RefactorStubRuntimeAdapter(bool repairMode, string? fixedLlmJson = null)
             {
                 _repairMode = repairMode;
+                _fixedLlmJson = fixedLlmJson;
             }
 
             public string Name => "StubRuntime";
@@ -147,6 +216,11 @@ namespace AgctorSDK.CodeGraph.Tests.Agents
                 if (targetActorId == "llm-agent")
                 {
                     LlmCallCount++;
+                    if (!string.IsNullOrEmpty(_fixedLlmJson))
+                    {
+                        return Task.FromResult((TResponse)(object)_fixedLlmJson);
+                    }
+
                     if (_repairMode && LlmCallCount == 1)
                     {
                         return Task.FromResult((TResponse)(object)"not-json");
@@ -162,16 +236,18 @@ namespace AgctorSDK.CodeGraph.Tests.Agents
 
                 if (targetActorId == "coder-agent")
                 {
+                    if (message is string coderCmd)
+                    {
+                        LastCoderCommand = coderCmd;
+                    }
+
                     if (headers != null && headers.TryGetValue("session-id", out var sessionValue))
                     {
                         LastCoderSessionHeader = sessionValue;
                     }
 
-                    var result = new ToolResult
-                    {
-                        IsSuccess = true,
-                        Output = "File written to MathUtils.cs"
-                    };
+                    // Leave Output null so RefactorAgent formats "File {path} updated…" from the resolved path.
+                    var result = new ToolResult { IsSuccess = true };
                     return Task.FromResult((TResponse)(object)result);
                 }
 

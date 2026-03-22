@@ -34,6 +34,7 @@ Define a clear inventory of CodeGraph page UI elements and group related element
 
 ## Notes
 
+- **Chat send status** (`codegraph-page.js`): all agents use the same rich progress card (elapsed clock, phased Context → Search → LLM → last step, amber “why it waits” callout). Profiles: `query-agent` ends with **Answer**; `coder-agent` / `refactor-agent` with **Edit**; any other id uses **Reply** and generic copy.
 - Keep page-level data orchestration in `CodeGraph.cshtml` initially.
 - Extract component-specific rendering and event handling first, then progressively move per-component JavaScript to scoped modules.
 - This grouping follows the existing functionality boundaries visible on the page today and reduces duplication while keeping each component focused.

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +13,8 @@ using System.Linq;
 namespace AgctorSDK.Core.Agents
 {
     /// <summary>
-    /// Orchestrates source-code modifications (CodeEditorTool) followed by compile & test validation.
+    /// Orchestrates source-code modifications (CodeEditorTool) followed by compile & test validation for <c>.cs</c> edits.
+    /// Non-C# files (e.g. <c>.md</c>) skip compile/test so markdown/docs are not fed to Roslyn.
     /// The expected prompt is *already* a CodeEditorTool command (produced by upstream LLM or user).
     /// </summary>
     public sealed class CoderAgent : Agent
@@ -181,11 +183,35 @@ namespace AgctorSDK.Core.Agents
                 return;
             }
 
+            if (!RequiresCSharpCompileStep(_changedFilePath))
+            {
+                // Markdown, JSON, etc. are not valid C# — compiling them produces huge Roslyn noise.
+                _stage = Stage.Done;
+                _result.Success = true;
+                _result.EditorOutput = tr.Output?.ToString();
+                LogInfo($"[CoderAgent] Edit complete for non-C# file '{_changedFilePath}' — skipping compile/test.");
+                await MarkEmbeddingsStaleAsync(ct);
+                var ok = new ToolResult
+                {
+                    IsSuccess = true,
+                    Output = $"File written to {_changedFilePath} (documentation/non-C# file: compile and tests skipped)."
+                };
+                await FinalizeTask(_result, ct);
+                await SendReplyAsync(ok, ct);
+                return;
+            }
+
             _stage = Stage.Compile;
             LogInfo("[CoderAgent] Edit step complete – proceeding to compile");
             string compilePrompt = $"CompileTool CompileFile --path \"{_changedFilePath}\"";
             await AssignSubtaskAsync(compilePrompt, "CompileTool", ct);
         }
+
+        /// <summary>
+        /// Only <c>.cs</c> sources participate in the demo compile/test gate; other extensions are written as-is.
+        /// </summary>
+        private static bool RequiresCSharpCompileStep(string path) =>
+            string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
 
         private async Task HandleCompileCompletionAsync(ToolResult tr, CancellationToken ct)
         {
