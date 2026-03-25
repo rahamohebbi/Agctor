@@ -12,7 +12,7 @@ Align dashboard Agents page with Host APIs and Flowbite components (PRD-010).
 | Runtime agents | `GET /api/agents` | Group by `type` for counts and detail links. |
 | Enable toggle | `PUT /api/agents/types/{typeName}/enabled` | Body `{ "enabled": true \| false }`. |
 | Current scenario | `GET /api/Test/current-scenario` | Label strip. |
-| Apply scenario | `POST /api/Test/setup-scenario` | Body `{ "scenarioName": "<from config>", "parameters": {} }` or omit name when server uses config. |
+| Apply scenario | `POST /api/Test/setup-scenario` | Body `{ "scenarioName": "<from config>", "parameters": {} }` or omit name when server uses config. For `code-graph-demo`, the Host creates a temp folder with `Demo.sln`, `Demo.csproj`, and `Tests/*.csproj`; Coder/Refactor use **`dotnet build`** when the CLI is available (see [prd-010-codegraph-demo-and-compile.md](./prd-010-codegraph-demo-and-compile.md)). |
 
 ## UI (Flowbite)
 

@@ -7,8 +7,9 @@
 | File | Purpose |
 | --- | --- |
 | [prd-010-agents-dashboard-overhaul.md](./prd-010-agents-dashboard-overhaul.md) | Full PRD: goals, UX, persistence, single scenario, acceptance criteria |
-| [prd-010-implementation-plan.md](./prd-010-implementation-plan.md) | Phased delivery plan |
+| [prd-010-implementation-plan.md](./prd-010-implementation-plan.md) | Phased delivery plan (includes CodeGraph demo / compile follow-up) |
 | [prd-010-agents-ui-elements.md](./prd-010-agents-ui-elements.md) | UI and API inventory for frontend/backend alignment |
+| [prd-010-codegraph-demo-and-compile.md](./prd-010-codegraph-demo-and-compile.md) | Default scenario workspace layout, `dotnet build` compile gate, Coder test path |
 
 ## Relationship to PRD-006
 
@@ -18,3 +19,4 @@
 
 1. Update enablement persistence only through the Host API (writes `appsettings.User.json` or documented path).
 2. Re-enabling a type does **not** auto-spawn instances; user clicks **Apply scenario** again.
+3. If you change the **code-graph-demo** temp workspace or compile/test flow, update [prd-010-codegraph-demo-and-compile.md](./prd-010-codegraph-demo-and-compile.md) and keep `CoderAgent` / `CompileTool` / `CodeGraphDemoScenario` in sync.

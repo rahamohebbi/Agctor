@@ -2,7 +2,7 @@
 
 ## Specification status
 
-**Implemented** — see [prd-010-implementation-plan.md](./prd-010-implementation-plan.md) for phases.
+**Implemented** — see [prd-010-implementation-plan.md](./prd-010-implementation-plan.md) for phases. Companion: [prd-010-codegraph-demo-and-compile.md](./prd-010-codegraph-demo-and-compile.md) (default scenario disk layout and compile gate shipped in the same arc).
 
 ## Purpose
 
@@ -14,6 +14,7 @@ Replace the split **Registered types** / **Active agents** dashboard with a **si
 
 - **In-scope:** Unified Agents page UX (Flowbite table/toggles), `GET /api/Config` extensions for dashboard scenario name and enablement map, `PUT /api/agents/types/{typeName}/enabled`, writable `appsettings.User.json`, stopping running agents when a type is disabled, skipping disabled types during scenario setup, single scenario name from `Agctor:Dashboard:ScenarioName`.
 - **Out-of-scope:** CodeGraph page redesign; multi-tenant settings; editing committed `appsettings.json` in the repo.
+- **Companion (same release):** Reliability of the default **`code-graph-demo`** workspace (real `dotnet build`, `Tests/` project layout, Coder test path) — documented in [prd-010-codegraph-demo-and-compile.md](./prd-010-codegraph-demo-and-compile.md); not a dashboard UI change.
 
 ## Goals
 
@@ -55,8 +56,8 @@ Replace the split **Registered types** / **Active agents** dashboard with a **si
 
 ## Acceptance criteria
 
-- [ ] Dashboard shows one table/cards list with Flowbite components; no separate “Registered types” vs “Active agents” sections.
-- [ ] Toggling disabled persists to `appsettings.User.json` and removes matching agents from the runtime.
-- [ ] Apply uses the configured scenario name without user picking from a list.
-- [ ] `GET /api/Config` includes dashboard scenario name and merged enablement for the UI.
-- [ ] CodeGraph page behavior unchanged (no regression in navigation or graph load).
+- [x] Dashboard shows one table/cards list with Flowbite components; no separate “Registered types” vs “Active agents” sections.
+- [x] Toggling disabled persists to `appsettings.User.json` and removes matching agents from the runtime.
+- [x] Apply uses the configured scenario name without user picking from a list.
+- [x] `GET /api/Config` includes dashboard scenario name and merged enablement for the UI.
+- [x] CodeGraph page behavior unchanged (no regression in navigation or graph load).
