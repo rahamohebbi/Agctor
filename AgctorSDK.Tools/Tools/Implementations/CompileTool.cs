@@ -2,6 +2,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
+using AgctorSDK.Core.Tools.Build;
 using AgctorSDK.Core.Tools.LanguageCompilers;
 using AgctorSDK.Core.Tools.Models;
 using System;
@@ -184,8 +185,6 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new ToolResult { IsSuccess = false, Error = $"File not found: {path}" };
             }
 
-            string code = await _fileSystem.ReadAllTextAsync(path);
-
             // Infer language from extension if not provided
             string language = "";
             if (parameters.TryGetValue("language", out var langObj) && langObj is string langStr)
@@ -203,8 +202,33 @@ namespace AgctorSDK.Core.Tools.Implementations
                 return new ToolResult { IsSuccess = false, Error = $"Unsupported language: {language}" };
             }
 
-            var (success, output, error) = await compiler.CompileCodeAsync(code);
-            return new ToolResult { IsSuccess = success, Output = output, Error = error };
+            // C# on disk: prefer dotnet build (restore + project refs + tests layout) when a solution/project exists nearby.
+            if (string.Equals(language, "csharp", StringComparison.OrdinalIgnoreCase) &&
+                compiler is CSharpCompiler csharpCompiler)
+            {
+                var fullPath = Path.GetFullPath(path);
+                if (DotNetWorkspaceBuild.IsDotNetCliAvailable())
+                {
+                    var entry = DotNetWorkspaceBuild.FindSolutionOrProject(fullPath);
+                    if (entry != null)
+                    {
+                        var (ok, outText, errText) = await DotNetWorkspaceBuild.BuildAsync(entry).ConfigureAwait(false);
+                        return new ToolResult
+                        {
+                            IsSuccess = ok,
+                            Output = outText,
+                            Error = ok ? string.Empty : errText
+                        };
+                    }
+                }
+
+                var (success, output, error) = await csharpCompiler.CompileSameDirectoryWorkspaceAsync(path).ConfigureAwait(false);
+                return new ToolResult { IsSuccess = success, Output = output, Error = error };
+            }
+
+            string code = await _fileSystem.ReadAllTextAsync(path);
+            var (success2, output2, error2) = await compiler.CompileCodeAsync(code).ConfigureAwait(false);
+            return new ToolResult { IsSuccess = success2, Output = output2, Error = error2 };
         }
 
         private string GetLanguageFromFilePath(string path)

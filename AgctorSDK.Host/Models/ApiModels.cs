@@ -123,6 +123,12 @@ namespace AgctorSDK.Host.Models
         public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>PUT /api/agents/types/{typeName}/enabled — dashboard agent-type toggle (PRD-010).</summary>
+    public class AgentTypeEnableRequest
+    {
+        public bool Enabled { get; set; }
+    }
+
     /// <summary>
     /// Agent info plus type-specific detail for dashboard (PRD-006). GET /api/agents/{id}/detail.
     /// </summary>
@@ -297,7 +303,7 @@ namespace AgctorSDK.Host.Models
 
     // New models for scenario setup
     public record ScenarioSetupRequest(
-        string ScenarioName,
+        string? ScenarioName = null,
         Dictionary<string, object>? Parameters = null
     );
 

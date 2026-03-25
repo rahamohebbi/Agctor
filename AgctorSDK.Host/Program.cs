@@ -15,6 +15,10 @@ using AgctorSDK.Host.Services.Traces;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// User-local overrides (agent type enablement, etc.) — PRD-010; file is gitignored.
+var userSettingsPath = Path.Combine(builder.Environment.ContentRootPath, "appsettings.User.json");
+builder.Configuration.AddJsonFile(userSettingsPath, optional: true, reloadOnChange: true);
+
 // Ensure a dedicated default HTTP URL so startup does not collide with macOS services on port 5000.
 if (string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]) &&
     string.IsNullOrWhiteSpace(builder.WebHost.GetSetting("urls")))
@@ -140,6 +144,9 @@ builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmC
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 builder.Services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
 
+// Agent type enablement persisted to appsettings.User.json (PRD-010)
+builder.Services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();
+
 // Dashboard config service (PRD-006)
 builder.Services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
 
@@ -195,7 +202,9 @@ Console.WriteLine("✅ Actor Runtime initialized successfully");
 // Keep session coordination available even before a demo scenario is applied.
 var startupAgentFactory = app.Services.GetRequiredService<IAgentFactory>();
 var startupAgentRegistry = app.Services.GetRequiredService<IAgentRegistry>();
-if (await startupAgentRegistry.GetAgentByIdAsync("session-coordinator-agent") == null)
+var startupEnablement = app.Services.GetRequiredService<IAgentTypeEnablementService>();
+if (await startupAgentRegistry.GetAgentByIdAsync("session-coordinator-agent") == null
+    && startupEnablement.IsTypeEnabled("SessionCoordinatorAgent"))
 {
     var sessionStore = app.Services.GetRequiredService<ISessionStore>();
     var sessionComposer = app.Services.GetRequiredService<ISessionContextComposer>();

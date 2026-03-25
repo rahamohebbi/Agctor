@@ -22,6 +22,7 @@ namespace AgctorSDK.Host.Controllers
         private readonly IAgentRegistry _agentRegistry;
         private readonly IAgentFactory _agentFactory;
         private readonly IAgentDetailProviderRegistry _detailProviderRegistry;
+        private readonly IAgentTypeEnablementService _agentTypeEnablement;
         private readonly ILogger<AgentsController> _logger;
         private readonly IActivityTracker? _activityTracker;
 
@@ -30,6 +31,7 @@ namespace AgctorSDK.Host.Controllers
             IAgentRegistry agentRegistry,
             IAgentFactory agentFactory,
             IAgentDetailProviderRegistry detailProviderRegistry,
+            IAgentTypeEnablementService agentTypeEnablement,
             ILogger<AgentsController> logger,
             IActivityTracker? activityTracker = null)
         {
@@ -37,6 +39,7 @@ namespace AgctorSDK.Host.Controllers
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
             _detailProviderRegistry = detailProviderRegistry ?? throw new ArgumentNullException(nameof(detailProviderRegistry));
+            _agentTypeEnablement = agentTypeEnablement ?? throw new ArgumentNullException(nameof(agentTypeEnablement));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;
         }
@@ -178,6 +181,51 @@ namespace AgctorSDK.Host.Controllers
                 {
                     Code = "INTERNAL_ERROR",
                     Message = "An internal error occurred while retrieving agents"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Persists enable/disable for a registered agent type and stops running instances when disabled (PRD-010).
+        /// </summary>
+        [HttpPut("types/{typeName}/enabled")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult> SetAgentTypeEnabledAsync(
+            [FromRoute] string typeName,
+            [FromBody] AgentTypeEnableRequest? request,
+            CancellationToken cancellationToken = default)
+        {
+            if (request == null)
+            {
+                return BadRequest(new ErrorResponse
+                {
+                    Code = "INVALID_BODY",
+                    Message = "Request body with enabled flag is required."
+                });
+            }
+
+            try
+            {
+                await _agentTypeEnablement.SetTypeEnabledAsync(typeName, request.Enabled, cancellationToken).ConfigureAwait(false);
+                return NoContent();
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new ErrorResponse
+                {
+                    Code = "INVALID_AGENT_TYPE",
+                    Message = ex.Message
+                });
+            }
+            catch (IOException ex)
+            {
+                _logger.LogError(ex, "Failed to persist agent type enablement for {TypeName}", typeName);
+                return StatusCode(500, new ErrorResponse
+                {
+                    Code = "SETTINGS_IO_ERROR",
+                    Message = "Could not write user settings file. Check host permissions for appsettings.User.json."
                 });
             }
         }

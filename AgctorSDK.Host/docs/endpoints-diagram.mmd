@@ -1,12 +1,13 @@
 graph LR
     subgraph "HTTP REST API"
         subgraph "Config PRD006"
-            GetConfig["GET /api/Config<br/>Host configuration"]
+            GetConfig["GET /api/Config<br/>Host configuration PRD010 fields"]
         end
 
         subgraph "Agents /api/agents"
             CreateAgent["POST /api/agents<br/>Create agent"]
             ListAgents["GET /api/agents<br/>List all agents"]
+            PutAgentTypeEnabled["PUT /api/agents/types/type/enabled<br/>PRD010 toggle"]
             GetAgent["GET /api/agents/id<br/>Get agent info"]
             GetAgentDetail["GET /api/agents/id/detail<br/>Agent detail PRD006"]
             SendMsg["POST /api/agents/id/message<br/>Send message"]
@@ -30,7 +31,7 @@ graph LR
         end
 
         subgraph "Test /api/test"
-            SetupScenario["POST /api/test/setup-scenario<br/>Setup scenario"]
+            SetupScenario["POST /api/test/setup-scenario<br/>Setup scenario optional name"]
             ListScenarios["GET /api/test/scenarios<br/>List scenarios"]
             GetScenario["GET /api/test/scenarios/name<br/>Get scenario"]
             CurrentScenario["GET /api/test/current-scenario<br/>Current scenario"]

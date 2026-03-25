@@ -18,6 +18,7 @@ using AgctorSDK.CodeGraph.Intents;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Messages;
 using AgctorSDK.Core.Sessions;
+using AgctorSDK.Host.Services;
 
 namespace AgctorSDK.Host.Services.Scenarios
 {
@@ -46,6 +47,7 @@ namespace AgctorSDK.Host.Services.Scenarios
         private readonly ISessionStore _sessionStore;
         private readonly ISessionContextComposer _sessionContextComposer;
         private readonly SessionMemoryOptions _sessionMemoryOptions;
+        private readonly IAgentTypeEnablementService _enablement;
         private readonly ILogger<CodeGraphDemoScenario> _logger;
 
         public string Name => "code-graph-demo";
@@ -58,6 +60,7 @@ namespace AgctorSDK.Host.Services.Scenarios
             ISessionStore sessionStore,
             ISessionContextComposer sessionContextComposer,
             SessionMemoryOptions sessionMemoryOptions,
+            IAgentTypeEnablementService enablement,
             ILogger<CodeGraphDemoScenario> logger)
         {
             _runtimeAdapter = runtimeAdapter;
@@ -66,6 +69,7 @@ namespace AgctorSDK.Host.Services.Scenarios
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _sessionContextComposer = sessionContextComposer ?? throw new ArgumentNullException(nameof(sessionContextComposer));
             _sessionMemoryOptions = sessionMemoryOptions ?? throw new ArgumentNullException(nameof(sessionMemoryOptions));
+            _enablement = enablement ?? throw new ArgumentNullException(nameof(enablement));
             _logger = logger;
         }
 
@@ -93,14 +97,54 @@ namespace AgctorSDK.Host.Services.Scenarios
                 await File.WriteAllTextAsync(utilsPath, MathUtilsSource);
                 await File.WriteAllTextAsync(sciPath, ScientificCalculatorSource);
 
-                // 1b. Create a minimal xUnit test project so the demo pipeline's TestRunnerTool has tests to run.
-                var testsProjPath = Path.Combine(tempDir, "AgctorSDK.Core.Tests.csproj");
-                var testsFilePath = Path.Combine(tempDir, "MathUtilsTests.cs");
+                // Library project: exclude Tests/** so SDK glob does not compile xUnit sources into Demo.
+                var demoCsproj = @"<Project Sdk=""Microsoft.NET.Sdk"">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DemoApp</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>";
+
+                var slnContent = @"Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""Demo"", ""Demo.csproj"", ""{11111111-1111-1111-1111-111111111111}""
+EndProject
+Project(""{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"") = ""AgctorSDK.Core.Tests"", ""Tests\AgctorSDK.Core.Tests.csproj"", ""{22222222-2222-2222-2222-222222222222}""
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{11111111-1111-1111-1111-111111111111}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{22222222-2222-2222-2222-222222222222}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+EndGlobal
+";
+
+                await File.WriteAllTextAsync(Path.Combine(tempDir, "Demo.csproj"), demoCsproj);
+                await File.WriteAllTextAsync(Path.Combine(tempDir, "Demo.sln"), slnContent);
+
+                // 1b. Test project under Tests/ so CompileTool can use dotnet build + restore without skipping test sources.
+                var testsDir = Path.Combine(tempDir, "Tests");
+                Directory.CreateDirectory(testsDir);
+                var testsProjPath = Path.Combine(testsDir, "AgctorSDK.Core.Tests.csproj");
+                var testsFilePath = Path.Combine(testsDir, "MathUtilsTests.cs");
 
                 var testsCsproj = @"<Project Sdk=""Microsoft.NET.Sdk"">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <RootNamespace>DemoApp.Tests</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -111,7 +155,7 @@ namespace AgctorSDK.Host.Services.Scenarios
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include=""Demo.csproj"" />
+    <ProjectReference Include=""..\Demo.csproj"" />
   </ItemGroup>
 </Project>";
 
@@ -119,6 +163,12 @@ namespace AgctorSDK.Host.Services.Scenarios
 
                 await File.WriteAllTextAsync(testsProjPath, testsCsproj);
                 await File.WriteAllTextAsync(testsFilePath, testCode);
+
+                // Starter doc so NL refactor flows (e.g. "add to project.md") do not fail when the LLM uses
+                // InsertIntoFile with a selector — CodeEditorTool only auto-creates when no placement hints exist.
+                var projectMdPath = Path.Combine(tempDir, "project.md");
+                await File.WriteAllTextAsync(projectMdPath,
+                    "# Demo project\n\nWorkspace generated by the code-graph-demo scenario.\n");
 
                 // Make the demo workspace the current directory so tooling can resolve relative paths like "MathUtils.cs".
                 Directory.SetCurrentDirectory(tempDir);
@@ -129,9 +179,11 @@ namespace AgctorSDK.Host.Services.Scenarios
                 var calcFile = new FileActor("Calculator.cs", calcPath);
                 var utilsFile = new FileActor("MathUtils.cs", utilsPath);
                 var sciFile  = new FileActor("ScientificCalculator.cs", sciPath);
+                var projectMdFile = new FileActor("project.md", projectMdPath);
                 project.AddFile(calcFile);
                 project.AddFile(utilsFile);
                 project.AddFile(sciFile);
+                project.AddFile(projectMdFile);
                 solution.AddProject(project);
 
                 // 3. Prepare analyzer registry and embedding infrastructure.
@@ -194,8 +246,16 @@ namespace AgctorSDK.Host.Services.Scenarios
                 var searchAgent  = new SearchAgent(searchId, embeddingGen, storeActor, solution, resolvers, embeddingCoordinatorId);
                 searchAgent.SetAgentFactory(agentFactory);
 
-                var llmAgent     = new LLMAgent(llmId); // Uses default Ollama settings – OK for demo.
-                llmAgent.SetAgentFactory(agentFactory);
+                LLMAgent? llmAgent = null;
+                if (_enablement.IsTypeEnabled("LLMAgent"))
+                {
+                    llmAgent = new LLMAgent(llmId); // Uses default Ollama settings – OK for demo.
+                    llmAgent.SetAgentFactory(agentFactory);
+                }
+                else
+                {
+                    _logger.LogWarning("LLMAgent disabled in dashboard settings; skipping LLM-dependent agents.");
+                }
 
                 // IntentDetectionAgent (LLM-based)
                 var httpCli = new System.Net.Http.HttpClient { BaseAddress = new Uri("http://localhost:11434") };
@@ -204,7 +264,11 @@ namespace AgctorSDK.Host.Services.Scenarios
                 intentAgent.SetAgentFactory(agentFactory);
 
                 // Manually initialize and then register the prebuilt agents
-                foreach (var agent in new Agent[] { indexerAgent, embeddingCoordinatorAgent, searchAgent, llmAgent, intentAgent })
+                var preInit = new List<Agent> { indexerAgent, embeddingCoordinatorAgent, searchAgent };
+                if (llmAgent != null)
+                    preInit.Add(llmAgent);
+                preInit.Add(intentAgent);
+                foreach (var agent in preInit)
                 {
                     await agent.InitializeAsync();
                     await _runtimeAdapter.RegisterActorAsync(agent);
@@ -212,36 +276,46 @@ namespace AgctorSDK.Host.Services.Scenarios
                 }
 
                 // Spawn QueryAgent via runtime so AgentFactory gets injected automatically
-                var spawnedQuery = await _runtimeAdapter.SpawnActorAsync<QueryAgent>(
-                    queryId,
-                    id => new QueryAgent(id, searchId, llmId));
+                if (llmAgent != null)
+                {
+                    var spawnedQuery = await _runtimeAdapter.SpawnActorAsync<QueryAgent>(
+                        queryId,
+                        id => new QueryAgent(id, searchId, llmId));
 
-                spawnedQuery.SetAgentFactory(agentFactory);
-                await _agentRegistry.RegisterAgentAsync(spawnedQuery);
+                    spawnedQuery.SetAgentFactory(agentFactory);
+                    await _agentRegistry.RegisterAgentAsync(spawnedQuery);
+                }
 
                 // Spawn CoderAgent for editing/building code
-                var spawnedCoder = await _runtimeAdapter.SpawnActorAsync<CoderAgent>(
-                    coderId,
-                    id => new CoderAgent(id));
+                CoderAgent? spawnedCoder = null;
+                if (_enablement.IsTypeEnabled("CoderAgent"))
+                {
+                    spawnedCoder = await _runtimeAdapter.SpawnActorAsync<CoderAgent>(
+                        coderId,
+                        id => new CoderAgent(id));
 
-                spawnedCoder.SetAgentFactory(agentFactory);
-                spawnedCoder.ConfigureEmbeddingCoordinator(embeddingCoordinatorId);
-                await _agentRegistry.RegisterAgentAsync(spawnedCoder);
+                    spawnedCoder.SetAgentFactory(agentFactory);
+                    spawnedCoder.ConfigureEmbeddingCoordinator(embeddingCoordinatorId);
+                    await _agentRegistry.RegisterAgentAsync(spawnedCoder);
+                }
 
                 // Spawn RefactorAgent
-                var spawnedRefactor = await _runtimeAdapter.SpawnActorAsync<RefactorAgent>(
-                    refactorId,
-                    id => new RefactorAgent(id, searchId, llmId, coderId));
+                if (llmAgent != null && spawnedCoder != null)
+                {
+                    var spawnedRefactor = await _runtimeAdapter.SpawnActorAsync<RefactorAgent>(
+                        refactorId,
+                        id => new RefactorAgent(id, searchId, llmId, coderId));
 
-                spawnedRefactor.SetAgentFactory(agentFactory);
-                await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
+                    spawnedRefactor.SetAgentFactory(agentFactory);
+                    await _agentRegistry.RegisterAgentAsync(spawnedRefactor);
+                }
 
                 var existingSessionCoordinator = await _agentRegistry.GetAgentByIdAsync(sessionCoordinatorId);
                 if (existingSessionCoordinator is SessionCoordinatorAgent registeredSessionCoordinator)
                 {
                     registeredSessionCoordinator.SetAgentFactory(agentFactory);
                 }
-                else
+                else if (_enablement.IsTypeEnabled("SessionCoordinatorAgent"))
                 {
                     var sessionCoordinator = await _runtimeAdapter.SpawnActorAsync<SessionCoordinatorAgent>(
                         sessionCoordinatorId,
@@ -417,11 +491,12 @@ namespace AgctorSDK.Host.Services.Scenarios
     }
 }";
 
+        // Use x,y for Pow (not @base): LLM/json refactors often drop the @ and leave Power() invalid (CS0161).
         private const string ScientificCalculatorSource = @"namespace DemoApp
 {
     public class ScientificCalculator : Calculator
     {
-        public double Power(double @base, double exp) => System.Math.Pow(@base, exp);
+        public double Power(double x, double y) => System.Math.Pow(x, y);
         public double Sqrt(double x) => System.Math.Sqrt(x);
     }
 }";

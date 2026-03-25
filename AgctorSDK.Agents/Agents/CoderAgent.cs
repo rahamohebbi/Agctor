@@ -225,7 +225,8 @@ namespace AgctorSDK.Core.Agents
 
             _stage = Stage.Test;
             LogInfo("[CoderAgent] Compile step complete – running unit tests");
-            string testPrompt = "TestRunnerTool RunTests --path \"AgctorSDK.Core.Tests.csproj\"";
+            var testProjRel = Path.Combine("Tests", "AgctorSDK.Core.Tests.csproj");
+            string testPrompt = $"TestRunnerTool RunTests --path \"{testProjRel}\"";
             await AssignSubtaskAsync(testPrompt, "TestRunnerTool", ct);
         }
 

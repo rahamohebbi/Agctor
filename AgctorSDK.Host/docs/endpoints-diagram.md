@@ -10,16 +10,17 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 
 ## REST API Endpoints
 
-### Config – Dashboard (PRD-006)
+### Config – Dashboard (PRD-006 / PRD-010)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/Config` | Get full Host configuration (runtime, LLM, MCP, tools, scenarios, agent types) |
+| GET | `/api/Config` | Get full Host configuration (runtime, LLM, MCP, tools, scenarios, agent types, **dashboard scenario name**, **per-type enablement**) |
 
 ### Agents (`/api/agents`)
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/agents` | Create new agent |
 | GET | `/api/agents` | List all agents |
+| PUT | `/api/agents/types/{typeName}/enabled` | Body `{ "enabled": bool }` — persist toggle; stop instances when disabled (PRD-010) |
 | GET | `/api/agents/{id}` | Get agent info |
 | GET | `/api/agents/{id}/detail` | Get agent info + type-specific detail (PRD-006) |
 | POST | `/api/agents/{id}/message` | Send message to agent |
@@ -46,7 +47,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 ### Test (`/api/test`)
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/test/setup-scenario` | Setup test scenario |
+| POST | `/api/test/setup-scenario` | Setup test scenario; body may omit `scenarioName` to use `Agctor:Dashboard:ScenarioName` |
 | GET | `/api/test/scenarios` | List available scenarios |
 | GET | `/api/test/scenarios/{name}` | Get scenario info |
 | GET | `/api/test/current-scenario` | Get the current dashboard scenario |
@@ -67,7 +68,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview
-- **GET /Dashboard/Agents** – Agents list and registered types
+- **GET /Dashboard/Agents** – Unified agent-type table with toggles and single configured scenario (PRD-010)
 - **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
 - **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
 

@@ -48,5 +48,11 @@ public class DashboardConfigIntegrationTests : IClassFixture<WebApplicationFacto
         tools.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Array);
         json.TryGetProperty("scenarios", out var scenarios).Should().BeTrue();
         scenarios.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Object);
+
+        json.TryGetProperty("dashboardScenarioName", out var dash).Should().BeTrue();
+        dash.GetString().Should().NotBeNullOrWhiteSpace();
+
+        json.TryGetProperty("agentTypeEnablement", out var enablement).Should().BeTrue();
+        enablement.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Object);
     }
 }

@@ -9,10 +9,10 @@
 Controllers, services, and background workers in the Host project.
 
 ## Controllers
-- **AgentsController**: Agent CRUD + messaging via MessageDispatcher
+- **AgentsController**: Agent CRUD + messaging via MessageDispatcher; agent-type enablement via IAgentTypeEnablementService (PRD-010)
 - **GoalsController**: Goal CRUD via IGoalStore
 - **ToolsController**: Tool invocation via ToolInvoker
-- **TestController**: Scenario setup via IScenarioFactory
+- **TestController**: Scenario setup via IScenarioFactory; optional scenario name from IConfiguration (PRD-010)
 - **CodeGraphController**: CodeGraph status, embeddings, and file preview
 
 ## Services
@@ -20,6 +20,8 @@ Controllers, services, and background workers in the Host project.
 - **ToolInvoker**: Direct tool execution
 - **ScenarioFactory**: Creates test scenarios
 - **CurrentScenarioStore**: Persists the selected scenario for the dashboard session
+- **HostConfigurationService**: Aggregates `GET /api/Config` including dashboard scenario name and per-type enablement (PRD-010)
+- **AgentTypeEnablementService**: Reads/writes `appsettings.User.json` for `Agctor:AgentTypeEnablement`; stops agents when disabled (PRD-010)
 
 ## Background Services
 - **TaskScoperHostedService**: Goal-to-task decomposition
@@ -32,3 +34,5 @@ Razor **ViewComponents** under `ViewComponents/` render the CodeGraph dashboard 
 - **EmbeddingStoreViewComponent**, **AgentChatViewComponent**, **ActorTreeViewComponent** (includes file preview modal markup), **TraceTimelineViewComponent**, **EmbeddingDebugViewComponent**, **RawJsonViewComponent**
 
 Client orchestration for the page lives in **`wwwroot/js/dashboard/codegraph-page.js`** (stable element `id`s match the component partials).
+
+The **Agents** dashboard page uses **`wwwroot/js/dashboard/agents-page.js`** (PRD-010).

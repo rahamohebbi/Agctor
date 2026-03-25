@@ -58,6 +58,9 @@ Thumbs.db
 *.userosscache
 *.sln.docstates
 
+# User-local Host settings (PRD-010 agent enablement / dashboard scenario)
+appsettings.User.json
+
 # Demo files
 Demo/**/*.html
 Demo/Visualization/*.html

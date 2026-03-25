@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.Controllers;
 
@@ -15,15 +16,18 @@ public class TestController : ControllerBase
 {
     private readonly IScenarioFactory _scenarioFactory;
     private readonly ICurrentScenarioStore _currentScenarioStore;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<TestController> _logger;
 
     public TestController(
         IScenarioFactory scenarioFactory,
         ICurrentScenarioStore currentScenarioStore,
+        IConfiguration configuration,
         ILogger<TestController> logger)
     {
         _scenarioFactory = scenarioFactory ?? throw new ArgumentNullException(nameof(scenarioFactory));
         _currentScenarioStore = currentScenarioStore ?? throw new ArgumentNullException(nameof(currentScenarioStore));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -41,32 +45,36 @@ public class TestController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<ScenarioSetupResponse>> SetupScenarioAsync(
-        [FromBody] ScenarioSetupRequest request,
+        [FromBody] ScenarioSetupRequest? request,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Setting up test scenario: {ScenarioName}", request.ScenarioName);
+        request ??= new ScenarioSetupRequest(null, null);
+        var scenarioName = request.ScenarioName;
+        if (string.IsNullOrWhiteSpace(scenarioName))
+            scenarioName = _configuration.GetValue<string>("Agctor:Dashboard:ScenarioName") ?? "";
+
+        _logger.LogInformation("Setting up test scenario: {ScenarioName}", scenarioName);
 
         try
         {
-            // Validate input
-            if (string.IsNullOrWhiteSpace(request.ScenarioName))
+            if (string.IsNullOrWhiteSpace(scenarioName))
             {
                 return BadRequest(new ErrorResponse
                 {
                     Code = "INVALID_SCENARIO_NAME",
-                    Message = "Scenario name cannot be null or empty"
+                    Message = "Scenario name is required (set Agctor:Dashboard:ScenarioName or pass scenarioName in the body)."
                 });
             }
 
             // Get the scenario
-            var scenario = _scenarioFactory.GetScenario(request.ScenarioName);
+            var scenario = _scenarioFactory.GetScenario(scenarioName);
             if (scenario == null)
             {
                 var availableScenarios = string.Join(", ", _scenarioFactory.GetAvailableScenarios());
                 return BadRequest(new ErrorResponse
                 {
                     Code = "UNKNOWN_SCENARIO",
-                    Message = $"Unknown scenario '{request.ScenarioName}'. Available scenarios: {availableScenarios}"
+                    Message = $"Unknown scenario '{scenarioName}'. Available scenarios: {availableScenarios}"
                 });
             }
 
@@ -75,21 +83,21 @@ public class TestController : ControllerBase
 
             if (response.Success)
             {
-                _currentScenarioStore.SetCurrentScenario(request.ScenarioName, scenario.Description);
+                _currentScenarioStore.SetCurrentScenario(scenarioName, scenario.Description);
                 _logger.LogInformation("Successfully set up scenario '{ScenarioName}' with {AgentCount} agents",
-                    request.ScenarioName, response.CreatedAgentIds.Count);
+                    scenarioName, response.CreatedAgentIds.Count);
             }
             else
             {
                 _logger.LogWarning("Failed to set up scenario '{ScenarioName}': {Error}",
-                    request.ScenarioName, response.ErrorMessage);
+                    scenarioName, response.ErrorMessage);
             }
 
             return Ok(response);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error setting up scenario {ScenarioName}", request.ScenarioName);
+            _logger.LogError(ex, "Error setting up scenario {ScenarioName}", scenarioName);
             return StatusCode(500, new ErrorResponse
             {
                 Code = "INTERNAL_ERROR",

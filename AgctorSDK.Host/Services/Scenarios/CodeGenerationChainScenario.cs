@@ -3,6 +3,7 @@ using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Models;
+using AgctorSDK.Host.Services;
 
 namespace AgctorSDK.Host.Services.Scenarios;
 
@@ -15,6 +16,7 @@ public class CodeGenerationChainScenario : IScenario
     private readonly IActorRuntimeAdapter _runtimeAdapter;
     private readonly IAgentFactory _agentFactory;
     private readonly IAgentRegistry _agentRegistry;
+    private readonly IAgentTypeEnablementService _enablement;
     private readonly ILogger<CodeGenerationChainScenario> _logger;
 
     public string Name => "code-generation-chain";
@@ -25,11 +27,13 @@ public class CodeGenerationChainScenario : IScenario
         IActorRuntimeAdapter runtimeAdapter,
         IAgentFactory agentFactory,
         IAgentRegistry agentRegistry,
+        IAgentTypeEnablementService enablement,
         ILogger<CodeGenerationChainScenario> logger)
     {
         _runtimeAdapter = runtimeAdapter;
         _agentFactory = agentFactory;
         _agentRegistry = agentRegistry;
+        _enablement = enablement;
         _logger = logger;
     }
 
@@ -102,6 +106,14 @@ public class CodeGenerationChainScenario : IScenario
     {
         try
         {
+            // Scenario uses "RootAgent" label; the registered type key is "Agent" (PRD-010).
+            var logicalKey = agentType == "RootAgent" ? "Agent" : agentType;
+            if (!_enablement.IsTypeEnabled(logicalKey))
+            {
+                _logger.LogInformation("Skipping {AgentType} (disabled in dashboard settings)", agentType);
+                return null;
+            }
+
             // Default prompt for each agent type
             var prompt = agentType switch
             {

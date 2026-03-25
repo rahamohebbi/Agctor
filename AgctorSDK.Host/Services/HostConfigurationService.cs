@@ -15,18 +15,21 @@ public class HostConfigurationService : IHostConfigurationService
     private readonly IToolInvoker _toolInvoker;
     private readonly IScenarioFactory _scenarioFactory;
     private readonly IActorRuntimeAdapter? _runtimeAdapter;
+    private readonly IAgentTypeEnablementService _agentTypeEnablement;
 
     public HostConfigurationService(
         IConfiguration configuration,
         IOptions<AgentTypeOptions> agentTypeOptions,
         IToolInvoker toolInvoker,
         IScenarioFactory scenarioFactory,
+        IAgentTypeEnablementService agentTypeEnablement,
         IActorRuntimeAdapter? runtimeAdapter = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _agentTypeOptions = agentTypeOptions ?? throw new ArgumentNullException(nameof(agentTypeOptions));
         _toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
         _scenarioFactory = scenarioFactory ?? throw new ArgumentNullException(nameof(scenarioFactory));
+        _agentTypeEnablement = agentTypeEnablement ?? throw new ArgumentNullException(nameof(agentTypeEnablement));
         _runtimeAdapter = runtimeAdapter;
     }
 
@@ -67,6 +70,9 @@ public class HostConfigurationService : IHostConfigurationService
         var agentTypes = _agentTypeOptions.Value.AgentTypes
             .ToDictionary(k => k.Key, v => v.Value.FullName ?? v.Value.Name, StringComparer.OrdinalIgnoreCase);
 
+        var enablement = _agentTypeEnablement.GetEffectiveEnablement(agentTypes);
+        var dashboardScenario = _configuration.GetValue<string>("Agctor:Dashboard:ScenarioName") ?? "code-graph-demo";
+
         var toolIds = await _toolInvoker.GetAvailableToolsAsync(cancellationToken);
         var tools = new List<ToolInfo>();
         foreach (var id in toolIds)
@@ -86,6 +92,8 @@ public class HostConfigurationService : IHostConfigurationService
             GeneratedCodeRoot = generatedCodeRoot,
             BackgroundServices = backgroundServices,
             AgentTypes = agentTypes,
+            AgentTypeEnablement = enablement,
+            DashboardScenarioName = dashboardScenario,
             Tools = tools,
             Scenarios = scenarioDescriptions
         };

@@ -13,6 +13,10 @@ public class HostConfigurationDto
     public string GeneratedCodeRoot { get; set; } = null!;
     public BackgroundServicesDto BackgroundServices { get; set; } = null!;
     public IReadOnlyDictionary<string, string> AgentTypes { get; set; } = null!;
+    /// <summary>Effective enablement per registered agent type key (PRD-010); default true when unset.</summary>
+    public IReadOnlyDictionary<string, bool> AgentTypeEnablement { get; set; } = null!;
+    /// <summary>Single dashboard scenario name from Agctor:Dashboard:ScenarioName (PRD-010).</summary>
+    public string DashboardScenarioName { get; set; } = null!;
     public IReadOnlyList<ToolInfo> Tools { get; set; } = null!;
     public IReadOnlyDictionary<string, string> Scenarios { get; set; } = null!;
 }

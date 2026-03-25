@@ -2,12 +2,25 @@ classDiagram
     class AgentsController {
         -IAgentFactory _factory
         -IAgentRegistry _registry
+        -IAgentTypeEnablementService _agentTypeEnablement
         -IActorRuntimeAdapter _runtime
         +CreateAgent(request) ActionResult
         +ListAgents() ActionResult
+        +SetAgentTypeEnabled(typeName, request) ActionResult
         +GetAgent(agentId) ActionResult
         +SendMessage(agentId, request) ActionResult
         +HealthCheck() ActionResult
+    }
+
+    class AgentTypeEnablementService {
+        +GetEffectiveEnablement(registered) dict
+        +IsTypeEnabled(logicalKey) bool
+        +SetTypeEnabledAsync(key, enabled) Task
+        +StopAgentsOfLogicalTypeAsync(key) Task
+    }
+
+    class HostConfigurationService {
+        +GetConfigurationAsync() Task
     }
 
     class GoalsController {
@@ -30,6 +43,7 @@ classDiagram
 
     class TestController {
         -IScenarioFactory _scenarioFactory
+        -IConfiguration _configuration
         +SetupScenario(request) ActionResult
         +ListScenarios() ActionResult
         +GetScenario(name) ActionResult
@@ -161,6 +175,8 @@ classDiagram
 
     IScenarioFactory <|.. ScenarioFactory
     AgentsController --> MessageDispatcher : uses
+    AgentsController --> AgentTypeEnablementService : uses
+    HostConfigurationService --> AgentTypeEnablementService : uses
     ToolsController --> ToolInvoker : uses
     TestController --> IScenarioFactory : uses
     TestController --> CurrentScenarioStore : uses

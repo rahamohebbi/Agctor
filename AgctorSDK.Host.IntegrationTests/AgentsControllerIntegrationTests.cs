@@ -343,6 +343,26 @@ namespace AgctorSDK.Host.IntegrationTests
         }
 
         [Fact]
+        public async Task PutAgentTypeEnabled_UnknownType_ReturnsBadRequest()
+        {
+            var response = await _client.PutAsJsonAsync(
+                "/api/agents/types/NotARealRegisteredType/enabled",
+                new AgentTypeEnableRequest { Enabled = false });
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+
+        [Fact]
+        public async Task PutAgentTypeEnabled_ValidType_ReturnsNoContent()
+        {
+            var response = await _client.PutAsJsonAsync(
+                "/api/agents/types/LLMAgent/enabled",
+                new AgentTypeEnableRequest { Enabled = true });
+
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        [Fact]
         public async Task ApiEndpoints_HaveCorrectContentTypes()
         {
             // Act & Assert - Test various endpoints
