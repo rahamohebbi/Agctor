@@ -30,6 +30,19 @@ classDiagram
         +GetConfigurationAsync() Task
     }
 
+    class RuntimeController {
+        -IActorRuntimeAdapter _runtime
+        -IActorRuntimeAdapterFactory _runtimeFactory
+        -IConfiguration _configuration
+        -IUserRuntimeSettingsService _userRuntimeSettings
+        +GetStatus() ActionResult
+        +UpdateSelection(body) ActionResult
+    }
+
+    class UserRuntimeSettingsService {
+        +PersistAsync(canonicalRuntimeId, protoHost, protoPort) Task
+    }
+
     class GoalsController {
         -IGoalStore _store
         +ListGoals() ActionResult
@@ -187,6 +200,8 @@ classDiagram
     MessageDispatcher --> AgentOutputStreamRegistry : publishes phases
     AgentsController --> AgentTypeEnablementService : uses
     HostConfigurationService --> AgentTypeEnablementService : uses
+    RuntimeController --> UserRuntimeSettingsService : uses
+    RuntimeController --> IActorRuntimeAdapterFactory : uses
     ToolsController --> ToolInvoker : uses
     TestController --> IScenarioFactory : uses
     TestController --> CurrentScenarioStore : uses

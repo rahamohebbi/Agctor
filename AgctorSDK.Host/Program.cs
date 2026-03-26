@@ -152,6 +152,9 @@ builder.Services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementSe
 // Dashboard config service (PRD-006)
 builder.Services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
 
+// Actor runtime selection persisted to appsettings.User.json (PRD-012 Tier A)
+builder.Services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
+
 // Agent detail providers for dashboard (PRD-006)
 builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.LLMAgentDetailProvider>();
 builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.CoderAgentDetailProvider>();

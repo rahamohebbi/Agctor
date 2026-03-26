@@ -14,6 +14,7 @@ Controllers, services, and background workers in the Host project.
 - **ToolsController**: Tool invocation via ToolInvoker
 - **TestController**: Scenario setup via IScenarioFactory; optional scenario name from IConfiguration (PRD-010)
 - **CodeGraphController**: CodeGraph status, embeddings, and file preview
+- **RuntimeController**: `GET`/`PUT /api/runtime` — live adapter + catalog; Tier A persistence via IUserRuntimeSettingsService (PRD-012)
 
 ## Services
 - **MessageDispatcher**: Routes messages through actor runtime
@@ -22,6 +23,7 @@ Controllers, services, and background workers in the Host project.
 - **CurrentScenarioStore**: Persists the selected scenario for the dashboard session
 - **HostConfigurationService**: Aggregates `GET /api/Config` including dashboard scenario name and per-type enablement (PRD-010)
 - **AgentTypeEnablementService**: Reads/writes `appsettings.User.json` for `Agctor:AgentTypeEnablement`; stops agents when disabled (PRD-010)
+- **UserRuntimeSettingsService**: Writes `Agctor:DefaultRuntime` and optional Proto keys to `appsettings.User.json` (PRD-012)
 
 ## Background Services
 - **TaskScoperHostedService**: Goal-to-task decomposition
@@ -36,3 +38,5 @@ Razor **ViewComponents** under `ViewComponents/` render the CodeGraph dashboard 
 Client orchestration for the page lives in **`wwwroot/js/dashboard/codegraph-page.js`** (stable element `id`s match the component partials).
 
 The **Agents** dashboard page uses **`wwwroot/js/dashboard/agents-page.js`** (PRD-010).
+
+The **Actor runtime** dashboard page uses **`wwwroot/js/dashboard/actor-runtime-page.js`** (PRD-012).

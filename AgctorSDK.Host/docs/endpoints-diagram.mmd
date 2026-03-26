@@ -4,6 +4,11 @@ graph LR
             GetConfig["GET /api/Config<br/>Host configuration PRD010 fields"]
         end
 
+        subgraph "Runtime PRD012"
+            GetRuntime["GET /api/runtime<br/>Live adapter + catalog"]
+            PutRuntime["PUT /api/runtime<br/>Persist user settings restart"]
+        end
+
         subgraph "Agents /api/agents"
             CreateAgent["POST /api/agents<br/>Create agent"]
             ListAgents["GET /api/agents<br/>List all agents"]

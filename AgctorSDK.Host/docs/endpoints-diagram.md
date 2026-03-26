@@ -15,6 +15,12 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 |--------|------|-------------|
 | GET | `/api/Config` | Get full Host configuration (runtime, LLM, MCP, tools, scenarios, agent types, **dashboard scenario name**, **per-type enablement**) |
 
+### Runtime – Dashboard (PRD-012)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/runtime` | Live `IActorRuntimeAdapter` (canonical id, stats), configured next-boot values, catalog with capabilities |
+| PUT | `/api/runtime` | Body `{ "defaultRuntime", "protoHost?", "protoPort?" }` — merge into `appsettings.User.json`; **`requiresRestart: true`** |
+
 ### Agents (`/api/agents`)
 | Method | Path | Description |
 |--------|------|-------------|
