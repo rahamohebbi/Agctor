@@ -24,6 +24,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | GET | `/api/agents/{id}` | Get agent info |
 | GET | `/api/agents/{id}/detail` | Get agent info + type-specific detail (PRD-006) |
 | POST | `/api/agents/{id}/message` | Send message to agent |
+| POST | `/api/agents/{id}/message/stream` | SSE: stream LLM deltas + final `done` (PRD-011) |
 | GET | `/api/agents/health` | Health check |
 
 ### Goals (`/api/goals`)

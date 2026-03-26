@@ -4,12 +4,19 @@ classDiagram
         -IAgentRegistry _registry
         -IAgentTypeEnablementService _agentTypeEnablement
         -IActorRuntimeAdapter _runtime
+        -IAgentOutputStreamRegistry _streamRegistry
         +CreateAgent(request) ActionResult
         +ListAgents() ActionResult
         +SetAgentTypeEnabled(typeName, request) ActionResult
         +GetAgent(agentId) ActionResult
         +SendMessage(agentId, request) ActionResult
+        +SendMessageStream(agentId, request) Task
         +HealthCheck() ActionResult
+    }
+
+    class AgentOutputStreamRegistry {
+        +Register(streamId, writer) IDisposable
+        +Publish(streamId, evt) void
     }
 
     class AgentTypeEnablementService {
@@ -107,7 +114,8 @@ classDiagram
         -IActorRuntimeAdapter _runtime
         -ISessionStore _sessionStore
         -ITraceTimelineStore _traceTimelineStore
-        +DispatchAsync(targetId, message, headers)
+        -IAgentOutputStreamRegistry _streamRegistry
+        +SendMessageAsync(agentId, request, streamId)
     }
 
     class SqliteSessionStore {
@@ -175,6 +183,8 @@ classDiagram
 
     IScenarioFactory <|.. ScenarioFactory
     AgentsController --> MessageDispatcher : uses
+    AgentsController --> AgentOutputStreamRegistry : uses
+    MessageDispatcher --> AgentOutputStreamRegistry : publishes phases
     AgentsController --> AgentTypeEnablementService : uses
     HostConfigurationService --> AgentTypeEnablementService : uses
     ToolsController --> ToolInvoker : uses

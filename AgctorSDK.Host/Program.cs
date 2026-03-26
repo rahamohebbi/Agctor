@@ -12,6 +12,7 @@ using AgctorSDK.Extensions.Services;
 using AgctorSDK.Core.Sessions;
 using AgctorSDK.Host.Services.Sessions;
 using AgctorSDK.Host.Services.Traces;
+using AgctorSDK.Core.Streaming;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -95,6 +96,7 @@ builder.Services.AddAgctorVisualization();
 
 // Register Host-specific services
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
+builder.Services.AddSingleton<IAgentOutputStreamRegistry, AgentOutputStreamRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 var sessionStorePath = builder.Configuration.GetValue<string>("Agctor:SessionStorePath")
@@ -176,6 +178,9 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// LLMAgent publishes via static hub (PRD-011).
+AgentOutputStreamHub.Registry = app.Services.GetRequiredService<IAgentOutputStreamRegistry>();
 
 // Register built-in snippet providers (C#, Python, etc.)
 AgctorSDK.CodeGraph.Snippets.SnippetProviderBootstrapper.RegisterBuiltIn();

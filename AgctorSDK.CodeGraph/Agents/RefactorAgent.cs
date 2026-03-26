@@ -11,6 +11,7 @@ using System.IO;
 using System.Text;
 using AgctorSDK.Core.Sessions.Messages;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Core.Streaming;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -31,6 +32,9 @@ namespace AgctorSDK.CodeGraph.Agents
         private const string SessionCoordinatorAgentId = "session-coordinator-agent";
         private readonly SemaphoreSlim _requestLock = new(1, 1);
         private readonly Dictionary<string, string> _promptHeaders = new() { ["MessageType"] = "Prompt" };
+
+        /// <summary>Stream/trace headers from the inbound HTTP envelope, merged into LLM sub-calls (PRD-011).</summary>
+        private Dictionary<string, string>? _llmHeaderOverlay;
 
         public RefactorAgent(string id, string searchAgentId, string llmAgentId, string coderAgentId) : base(id)
         {
@@ -60,6 +64,7 @@ namespace AgctorSDK.CodeGraph.Agents
                     else if (env.Headers.TryGetValue("CorrelationId", out var cidHdr))
                         _rootCorrelationId = cidHdr;
                     _sessionId = ExtractSessionId(env);
+                    _llmHeaderOverlay = ExtractLlmHeaderOverlay(env.Headers);
 
                     // Kick off orchestration without blocking the actor message loop
                     _ = Task.Run(() => OrchestrateRefactorAsync(prompt, ct), ct);
@@ -153,6 +158,7 @@ namespace AgctorSDK.CodeGraph.Agents
 
             // 1. Ask SearchAgent for context (optional but helps the LLM)
             LogInfo("[RefactorAgent] Step 1: requesting context from SearchAgent");
+            PublishPhase("Gathering code context…");
             var context = await AgentFactory.RuntimeAdapter.SendMessageAsync<string>(
                 _searchAgentId,
                 prompt,
@@ -184,6 +190,7 @@ namespace AgctorSDK.CodeGraph.Agents
 
             // 2. Build LLM prompt – instruct to output JSON with path+code only
             LogInfo("[RefactorAgent] Step 2: sending prompt to LLM agent");
+            PublishPhase("LLM planning…");
 
             static string DetectLanguage(string filePath)
             {
@@ -278,7 +285,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 llmPrompt,
                 timeout: TimeSpan.FromSeconds(180),
                 senderId: Id,
-                headers: _promptHeaders,
+                headers: LlmHeaders(),
                 cancellationToken: ct);
 
             LogInfo("[RefactorAgent] LLM response received. Parsing …");
@@ -498,6 +505,7 @@ namespace AgctorSDK.CodeGraph.Agents
             LogInfo($"[RefactorAgent] Building CodeEditorTool command for path '{path}', operation={operation}");
             var editorCmd = BuildEditorCommand();
 
+            PublishPhase("Applying edits (compile/tests)…");
             var toolResult = await AgentFactory.RuntimeAdapter.SendMessageAsync<AgctorSDK.Core.Tools.Models.ToolResult>(
                 _coderAgentId,
                 editorCmd,
@@ -558,6 +566,59 @@ namespace AgctorSDK.CodeGraph.Agents
             catch { return false; }
         }
 
+        private static Dictionary<string, string>? ExtractLlmHeaderOverlay(IReadOnlyDictionary<string, string> headers)
+        {
+            Dictionary<string, string>? d = null;
+            foreach (var kv in headers)
+            {
+                if (kv.Key.Equals(AgentStreamHeaders.StreamId, StringComparison.OrdinalIgnoreCase))
+                {
+                    d ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    d[AgentStreamHeaders.StreamId] = kv.Value;
+                }
+                else if (kv.Key.Equals("trace-id", StringComparison.OrdinalIgnoreCase))
+                {
+                    d ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    d["trace-id"] = kv.Value;
+                }
+            }
+
+            return d;
+        }
+
+        private Dictionary<string, string> LlmHeaders()
+        {
+            var merged = new Dictionary<string, string>(_promptHeaders, StringComparer.OrdinalIgnoreCase);
+            if (_llmHeaderOverlay != null)
+            {
+                foreach (var kv in _llmHeaderOverlay)
+                {
+                    merged[kv.Key] = kv.Value;
+                }
+            }
+
+            return merged;
+        }
+
+        private void PublishPhase(string label)
+        {
+            if (_llmHeaderOverlay == null ||
+                !_llmHeaderOverlay.TryGetValue(AgentStreamHeaders.StreamId, out var sid) ||
+                string.IsNullOrWhiteSpace(sid))
+            {
+                return;
+            }
+
+            _llmHeaderOverlay.TryGetValue("trace-id", out var tid);
+            AgentOutputStreamHub.Registry.Publish(sid, new AgentStreamEvent
+            {
+                Type = "phase",
+                Payload = label,
+                AgentId = Id,
+                TraceId = string.IsNullOrWhiteSpace(tid) ? null : tid
+            });
+        }
+
         private static string? ExtractSessionId(IMessageEnvelope env)
         {
             if (env.Metadata.TryGetValue("sessionId", out var mdVal) && mdVal != null && !string.IsNullOrWhiteSpace(mdVal.ToString()))
@@ -600,6 +661,7 @@ namespace AgctorSDK.CodeGraph.Agents
 
         private async Task<string> ExecuteEditorCommandAsync(string editorCommand, CancellationToken ct)
         {
+            PublishPhase("Applying edits (compile/tests)…");
             var toolResult = await AgentFactory!.RuntimeAdapter.SendMessageAsync<AgctorSDK.Core.Tools.Models.ToolResult>(
                 _coderAgentId,
                 editorCommand,
@@ -688,7 +750,7 @@ JSON:";
                     repairPrompt,
                     timeout: TimeSpan.FromSeconds(120),
                     senderId: Id,
-                    headers: _promptHeaders,
+                    headers: LlmHeaders(),
                     cancellationToken: ct);
                 return NormalizeJsonCandidate(repaired);
             }

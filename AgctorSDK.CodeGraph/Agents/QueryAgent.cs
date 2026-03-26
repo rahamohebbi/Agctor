@@ -8,6 +8,7 @@ using AgctorSDK.Core.Interfaces;
 using System.Text.RegularExpressions;
 using AgctorSDK.Core.Sessions.Messages;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Core.Streaming;
 
 namespace AgctorSDK.CodeGraph.Agents
 {
@@ -37,7 +38,7 @@ namespace AgctorSDK.CodeGraph.Agents
 
         protected override async Task ProcessPromptInternalAsync(string prompt, CancellationToken cancellationToken)
         {
-            var answer = await ExecuteQueryAsync(prompt, sessionId: null, cancellationToken);
+            var answer = await ExecuteQueryAsync(prompt, sessionId: null, inboundHeaders: null, cancellationToken);
             await FinalizeTask(answer, cancellationToken);
         }
 
@@ -49,7 +50,7 @@ namespace AgctorSDK.CodeGraph.Agents
                 try
                 {
                     var sessionId = ExtractSessionId(envelope);
-                    result = await ExecuteQueryAsync(prompt, sessionId, cancellationToken);
+                    result = await ExecuteQueryAsync(prompt, sessionId, envelope.Headers, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -69,14 +70,18 @@ namespace AgctorSDK.CodeGraph.Agents
             return await base.ReceiveAsync(envelope, cancellationToken);
         }
 
-        private async Task<string> ExecuteQueryAsync(string prompt, string? sessionId, CancellationToken cancellationToken)
+        private async Task<string> ExecuteQueryAsync(
+            string prompt,
+            string? sessionId,
+            IReadOnlyDictionary<string, string>? inboundHeaders,
+            CancellationToken cancellationToken)
         {
             if (AgentFactory?.RuntimeAdapter == null)
             {
                 throw new InvalidOperationException("RuntimeAdapter not available in QueryAgent");
             }
 
-            var promptHeaders = new Dictionary<string, string> { ["MessageType"] = "Prompt" };
+            var promptHeaders = MergeStreamHeaders(inboundHeaders);
             var sessionContext = await TryLoadSessionContextAsync(sessionId, prompt, cancellationToken);
 
             // 1. Search for relevant context
@@ -146,6 +151,29 @@ ANSWER:";
             // Deterministic backup path only when LLM is unavailable/failed.
             var backup = await TryDeterministicBackupAsync(prompt, promptHeaders, cancellationToken);
             return string.IsNullOrWhiteSpace(backup) ? answer : backup;
+        }
+
+        private static Dictionary<string, string> MergeStreamHeaders(IReadOnlyDictionary<string, string>? inboundHeaders)
+        {
+            var promptHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["MessageType"] = "Prompt" };
+            if (inboundHeaders == null)
+            {
+                return promptHeaders;
+            }
+
+            foreach (var kv in inboundHeaders)
+            {
+                if (kv.Key.Equals(AgentStreamHeaders.StreamId, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(kv.Value))
+                {
+                    promptHeaders[AgentStreamHeaders.StreamId] = kv.Value;
+                }
+                else if (kv.Key.Equals("trace-id", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(kv.Value))
+                {
+                    promptHeaders["trace-id"] = kv.Value;
+                }
+            }
+
+            return promptHeaders;
         }
 
         private async Task<string> TryLoadSessionContextAsync(string? sessionId, string prompt, CancellationToken cancellationToken)

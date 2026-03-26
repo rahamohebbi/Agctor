@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces; // For IActor, ActorState, IMessageEnvelope, IMessageMetadata, ActorStateChangedEventArgs
 using AgctorSDK.Core.Messages;   // For MessageEnvelope
+using AgctorSDK.Core.Streaming;
 // If IActor and other interfaces are in a sub-namespace like Agctor.Core.Interfaces, add that too.
 // For now, assuming IActor is also directly under Agctor.Core based on its previous colocation.
 
@@ -23,7 +26,7 @@ namespace AgctorSDK.Core.Agents
         public string Prompt { get; set; } = default!;
 
         [JsonPropertyName("stream")]
-        public bool Stream { get; set; } = false; // We want a single response
+        public bool Stream { get; set; } // false = single JSON; true = NDJSON lines (PRD-011)
     }
 
     public class OllamaGenerateResponse
@@ -199,20 +202,37 @@ namespace AgctorSDK.Core.Agents
                 var requestPayloadOllama = new OllamaGenerateRequest
                 {
                     Model = _defaultModel,
-                    Prompt = prompt
+                    Prompt = prompt,
+                    Stream = false
                 };
+
+                var streamId = TryGetHeaderInsensitive(envelope.Headers, AgentStreamHeaders.StreamId);
+                var traceForStream = TryGetHeaderInsensitive(envelope.Headers, "trace-id");
 
                 HttpResponseMessage httpResponse;
                 try
                 {
-                    httpResponse = await _httpClient.PostAsJsonAsync(
-                        _ollamaApiUrl + "api/generate",
-                        requestPayloadOllama,
-                        cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(streamId))
+                    {
+                        requestPayloadOllama.Stream = true;
+                        using var req = new HttpRequestMessage(HttpMethod.Post, _ollamaApiUrl + "api/generate")
+                        {
+                            Content = JsonContent.Create(requestPayloadOllama)
+                        };
+                        httpResponse = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                    }
+                    else
+                    {
+                        httpResponse = await _httpClient.PostAsJsonAsync(
+                            _ollamaApiUrl + "api/generate",
+                            requestPayloadOllama,
+                            cancellationToken);
+                    }
                 }
                 catch (TaskCanceledException tex) when (!cancellationToken.IsCancellationRequested)
                 {
                     // HttpClient timeout
+                    PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "error", Payload = "LLM request timed out before completion." });
                     responseHeaders["MessageType"] = "OllamaTimeout";
                     return new MessageEnvelope(
                         payload: "Error: LLM request timed out before completion.",
@@ -223,6 +243,28 @@ namespace AgctorSDK.Core.Agents
 
                 if (httpResponse.IsSuccessStatusCode)
                 {
+                    if (!string.IsNullOrWhiteSpace(streamId))
+                    {
+                        var streamed = await ReadOllamaStreamAsync(httpResponse, streamId, traceForStream, cancellationToken);
+                        if (streamed.Error != null)
+                        {
+                            responseHeaders["MessageType"] = "OllamaStreamError";
+                            return new MessageEnvelope(
+                                payload: streamed.Error,
+                                metadata: responseMetadata,
+                                id: Guid.NewGuid().ToString(),
+                                headers: responseHeaders);
+                        }
+
+                        responseHeaders["MessageType"] = "LLMResponse";
+                        PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "llm_done", Payload = streamed.FullText });
+                        return new MessageEnvelope(
+                            payload: streamed.FullText,
+                            metadata: responseMetadata,
+                            id: Guid.NewGuid().ToString(),
+                            headers: responseHeaders);
+                    }
+
                     var ollamaResponse = await httpResponse.Content.ReadFromJsonAsync<OllamaGenerateResponse>(cancellationToken: cancellationToken);
                     if (ollamaResponse != null && ollamaResponse.Done)
                     {
@@ -250,6 +292,7 @@ namespace AgctorSDK.Core.Agents
                 {
                     string errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
                     Console.WriteLine($"LLMAgent ({Id}) error from Ollama API: {httpResponse.StatusCode}. Details: {errorContent}");
+                    PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "error", Payload = $"Ollama HTTP {(int)httpResponse.StatusCode}: {errorContent}" });
                     responseHeaders["MessageType"] = "OllamaApiError";
                     return new MessageEnvelope(
                         payload: $"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}",
@@ -261,6 +304,9 @@ namespace AgctorSDK.Core.Agents
             catch (HttpRequestException ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) HttpRequestException while communicating with Ollama: {ex.Message}");
+                var hdrStreamId = TryGetHeaderInsensitive(envelope.Headers, AgentStreamHeaders.StreamId);
+                var hdrTraceId = TryGetHeaderInsensitive(envelope.Headers, "trace-id");
+                PublishIfStreaming(hdrStreamId, hdrTraceId, new AgentStreamEvent { Type = "error", Payload = $"Network error: {ex.Message}" });
                 ChangeActorState(ActorState.Faulted);
                 responseHeaders["MessageType"] = "OllamaHttpRequestError";
                 return new MessageEnvelope(
@@ -272,6 +318,9 @@ namespace AgctorSDK.Core.Agents
             catch (JsonException ex)
             {
                 Console.WriteLine($"LLMAgent ({Id}) JsonException while processing Ollama response: {ex.Message}");
+                var hdrStreamId2 = TryGetHeaderInsensitive(envelope.Headers, AgentStreamHeaders.StreamId);
+                var hdrTraceId2 = TryGetHeaderInsensitive(envelope.Headers, "trace-id");
+                PublishIfStreaming(hdrStreamId2, hdrTraceId2, new AgentStreamEvent { Type = "error", Payload = $"Parse error: {ex.Message}" });
                 responseHeaders["MessageType"] = "OllamaJsonError";
                 return new MessageEnvelope(
                     payload: $"Error: Failed to parse Ollama response. {ex.Message}",
@@ -350,6 +399,85 @@ namespace AgctorSDK.Core.Agents
                 ChangeAgentStatus(AgentStatus.Failed, ex.Message);
                 await FinalizeTaskAsFailed(ex, cancellationToken);
             }
+        }
+
+        private static string? TryGetHeaderInsensitive(IReadOnlyDictionary<string, string>? headers, string name)
+        {
+            if (headers == null || string.IsNullOrWhiteSpace(name))
+            {
+                return null;
+            }
+
+            foreach (var kv in headers)
+            {
+                if (string.Equals(kv.Key, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return kv.Value;
+                }
+            }
+
+            return null;
+        }
+
+        private void PublishIfStreaming(string? streamId, string? traceId, AgentStreamEvent evt)
+        {
+            if (string.IsNullOrWhiteSpace(streamId))
+            {
+                return;
+            }
+
+            evt.TraceId ??= traceId;
+            evt.AgentId ??= Id;
+            AgentOutputStreamHub.Registry.Publish(streamId, evt);
+        }
+
+        private async Task<(string FullText, string? Error)> ReadOllamaStreamAsync(
+            HttpResponseMessage httpResponse,
+            string streamId,
+            string? traceId,
+            CancellationToken cancellationToken)
+        {
+            var acc = new StringBuilder();
+            await using var stream = await httpResponse.Content.ReadAsStreamAsync(cancellationToken);
+            using var reader = new StreamReader(stream);
+            var sawDone = false;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                var line = await reader.ReadLineAsync(cancellationToken);
+                if (line == null)
+                {
+                    break;
+                }
+
+                if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(token))
+                {
+                    acc.Append(token);
+                    PublishIfStreaming(streamId, traceId, new AgentStreamEvent { Type = "llm_delta", Payload = token });
+                }
+
+                if (done)
+                {
+                    sawDone = true;
+                    break;
+                }
+            }
+
+            if (!sawDone && acc.Length == 0)
+            {
+                return (string.Empty, "Error: Ollama stream ended without a final chunk.");
+            }
+
+            if (!sawDone)
+            {
+                return (acc.ToString(), "Error: Ollama stream ended before done flag.");
+            }
+
+            return (acc.ToString(), null);
         }
 
         public override async Task ShutdownAsync(CancellationToken cancellationToken = default)

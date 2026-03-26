@@ -1,8 +1,11 @@
+using System.Text.Json;
+using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Implementations;
+using AgctorSDK.Core.Streaming;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Core.Utils.ActivityTracking;
@@ -23,6 +26,7 @@ namespace AgctorSDK.Host.Controllers
         private readonly IAgentFactory _agentFactory;
         private readonly IAgentDetailProviderRegistry _detailProviderRegistry;
         private readonly IAgentTypeEnablementService _agentTypeEnablement;
+        private readonly IAgentOutputStreamRegistry _streamRegistry;
         private readonly ILogger<AgentsController> _logger;
         private readonly IActivityTracker? _activityTracker;
 
@@ -32,6 +36,7 @@ namespace AgctorSDK.Host.Controllers
             IAgentFactory agentFactory,
             IAgentDetailProviderRegistry detailProviderRegistry,
             IAgentTypeEnablementService agentTypeEnablement,
+            IAgentOutputStreamRegistry streamRegistry,
             ILogger<AgentsController> logger,
             IActivityTracker? activityTracker = null)
         {
@@ -40,6 +45,7 @@ namespace AgctorSDK.Host.Controllers
             _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
             _detailProviderRegistry = detailProviderRegistry ?? throw new ArgumentNullException(nameof(detailProviderRegistry));
             _agentTypeEnablement = agentTypeEnablement ?? throw new ArgumentNullException(nameof(agentTypeEnablement));
+            _streamRegistry = streamRegistry ?? throw new ArgumentNullException(nameof(streamRegistry));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;
         }
@@ -139,6 +145,111 @@ namespace AgctorSDK.Host.Controllers
                     Message = "An internal error occurred while processing the message"
                 });
             }
+        }
+
+        /// <summary>
+        /// Sends a message and streams LLM/agent progress as SSE (PRD-011). Same body as <see cref="SendMessageAsync"/>.
+        /// </summary>
+        [HttpPost("{agentId}/message/stream")]
+        [Produces("text/event-stream")]
+        public async Task SendMessageStreamAsync(
+            [FromRoute] string agentId,
+            [FromBody] MessageRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            using var requestActivity = _activityTracker?.StartActivity("http.agents.send-message-stream");
+
+            if (string.IsNullOrWhiteSpace(agentId))
+            {
+                Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            if (request?.Payload == null)
+            {
+                Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+
+            Response.StatusCode = StatusCodes.Status200OK;
+            Response.ContentType = "text/event-stream; charset=utf-8";
+            Response.Headers.CacheControl = "no-cache, no-transform";
+            Response.Headers.Append("X-Accel-Buffering", "no");
+
+            var streamId = Guid.NewGuid().ToString("N");
+            var channel = Channel.CreateUnbounded<AgentStreamEvent>();
+            var writer = channel.Writer;
+            using var _reg = _streamRegistry.Register(streamId, writer);
+
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, HttpContext.RequestAborted);
+            var ct = linkedCts.Token;
+
+            var jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+            async Task WriteEventAsync(AgentStreamEvent evt)
+            {
+                var json = JsonSerializer.Serialize(evt, jsonOpts);
+                await Response.WriteAsync($"data: {json}\n\n", ct).ConfigureAwait(false);
+                await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+            }
+
+            MessageResponse response;
+            try
+            {
+                var dispatchTask = _messageDispatcher.SendMessageAsync(agentId, request, streamId, ct);
+                while (!dispatchTask.IsCompleted)
+                {
+                    var waitRead = channel.Reader.WaitToReadAsync(ct).AsTask();
+                    await Task.WhenAny(dispatchTask, waitRead).ConfigureAwait(false);
+                    while (channel.Reader.TryRead(out var evt))
+                    {
+                        await WriteEventAsync(evt).ConfigureAwait(false);
+                    }
+                }
+
+                response = await dispatchTask.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Streaming message failed for agent {AgentId}", agentId);
+                response = new MessageResponse
+                {
+                    MessageId = Guid.NewGuid().ToString(),
+                    Status = MessageStatus.Failed,
+                    ErrorMessage = ex.Message
+                };
+            }
+            finally
+            {
+                writer.TryComplete();
+            }
+
+            while (channel.Reader.TryRead(out var leftover))
+            {
+                await WriteEventAsync(leftover).ConfigureAwait(false);
+            }
+
+            if (_activityTracker != null && string.IsNullOrWhiteSpace(response.TraceId))
+            {
+                var ctx = _activityTracker.ExtractContext();
+                if (ctx.TryGetValue("trace-id", out var traceId) && !string.IsNullOrWhiteSpace(traceId))
+                {
+                    response.TraceId = traceId;
+                }
+            }
+
+            var donePayload = new
+            {
+                type = "done",
+                status = response.Status.ToString(),
+                responseData = response.ResponseData,
+                traceId = response.TraceId,
+                errorMessage = response.ErrorMessage,
+                messageId = response.MessageId
+            };
+            await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayload, jsonOpts) + "\n\n", ct).ConfigureAwait(false);
+            await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+            requestActivity?.SetStatus(ActivityStatus.Ok);
         }
 
         /// <summary>

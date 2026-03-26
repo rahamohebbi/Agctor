@@ -3,6 +3,7 @@ using System.Linq;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Core.Streaming;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services.Traces;
@@ -23,6 +24,9 @@ namespace AgctorSDK.Host.Services
         /// <param name="cancellationToken">Cancellation token for the operation</param>
         /// <returns>Message response with status and optional response data</returns>
         Task<MessageResponse> SendMessageAsync(string agentId, MessageRequest request, CancellationToken cancellationToken = default);
+
+        /// <summary>Same as <see cref="SendMessageAsync(string, MessageRequest, CancellationToken)"/> but adds <see cref="AgentStreamHeaders.StreamId"/> for SSE streaming (PRD-011).</summary>
+        Task<MessageResponse> SendMessageAsync(string agentId, MessageRequest request, string? agentStreamId, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Sends a message envelope directly to an agent (used by MCP).
@@ -46,6 +50,7 @@ namespace AgctorSDK.Host.Services
         private readonly ISessionStore _sessionStore;
         private readonly ITraceTimelineStore _traceTimelineStore;
         private readonly IActivityTracker? _activityTracker;
+        private readonly IAgentOutputStreamRegistry _streamRegistry;
         private readonly ILogger<MessageDispatcher> _logger;
 
         public MessageDispatcher(
@@ -54,7 +59,8 @@ namespace AgctorSDK.Host.Services
             ISessionStore sessionStore,
             ITraceTimelineStore traceTimelineStore,
             ILogger<MessageDispatcher> logger,
-            IActivityTracker? activityTracker = null)
+            IActivityTracker? activityTracker = null,
+            IAgentOutputStreamRegistry? streamRegistry = null)
         {
             _runtimeAdapter = runtimeAdapter ?? throw new ArgumentNullException(nameof(runtimeAdapter));
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
@@ -62,13 +68,18 @@ namespace AgctorSDK.Host.Services
             _traceTimelineStore = traceTimelineStore ?? throw new ArgumentNullException(nameof(traceTimelineStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;
+            _streamRegistry = streamRegistry ?? NullAgentOutputStreamRegistry.Instance;
         }
+
+        /// <inheritdoc />
+        public Task<MessageResponse> SendMessageAsync(string agentId, MessageRequest request, CancellationToken cancellationToken = default) =>
+            SendMessageAsync(agentId, request, agentStreamId: null, cancellationToken);
 
         /// <summary>
         /// Sends a message to the specified agent using HTTP request format.
         /// Converts the HTTP request to a message envelope and routes through Actor Model.
         /// </summary>
-        public async Task<MessageResponse> SendMessageAsync(string agentId, MessageRequest request, CancellationToken cancellationToken = default)
+        public async Task<MessageResponse> SendMessageAsync(string agentId, MessageRequest request, string? agentStreamId, CancellationToken cancellationToken = default)
         {
             _logger.LogInformation("Dispatching message to agent {AgentId} from HTTP API", agentId);
 
@@ -79,7 +90,18 @@ namespace AgctorSDK.Host.Services
                 // Route natural-language prompts from coder-agent to refactor-agent (which has LLM to convert to CodeEditorTool commands)
                 var payloadStr = request.Payload is string s ? s : (request.Payload is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.String ? je.GetString() : null);
                 var senderId = request.SenderId ?? "http-api";
-                var envelope = CreateMessageEnvelope(request, sessionId);
+                var envelope = CreateMessageEnvelope(request, sessionId, agentStreamId);
+                if (!string.IsNullOrWhiteSpace(agentStreamId))
+                {
+                    var tid = envelope.Headers.TryGetValue("trace-id", out var t) ? t : null;
+                    _streamRegistry.Publish(agentStreamId, new AgentStreamEvent
+                    {
+                        Type = "phase",
+                        Payload = $"Dispatching to {agentId}…",
+                        TraceId = tid,
+                        AgentId = agentId
+                    });
+                }
                 var requestTraceId = envelope.Headers.TryGetValue("trace-id", out var liveTraceId) ? liveTraceId : null;
                 SessionTurn? requestTurn = null;
                 if (!string.IsNullOrWhiteSpace(sessionId) && !string.IsNullOrWhiteSpace(payloadStr))
@@ -299,15 +321,20 @@ namespace AgctorSDK.Host.Services
         /// Creates a message envelope from an HTTP request.
         /// Applies Model Context Protocol (MCP) conventions for metadata and headers.
         /// </summary>
-        private IMessageEnvelope CreateMessageEnvelope(MessageRequest request, string? sessionId)
+        private IMessageEnvelope CreateMessageEnvelope(MessageRequest request, string? sessionId, string? agentStreamId = null)
         {
             // Create base headers with HTTP API context
-            var headers = new Dictionary<string, string>
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["source"] = "http-api",
                 ["timestamp"] = DateTimeOffset.UtcNow.ToString("O"),
                 ["content-type"] = "application/json"
             };
+
+            if (!string.IsNullOrWhiteSpace(agentStreamId))
+            {
+                headers[AgentStreamHeaders.StreamId] = agentStreamId.Trim();
+            }
 
             // Add any additional headers from the request
             if (request.Headers != null)

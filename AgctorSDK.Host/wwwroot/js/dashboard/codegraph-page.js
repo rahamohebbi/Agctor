@@ -1,6 +1,7 @@
 /**
  * CodeGraph dashboard: load /api/CodeGraph/current, hydrate ViewComponent DOM ids, chat, index, vectors debug, trace timeline.
  * PRD-007 Phase 4 — keep in sync with Pages/Dashboard/CodeGraph.cshtml markup ids.
+ * PRD-011 — chat prefers POST .../message/stream (SSE); falls back to POST .../message.
  */
 (function() {
     const el = document.getElementById('codegraph-content');
@@ -606,6 +607,16 @@
                 syncChatAgentUi();
                 chatAgent.addEventListener('change', syncChatAgentUi);
                 chatMessages.addEventListener('click', function(event) {
+                    var copyStreamBtn = event.target.closest('[data-action="copy-stream-reply"]');
+                    if (copyStreamBtn) {
+                        var streamRoot = copyStreamBtn.closest('[data-role="streaming-reply"]');
+                        var streamBody = streamRoot && streamRoot.querySelector('[data-role="stream-body"]');
+                        if (streamBody && navigator.clipboard) {
+                            var toCopy = streamBody.innerText || streamBody.textContent || '';
+                            if (toCopy) navigator.clipboard.writeText(toCopy);
+                        }
+                        return;
+                    }
                     const traceTrigger = event.target.closest('[data-trace-id]');
                     if (!traceTrigger) return;
                     const traceId = traceTrigger.dataset.traceId;
@@ -639,6 +650,33 @@
                 refreshSessions(null).catch(function(e) {
                     chatMessages.innerHTML = '<div class="text-red-600 dark:text-red-400">Error loading sessions: ' + esc(e.message || 'Unknown error') + '</div>';
                 });
+                /** In-transcript streaming bubble: same green assistant styling as loadSessionTranscript (PRD-011 UX). */
+                function createStreamingReplyBubble(agentLabel) {
+                    var sid = 'streaming-reply-' + Date.now();
+                    var html = '<div class="rounded-lg border p-3 transition border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 text-green-800 dark:text-green-200" data-role="streaming-reply" id="' + sid + '">' +
+                        '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                        '<div class="flex flex-wrap items-center gap-2 min-w-0">' +
+                        '<strong>' + esc(agentLabel) + '</strong>' +
+                        '<span class="text-xs text-green-700/90 dark:text-green-300/90 truncate max-w-[14rem]" data-role="stream-phase">Starting…</span>' +
+                        '</div>' +
+                        '<button type="button" class="text-xs px-2 py-1 rounded border border-green-300 dark:border-green-600 shrink-0 hover:bg-green-100/80 dark:hover:bg-green-900/40" data-action="copy-stream-reply">Copy</button>' +
+                        '</div>' +
+                        '<div class="mt-2 max-h-48 overflow-y-auto" data-role="stream-scroll">' +
+                        '<span class="codegraph-chat-markdown text-sm text-green-900 dark:text-green-100" data-role="stream-body"></span></div>' +
+                        '</div>';
+                    chatMessages.insertAdjacentHTML('beforeend', html);
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    var root = document.getElementById(sid);
+                    return {
+                        root: root,
+                        phaseEl: root ? root.querySelector('[data-role="stream-phase"]') : null,
+                        bodyEl: root ? root.querySelector('[data-role="stream-body"]') : null,
+                        scrollEl: root ? root.querySelector('[data-role="stream-scroll"]') : null,
+                        remove: function() {
+                            if (root && root.parentNode) root.remove();
+                        }
+                    };
+                }
                 chatSend.addEventListener('click', async function() {
                     const prompt = chatInput.value.trim();
                     if (!prompt) return;
@@ -657,6 +695,7 @@
                     const bannerEl = document.getElementById('codegraph-chat-completion-banner');
                     const isCodingAgent = agentId === 'coder-agent' || agentId === 'refactor-agent';
                     const chatProgressProfile = resolveChatProgressProfile(agentId);
+                    var streamUi = null;
 
                     var stopChatProgressUi = function() {};
                     chatSend.disabled = true;
@@ -668,17 +707,132 @@
                     if (bannerEl) { bannerEl.classList.add('hidden'); bannerEl.innerHTML = ''; }
                     chatMessages.innerHTML += '<div class="text-gray-600 dark:text-gray-300"><strong>You</strong>: ' + esc(prompt) + '</div>';
                     chatInput.value = '';
+                    streamUi = createStreamingReplyBubble(agentId);
                     if (window.agctorTraceTimeline) {
                         ensureTraceTimelineMounted();
                         window.agctorTraceTimeline.clear('codegraph-trace-timeline', 'Processing trace…', 'Latest prompt in progress');
                     }
                     try {
-                        const res = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/message', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ payload: prompt, sessionId: activeSessionId })
-                        });
-                        const data = await res.json().catch(function() { return {}; });
+                        function extractSseEvents(buffer) {
+                            var events = [];
+                            var rest = buffer;
+                            var idx;
+                            while ((idx = rest.indexOf('\n\n')) >= 0) {
+                                var block = rest.slice(0, idx);
+                                rest = rest.slice(idx + 2);
+                                block.split('\n').forEach(function(line) {
+                                    if (line.indexOf('data:') === 0) {
+                                        var j = line.slice(5).trim();
+                                        if (j) {
+                                            try { events.push(JSON.parse(j)); } catch (e2) { /* ignore bad chunk */ }
+                                        }
+                                    }
+                                });
+                            }
+                            return { rest: rest, events: events };
+                        }
+
+                        function applyStreamMarkdown(bodyEl, scrollEl, text) {
+                            if (!bodyEl) return;
+                            try {
+                                bodyEl.innerHTML = renderChatMarkdown(text);
+                            } catch (e2) {
+                                bodyEl.textContent = text;
+                            }
+                            if (scrollEl) {
+                                scrollEl.scrollTop = scrollEl.scrollHeight;
+                            }
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }
+
+                        async function tryAgentMessageStream(ui) {
+                            var phase = ui.phaseEl;
+                            var bodyEl = ui.bodyEl;
+                            var scrollEl = ui.scrollEl;
+                            var acc = '';
+                            var markdownRaf = null;
+                            function queueStreamMarkdown() {
+                                if (markdownRaf != null) return;
+                                markdownRaf = requestAnimationFrame(function() {
+                                    markdownRaf = null;
+                                    applyStreamMarkdown(bodyEl, scrollEl, acc);
+                                });
+                            }
+                            if (phase) phase.textContent = 'Connecting…';
+                            if (bodyEl) bodyEl.innerHTML = '';
+                            var sres = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/message/stream', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+                                body: JSON.stringify({ payload: prompt, sessionId: activeSessionId })
+                            });
+                            if (!sres.ok || !sres.body) {
+                                return { usedStream: false, payload: null };
+                            }
+                            var ctype = sres.headers.get('content-type') || '';
+                            if (ctype.indexOf('text/event-stream') < 0) {
+                                return { usedStream: false, payload: null };
+                            }
+                            var reader = sres.body.getReader();
+                            var dec = new TextDecoder();
+                            var buf = '';
+                            var donePayload = null;
+                            while (true) {
+                                var chunk = await reader.read();
+                                if (chunk.done) break;
+                                buf += dec.decode(chunk.value, { stream: true });
+                                var ex = extractSseEvents(buf);
+                                buf = ex.rest;
+                                for (var ei = 0; ei < ex.events.length; ei++) {
+                                    var evt = ex.events[ei];
+                                    if (evt.type === 'phase' && phase) phase.textContent = evt.payload || '';
+                                    if (evt.type === 'llm_delta' && bodyEl) {
+                                        acc += (evt.payload || '');
+                                        queueStreamMarkdown();
+                                    }
+                                    if (evt.type === 'error' && bodyEl) {
+                                        acc += '\n[error] ' + (evt.payload || '') + '\n';
+                                        queueStreamMarkdown();
+                                    }
+                                    if (evt.type === 'done') donePayload = evt;
+                                }
+                            }
+                            if (markdownRaf != null) {
+                                cancelAnimationFrame(markdownRaf);
+                                markdownRaf = null;
+                            }
+                            applyStreamMarkdown(bodyEl, scrollEl, acc);
+                            return { usedStream: true, payload: donePayload };
+                        }
+
+                        var sr = await tryAgentMessageStream(streamUi);
+                        if (!sr.usedStream) {
+                            streamUi.remove();
+                        }
+                        var data = {};
+                        var res = { ok: false, status: 0 };
+                        if (sr.usedStream && sr.payload && sr.payload.type === 'done') {
+                            data = {
+                                responseData: sr.payload.responseData,
+                                traceId: sr.payload.traceId,
+                                errorMessage: sr.payload.errorMessage,
+                                messageId: sr.payload.messageId
+                            };
+                            var st = sr.payload.status || '';
+                            res = {
+                                ok: st === 'Success' || st === 'Processing',
+                                status: st === 'Success' ? 200 : (st === 'AgentNotFound' ? 404 : 500)
+                            };
+                        } else if (sr.usedStream && !sr.payload) {
+                            data = { errorMessage: 'Stream ended before a final result was received.' };
+                            res = { ok: false, status: 500 };
+                        } else {
+                            res = await fetch('/api/agents/' + encodeURIComponent(agentId) + '/message', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ payload: prompt, sessionId: activeSessionId })
+                            });
+                            data = await res.json().catch(function() { return {}; });
+                        }
                         const traceId = data.traceId || data.TraceId || data.traceID || data.trace_id;
                         if (window.agctorTraceTimeline) {
                             ensureTraceTimelineMounted();
@@ -731,10 +885,30 @@
 
                         if (res.ok && isCodingAgent && bannerEl) {
                             bannerEl.className = 'mt-3 px-4 py-3 rounded-lg border-2 flex items-center gap-3 ' + (isSuccess ? 'bg-green-50 dark:bg-green-900/20 border-green-500 dark:border-green-600' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-500 dark:border-amber-600');
+                            var actionRow = '<div class="mt-2 flex flex-wrap gap-2 items-center">' +
+                                '<button type="button" class="text-xs px-2 py-1 rounded border border-gray-400 dark:border-gray-500 hover:bg-white/30 dark:hover:bg-gray-800/50" id="codegraph-banner-copy-reply">Copy summary</button>' +
+                                (traceId ? '<button type="button" class="text-xs px-2 py-1 rounded border border-violet-400 text-violet-800 dark:text-violet-200 dark:border-violet-600" id="codegraph-banner-open-trace">Show trace</button>' : '') +
+                                '<a href="/Dashboard/Agents" class="text-xs underline text-gray-600 dark:text-gray-400">Agents</a>' +
+                                '</div>';
                             bannerEl.innerHTML = (isSuccess
-                                ? '<span class="flex-shrink-0 w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-xl">✓</span><div><p class="font-semibold text-green-800 dark:text-green-200">Coding complete</p><p class="text-sm text-green-700 dark:text-green-300 mt-0.5">' + esc(reply) + '</p></div>'
-                                : '<span class="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-xl">!</span><div><p class="font-semibold text-amber-800 dark:text-amber-200">Coding finished with issues</p><p class="text-sm text-amber-700 dark:text-amber-300 mt-0.5">' + esc(reply) + '</p></div>');
+                                ? '<span class="flex-shrink-0 w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-xl">✓</span><div class="min-w-0 flex-1"><p class="font-semibold text-green-800 dark:text-green-200">Coding complete</p><p class="text-sm text-green-700 dark:text-green-300 mt-0.5 break-words">' + esc(reply) + '</p>' + actionRow + '</div>'
+                                : '<span class="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white text-xl">!</span><div class="min-w-0 flex-1"><p class="font-semibold text-amber-800 dark:text-amber-200">Coding finished with issues</p><p class="text-sm text-amber-700 dark:text-amber-300 mt-0.5 break-words">' + esc(reply) + '</p>' + actionRow + '</div>');
                             bannerEl.classList.remove('hidden');
+                            var bCopy = document.getElementById('codegraph-banner-copy-reply');
+                            if (bCopy) bCopy.addEventListener('click', function() {
+                                if (navigator.clipboard) navigator.clipboard.writeText(reply);
+                            });
+                            var bTrace = document.getElementById('codegraph-banner-open-trace');
+                            if (bTrace && traceId && window.agctorTraceTimeline) {
+                                bTrace.addEventListener('click', function() {
+                                    ensureTraceTimelineMounted();
+                                    window.agctorTraceTimeline.load('codegraph-trace-timeline', traceId, {
+                                        selectionLabel: 'Banner trace',
+                                        emptyMessage: 'No timeline is available for this request.',
+                                        errorMessage: 'Trace timeline is unavailable for this request.'
+                                    });
+                                });
+                            }
                             setTimeout(function() {
                                 bannerEl.classList.add('opacity-0');
                                 bannerEl.style.transition = 'opacity 0.4s ease';
@@ -808,6 +982,7 @@
                         }
                         // Trace timeline is rendered early so later refresh errors do not hide visualization.
                     } catch (e) {
+                        if (streamUi && streamUi.remove) streamUi.remove();
                         chatMessages.innerHTML += '<div class="text-red-600 dark:text-red-400"><strong>Error</strong>: ' + esc(e.message || 'Request failed') + '</div>';
                         chatMessages.scrollTop = chatMessages.scrollHeight;
                         if (statusEl) statusEl.classList.add('hidden');
