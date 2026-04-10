@@ -6,7 +6,7 @@
 
 ## Overview
 
-AgctorSDK.Core is the foundational library defining all core interfaces, message types, task/goal management, timeout supervision, observability, and utility services for the Agctor framework.
+AgctorSDK.Core is the foundational library defining all core interfaces, message types, task/goal management, timeout supervision, observability, and utility services for the Agctor framework. It also implements **PRD-013 project memory**: file-canonical `.agctor` packages, YAML schemas, memory intents, markdown projection, and rebuildable SQLite/Postgres indexes (`ProjectMemory` namespace).
 
 ## Key Components
 

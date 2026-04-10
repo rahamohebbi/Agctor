@@ -1,0 +1,11 @@
+entityTypes:
+  - id: person
+    folderPattern: "people/{entityKey}/"
+    metadataFile: "entity.yaml"
+    keyStrategy: slug_name
+    requiredDocuments:
+      - profile.md
+      - relationships.md
+    optionalDocuments:
+      - skills.md
+      - timeline.md

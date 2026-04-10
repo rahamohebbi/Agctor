@@ -1,0 +1,25 @@
+@page "/Dashboard/ProjectMemory/Agents/Edit"
+@model AgctorSDK.Host.Pages.Dashboard.ProjectMemory.Agents.EditModel
+@{
+    ViewData["Title"] = "Agent editor (advanced)";
+}
+@await Html.PartialAsync("_ProjectMemoryAgentsLegacyBanner")
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div>
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white" id="pm-edit-title">Agent editor</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Edit portable <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">*.agent.yaml</code> fields; preview shows serialized YAML.</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+        <a href="/Dashboard/Agents" class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">Agents (unified)</a>
+        <span class="text-gray-300 dark:text-gray-600" aria-hidden="true">|</span>
+        <a href="/Dashboard/ProjectMemory/Agents" class="text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">← Advanced list</a>
+    </div>
+</div>
+
+<div id="pm-agent-edit-root" class="space-y-6">
+    <p class="text-gray-600 dark:text-gray-400">Loading…</p>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard/project-memory-agent-edit.js" asp-append-version="true"></script>
+}

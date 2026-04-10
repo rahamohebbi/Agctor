@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -27,6 +27,9 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.6.0" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics" Version="8.0.0" />
     <PackageReference Include="Scrutor" Version="4.2.2" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    <PackageReference Include="Npgsql" Version="8.0.3" />
   </ItemGroup>
 
   <ItemGroup>

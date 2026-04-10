@@ -31,23 +31,28 @@ namespace AgctorSDK.Host.Services.Sessions
             EnsureSchema();
         }
 
-        public async Task<SessionInfo> CreateSessionAsync(string? sessionId = null, string? title = null, CancellationToken cancellationToken = default)
+        public async Task<SessionInfo> CreateSessionAsync(string? sessionId = null, string? title = null, string? projectId = null, CancellationToken cancellationToken = default)
         {
             sessionId = string.IsNullOrWhiteSpace(sessionId) ? Guid.NewGuid().ToString() : sessionId;
             var now = DateTimeOffset.UtcNow;
             var resolvedTitle = string.IsNullOrWhiteSpace(title) ? $"Session {now:yyyy-MM-dd HH:mm:ss}" : title.Trim();
+            var resolvedProjectId = string.IsNullOrWhiteSpace(projectId) ? null : projectId.Trim();
 
             await _dbLock.WaitAsync(cancellationToken);
             try
             {
                 await using var conn = CreateConnection();
                 await conn.OpenAsync(cancellationToken);
+                if (resolvedProjectId != null && !await ProjectExistsAsync(conn, resolvedProjectId, cancellationToken).ConfigureAwait(false))
+                    throw new InvalidOperationException($"Project '{resolvedProjectId}' not found.");
+
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-INSERT OR IGNORE INTO sessions (session_id, title, created_at, updated_at, turn_count)
-VALUES ($id, $title, $createdAt, $updatedAt, 0);";
+INSERT OR IGNORE INTO sessions (session_id, title, project_id, created_at, updated_at, turn_count)
+VALUES ($id, $title, $projectId, $createdAt, $updatedAt, 0);";
                 cmd.Parameters.AddWithValue("$id", sessionId);
                 cmd.Parameters.AddWithValue("$title", resolvedTitle);
+                cmd.Parameters.AddWithValue("$projectId", resolvedProjectId is null ? DBNull.Value : resolvedProjectId);
                 cmd.Parameters.AddWithValue("$createdAt", now.ToString("O"));
                 cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
                 await cmd.ExecuteNonQueryAsync(cancellationToken);
@@ -72,7 +77,7 @@ VALUES ($id, $title, $createdAt, $updatedAt, 0);";
             await conn.OpenAsync(cancellationToken);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT session_id, title, created_at, updated_at, turn_count
+SELECT session_id, title, project_id, created_at, updated_at, turn_count
 FROM sessions
 WHERE session_id = $id;";
             cmd.Parameters.AddWithValue("$id", sessionId);
@@ -86,9 +91,10 @@ WHERE session_id = $id;";
             {
                 SessionId = reader.GetString(0),
                 Title = reader.GetString(1),
-                CreatedAt = DateTimeOffset.Parse(reader.GetString(2)),
-                UpdatedAt = DateTimeOffset.Parse(reader.GetString(3)),
-                TurnCount = reader.GetInt32(4)
+                ProjectId = reader.IsDBNull(2) ? null : reader.GetString(2),
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(4)),
+                TurnCount = reader.GetInt32(5)
             };
         }
 
@@ -102,7 +108,7 @@ WHERE session_id = $id;";
             await conn.OpenAsync(cancellationToken);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT session_id, title, created_at, updated_at, turn_count
+SELECT session_id, title, project_id, created_at, updated_at, turn_count
 FROM sessions
 ORDER BY updated_at DESC
 LIMIT $limit OFFSET $offset;";
@@ -116,13 +122,36 @@ LIMIT $limit OFFSET $offset;";
                 {
                     SessionId = reader.GetString(0),
                     Title = reader.GetString(1),
-                    CreatedAt = DateTimeOffset.Parse(reader.GetString(2)),
-                    UpdatedAt = DateTimeOffset.Parse(reader.GetString(3)),
-                    TurnCount = reader.GetInt32(4)
+                    ProjectId = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
+                    UpdatedAt = DateTimeOffset.Parse(reader.GetString(4)),
+                    TurnCount = reader.GetInt32(5)
                 });
             }
 
             return results;
+        }
+
+        public async Task<IReadOnlyList<SessionInfo>> ListSessionsByProjectAsync(string projectId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+                return Array.Empty<SessionInfo>();
+            return await ListSessionsCoreAsync(
+                "WHERE project_id = $projectId",
+                configure: cmd => cmd.Parameters.AddWithValue("$projectId", projectId.Trim()),
+                limit,
+                offset,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task<IReadOnlyList<SessionInfo>> ListStandaloneSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
+        {
+            return await ListSessionsCoreAsync(
+                "WHERE project_id IS NULL OR project_id = ''",
+                configure: null,
+                limit,
+                offset,
+                cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<IReadOnlyList<SessionTurn>> GetTurnsAsync(string sessionId, int? lastTurns = null, CancellationToken cancellationToken = default)
@@ -451,6 +480,216 @@ DO UPDATE SET content = excluded.content,
             }
         }
 
+        public async Task<SessionProject> CreateProjectAsync(string? projectId = null, string? name = null, string? scenarioId = null, CancellationToken cancellationToken = default)
+        {
+            var id = string.IsNullOrWhiteSpace(projectId) ? Guid.NewGuid().ToString() : projectId.Trim();
+            var now = DateTimeOffset.UtcNow;
+            var resolvedName = string.IsNullOrWhiteSpace(name) ? $"Project {now:yyyy-MM-dd HH:mm:ss}" : name.Trim();
+            var resolvedScenarioId = string.IsNullOrWhiteSpace(scenarioId) ? SessionProjectTypes.People : scenarioId.Trim().ToLowerInvariant();
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+INSERT INTO session_projects (project_id, name, scenario_id, created_at, updated_at)
+VALUES ($id, $name, $scenarioId, $createdAt, $updatedAt)
+ON CONFLICT(project_id) DO UPDATE SET
+  scenario_id = excluded.scenario_id,
+  name = excluded.name,
+  updated_at = excluded.updated_at;";
+                cmd.Parameters.AddWithValue("$id", id);
+                cmd.Parameters.AddWithValue("$name", resolvedName);
+                cmd.Parameters.AddWithValue("$scenarioId", resolvedScenarioId);
+                cmd.Parameters.AddWithValue("$createdAt", now.ToString("O"));
+                cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+
+            return await GetProjectAsync(id, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"Failed to create project '{id}'.");
+        }
+
+        public async Task<SessionProject?> GetProjectAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+                return null;
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+FROM session_projects p
+LEFT JOIN sessions s ON s.project_id = p.project_id
+WHERE p.project_id = $id
+GROUP BY p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at;";
+            cmd.Parameters.AddWithValue("$id", projectId.Trim());
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                return null;
+            return ReadProject(reader);
+        }
+
+        public async Task<IReadOnlyList<SessionProject>> ListProjectsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
+        {
+            limit = limit <= 0 ? 50 : limit;
+            offset = offset < 0 ? 0 : offset;
+            var list = new List<SessionProject>();
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+FROM session_projects p
+LEFT JOIN sessions s ON s.project_id = p.project_id
+GROUP BY p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at
+ORDER BY p.updated_at DESC
+LIMIT $limit OFFSET $offset;";
+            cmd.Parameters.AddWithValue("$limit", limit);
+            cmd.Parameters.AddWithValue("$offset", offset);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                list.Add(ReadProject(reader));
+            return list;
+        }
+
+        public async Task<SessionProject> UpdateProjectAsync(SessionProject project, CancellationToken cancellationToken = default)
+        {
+            if (project == null) throw new ArgumentNullException(nameof(project));
+            if (string.IsNullOrWhiteSpace(project.ProjectId)) throw new InvalidOperationException("ProjectId is required.");
+
+            var now = DateTimeOffset.UtcNow;
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = @"
+UPDATE session_projects
+SET name = $name, scenario_id = $scenarioId, updated_at = $updatedAt
+WHERE project_id = $id;";
+                cmd.Parameters.AddWithValue("$name", (project.Name ?? "").Trim());
+                var scenarioId = string.IsNullOrWhiteSpace(project.ScenarioId) ? SessionProjectTypes.People : project.ScenarioId.Trim().ToLowerInvariant();
+                cmd.Parameters.AddWithValue("$scenarioId", scenarioId);
+                cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
+                cmd.Parameters.AddWithValue("$id", project.ProjectId.Trim());
+                var changed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                if (changed == 0)
+                    throw new InvalidOperationException($"Project '{project.ProjectId}' not found.");
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+
+            return await GetProjectAsync(project.ProjectId, cancellationToken).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"Project '{project.ProjectId}' not found.");
+        }
+
+        public async Task DeleteProjectAsync(string projectId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+                return;
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                await using (var detach = conn.CreateCommand())
+                {
+                    detach.CommandText = "UPDATE sessions SET project_id = NULL, updated_at = $updatedAt WHERE project_id = $projectId;";
+                    detach.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+                    detach.Parameters.AddWithValue("$projectId", projectId.Trim());
+                    await detach.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await using (var del = conn.CreateCommand())
+                {
+                    del.CommandText = "DELETE FROM session_projects WHERE project_id = $projectId;";
+                    del.Parameters.AddWithValue("$projectId", projectId.Trim());
+                    await del.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
+        public async Task AssignSessionToProjectAsync(string sessionId, string projectId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) throw new InvalidOperationException("SessionId is required.");
+            if (string.IsNullOrWhiteSpace(projectId)) throw new InvalidOperationException("ProjectId is required.");
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await EnsureSessionAsync(sessionId.Trim(), cancellationToken).ConfigureAwait(false);
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                var fromProject = await GetSessionProjectIdAsync(conn, sessionId.Trim(), cancellationToken).ConfigureAwait(false);
+                var exists = await ProjectExistsAsync(conn, projectId.Trim(), cancellationToken).ConfigureAwait(false);
+                if (!exists)
+                    throw new InvalidOperationException($"Project '{projectId}' not found.");
+
+                await using (var update = conn.CreateCommand())
+                {
+                    update.CommandText = "UPDATE sessions SET project_id = $projectId, updated_at = $updatedAt WHERE session_id = $sessionId;";
+                    update.Parameters.AddWithValue("$projectId", projectId.Trim());
+                    update.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+                    update.Parameters.AddWithValue("$sessionId", sessionId.Trim());
+                    await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await AppendMoveAuditAsync(conn, sessionId.Trim(), fromProject, projectId.Trim(), cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
+        public async Task DetachSessionFromProjectAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) throw new InvalidOperationException("SessionId is required.");
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await EnsureSessionAsync(sessionId.Trim(), cancellationToken).ConfigureAwait(false);
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                var fromProject = await GetSessionProjectIdAsync(conn, sessionId.Trim(), cancellationToken).ConfigureAwait(false);
+                await using (var update = conn.CreateCommand())
+                {
+                    update.CommandText = "UPDATE sessions SET project_id = NULL, updated_at = $updatedAt WHERE session_id = $sessionId;";
+                    update.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+                    update.Parameters.AddWithValue("$sessionId", sessionId.Trim());
+                    await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+                await AppendMoveAuditAsync(conn, sessionId.Trim(), fromProject, null, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
         private SqliteConnection CreateConnection() => new(_connectionString);
 
         private void EnsureSchema()
@@ -462,6 +701,7 @@ DO UPDATE SET content = excluded.content,
 CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
+  project_id TEXT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   turn_count INTEGER NOT NULL DEFAULT 0
@@ -516,9 +756,34 @@ ON session_trace_links(session_id, request_turn_id);
 
 CREATE INDEX IF NOT EXISTS idx_session_trace_links_session_response_turn
 ON session_trace_links(session_id, response_turn_id);
+
+CREATE TABLE IF NOT EXISTS session_projects (
+  project_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_project_moves (
+  move_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  from_project_id TEXT NULL,
+  to_project_id TEXT NULL,
+  moved_at TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
 ;";
             cmd.ExecuteNonQuery();
             EnsureTurnGroupColumn(conn);
+            // Index uses project_id — must run after legacy ALTER adds the column.
+            EnsureSessionProjectColumn(conn);
+            EnsureSessionProjectsSchema(conn);
+            using var projIdx = conn.CreateCommand();
+            projIdx.CommandText = @"
+CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
+ON sessions(project_id, updated_at DESC);";
+            projIdx.ExecuteNonQuery();
             using var indexCmd = conn.CreateCommand();
             indexCmd.CommandText = @"
 CREATE INDEX IF NOT EXISTS idx_session_turns_session_group
@@ -533,8 +798,8 @@ ON session_turns(session_id, turn_group_id);";
             await conn.OpenAsync(cancellationToken);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-INSERT OR IGNORE INTO sessions (session_id, title, created_at, updated_at, turn_count)
-VALUES ($id, $title, $createdAt, $updatedAt, 0);";
+INSERT OR IGNORE INTO sessions (session_id, title, project_id, created_at, updated_at, turn_count)
+VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
             cmd.Parameters.AddWithValue("$id", sessionId);
             cmd.Parameters.AddWithValue("$title", $"Session {now:yyyy-MM-dd HH:mm:ss}");
             cmd.Parameters.AddWithValue("$createdAt", now.ToString("O"));
@@ -569,6 +834,20 @@ VALUES ($id, $title, $createdAt, $updatedAt, 0);";
             };
         }
 
+        private static SessionProject ReadProject(SqliteDataReader reader)
+        {
+            var scenarioId = reader.IsDBNull(2) ? SessionProjectTypes.People : reader.GetString(2);
+            return new SessionProject
+            {
+                ProjectId = reader.GetString(0),
+                Name = reader.GetString(1),
+                ScenarioId = scenarioId,
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(4)),
+                SessionCount = reader.GetInt32(5)
+            };
+        }
+
         private static void EnsureTurnGroupColumn(SqliteConnection conn)
         {
             using var pragma = conn.CreateCommand();
@@ -593,6 +872,162 @@ VALUES ($id, $title, $createdAt, $updatedAt, 0);";
                 alter.ExecuteNonQuery();
             }
 
+        }
+
+        private static void EnsureSessionProjectColumn(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(sessions);";
+            var hasProjectId = false;
+            {
+                using var reader = pragma.ExecuteReader();
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), "project_id", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasProjectId = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasProjectId)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE sessions ADD COLUMN project_id TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureSessionProjectsSchema(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(session_projects);";
+            var hasScenarioId = false;
+            var hasProjectType = false;
+            {
+                using var reader = pragma.ExecuteReader();
+                while (reader.Read())
+                {
+                    var col = reader.GetString(1);
+                    if (string.Equals(col, "scenario_id", StringComparison.OrdinalIgnoreCase)) hasScenarioId = true;
+                    if (string.Equals(col, "project_type", StringComparison.OrdinalIgnoreCase)) hasProjectType = true;
+                }
+            }
+
+            if (!hasScenarioId)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_projects ADD COLUMN scenario_id TEXT NULL;";
+                alter.ExecuteNonQuery();
+
+                using var backfill = conn.CreateCommand();
+                backfill.CommandText = hasProjectType
+                    ? "UPDATE session_projects SET scenario_id = COALESCE(NULLIF(project_type,''), 'people') WHERE scenario_id IS NULL OR scenario_id = '';"
+                    : "UPDATE session_projects SET scenario_id = 'people' WHERE scenario_id IS NULL OR scenario_id = '';";
+                backfill.ExecuteNonQuery();
+            }
+
+            if (hasProjectType)
+            {
+                // One-time migration: drop legacy project_type column by table rebuild.
+                using var migrate = conn.CreateCommand();
+                migrate.CommandText = @"
+CREATE TABLE IF NOT EXISTS session_projects_v2 (
+  project_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  scenario_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+INSERT INTO session_projects_v2 (project_id, name, scenario_id, created_at, updated_at)
+SELECT project_id, name, COALESCE(NULLIF(scenario_id,''), NULLIF(project_type,''), 'people'), created_at, updated_at
+FROM session_projects;
+DROP TABLE session_projects;
+ALTER TABLE session_projects_v2 RENAME TO session_projects;";
+                migrate.ExecuteNonQuery();
+            }
+        }
+
+        private async Task<IReadOnlyList<SessionInfo>> ListSessionsCoreAsync(
+            string whereClause,
+            Action<SqliteCommand>? configure,
+            int limit,
+            int offset,
+            CancellationToken cancellationToken)
+        {
+            limit = limit <= 0 ? 50 : limit;
+            offset = offset < 0 ? 0 : offset;
+            var results = new List<SessionInfo>();
+
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT session_id, title, project_id, created_at, updated_at, turn_count
+FROM sessions
+{whereClause}
+ORDER BY updated_at DESC
+LIMIT $limit OFFSET $offset;";
+            cmd.Parameters.AddWithValue("$limit", limit);
+            cmd.Parameters.AddWithValue("$offset", offset);
+            configure?.Invoke(cmd);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(new SessionInfo
+                {
+                    SessionId = reader.GetString(0),
+                    Title = reader.GetString(1),
+                    ProjectId = reader.IsDBNull(2) ? null : reader.GetString(2),
+                    CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
+                    UpdatedAt = DateTimeOffset.Parse(reader.GetString(4)),
+                    TurnCount = reader.GetInt32(5)
+                });
+            }
+
+            return results;
+        }
+
+        private static async Task<bool> ProjectExistsAsync(SqliteConnection conn, string projectId, CancellationToken cancellationToken)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM session_projects WHERE project_id = $id LIMIT 1;";
+            cmd.Parameters.AddWithValue("$id", projectId);
+            var raw = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            return raw != null && raw != DBNull.Value;
+        }
+
+        private static async Task<string?> GetSessionProjectIdAsync(SqliteConnection conn, string sessionId, CancellationToken cancellationToken)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT project_id FROM sessions WHERE session_id = $sessionId LIMIT 1;";
+            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+            var raw = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (raw == null || raw == DBNull.Value)
+                return null;
+            var value = Convert.ToString(raw);
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+
+        private static async Task AppendMoveAuditAsync(
+            SqliteConnection conn,
+            string sessionId,
+            string? fromProjectId,
+            string? toProjectId,
+            CancellationToken cancellationToken)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+INSERT INTO session_project_moves (move_id, session_id, from_project_id, to_project_id, moved_at)
+VALUES ($moveId, $sessionId, $fromProjectId, $toProjectId, $movedAt);";
+            cmd.Parameters.AddWithValue("$moveId", Guid.NewGuid().ToString());
+            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+            cmd.Parameters.AddWithValue("$fromProjectId", (object?)fromProjectId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$toProjectId", (object?)toProjectId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$movedAt", DateTimeOffset.UtcNow.ToString("O"));
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 }

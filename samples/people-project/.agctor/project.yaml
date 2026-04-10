@@ -1,0 +1,5 @@
+schemaVersion: 1
+projectId: sample-people-001
+displayName: Sample People Project
+projectType: people
+description: PRD-013 MVP reference package

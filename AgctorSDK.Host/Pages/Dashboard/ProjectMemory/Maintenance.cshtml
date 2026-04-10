@@ -1,0 +1,38 @@
+@page "/Dashboard/ProjectMemory/Maintenance"
+@model AgctorSDK.Host.Pages.Dashboard.ProjectMemory.MaintenanceModel
+@{
+    ViewData["Title"] = "Maintenance";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Maintenance</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Point the Host at a folder containing <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">.agctor</code>, then validate or rebuild indexes.</p>
+</div>
+
+<div id="pm-maintenance-root" class="space-y-6">
+    <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Active project root</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Stored in <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">appsettings.User.json</code> as <code class="text-xs">Agctor:ProjectMemory:ProjectRoot</code>. Restart may be required for some hosts.</p>
+        <div id="pm-root-status" class="mb-4 text-sm font-mono text-gray-800 dark:text-gray-200 break-all"></div>
+        <form id="pm-root-form" class="flex flex-wrap gap-2 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label for="pm-root-input" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Folder path (server-local)</label>
+                <input type="text" id="pm-root-input" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="/path/to/project" autocomplete="off" />
+            </div>
+            <button type="submit" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save</button>
+        </form>
+        <p id="pm-root-msg" class="mt-2 text-sm" role="status"></p>
+    </div>
+
+    <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Validate &amp; rebuild</h2>
+        <div class="flex flex-wrap gap-3">
+            <button type="button" id="pm-btn-validate" class="px-4 py-2 text-sm font-medium text-gray-800 bg-amber-100 rounded-lg hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60">Validate project</button>
+            <button type="button" id="pm-btn-rebuild" class="px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Rebuild</button>
+        </div>
+        <div id="pm-maintain-output" class="mt-4 text-sm space-y-2"></div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard/project-memory-maintenance.js" asp-append-version="true"></script>
+}

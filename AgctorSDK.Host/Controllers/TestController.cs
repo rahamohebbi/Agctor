@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
-using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.Controllers;
 
@@ -14,20 +13,20 @@ namespace AgctorSDK.Host.Controllers;
 [Produces("application/json")]
 public class TestController : ControllerBase
 {
+    private readonly IScenarioApplicationService _scenarioApplication;
     private readonly IScenarioFactory _scenarioFactory;
     private readonly ICurrentScenarioStore _currentScenarioStore;
-    private readonly IConfiguration _configuration;
     private readonly ILogger<TestController> _logger;
 
     public TestController(
+        IScenarioApplicationService scenarioApplication,
         IScenarioFactory scenarioFactory,
         ICurrentScenarioStore currentScenarioStore,
-        IConfiguration configuration,
         ILogger<TestController> logger)
     {
+        _scenarioApplication = scenarioApplication ?? throw new ArgumentNullException(nameof(scenarioApplication));
         _scenarioFactory = scenarioFactory ?? throw new ArgumentNullException(nameof(scenarioFactory));
         _currentScenarioStore = currentScenarioStore ?? throw new ArgumentNullException(nameof(currentScenarioStore));
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -49,61 +48,10 @@ public class TestController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         request ??= new ScenarioSetupRequest(null, null);
-        var scenarioName = request.ScenarioName;
-        if (string.IsNullOrWhiteSpace(scenarioName))
-            scenarioName = _configuration.GetValue<string>("Agctor:Dashboard:ScenarioName") ?? "";
-
-        _logger.LogInformation("Setting up test scenario: {ScenarioName}", scenarioName);
-
-        try
-        {
-            if (string.IsNullOrWhiteSpace(scenarioName))
-            {
-                return BadRequest(new ErrorResponse
-                {
-                    Code = "INVALID_SCENARIO_NAME",
-                    Message = "Scenario name is required (set Agctor:Dashboard:ScenarioName or pass scenarioName in the body)."
-                });
-            }
-
-            // Get the scenario
-            var scenario = _scenarioFactory.GetScenario(scenarioName);
-            if (scenario == null)
-            {
-                var availableScenarios = string.Join(", ", _scenarioFactory.GetAvailableScenarios());
-                return BadRequest(new ErrorResponse
-                {
-                    Code = "UNKNOWN_SCENARIO",
-                    Message = $"Unknown scenario '{scenarioName}'. Available scenarios: {availableScenarios}"
-                });
-            }
-
-            // Set up the scenario
-            var response = await scenario.SetupAsync(request.Parameters);
-
-            if (response.Success)
-            {
-                _currentScenarioStore.SetCurrentScenario(scenarioName, scenario.Description);
-                _logger.LogInformation("Successfully set up scenario '{ScenarioName}' with {AgentCount} agents",
-                    scenarioName, response.CreatedAgentIds.Count);
-            }
-            else
-            {
-                _logger.LogWarning("Failed to set up scenario '{ScenarioName}': {Error}",
-                    scenarioName, response.ErrorMessage);
-            }
-
-            return Ok(response);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error setting up scenario {ScenarioName}", scenarioName);
-            return StatusCode(500, new ErrorResponse
-            {
-                Code = "INTERNAL_ERROR",
-                Message = "An internal error occurred while setting up the scenario"
-            });
-        }
+        var result = await _scenarioApplication
+            .ApplyAsync(request.ScenarioName, request.Parameters, cancellationToken)
+            .ConfigureAwait(false);
+        return result.ToActionResult(this);
     }
 
     /// <summary>
@@ -185,8 +133,10 @@ public class TestController : ControllerBase
                 supportedParameters = new List<string>(), // Placeholder
                 exampleUsage = new
                 {
-                    endpoint = "POST /api/Test/setup-scenario",
-                    body = new
+                    preferred = "POST /api/scenarios/{id}/apply",
+                    legacy = "POST /api/Test/setup-scenario",
+                    bodyPreferred = new { parameters = new Dictionary<string, object>() },
+                    bodyLegacy = new
                     {
                         scenarioName = scenario.Name,
                         parameters = new Dictionary<string, object>()

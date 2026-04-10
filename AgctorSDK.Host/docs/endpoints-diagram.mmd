@@ -18,6 +18,8 @@ graph LR
             SendMsg["POST /api/agents/id/message<br/>Send message"]
             SendMsgStream["POST /api/agents/id/message/stream<br/>SSE stream PRD011"]
             AgentHealth["GET /api/agents/health<br/>Health check"]
+            AgentDefsCatalog["GET /api/agents/definitions<br/>GET …/definitions/id<br/>PRD013 unified catalog + detail"]
+            PmYamlViaAgents["POST/PUT/DELETE …/definitions/project-memory<br/>PRD013 YAML CRUD"]
         end
 
         subgraph "Goals /api/goals"
@@ -36,8 +38,15 @@ graph LR
             ToolHealth["GET /api/tools/health<br/>Health check"]
         end
 
+        subgraph "Scenarios catalog /api/scenarios"
+            ScList["GET/PUT /api/scenarios<br/>Catalog list + save"]
+            ScGet["GET /api/scenarios/id"]
+            ScReload["POST /api/scenarios/reload"]
+            ScApply["POST /api/scenarios/id/apply<br/>PRD013 Phase4 apply default id"]
+        end
+
         subgraph "Test /api/test"
-            SetupScenario["POST /api/test/setup-scenario<br/>Setup scenario optional name"]
+            SetupScenario["POST /api/test/setup-scenario<br/>Legacy alias → shared apply"]
             ListScenarios["GET /api/test/scenarios<br/>List scenarios"]
             GetScenario["GET /api/test/scenarios/name<br/>Get scenario"]
             CurrentScenario["GET /api/test/current-scenario<br/>Current scenario"]
@@ -49,10 +58,21 @@ graph LR
             GetFileContent["GET /api/CodeGraph/file-content<br/>Preview actor-tree file"]
         end
 
+        subgraph "Chat projects /api/chat/projects"
+            CreateChatProject["POST /api/chat/projects"]
+            ListChatProjects["GET /api/chat/projects"]
+            GetChatProject["GET /api/chat/projects/id"]
+            PutChatProject["PUT /api/chat/projects/id"]
+            DeleteChatProject["DELETE /api/chat/projects/id"]
+            ProjectSessions["GET /api/chat/projects/id/sessions"]
+        end
+
         subgraph "Chat Sessions /api/chat/sessions"
             CreateChatSession["POST /api/chat/sessions<br/>Create session"]
             ListChatSessions["GET /api/chat/sessions<br/>List sessions"]
             GetChatSession["GET /api/chat/sessions/id<br/>Load transcript"]
+            PutSessionProject["PUT /api/chat/sessions/id/project"]
+            DeleteSessionProject["DELETE /api/chat/sessions/id/project"]
         end
 
         subgraph "Visualization /api/Visualization"
@@ -60,5 +80,21 @@ graph LR
             GetTraceFlow["GET /api/Visualization/trace/traceId/message-flow<br/>Trace message flow"]
             GetMessageTimeline["GET /api/Visualization/sessions/sessionId/messages/turnId/timeline<br/>Historical message trace"]
             GetTurnTimeline["GET /api/Visualization/sessions/sessionId/turns/turnId/timeline<br/>Historical turn trace"]
+        end
+
+        subgraph "Project memory PRD013 /api/project-memory"
+            PmStatus["GET /api/project-memory/status"]
+            PmAgents["GET/PUT/DELETE /api/project-memory/agents"]
+            PmTemplates["GET /api/project-memory/templates"]
+            PmFromTpl["POST /api/project-memory/agents/from-template"]
+            PmSchema["GET/PUT /api/project-memory/schema"]
+            PmValidate["POST /api/project-memory/validate"]
+            PmRebuild["POST /api/project-memory/rebuild"]
+            PmRoot["POST /api/project-memory/project-root"]
+            PmTree["GET /api/project-memory/tree"]
+            PmFile["GET /api/project-memory/file"]
+            PmPlayRun["POST /api/project-memory/playground/run"]
+            PmPlayStream["POST /api/project-memory/playground/message/stream<br/>SSE"]
+            PmOrch["POST /api/project-memory/orchestrator/run<br/>pipeline"]
         end
     end

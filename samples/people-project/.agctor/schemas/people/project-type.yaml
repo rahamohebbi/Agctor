@@ -1,0 +1,14 @@
+projectType: people
+version: 1
+displayName: People Project
+entityTypes:
+  - person
+documentTypes:
+  - profile
+  - skills
+  - relationships
+  - timeline
+workspaceSchemaRef: schemas/people/workspace-schema.yaml
+routingRulesRef: schemas/people/routing-rules.yaml
+entityTypesRef: schemas/people/entity-types.yaml
+documentTypesRef: schemas/people/document-types.yaml

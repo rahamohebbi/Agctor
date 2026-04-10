@@ -9,6 +9,7 @@ using AgctorSDK.Core.Streaming;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Core.Utils.ActivityTracking;
+using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Controllers
 {
@@ -26,6 +27,7 @@ namespace AgctorSDK.Host.Controllers
         private readonly IAgentFactory _agentFactory;
         private readonly IAgentDetailProviderRegistry _detailProviderRegistry;
         private readonly IAgentTypeEnablementService _agentTypeEnablement;
+        private readonly AgentTypeOptions _agentTypeOptions;
         private readonly IAgentOutputStreamRegistry _streamRegistry;
         private readonly ILogger<AgentsController> _logger;
         private readonly IActivityTracker? _activityTracker;
@@ -36,6 +38,7 @@ namespace AgctorSDK.Host.Controllers
             IAgentFactory agentFactory,
             IAgentDetailProviderRegistry detailProviderRegistry,
             IAgentTypeEnablementService agentTypeEnablement,
+            IOptions<AgentTypeOptions> agentTypeOptions,
             IAgentOutputStreamRegistry streamRegistry,
             ILogger<AgentsController> logger,
             IActivityTracker? activityTracker = null)
@@ -45,6 +48,7 @@ namespace AgctorSDK.Host.Controllers
             _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
             _detailProviderRegistry = detailProviderRegistry ?? throw new ArgumentNullException(nameof(detailProviderRegistry));
             _agentTypeEnablement = agentTypeEnablement ?? throw new ArgumentNullException(nameof(agentTypeEnablement));
+            _agentTypeOptions = agentTypeOptions?.Value ?? throw new ArgumentNullException(nameof(agentTypeOptions));
             _streamRegistry = streamRegistry ?? throw new ArgumentNullException(nameof(streamRegistry));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;

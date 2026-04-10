@@ -1,0 +1,7 @@
+{
+  "name": "agctor-core-docs-diagrams",
+  "private": true,
+  "scripts": {
+    "diagrams": "for f in *.mmd; do npx @mermaid-js/mermaid-cli@10.9.1 -i \"$f\" -o \"${f%.mmd}.png\" -b white -w 2400 -H 1800 && sips -s format jpeg \"${f%.mmd}.png\" --out \"${f%.mmd}.jpg\" && rm \"${f%.mmd}.png\"; done"
+  }
+}

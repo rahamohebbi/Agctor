@@ -27,9 +27,29 @@
                     <div class="hidden sm:ml-8 sm:flex sm:space-x-4">
                         <a href="/Dashboard" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Overview</a>
                         <a href="/Dashboard/Agents" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Agents</a>
+                        <a href="/Dashboard/Scenarios" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Scenarios</a>
                         <a href="/Dashboard/ActorRuntime" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Actor runtime</a>
                         <a href="/Dashboard/Goals" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Goals</a>
                         <a href="/Dashboard/CodeGraph" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">CodeGraph</a>
+                        <div class="relative flex items-center">
+                            <button type="button" id="pm-nav-toggle" data-dropdown-toggle="pm-nav-menu" data-dropdown-placement="bottom-start" class="inline-flex items-center px-3 py-2 text-sm font-medium leading-5 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                                Project memory
+                                <svg class="w-2.5 h-2.5 ms-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
+                            </button>
+                            <div id="pm-nav-menu" class="z-50 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-56 dark:bg-gray-700 dark:divide-gray-600 border border-gray-200 dark:border-gray-600">
+                                <ul class="py-2 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="pm-nav-toggle">
+                                    <li><a href="/Dashboard/ProjectMemory" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Overview</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Agents" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Agents <span class="text-gray-500 dark:text-gray-400">(advanced)</span></a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Templates" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Templates</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Playground" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Playground</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Pipeline" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Pipeline</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Projects" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Projects</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Schema" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Schema</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Workspace" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Workspace</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Maintenance" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Maintenance</a></li>
+                                </ul>
+                            </div>
+                        </div>
                         <a href="/swagger" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">API (Swagger)</a>
                     </div>
                 </div>

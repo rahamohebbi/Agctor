@@ -1,105 +1,21 @@
-graph TB
-    subgraph "AgctorSDK.Core"
-        subgraph "Interfaces"
-            IActor["IActor<br/>Actor lifecycle + messaging"]
-            IAgent["IAgent<br/>Prompt processing + subtasks"]
-            IAgentFactory["IAgentFactory<br/>Agent creation"]
-            IAgentRegistry["IAgentRegistry<br/>Agent tracking"]
-            IActorRuntimeAdapter["IActorRuntimeAdapter<br/>Runtime abstraction"]
-            IMessageEnvelope["IMessageEnvelope<br/>MCP-compliant messaging"]
-            ITimeoutSupervisor["ITimeoutSupervisor<br/>Timeout monitoring"]
-            ITimeoutPolicy["ITimeoutPolicy<br/>Timeout rules"]
-        end
-
-        subgraph "Messages"
-            MessageEnvelope["MessageEnvelope<br/>Payload, Metadata, Headers"]
-            AgentMessages["AgentMessages<br/>Prompt, Status, Subtask"]
-            TimeoutMessages["TimeoutMessages<br/>Register, Cancel, Check"]
-        end
-
-        subgraph "Tasks"
-            ProjectTask["ProjectTask<br/>Task entity"]
-            ITaskStore["ITaskStore<br/>Task persistence"]
-            ITaskExecutor["ITaskExecutor<br/>Task execution"]
-            TaskFlowEngine["TaskFlowEngine<br/>DAG execution engine"]
-            SimpleTaskExecutor["SimpleTaskExecutor"]
-            CoderTaskExecutor["CoderTaskExecutor"]
-        end
-
-        subgraph "Goals"
-            Goal["Goal<br/>Goal entity"]
-            IGoalStore["IGoalStore<br/>Goal persistence"]
-            InMemoryGoalStore["InMemoryGoalStore"]
-        end
-
-        subgraph "Coding"
-            ICodeGenerator["ICodeGenerator<br/>Code generation"]
-            SimpleCodeGenerator["SimpleCodeGenerator"]
-        end
-
-        subgraph "Events"
-            IEventStore["IEventStore<br/>Event recording"]
-            GitEventStore["GitEventStore<br/>Git-based events"]
-        end
-
-        subgraph "Git"
-            IGitService["IGitService<br/>Git operations"]
-            GitCliService["GitCliService"]
-        end
-
-        subgraph "Timeout"
-            TimeoutSupervisorActor["TimeoutSupervisorActor<br/>Message-based scheduling"]
-            DefaultTimeoutPolicies["DefaultTimeoutPolicies"]
-        end
-
-        subgraph "Utils"
-            Logging["Logging<br/>IAgctorLogger, FileLogger"]
-            ErrorHandling["ErrorHandling<br/>Middleware"]
-            ActivityTracking["ActivityTracking<br/>IActivityTracker, OpenTelemetry"]
-            Metrics["Metrics<br/>IMetricsCollector"]
-            Visualization["Visualization<br/>IVisualizationService<br/>Mermaid + HTML"]
-        end
-
-        subgraph "DependencyInjection"
-            AddAgctor["AddAgctor Extensions<br/>Service registration"]
-        end
-
-        subgraph "Registry"
-            InMemoryAgentRegistry["InMemoryAgentRegistry"]
-        end
-    end
-
-    subgraph "External"
-        OpenTelemetry["OpenTelemetry<br/>Tracing + Metrics"]
-        Roslyn["Microsoft.CodeAnalysis<br/>C# compilation"]
-        IronPython["IronPython<br/>Python execution"]
-    end
-
-    %% Core relationships
-    IActor -->|extended by| IAgent
-    IAgent -->|created by| IAgentFactory
-    IAgentFactory -->|uses| IActorRuntimeAdapter
-    IAgent -->|tracked by| IAgentRegistry
-
-    %% Message flow
-    IActor -->|receives| IMessageEnvelope
-    IActorRuntimeAdapter -->|delivers| IMessageEnvelope
-
-    %% Task flow
-    Goal -->|decomposes to| ProjectTask
-    TaskFlowEngine -->|executes| ITaskExecutor
-    ITaskExecutor -->|reads/writes| ITaskStore
-
-    %% Timeout
-    ITimeoutSupervisor -->|uses| ITimeoutPolicy
-    TimeoutSupervisorActor -.->|implements| ITimeoutSupervisor
-
-    %% Observability
-    ActivityTracking -->|uses| OpenTelemetry
-    Metrics -->|uses| OpenTelemetry
-
-    style IActor fill:#e1f5ff
-    style IAgent fill:#b3e5fc
-    style IActorRuntimeAdapter fill:#f3e5f5
-    style TaskFlowEngine fill:#fff9c4
-    style Logging fill:#e8f5e9
+flowchart TB
+  subgraph files [CanonicalFiles]
+    PY[project.yaml]
+    SCH[schemas/people]
+    AG[agents]
+    ENT[people entities]
+  end
+  PL[ProjectLoader]
+  ER[EntityRegistry]
+  DP[DocumentParser]
+  MIP[MemoryIntentProcessor]
+  DPS[DocumentProjectionService]
+  IDX[IRuntimeIndexStore]
+  RC[RebuildCoordinator]
+  files --> PL
+  PL --> ER
+  ER --> DP
+  MIP --> DPS
+  DPS --> ENT
+  ER --> RC
+  RC --> IDX

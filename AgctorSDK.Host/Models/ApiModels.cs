@@ -123,6 +123,35 @@ namespace AgctorSDK.Host.Models
         public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.UtcNow;
     }
 
+    /// <summary>
+    /// Unified agent definition record for dashboard catalog view.
+    /// </summary>
+    public class AgentDefinitionDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Kind { get; set; } = string.Empty; // csharp-type | project-memory-yaml
+        public string Source { get; set; } = string.Empty;
+        public string State { get; set; } = string.Empty; // enabled | disabled | valid
+        public Dictionary<string, object>? Metadata { get; set; }
+    }
+
+    /// <summary>GET /api/agents/definitions/{id} — one of C# type options or a project-memory YAML spec.</summary>
+    public class AgentDefinitionDetailDto
+    {
+        public string Kind { get; set; } = ""; // csharp-type | project-memory-yaml
+        public string Id { get; set; } = "";
+        /// <summary>For <c>csharp-type</c>: <see cref="CSharpAgentDefinitionDetailDto"/>. For YAML: <see cref="AgentDetailDto"/>.</summary>
+        public object? Detail { get; set; }
+    }
+
+    /// <summary>Payload inside <see cref="AgentDefinitionDetailDto.Detail"/> when <c>Kind</c> is <c>csharp-type</c>.</summary>
+    public class CSharpAgentDefinitionDetailDto
+    {
+        public bool Enabled { get; set; }
+        public string ClrType { get; set; } = "";
+    }
+
     /// <summary>PUT /api/agents/types/{typeName}/enabled — dashboard agent-type toggle (PRD-010).</summary>
     public class AgentTypeEnableRequest
     {
@@ -307,6 +336,9 @@ namespace AgctorSDK.Host.Models
         Dictionary<string, object>? Parameters = null
     );
 
+    /// <summary>POST /api/scenarios/{id}/apply — optional parameters for scripted handlers.</summary>
+    public record ScenarioApplyRequest(Dictionary<string, object>? Parameters = null);
+
     public record ScenarioSetupResponse(
         bool Success,
         string ScenarioName,
@@ -323,6 +355,34 @@ namespace AgctorSDK.Host.Models
         string? Description
     );
 
+    /// <summary>Scenario catalog record (JSON-backed).</summary>
+    public sealed class ScenarioDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Kind { get; set; } = string.Empty;
+        public string? Handler { get; set; }
+        public List<string> AgentTypes { get; set; } = new();
+        /// <summary>Project-memory YAML persona ids attached to this scenario (non-runtime).</summary>
+        public List<string> PersonaAgentIds { get; set; } = new();
+        /// <summary>Optional role bindings into <see cref="PersonaAgentIds"/>.</summary>
+        public ScenarioPersonaBindingsDto PersonaBindings { get; set; } = new();
+    }
+
+    public sealed class ScenarioPersonaBindingsDto
+    {
+        public string? Extractor { get; set; }
+        public string? Curator { get; set; }
+        public string? Query { get; set; }
+    }
+
+    public sealed class ScenarioCatalogUpdateRequest
+    {
+        public int Version { get; set; } = 1;
+        public List<ScenarioDto> Scenarios { get; set; } = new();
+    }
+
     /// <summary>
     /// Request payload for creating a new chat session.
     /// </summary>
@@ -330,6 +390,30 @@ namespace AgctorSDK.Host.Models
     {
         public string? Title { get; set; }
         public string? SessionId { get; set; }
+
+        /// <summary>Optional chat project id — session is created inside this bucket when set.</summary>
+        public string? ProjectId { get; set; }
+    }
+
+    /// <summary>Creates a chat project linked to a scenario id.</summary>
+    public class CreateChatProjectRequest
+    {
+        public string? ProjectId { get; set; }
+        public string? Name { get; set; }
+        public string? ScenarioId { get; set; }
+    }
+
+    /// <summary>Updates chat project metadata.</summary>
+    public class UpdateChatProjectRequest
+    {
+        public string? Name { get; set; }
+        public string? ScenarioId { get; set; }
+    }
+
+    /// <summary>Assigns a session to a project (<c>PUT /api/chat/sessions/.../project</c>).</summary>
+    public class AssignChatSessionProjectRequest
+    {
+        public string ProjectId { get; set; } = "";
     }
 
     /// <summary>

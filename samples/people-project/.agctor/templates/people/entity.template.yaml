@@ -1,0 +1,6 @@
+entityKey: "{{entityKey}}"
+entityType: person
+displayName: "{{displayName}}"
+aliases: []
+schemaVersion: 1
+status: active

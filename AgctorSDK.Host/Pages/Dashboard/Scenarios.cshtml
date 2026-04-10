@@ -1,0 +1,133 @@
+@page "/Dashboard/Scenarios"
+@model AgctorSDK.Host.Pages.Dashboard.ScenariosModel
+@{
+    ViewData["Title"] = "Scenarios";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Scenario catalog</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Edit scenario catalog configuration separately from runtime apply actions.</p>
+</div>
+
+<div class="mb-4 grid gap-3 md:grid-cols-3">
+    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400">Configured default</p>
+        <p id="sc-chip-default" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">—</p>
+    </div>
+    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400">Current session</p>
+        <p id="sc-chip-current" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">—</p>
+    </div>
+    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-xs text-gray-500 dark:text-gray-400">Editor state</p>
+        <p id="sc-chip-dirty" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">No local edits</p>
+    </div>
+</div>
+
+<div id="scenarios-root" class="grid gap-4 lg:grid-cols-3">
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Scenarios</h2>
+            <button type="button" id="scenarios-refresh" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
+        </div>
+        <div id="scenarios-list" class="space-y-2 text-sm"></div>
+    </div>
+
+    <div class="space-y-4 lg:col-span-2">
+        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Run scenario now (runtime)</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Applies selected scenario to the current session and can spawn/update actor instances.</p>
+            <div class="flex flex-wrap items-center gap-2">
+                <button type="button" id="sc-apply" class="px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Apply to current session</button>
+                <a href="/Dashboard/Agents" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Open Agents</a>
+                <span id="sc-apply-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Scenario catalog editor (configuration)</h2>
+            <div id="scenarios-empty" class="text-xs text-gray-500 dark:text-gray-400">Select a scenario to edit.</div>
+            <div id="scenarios-editor" class="hidden space-y-3">
+                <div class="grid gap-3 md:grid-cols-2">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>
+                        <input id="sc-id" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kind</label>
+                        <input id="sc-kind" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
+                    <input id="sc-display-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                    <textarea id="sc-description" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Handler (scripted only)</label>
+                    <input id="sc-handler" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Runtime agent roster</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Add/remove runtime-capable C# agent types. YAML project-memory definitions are managed on the Agents page.</p>
+                    <div id="sc-agent-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <input id="sc-agent-add" list="sc-agent-suggestions" placeholder="Type agent name..." class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        <datalist id="sc-agent-suggestions"></datalist>
+                        <button type="button" id="sc-agent-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
+                        <button type="button" id="sc-agent-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
+                    </div>
+                    <div id="sc-agent-validation" class="mt-2 text-xs space-y-1"></div>
+                    <div id="sc-agent-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Persona roster (YAML, non-runtime)</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Attach project-memory personas such as <code>person-extractor</code>, <code>memory-curator</code>, and <code>person-query</code>.</p>
+                    <div class="mb-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+                        Helper: Persona selections configure project-memory extraction/curation/query behavior. They are non-runtime definitions and are not spawned as actor instances when a scenario is applied.
+                    </div>
+                    <div id="sc-persona-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <input id="sc-persona-add" list="sc-persona-suggestions" placeholder="Type persona id..." class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        <datalist id="sc-persona-suggestions"></datalist>
+                        <button type="button" id="sc-persona-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
+                        <button type="button" id="sc-persona-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
+                        <button type="button" id="sc-persona-defaults-btn" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Attach people defaults</button>
+                    </div>
+                    <div id="sc-persona-validation" class="mt-2 text-xs space-y-1"></div>
+                    <div id="sc-persona-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
+                </div>
+                <div class="grid gap-3 md:grid-cols-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Extractor binding (optional)</label>
+                        <input id="sc-bind-extractor" list="sc-persona-suggestions" placeholder="person-extractor" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Curator binding (optional)</label>
+                        <input id="sc-bind-curator" list="sc-persona-suggestions" placeholder="memory-curator" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Query binding (optional)</label>
+                        <input id="sc-bind-query" list="sc-persona-suggestions" placeholder="person-query" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                    </div>
+                </div>
+                <details class="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
+                    <summary class="cursor-pointer text-xs font-medium text-gray-700 dark:text-gray-300">Advanced: edit raw agent type lines</summary>
+                    <textarea id="sc-agent-types" rows="6" class="mt-2 w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                </details>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="sc-save" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save catalog changes</button>
+                    <button type="button" id="sc-discard" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Discard edits</button>
+                    <button type="button" id="sc-reload" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Reload from disk</button>
+                    <span id="sc-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard/scenarios-page.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "people",
+      "displayName": "People / person",
+      "description": "Chat and session memory oriented around people workflows.",
+      "kind": "declarative",
+      "agentTypes": [
+        "SessionCoordinatorAgent",
+        "SessionMemoryAgent"
+      ],
+      "personaAgentIds": [
+        "person-extractor",
+        "memory-curator",
+        "person-query"
+      ],
+      "personaBindings": {
+        "extractor": "person-extractor",
+        "curator": "memory-curator",
+        "query": "person-query"
+      }
+    },
+    {
+      "id": "code-generation-chain",
+      "displayName": "Code generation chain",
+      "description": "Creates Root Agent -> LLM Agent with CodeExecutor tool for code generation and validation",
+      "kind": "scripted",
+      "handler": "CodeGenerationChainScenario",
+      "agentTypes": [
+        "Agent",
+        "LLMAgent",
+        "CodeExecutorTool"
+      ]
+    },
+    {
+      "id": "code-graph-demo",
+      "displayName": "Code graph demo",
+      "description": "Creates a minimal CodeGraph with an IndexerAgent that indexes sample files",
+      "kind": "scripted",
+      "handler": "CodeGraphDemoScenario",
+      "agentTypes": [
+        "Agent",
+        "LLMAgent",
+        "CoderAgent",
+        "SessionCoordinatorAgent"
+      ]
+    }
+  ]
+}

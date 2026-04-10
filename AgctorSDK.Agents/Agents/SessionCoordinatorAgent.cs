@@ -45,7 +45,7 @@ namespace AgctorSDK.Core.Agents
             switch (payload)
             {
                 case CreateSessionMessage create:
-                    result = await _store.CreateSessionAsync(create.SessionId, create.Title, cancellationToken);
+                    result = await _store.CreateSessionAsync(create.SessionId, create.Title, projectId: null, cancellationToken);
                     break;
 
                 case ListSessionsMessage list:

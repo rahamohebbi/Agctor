@@ -1,0 +1,38 @@
+id: memory-curator
+name: Memory Curator
+role: curation
+description: Validates memory intents and updates canonical markdown files according to schema rules.
+
+projectTypes:
+  - people
+
+instructions:
+  - Load project schema and routing rules.
+  - Validate entity identity and allowed knowledge types.
+  - Route memory intents to allowed target documents.
+  - Preserve markdown template structure.
+
+input:
+  type: memory_intents_json
+
+output:
+  type: document_update_plan
+
+tools:
+  allow:
+    - read_document
+    - write_document
+    - load_schema
+  deny:
+    - arbitrary_path_write
+
+memoryAccess:
+  read:
+    - schemas/**
+    - templates/**
+    - people/**
+  write:
+    - schema_allowed_targets_only
+
+guardrails:
+  - Never write outside schema-defined paths.

@@ -6,14 +6,23 @@
     const el = document.getElementById('agents-content');
     if (!el) return;
 
+    const drawerHost = document.getElementById('agents-pm-drawer-host');
+    const drawerPanel = document.getElementById('agents-pm-drawer-panel');
+
     let configData = null;
     let agentsData = [];
+    let definitionsData = [];
+    let scenariosData = [];
     let currentScenario = null;
     let lastLoadedAt = null;
     const backendErrors = new Map();
     let refreshTimer = null;
+    let lastRenderSignature = '';
     /** Prevents PUT loop when we refresh after toggle */
     let suppressToggleUntil = 0;
+
+    /** PRD-013 Phase 2: create / edit project-memory YAML from unified Agents page */
+    let pmDrawerMode = 'create'; // create | edit | view-csharp
 
     function esc(s) {
         const d = document.createElement('div');
@@ -42,10 +51,340 @@
         );
     }
 
+    function stableErrorsSnapshot() {
+        return Array.from(backendErrors.entries())
+            .sort(function (a, b) {
+                return String(a[0]).localeCompare(String(b[0]));
+            })
+            .map(function (kv) {
+                return [kv[0], kv[1]];
+            });
+    }
+
+    function buildRenderSignature(config, agents, current, definitions, scenarios) {
+        return JSON.stringify({
+            config: config || {},
+            agents: Array.isArray(agents) ? agents : [],
+            current: current || null,
+            definitions: Array.isArray(definitions) ? definitions : [],
+            scenarios: Array.isArray(scenarios) ? scenarios : [],
+            errors: stableErrorsSnapshot()
+        });
+    }
+
     function refreshMetaText(list) {
         const count = Array.isArray(list) ? list.length : 0;
         const loaded = lastLoadedAt ? new Date(lastLoadedAt).toLocaleTimeString() : 'Not loaded yet';
         return esc(String(count)) + ' active instance(s). Last refreshed at ' + esc(loaded) + '.';
+    }
+
+    function linesToArr(t) {
+        if (!t) return [];
+        return t
+            .split('\n')
+            .map(function (l) {
+                return l.trim();
+            })
+            .filter(Boolean);
+    }
+
+    function arrToLines(a) {
+        return Array.isArray(a) ? a.join('\n') : '';
+    }
+
+    function splitComma(s) {
+        if (!s) return [];
+        return s
+            .split(',')
+            .map(function (x) {
+                return x.trim();
+            })
+            .filter(Boolean);
+    }
+
+    function joinComma(a) {
+        return Array.isArray(a) ? a.join(', ') : '';
+    }
+
+    function defaultPmSpec() {
+        return {
+            id: '',
+            name: '',
+            role: '',
+            description: '',
+            projectTypes: [],
+            instructions: [],
+            input: { type: '' },
+            output: { type: '' },
+            tools: { allow: [], deny: [] },
+            memoryAccess: { read: [], write: [] },
+            guardrails: []
+        };
+    }
+
+    function normalizePmSpec(raw) {
+        const s = raw && typeof raw === 'object' ? raw : {};
+        const d = defaultPmSpec();
+        d.id = typeof s.id === 'string' ? s.id : d.id;
+        d.name = typeof s.name === 'string' ? s.name : d.name;
+        d.role = typeof s.role === 'string' ? s.role : d.role;
+        d.description = typeof s.description === 'string' ? s.description : d.description;
+        d.projectTypes = Array.isArray(s.projectTypes) ? s.projectTypes.slice() : d.projectTypes;
+        d.instructions = Array.isArray(s.instructions) ? s.instructions.slice() : d.instructions;
+        d.input = s.input && typeof s.input === 'object' ? { type: s.input.type || '' } : d.input;
+        d.output = s.output && typeof s.output === 'object' ? { type: s.output.type || '' } : d.output;
+        d.tools =
+            s.tools && typeof s.tools === 'object'
+                ? {
+                      allow: Array.isArray(s.tools.allow) ? s.tools.allow.slice() : [],
+                      deny: Array.isArray(s.tools.deny) ? s.tools.deny.slice() : []
+                  }
+                : d.tools;
+        d.memoryAccess =
+            s.memoryAccess && typeof s.memoryAccess === 'object'
+                ? {
+                      read: Array.isArray(s.memoryAccess.read) ? s.memoryAccess.read.slice() : [],
+                      write: Array.isArray(s.memoryAccess.write) ? s.memoryAccess.write.slice() : []
+                  }
+                : d.memoryAccess;
+        d.guardrails = Array.isArray(s.guardrails) ? s.guardrails.slice() : d.guardrails;
+        return d;
+    }
+
+    function closePmDrawer() {
+        if (!drawerHost) return;
+        drawerHost.classList.add('hidden');
+        drawerHost.setAttribute('aria-hidden', 'true');
+        if (drawerPanel) drawerPanel.innerHTML = '';
+    }
+
+    function readPmFormFromPanel() {
+        const spec = normalizePmSpec({});
+        spec.id = /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-id')).value.trim();
+        spec.name = /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-name')).value.trim();
+        spec.role = /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-role')).value.trim();
+        spec.description = /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-desc')).value;
+        spec.projectTypes = splitComma(/** @type {HTMLInputElement} */ (document.getElementById('agents-pm-pt')).value);
+        spec.instructions = linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-ins')).value);
+        spec.input = { type: /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-in')).value.trim() };
+        spec.output = { type: /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-out')).value.trim() };
+        spec.tools = {
+            allow: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-tallow')).value),
+            deny: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-tdeny')).value)
+        };
+        spec.memoryAccess = {
+            read: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-mr')).value),
+            write: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-mw')).value)
+        };
+        spec.guardrails = linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-g')).value);
+        const rel = /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-relpath')).value.trim();
+        return { spec: spec, relativePath: rel || null };
+    }
+
+    function renderPmDrawerForm(spec, relativePath, title, readOnly) {
+        if (!drawerPanel) return;
+        const idReadonly = readOnly || pmDrawerMode === 'edit';
+        drawerPanel.innerHTML =
+            '<div class="p-6 space-y-4">' +
+            '<div class="flex items-start justify-between gap-2">' +
+            '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">' +
+            esc(title) +
+            '</h2>' +
+            '<button type="button" data-agents-drawer-close class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">Close</button>' +
+            '</div>' +
+            '<p class="text-xs text-gray-500 dark:text-gray-400">Saved files live under the configured project root (<code class="text-xs">Agctor:ProjectMemory:ProjectRoot</code>). For the full field set use <a class="text-blue-600 dark:text-blue-400 hover:underline" href="/Dashboard/ProjectMemory/Agents">Project Memory → Agents</a>.</p>' +
+            '<div class="space-y-3">' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>' +
+            '<input id="agents-pm-id" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (idReadonly ? 'readonly' : '') +
+            ' /></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Relative path (optional)</label>' +
+            '<input id="agents-pm-relpath" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder=".agctor/agents/people/…" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div>' +
+            '<div class="grid grid-cols-2 gap-2">' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>' +
+            '<input id="agents-pm-name" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>' +
+            '<input id="agents-pm-role" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>' +
+            '<textarea id="agents-pm-desc" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project types (comma-separated)</label>' +
+            '<input id="agents-pm-pt" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Instructions (one per line)</label>' +
+            '<textarea id="agents-pm-ins" rows="4" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div>' +
+            '<div class="grid grid-cols-2 gap-2">' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Input type</label>' +
+            '<input id="agents-pm-in" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Output type</label>' +
+            '<input id="agents-pm-out" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            ' /></div></div>' +
+            '<div class="grid grid-cols-2 gap-2">' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools allow (lines)</label>' +
+            '<textarea id="agents-pm-tallow" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools deny (lines)</label>' +
+            '<textarea id="agents-pm-tdeny" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div></div>' +
+            '<div class="grid grid-cols-2 gap-2">' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory read (lines)</label>' +
+            '<textarea id="agents-pm-mr" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory write (lines)</label>' +
+            '<textarea id="agents-pm-mw" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div></div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Guardrails (lines)</label>' +
+            '<textarea id="agents-pm-g" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
+            (readOnly ? 'readonly' : '') +
+            '></textarea></div>' +
+            '</div>' +
+            (readOnly
+                ? ''
+                : '<div class="flex flex-wrap gap-2 pt-2">' +
+                  '<button type="button" data-pm-save class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save</button>' +
+                  '<span id="agents-pm-msg" class="self-center text-sm text-gray-600 dark:text-gray-400"></span>' +
+                  '</div>') +
+            '</div>';
+
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-id')).value = spec.id;
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-relpath')).value = relativePath || '';
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-name')).value = spec.name;
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-role')).value = spec.role;
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-desc')).value = spec.description;
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-pt')).value = joinComma(spec.projectTypes);
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-ins')).value = arrToLines(spec.instructions);
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-in')).value = spec.input.type;
+        /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-out')).value = spec.output.type;
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-tallow')).value = arrToLines(spec.tools.allow);
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-tdeny')).value = arrToLines(spec.tools.deny);
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-mr')).value = arrToLines(spec.memoryAccess.read);
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-mw')).value = arrToLines(spec.memoryAccess.write);
+        /** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-g')).value = arrToLines(spec.guardrails);
+    }
+
+    function openPmDrawer() {
+        if (!drawerHost) return;
+        drawerHost.classList.remove('hidden');
+        drawerHost.setAttribute('aria-hidden', 'false');
+    }
+
+    async function openNewPmAgent() {
+        pmDrawerMode = 'create';
+        renderPmDrawerForm(normalizePmSpec(defaultPmSpec()), '', 'New project-memory agent', false);
+        openPmDrawer();
+    }
+
+    async function openEditPmAgent(id) {
+        const res = await fetch('/api/agents/definitions/' + encodeURIComponent(id));
+        const data = await res.json().catch(function () {
+            return null;
+        });
+        if (!res.ok) {
+            alert((data && (data.error || data.message)) || 'Failed to load definition (' + res.status + ').');
+            return;
+        }
+        if (data.kind === 'csharp-type') {
+            pmDrawerMode = 'view-csharp';
+            const det = data.detail || {};
+            if (!drawerPanel) return;
+            drawerPanel.innerHTML =
+                '<div class="p-6 space-y-4">' +
+                '<div class="flex items-start justify-between gap-2">' +
+                '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">C# type: ' +
+                esc(data.id) +
+                '</h2>' +
+                '<button type="button" data-agents-drawer-close class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">Close</button>' +
+                '</div>' +
+                '<p class="text-sm text-gray-600 dark:text-gray-300">This agent is defined in code. Enable or disable it using the toggles in the runtime table above.</p>' +
+                '<dl class="text-sm space-y-2">' +
+                '<dt class="text-gray-500">CLR type</dt><dd class="font-mono text-gray-900 dark:text-white">' +
+                esc(det.clrType || '') +
+                '</dd>' +
+                '<dt class="text-gray-500">Enabled</dt><dd>' +
+                esc(String(det.enabled !== false)) +
+                '</dd></dl>' +
+                '</div>';
+            openPmDrawer();
+            return;
+        }
+        if (data.kind !== 'project-memory-yaml' || !data.detail || !data.detail.spec) {
+            alert('Unexpected response shape.');
+            return;
+        }
+        pmDrawerMode = 'edit';
+        renderPmDrawerForm(normalizePmSpec(data.detail.spec), data.detail.relativePath || '', 'Edit: ' + id, false);
+        openPmDrawer();
+    }
+
+    async function savePmAgent() {
+        const msg = document.getElementById('agents-pm-msg');
+        const payload = readPmFormFromPanel();
+        if (!payload.spec.id) {
+            if (msg) msg.textContent = 'Id is required.';
+            return;
+        }
+        if (msg) msg.textContent = 'Saving…';
+        const isCreate = pmDrawerMode === 'create';
+        const url = isCreate
+            ? '/api/agents/definitions/project-memory'
+            : '/api/agents/definitions/project-memory/' + encodeURIComponent(payload.spec.id);
+        const method = isCreate ? 'POST' : 'PUT';
+        try {
+            const res = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spec: payload.spec, relativePath: payload.relativePath })
+            });
+            const body = await res.json().catch(function () {
+                return {};
+            });
+            if (!res.ok) {
+                const err = body.error || body.message || 'Save failed (' + res.status + ').';
+                if (msg) msg.textContent = err;
+                return;
+            }
+            if (msg) msg.textContent = 'Saved.';
+            pmDrawerMode = 'edit';
+            /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-id')).readOnly = true;
+            await refreshRuntimeData(false);
+        } catch (e) {
+            if (msg) msg.textContent = 'Error: ' + (e.message || e);
+        }
+    }
+
+    async function deletePmAgent(id) {
+        if (!confirm('Delete YAML agent "' + id + '" from disk?')) return;
+        try {
+            const res = await fetch('/api/agents/definitions/project-memory/' + encodeURIComponent(id), { method: 'DELETE' });
+            if (!res.ok) {
+                const body = await res.json().catch(function () {
+                    return {};
+                });
+                alert(body.error || body.message || 'Delete failed (' + res.status + ').');
+                return;
+            }
+            closePmDrawer();
+            await refreshRuntimeData(false);
+        } catch (e) {
+            alert('Error: ' + (e.message || e));
+        }
     }
 
     /** Group GET /api/agents by CLR type name */
@@ -59,13 +398,16 @@
         return map;
     }
 
-    function render(config, agents, current) {
+    function render(config, agents, current, definitions, scenarios) {
         const list = Array.isArray(agents) ? agents : [];
+        const defs = Array.isArray(definitions) ? definitions : [];
+        const scs = Array.isArray(scenarios) ? scenarios : [];
         const agentTypes = config.agentTypes && typeof config.agentTypes === 'object' ? config.agentTypes : {};
         const enablement = config.agentTypeEnablement && typeof config.agentTypeEnablement === 'object'
             ? config.agentTypeEnablement
             : {};
-        const scenarioName = config.dashboardScenarioName || '';
+        const defaultScenarioName = config.dashboardScenarioName || '';
+        const selectedScenarioName = (current && current.scenarioName) || defaultScenarioName;
         const byType = groupAgentsByType(list);
         const typeKeys = Object.keys(agentTypes).sort((a, b) => a.localeCompare(b));
 
@@ -137,6 +479,59 @@
                 '</tr>';
         }
 
+        const runtimeCapableCount = defs.filter(function (d) {
+            return d.kind === 'csharp-type';
+        }).length;
+        const nonRuntimeCount = defs.length - runtimeCapableCount;
+
+        let defRows = '';
+        defs.forEach(function (d) {
+            const meta = d.metadata ? JSON.stringify(d.metadata) : '';
+            const safeId = esc(d.id || '');
+            const runtimeBadge =
+                d.kind === 'project-memory-yaml'
+                    ? '<span class="inline-flex items-center rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5 text-[11px] font-medium">Non-runtime definition (YAML)</span>'
+                    : '<span class="inline-flex items-center rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200 px-2 py-0.5 text-[11px] font-medium">Runtime-capable type (C#)</span>';
+            const yamlActions =
+                d.kind === 'project-memory-yaml'
+                    ? '<button type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2" data-yaml-edit="' +
+                      safeId +
+                      '">Edit</button>' +
+                      '<button type="button" class="text-red-600 dark:text-red-400 hover:underline text-xs" data-yaml-del="' +
+                      safeId +
+                      '">Delete</button>'
+                    : '<button type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs" data-csharp-view="' +
+                      safeId +
+                      '">View</button>';
+            defRows +=
+                '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
+                '<th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">' + esc(d.displayName || d.id) + '</th>' +
+                '<td class="px-6 py-4 text-xs text-gray-600 dark:text-gray-300">' + safeId + '</td>' +
+                '<td class="px-6 py-4 text-xs">' + esc(d.kind || '') + '</td>' +
+                '<td class="px-6 py-4 text-xs font-mono break-all max-w-md">' + esc(d.source || '') + '</td>' +
+                '<td class="px-6 py-4 text-xs">' + esc(d.state || '') + '</td>' +
+                '<td class="px-6 py-4 text-xs">' + runtimeBadge + '</td>' +
+                '<td class="px-6 py-4 text-xs break-all max-w-md">' + esc(meta) + '</td>' +
+                '<td class="px-6 py-4 text-xs whitespace-nowrap">' +
+                yamlActions +
+                '</td>' +
+                '</tr>';
+        });
+        if (!defRows) {
+            defRows =
+                '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
+                '<td class="px-6 py-4 text-xs text-gray-500 dark:text-gray-400" colspan="8">No definitions found.</td>' +
+                '</tr>';
+        }
+
+        const scenarioOptions = scs
+            .map(function (s) {
+                const id = s.id || '';
+                const text = (s.displayName || id) + ' [' + id + ']';
+                return '<option value="' + esc(id) + '" ' + (id === selectedScenarioName ? 'selected' : '') + '>' + esc(text) + '</option>';
+            })
+            .join('');
+
         el.innerHTML =
             errorBlock +
             currentBlock +
@@ -144,10 +539,14 @@
             '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">' +
             '<div>' +
             '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Scenario</h2>' +
-            '<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Dashboard uses one configured scenario: <strong class="text-gray-800 dark:text-gray-200">' +
-            esc(scenarioName) +
-            '</strong> (set <code class="text-xs bg-gray-100 dark:bg-gray-700 px-1 rounded">Agctor:Dashboard:ScenarioName</code>).</p>' +
+            '<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Default startup scenario remains <strong class="text-gray-800 dark:text-gray-200">' +
+            esc(defaultScenarioName) +
+            '</strong>. You can apply a different scenario below for this session.</p>' +
             '</div>' +
+            '<div class="flex flex-wrap items-center gap-2">' +
+            '<select id="agents-scenario-select" class="min-w-[14rem] py-2.5 px-3 text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600">' +
+            scenarioOptions +
+            '</select>' +
             '<div class="flex flex-wrap gap-2">' +
             '<button type="button" data-apply-scenario class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">' +
             'Apply scenario' +
@@ -155,7 +554,7 @@
             '<button type="button" data-refresh-agents class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700">' +
             'Refresh' +
             '</button>' +
-            '</div></div>' +
+            '</div></div></div>' +
             '<div id="scenario-message" class="mt-3 min-h-[1.5rem] text-sm"></div></div>' +
             '<div class="relative overflow-x-auto shadow-md sm:rounded-lg">' +
             '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">' +
@@ -168,6 +567,34 @@
             '<th scope="col" class="px-6 py-3">Runtime</th>' +
             '</tr></thead><tbody>' +
             rows +
+            '</tbody></table></div>' +
+            '<div class="mt-4 p-4 rounded-lg bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800">' +
+            '<p class="text-sm font-medium text-indigo-900 dark:text-indigo-100">Runtime vs non-runtime definitions</p>' +
+            '<p class="mt-1 text-xs text-indigo-800 dark:text-indigo-200">' +
+            'Runtime-capable C# types can be spawned as actor instances by scenarios/tools. YAML project-memory definitions are configuration specs used by project-memory pipelines and do not appear as running actors by themselves.' +
+            '</p>' +
+            '<p class="mt-2 text-xs text-indigo-800 dark:text-indigo-200">' +
+            'Runtime-capable: <strong>' + esc(String(runtimeCapableCount)) + '</strong> · Non-runtime YAML: <strong>' + esc(String(nonRuntimeCount)) + '</strong>' +
+            '</p></div>' +
+            '<div class="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">' +
+            '<h2 class="text-base font-semibold text-gray-900 dark:text-white">Agent definitions</h2>' +
+            '<button type="button" data-yaml-new class="self-start text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">' +
+            'New project-memory agent' +
+            '</button></div>' +
+            '<div class="mt-2 relative overflow-x-auto shadow-md sm:rounded-lg">' +
+            '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">' +
+            '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">' +
+            '<tr>' +
+            '<th scope="col" class="px-6 py-3">Definition</th>' +
+            '<th scope="col" class="px-6 py-3">Id</th>' +
+            '<th scope="col" class="px-6 py-3">Kind</th>' +
+            '<th scope="col" class="px-6 py-3">Source</th>' +
+            '<th scope="col" class="px-6 py-3">State</th>' +
+            '<th scope="col" class="px-6 py-3">Runtime</th>' +
+            '<th scope="col" class="px-6 py-3">Metadata</th>' +
+            '<th scope="col" class="px-6 py-3">Actions</th>' +
+            '</tr></thead><tbody>' +
+            defRows +
             '</tbody></table></div>' +
             '<p class="mt-4 text-xs text-gray-500 dark:text-gray-400">' +
             refreshMetaText(list) +
@@ -202,18 +629,26 @@
         }
     }
 
-    async function refreshRuntimeData(showInlineError) {
-        const [agents, current] = await Promise.all([
+    async function refreshRuntimeData(showInlineError, forceRender) {
+        const [agents, current, defs, scenarios] = await Promise.all([
             fetchJson('/api/agents', 'agents-api', agentsData),
-            fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario)
+            fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario),
+            fetchJson('/api/agents/definitions', 'agent-definitions-api', definitionsData),
+            fetchJson('/api/scenarios', 'scenarios-api', scenariosData)
         ]);
 
         agentsData = Array.isArray(agents) ? agents : [];
         currentScenario = current;
-        lastLoadedAt = Date.now();
+        definitionsData = Array.isArray(defs) ? defs : [];
+        scenariosData = Array.isArray(scenarios) ? scenarios : [];
 
         if (configData) {
-            render(configData, agentsData, currentScenario);
+            const nextSignature = buildRenderSignature(configData, agentsData, currentScenario, definitionsData, scenariosData);
+            if (forceRender || nextSignature !== lastRenderSignature) {
+                lastLoadedAt = Date.now();
+                render(configData, agentsData, currentScenario, definitionsData, scenariosData);
+                lastRenderSignature = nextSignature;
+            }
         }
 
         if (showInlineError && backendErrors.size > 0) {
@@ -224,7 +659,10 @@
     async function applyScenario() {
         showScenarioMessage('Applying...', false);
         try {
-            const res = await fetch('/api/Test/setup-scenario', {
+            const select = document.getElementById('agents-scenario-select');
+            // PRD-013 Phase 4: POST /api/scenarios/{id}/apply; id "default" → Agctor:Dashboard:ScenarioName
+            const scenarioId = select && select.value ? select.value : 'default';
+            const res = await fetch('/api/scenarios/' + encodeURIComponent(scenarioId) + '/apply', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ parameters: {} })
@@ -233,19 +671,19 @@
             if (!res.ok || data.success === false) {
                 const msg = data.errorMessage || data.message || 'Failed to apply scenario.';
                 setBackendError('scenario-apply', msg);
-                await refreshRuntimeData(false);
+                await refreshRuntimeData(false, true);
                 showScenarioMessage(msg, true);
                 return;
             }
             clearBackendError('scenario-apply');
             const count = data.createdAgentIds ? data.createdAgentIds.length : 0;
             const successMsg = 'Scenario applied. ' + count + ' agent(s) reported created.';
-            await refreshRuntimeData(false);
+            await refreshRuntimeData(false, true);
             showScenarioMessage(successMsg, false);
         } catch (e) {
             const msg = 'Error: ' + (e.message || 'Request failed.');
             setBackendError('scenario-apply', msg);
-            await refreshRuntimeData(false);
+            await refreshRuntimeData(false, true);
             showScenarioMessage(msg, true);
         }
     }
@@ -266,9 +704,33 @@
     }
 
     el.addEventListener('click', function (e) {
-        if (e.target.matches('button[data-apply-scenario]')) applyScenario();
-        if (e.target.matches('button[data-refresh-agents]')) refreshRuntimeData(true);
+        const t = e.target;
+        if (!t || !t.matches) return;
+        if (t.matches('button[data-apply-scenario]')) applyScenario();
+        if (t.matches('button[data-refresh-agents]')) refreshRuntimeData(true, true);
+        if (t.matches('button[data-yaml-new]')) openNewPmAgent();
+        if (t.matches('button[data-yaml-edit]')) {
+            const id = t.getAttribute('data-yaml-edit');
+            if (id) openEditPmAgent(id);
+        }
+        if (t.matches('button[data-csharp-view]')) {
+            const id = t.getAttribute('data-csharp-view');
+            if (id) openEditPmAgent(id);
+        }
+        if (t.matches('button[data-yaml-del]')) {
+            const id = t.getAttribute('data-yaml-del');
+            if (id) deletePmAgent(id);
+        }
     });
+
+    if (drawerHost) {
+        drawerHost.addEventListener('click', function (e) {
+            const t = e.target;
+            if (!t || !t.matches) return;
+            if (t.matches('[data-agents-drawer-backdrop]') || t.matches('[data-agents-drawer-close]')) closePmDrawer();
+            if (t.matches('[data-pm-save]')) savePmAgent();
+        });
+    }
 
     el.addEventListener('change', async function (e) {
         const input = e.target;
@@ -282,10 +744,10 @@
             const cfg = await fetchJson('/api/Config', 'config-api', configData);
             if (cfg) configData = cfg;
             suppressToggleUntil = Date.now() + 400;
-            await refreshRuntimeData(false);
+            await refreshRuntimeData(false, true);
         } catch {
             input.checked = !enabled;
-            await refreshRuntimeData(true);
+            await refreshRuntimeData(true, true);
         }
     });
 
@@ -298,11 +760,11 @@
             }
 
             configData = config;
-            await refreshRuntimeData(false);
+            await refreshRuntimeData(false, true);
 
             if (refreshTimer) window.clearInterval(refreshTimer);
             refreshTimer = window.setInterval(function () {
-                refreshRuntimeData(false);
+                refreshRuntimeData(false, false);
             }, 5000);
         })
         .catch(() => {

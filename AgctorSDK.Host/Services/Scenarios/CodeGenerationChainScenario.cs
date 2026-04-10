@@ -11,7 +11,7 @@ namespace AgctorSDK.Host.Services.Scenarios;
 /// Scenario that creates a code generation chain:
 /// Root Agent -> LLM Agent (with CodeExecutor tool access) -> Return code to user
 /// </summary>
-public class CodeGenerationChainScenario : IScenario
+public class CodeGenerationChainScenario : IScenario, IScenarioDefinitionAware
 {
     private readonly IActorRuntimeAdapter _runtimeAdapter;
     private readonly IAgentFactory _agentFactory;
@@ -19,9 +19,12 @@ public class CodeGenerationChainScenario : IScenario
     private readonly IAgentTypeEnablementService _enablement;
     private readonly ILogger<CodeGenerationChainScenario> _logger;
 
-    public string Name => "code-generation-chain";
-    
-    public string Description => "Creates Root Agent -> LLM Agent with CodeExecutor tool for code generation and validation";
+    private ScenarioDefinition? _definition;
+
+    public string Name => string.IsNullOrWhiteSpace(_definition?.Id) ? "code-generation-chain" : _definition!.Id;
+    public string Description => string.IsNullOrWhiteSpace(_definition?.Description)
+        ? "Creates Root Agent -> LLM Agent with CodeExecutor tool for code generation and validation"
+        : _definition!.Description;
 
     public CodeGenerationChainScenario(
         IActorRuntimeAdapter runtimeAdapter,
@@ -36,6 +39,8 @@ public class CodeGenerationChainScenario : IScenario
         _enablement = enablement;
         _logger = logger;
     }
+
+    public void SetDefinition(ScenarioDefinition definition) => _definition = definition;
 
     public async Task<ScenarioSetupResponse> SetupAsync(Dictionary<string, object>? parameters = null)
     {

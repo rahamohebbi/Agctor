@@ -66,18 +66,60 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | GET | `/api/CodeGraph/embeddings` | Get embedding records for debugging and visualization |
 | GET | `/api/CodeGraph/file-content?path=...` | Preview file content for a file in the active actor tree |
 
+### Chat projects (`/api/chat/projects`)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/chat/projects` | Create a chat project (`name`, `projectType`, optional `projectId`) |
+| GET | `/api/chat/projects` | List projects (newest update first) |
+| GET | `/api/chat/projects/{id}` | Get one project |
+| PUT | `/api/chat/projects/{id}` | Update name and/or project type |
+| DELETE | `/api/chat/projects/{id}` | Delete project (sessions become standalone) |
+| GET | `/api/chat/projects/{id}/sessions` | List sessions in this project |
+
 ### Chat Sessions (`/api/chat/sessions`)
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/chat/sessions` | Create a new chat session |
-| GET | `/api/chat/sessions` | List chat sessions (newest first) |
+| POST | `/api/chat/sessions` | Create a chat session (optional `projectId` to create inside a project) |
+| GET | `/api/chat/sessions` | List sessions: optional `projectId=` or `standalone=true` |
 | GET | `/api/chat/sessions/{id}` | Load session transcript (metadata + turns + summary) |
+| PUT | `/api/chat/sessions/{id}/project` | Assign session to a project (body: `{ "projectId" }`) |
+| DELETE | `/api/chat/sessions/{id}/project` | Remove session from project (standalone) |
+
+### Project memory (`/api/project-memory`) — PRD-013
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/project-memory/status` | Project root, load summary, agent count |
+| GET | `/api/project-memory/agents` | List portable agent specs |
+| GET | `/api/project-memory/agents/{id}` | One spec + YAML preview |
+| PUT | `/api/project-memory/agents/{id}` | Save agent YAML |
+| DELETE | `/api/project-memory/agents/{id}` | Delete agent file |
+| GET | `/api/project-memory/templates` | Built-in agent templates |
+| POST | `/api/project-memory/agents/from-template` | Create agent from template |
+| GET | `/api/project-memory/schema` | Schema bundle (YAML per segment) |
+| PUT | `/api/project-memory/schema/{segment}` | Save one schema segment |
+| POST | `/api/project-memory/validate` | Validate project (no full rebuild) |
+| POST | `/api/project-memory/rebuild` | Full rebuild |
+| POST | `/api/project-memory/project-root` | Persist `Agctor:ProjectMemory:ProjectRoot` |
+| GET | `/api/project-memory/tree` | Project directory tree (JSON) |
+| GET | `/api/project-memory/file?path=` | Preview file under project root |
+| POST | `/api/project-memory/playground/run` | One-shot LLM test (optional `sessionId` for transcript context) |
+| POST | `/api/project-memory/playground/message/stream` | SSE chat turn; persists user/assistant to chat session store |
+| POST | `/api/project-memory/orchestrator/run` | Pipeline: extract → route/write → optional query (`mode`: auto, ingestOnly, queryOnly) |
 
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview
 - **GET /Dashboard/Agents** – Unified agent-type table with toggles and single configured scenario (PRD-010)
 - **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
 - **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
+- **GET /Dashboard/ProjectMemory** – Project memory overview (PRD-013)
+- **GET /Dashboard/ProjectMemory/Agents** – Portable agent list
+- **GET /Dashboard/ProjectMemory/Agents/Edit** – Agent editor (`?id=` optional)
+- **GET /Dashboard/ProjectMemory/Templates** – Template gallery + wizard
+- **GET /Dashboard/ProjectMemory/Playground** – Chat transcript + streaming LLM tests for agent specs
+- **GET /Dashboard/ProjectMemory/Schema** – Schema studio (YAML tabs)
+- **GET /Dashboard/ProjectMemory/Workspace** – Tree + file preview
+- **GET /Dashboard/ProjectMemory/Projects** – Manage chat projects and move sessions
+- **GET /Dashboard/ProjectMemory/Maintenance** – Project root, validate, rebuild
 
 ## MCP Protocol
 - **TCP port 8080**: Accepts newline-delimited JSON messages

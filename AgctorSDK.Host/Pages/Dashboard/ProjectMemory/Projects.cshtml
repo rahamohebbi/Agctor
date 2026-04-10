@@ -1,0 +1,50 @@
+@page "/Dashboard/ProjectMemory/Projects"
+@model AgctorSDK.Host.Pages.Dashboard.ProjectMemory.ProjectsModel
+@{
+    ViewData["Title"] = "Projects";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Chat projects</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage project buckets and move sessions between standalone and project-scoped chats.</p>
+</div>
+
+<div id="pm-proj-root" class="space-y-4">
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <div class="grid gap-3 md:grid-cols-4">
+            <div class="md:col-span-2">
+                <label for="pm-proj-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project name</label>
+                <input id="pm-proj-name" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Raha Mohebbi, or Portable Toilet business — Irvine" autocomplete="off" />
+            </div>
+            <div>
+                <label for="pm-proj-scenario" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario</label>
+                <select id="pm-proj-scenario" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+            </div>
+            <div class="md:col-span-4 flex flex-wrap items-center gap-3">
+                <button type="button" id="pm-proj-create" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Create project</button>
+                <span id="pm-proj-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid gap-4 lg:grid-cols-3">
+        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Projects</h2>
+            <div id="pm-proj-list" class="space-y-2 text-sm"></div>
+        </div>
+        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 lg:col-span-2">
+            <div class="flex items-center justify-between mb-2">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Selected project sessions</h2>
+                <button type="button" id="pm-proj-refresh" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
+            </div>
+            <div id="pm-proj-current" class="text-xs text-gray-500 dark:text-gray-400 mb-3">No project selected.</div>
+            <div id="pm-proj-sessions" class="space-y-2 text-sm"></div>
+            <hr class="my-4 border-gray-200 dark:border-gray-700" />
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Standalone sessions</h3>
+            <div id="pm-proj-standalone" class="space-y-2 text-sm"></div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/dashboard/project-memory-projects.js" asp-append-version="true"></script>
+}

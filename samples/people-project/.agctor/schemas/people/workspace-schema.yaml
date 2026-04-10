@@ -1,0 +1,17 @@
+workspace:
+  roots:
+    - people/
+    - views/
+
+  entityViews:
+    - entityType: person
+      folderPattern: "people/{entityKey}/"
+      documents:
+        - profile.md
+        - skills.md
+        - relationships.md
+        - timeline.md
+
+  indexViews:
+    - path: views/people-index.md
+      purpose: Summary of all people

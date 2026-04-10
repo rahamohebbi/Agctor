@@ -104,7 +104,7 @@ namespace AgctorSDK.Core.Agents
 
                 case CreateSessionMessage:
                     result = await _store.GetSessionAsync(_sessionId, cancellationToken)
-                             ?? await _store.CreateSessionAsync(_sessionId, title: null, cancellationToken);
+                             ?? await _store.CreateSessionAsync(_sessionId, title: null, projectId: null, cancellationToken);
                     break;
 
                 default:

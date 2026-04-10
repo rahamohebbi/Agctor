@@ -456,7 +456,7 @@ namespace AgctorSDK.Host.Services
                 var existing = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
                 if (existing == null)
                 {
-                    await _sessionStore.CreateSessionAsync(sessionId, null, cancellationToken);
+                    await _sessionStore.CreateSessionAsync(sessionId, null, projectId: null, cancellationToken);
                 }
 
                 var turn = new SessionTurn

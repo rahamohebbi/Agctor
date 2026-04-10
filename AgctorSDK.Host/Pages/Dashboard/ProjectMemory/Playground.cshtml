@@ -1,0 +1,72 @@
+@page "/Dashboard/ProjectMemory/Playground"
+@model AgctorSDK.Host.Pages.Dashboard.ProjectMemory.PlaygroundModel
+@{
+    ViewData["Title"] = "Agent playground";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Project memory agent playground</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Chat-style testing with <strong>streaming</strong> and a persisted transcript (same session store as CodeGraph). Pick an agent spec, choose or create a session, then send messages.</p>
+</div>
+
+<div id="pm-play-root" class="space-y-4">
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <div class="md:col-span-4">
+                <label for="pm-play-project-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">New project name</label>
+                <input type="text" id="pm-play-project-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Raha Mohebbi, or Portable Toilet business — Irvine" autocomplete="off" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Used when you click New project. Choose a label that identifies this chat bucket for you.</p>
+            </div>
+            <div>
+                <label for="pm-play-agent" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agent spec</label>
+                <select id="pm-play-agent" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+            </div>
+            <div class="md:col-span-2">
+                <label for="pm-play-project" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project (optional)</label>
+                <select id="pm-play-project" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+            </div>
+            <div class="md:col-span-2 space-y-2">
+                <div>
+                    <label for="pm-play-scenario" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario</label>
+                    <div class="flex flex-wrap gap-2">
+                        <select id="pm-play-scenario" class="min-w-[12rem] flex-1 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+                    </div>
+                </div>
+                <button type="button" id="pm-play-new-project" class="w-full sm:w-auto px-3 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">New project</button>
+            </div>
+            <div class="md:col-span-2">
+                <label for="pm-play-session" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Chat session</label>
+                <select id="pm-play-session" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+            </div>
+            <div class="flex items-end gap-2">
+                <button type="button" id="pm-play-new-session" class="flex-1 px-3 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">New session</button>
+                <button type="button" id="pm-play-refresh" class="px-3 py-2.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
+                <button type="button" id="pm-play-copy-link" class="px-3 py-2.5 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-200">Copy link</button>
+            </div>
+        </div>
+        <p id="pm-play-hint" class="mt-3 text-xs text-gray-500 dark:text-gray-400"></p>
+    </div>
+
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 min-h-[280px] flex flex-col">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Transcript</h2>
+            <span id="pm-play-status" class="text-xs text-gray-500 dark:text-gray-400" role="status"></span>
+        </div>
+        <div id="pm-play-messages" class="flex-1 overflow-y-auto max-h-[50vh] space-y-3 pr-1 text-sm"></div>
+        <div class="mt-4 flex gap-2">
+            <textarea id="pm-play-input" rows="3" class="flex-1 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Type a message…"></textarea>
+            <button type="button" id="pm-play-send" class="self-end px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0">Send</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .pm-play-md p { margin: 0; }
+    .pm-play-md ol, .pm-play-md ul { margin: 0.25rem 0 0.25rem 1.25rem; padding: 0; }
+    .pm-play-md code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.75rem; background: rgba(156, 163, 175, 0.2); border-radius: 0.25rem; padding: 0.05rem 0.25rem; }
+</style>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="~/js/dashboard/project-memory-playground.js" asp-append-version="true"></script>
+}

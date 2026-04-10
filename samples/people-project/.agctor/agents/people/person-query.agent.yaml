@@ -1,0 +1,36 @@
+id: person-query
+name: Person Query Agent
+role: query
+description: Answers questions using canonical people documents (read-only).
+
+projectTypes:
+  - people
+
+instructions:
+  - Use search_entities and read_document to gather context.
+  - Answer concisely from files; cite which file informed the answer when possible.
+
+input:
+  type: text
+
+output:
+  type: text
+
+tools:
+  allow:
+    - read_document
+    - search_entities
+    - load_schema
+  deny:
+    - write_document
+
+memoryAccess:
+  read:
+    - people/**
+    - schemas/people/**
+    - views/**
+  write:
+    - memory_intents_only
+
+guardrails:
+  - Read-only; never modify canonical files.

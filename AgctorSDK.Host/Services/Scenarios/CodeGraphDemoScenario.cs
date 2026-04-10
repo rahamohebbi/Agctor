@@ -26,7 +26,7 @@ namespace AgctorSDK.Host.Services.Scenarios
     /// Demonstrates the CodeGraph subsystem in action by creating a minimal hierarchy (Solution → Project → File)
     /// and an <see cref="IndexerAgent"/> that walks the graph and stores embeddings in an in-memory vector store.
     /// </summary>
-    public sealed class CodeGraphDemoScenario : IScenario
+    public sealed class CodeGraphDemoScenario : IScenario, IScenarioDefinitionAware
     {
         private static readonly string[] DemoAgentIds =
         {
@@ -50,8 +50,12 @@ namespace AgctorSDK.Host.Services.Scenarios
         private readonly IAgentTypeEnablementService _enablement;
         private readonly ILogger<CodeGraphDemoScenario> _logger;
 
-        public string Name => "code-graph-demo";
-        public string Description => "Creates a minimal CodeGraph with an IndexerAgent that indexes a sample C# file";
+        private ScenarioDefinition? _definition;
+
+        public string Name => string.IsNullOrWhiteSpace(_definition?.Id) ? "code-graph-demo" : _definition!.Id;
+        public string Description => string.IsNullOrWhiteSpace(_definition?.Description)
+            ? "Creates a minimal CodeGraph with an IndexerAgent that indexes a sample C# file"
+            : _definition!.Description;
 
         public CodeGraphDemoScenario(
             IActorRuntimeAdapter runtimeAdapter,
@@ -72,6 +76,8 @@ namespace AgctorSDK.Host.Services.Scenarios
             _enablement = enablement ?? throw new ArgumentNullException(nameof(enablement));
             _logger = logger;
         }
+
+        public void SetDefinition(ScenarioDefinition definition) => _definition = definition;
 
         public async Task<ScenarioSetupResponse> SetupAsync(Dictionary<string, object>? parameters = null)
         {

@@ -1,0 +1,75 @@
+[
+  {
+    "templateId": "person-extractor",
+    "name": "Person Extractor",
+    "description": "Extracts person-related facts from text; emits memory intents JSON only.",
+    "spec": {
+      "id": "person-extractor",
+      "name": "Person Extractor",
+      "role": "extraction",
+      "description": "Extracts person-related facts, relationships, events, and observations from text.",
+      "projectTypes": ["people"],
+      "instructions": [
+        "Identify person entities mentioned in the input.",
+        "Extract only supported knowledge types.",
+        "Produce memory intents as JSON only."
+      ],
+      "input": { "type": "text_or_document" },
+      "output": { "type": "memory_intents_json" },
+      "tools": { "allow": ["read_document", "search_entities"], "deny": ["write_document"] },
+      "memoryAccess": {
+        "read": ["people/*/entity.yaml", "people/*/profile.md", "people/*/relationships.md"],
+        "write": ["memory_intents_only"]
+      },
+      "guardrails": ["Do not invent missing facts."]
+    }
+  },
+  {
+    "templateId": "memory-curator",
+    "name": "Memory Curator",
+    "description": "Validates intents and updates canonical markdown per schema.",
+    "spec": {
+      "id": "memory-curator",
+      "name": "Memory Curator",
+      "role": "curation",
+      "description": "Validates memory intents and updates canonical files.",
+      "projectTypes": ["people"],
+      "instructions": [
+        "Load project schema and routing rules.",
+        "Route memory intents to allowed target documents."
+      ],
+      "input": { "type": "memory_intents_json" },
+      "output": { "type": "document_update_plan" },
+      "tools": { "allow": ["read_document", "write_document", "load_schema"], "deny": ["arbitrary_path_write"] },
+      "memoryAccess": {
+        "read": ["schemas/**", "templates/**", "people/**"],
+        "write": ["schema_allowed_targets_only"]
+      },
+      "guardrails": ["Never write outside schema-defined paths."]
+    }
+  },
+  {
+    "templateId": "person-query",
+    "name": "Person Query Agent",
+    "description": "Read-only Q&A over canonical people documents.",
+    "spec": {
+      "id": "person-query",
+      "name": "Person Query Agent",
+      "role": "query",
+      "description": "Answers questions using canonical people documents.",
+      "projectTypes": ["people"],
+      "instructions": [
+        "Use search_entities and read_document to gather context.",
+        "Answer concisely from files."
+      ],
+      "input": { "type": "text" },
+      "output": { "type": "text" },
+      "tools": { "allow": ["read_document", "search_entities", "load_schema"], "deny": ["write_document"] },
+      "memoryAccess": {
+        "read": ["people/**", "schemas/people/**", "views/**"],
+        "write": ["memory_intents_only"]
+      },
+      "guardrails": ["Read-only; never modify canonical files."]
+    }
+  }
+]

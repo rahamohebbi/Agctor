@@ -24,13 +24,19 @@ namespace AgctorSDK.Host.Controllers
 
         [HttpPost]
         [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<SessionInfo>> CreateAsync([FromBody] CreateChatSessionRequest? request, CancellationToken cancellationToken = default)
         {
             try
             {
-                var created = await _sessionStore.CreateSessionAsync(request?.SessionId, request?.Title, cancellationToken);
+                var created = await _sessionStore.CreateSessionAsync(request?.SessionId, request?.Title, request?.ProjectId, cancellationToken);
                 return Created($"/api/chat/sessions/{created.SessionId}", created);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(ex, "Create chat session failed — project missing");
+                return NotFound(new ErrorResponse { Code = "PROJECT_NOT_FOUND", Message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -45,15 +51,34 @@ namespace AgctorSDK.Host.Controllers
 
         [HttpGet]
         [ProducesResponseType(typeof(IReadOnlyList<SessionInfo>), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IReadOnlyList<SessionInfo>>> ListAsync(
             [FromQuery] int limit = 50,
             [FromQuery] int offset = 0,
+            [FromQuery] string? projectId = null,
+            [FromQuery] bool standalone = false,
             CancellationToken cancellationToken = default)
         {
             try
             {
-                var sessions = await _sessionStore.ListSessionsAsync(limit, offset, cancellationToken);
+                if (!string.IsNullOrWhiteSpace(projectId) && standalone)
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "SESSION_LIST_AMBIGUOUS",
+                        Message = "Use either projectId or standalone, not both."
+                    });
+                }
+
+                IReadOnlyList<SessionInfo> sessions;
+                if (!string.IsNullOrWhiteSpace(projectId))
+                    sessions = await _sessionStore.ListSessionsByProjectAsync(projectId.Trim(), limit, offset, cancellationToken);
+                else if (standalone)
+                    sessions = await _sessionStore.ListStandaloneSessionsAsync(limit, offset, cancellationToken);
+                else
+                    sessions = await _sessionStore.ListSessionsAsync(limit, offset, cancellationToken);
+
                 return Ok(sessions);
             }
             catch (Exception ex)
@@ -64,6 +89,94 @@ namespace AgctorSDK.Host.Controllers
                     Code = "SESSION_LIST_FAILED",
                     Message = ex.Message
                 });
+            }
+        }
+
+        /// <summary>Put session into a project (move from another project or standalone).</summary>
+        [HttpPut("{sessionId}/project")]
+        [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<SessionInfo>> PutProjectAsync(
+            [FromRoute] string sessionId,
+            [FromBody] AssignChatSessionProjectRequest? request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.ProjectId))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "SESSION_PROJECT_REQUIRED",
+                        Message = "projectId is required in the request body."
+                    });
+                }
+
+                var session = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                if (session == null)
+                {
+                    return NotFound(new ErrorResponse
+                    {
+                        Code = "SESSION_NOT_FOUND",
+                        Message = $"Session '{sessionId}' was not found."
+                    });
+                }
+
+                await _sessionStore.AssignSessionToProjectAsync(sessionId, request.ProjectId.Trim(), cancellationToken);
+                var updated = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                return Ok(updated!);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Assign session {SessionId} to project failed", sessionId);
+                if (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    return NotFound(new ErrorResponse { Code = "PROJECT_NOT_FOUND", Message = ex.Message });
+                }
+
+                return BadRequest(new ErrorResponse { Code = "SESSION_ASSIGN_FAILED", Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to assign session {SessionId} to project", sessionId);
+                return StatusCode(500, new ErrorResponse { Code = "SESSION_ASSIGN_FAILED", Message = ex.Message });
+            }
+        }
+
+        /// <summary>Remove session from its project (standalone session).</summary>
+        [HttpDelete("{sessionId}/project")]
+        [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<SessionInfo>> DeleteProjectAsync([FromRoute] string sessionId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var session = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                if (session == null)
+                {
+                    return NotFound(new ErrorResponse
+                    {
+                        Code = "SESSION_NOT_FOUND",
+                        Message = $"Session '{sessionId}' was not found."
+                    });
+                }
+
+                await _sessionStore.DetachSessionFromProjectAsync(sessionId, cancellationToken);
+                var updated = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                return Ok(updated!);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(ex, "Detach session {SessionId} from project failed", sessionId);
+                return BadRequest(new ErrorResponse { Code = "SESSION_DETACH_FAILED", Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to detach session {SessionId} from project", sessionId);
+                return StatusCode(500, new ErrorResponse { Code = "SESSION_DETACH_FAILED", Message = ex.Message });
             }
         }
 

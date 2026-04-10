@@ -3,10 +3,14 @@ using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Services;
+using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Snippets;
 using AgctorSDK.Core.DependencyInjection;
+using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Agents.ProjectMemory;
 using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Services;
 using AgctorSDK.Core.Sessions;
@@ -62,7 +66,23 @@ builder.Services.Configure<AgentTypeOptions>(options =>
     options.RegisterAgentType("CoderAgent", typeof(CoderAgent));
     options.RegisterAgentType("SessionCoordinatorAgent", typeof(SessionCoordinatorAgent));
     options.RegisterAgentType("SessionMemoryAgent", typeof(SessionMemoryAgent));
+    options.RegisterAgentType("PersonExtractorProjectAgent", typeof(PersonExtractorProjectAgent));
+    options.RegisterAgentType("MemoryCuratorProjectAgent", typeof(MemoryCuratorProjectAgent));
+    options.RegisterAgentType("PersonQueryProjectAgent", typeof(PersonQueryProjectAgent));
 });
+
+var defaultProjectMemoryRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "samples", "people-project"));
+builder.Services.Configure<ProjectMemoryAgentOptions>(o =>
+{
+    var cfgPath = builder.Configuration["Agctor:ProjectMemory:ProjectRoot"];
+    o.ProjectRoot = !string.IsNullOrWhiteSpace(cfgPath) ? Path.GetFullPath(cfgPath) : defaultProjectMemoryRoot;
+});
+builder.Services.AddAgctorProjectMemory();
+builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaProjectMemoryLlmClient>();
+builder.Services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+builder.Services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
+builder.Services.AddSingleton<IProjectMemoryAgentYamlPersistence, ProjectMemoryAgentYamlPersistence>();
+builder.Services.AddSingleton<IUserProjectMemorySettingsService, UserProjectMemorySettingsService>();
 
 // Register AGCTOR Core services
 var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory");
@@ -143,8 +163,11 @@ builder.Services.AddHttpClient<OllamaLlmClient>();
 builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmClient>());
 
 // Register scenario services
+builder.Services.Configure<ScenarioCatalogOptions>(builder.Configuration.GetSection("Agctor:Scenarios"));
+builder.Services.AddSingleton<IScenarioCatalog, JsonScenarioCatalog>();
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 builder.Services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
+builder.Services.AddSingleton<IScenarioApplicationService, ScenarioApplicationService>();
 
 // Agent type enablement persisted to appsettings.User.json (PRD-010)
 builder.Services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();
@@ -181,6 +204,8 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+ProjectMemoryServiceAccessor.Initialize(app.Services);
 
 // LLMAgent publishes via static hub (PRD-011).
 AgentOutputStreamHub.Registry = app.Services.GetRequiredService<IAgentOutputStreamRegistry>();

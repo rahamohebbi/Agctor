@@ -1,0 +1,38 @@
+documentTypes:
+  - id: profile
+    fileName: profile.md
+    purpose: Stable profile information
+    updateMode: replace_section
+    sections:
+      - Basic Info
+      - Physical Attributes
+      - Roles
+      - Notes
+
+  - id: skills
+    fileName: skills.md
+    purpose: Skills and competencies
+    updateMode: merge_list
+    sections:
+      - Technical Skills
+      - Professional Skills
+      - Other Skills
+
+  - id: relationships
+    fileName: relationships.md
+    purpose: Person relationships
+    updateMode: merge_list
+    sections:
+      - Family
+      - Friends
+      - Professional
+      - Romantic
+
+  - id: timeline
+    fileName: timeline.md
+    purpose: Dated events and observations
+    updateMode: append_chronological
+    sections:
+      - Events
+      - Changes
+      - Observations

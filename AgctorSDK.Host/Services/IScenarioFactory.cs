@@ -1,5 +1,7 @@
 namespace AgctorSDK.Host.Services;
 
+using AgctorSDK.Host.Services.Scenarios;
+
 /// <summary>
 /// Factory for creating and managing test scenarios
 /// </summary>
@@ -23,4 +25,9 @@ public interface IScenarioFactory
     /// </summary>
     /// <returns>Dictionary of scenario name to description</returns>
     Dictionary<string, string> GetScenarioDescriptions();
+
+    /// <summary>
+    /// Get full scenario definitions from catalog.
+    /// </summary>
+    IReadOnlyList<ScenarioDefinition> GetScenarioDefinitions();
 } 

@@ -1,46 +1,8 @@
-graph TB
-    subgraph "AgctorSDK.Core"
-        CoreProject["AgctorSDK.Core.csproj<br/>.NET 8.0"]
-    end
-
-    subgraph "NuGet Packages"
-        IronPython["IronPython 3.4.1"]
-        RoslynCSharp["Microsoft.CodeAnalysis.CSharp 4.14.0"]
-        OTelApi["OpenTelemetry.Api 1.6.0"]
-        OTelConsole["OpenTelemetry.Exporter.Console 1.6.0"]
-        OTelJaeger["OpenTelemetry.Exporter.Jaeger 1.5.1"]
-        OTelOtlp["OpenTelemetry.Exporter.OTLP 1.6.0"]
-        OTelZipkin["OpenTelemetry.Exporter.Zipkin 1.6.0"]
-        OTelHosting["OpenTelemetry.Extensions.Hosting 1.6.0"]
-        Channels["System.Threading.Channels 8.0.0"]
-        MsExtDI["Microsoft.Extensions.DI 8.0.0"]
-        MsExtHost["Microsoft.Extensions.Hosting 8.0.0"]
-        MsExtLog["Microsoft.Extensions.Logging 8.0.0"]
-        MsExtHttp["Microsoft.Extensions.Http 8.0.0"]
-        MsExtOpts["Microsoft.Extensions.Options 8.0.0"]
-        Scrutor["Scrutor 4.2.2"]
-    end
-
-    subgraph "Project References"
-        None["No project references<br/>This is the foundation library"]
-    end
-
-    %% Dependencies
-    CoreProject -->|references| IronPython
-    CoreProject -->|references| RoslynCSharp
-    CoreProject -->|references| OTelApi
-    CoreProject -->|references| OTelConsole
-    CoreProject -->|references| OTelJaeger
-    CoreProject -->|references| OTelOtlp
-    CoreProject -->|references| OTelZipkin
-    CoreProject -->|references| OTelHosting
-    CoreProject -->|references| Channels
-    CoreProject -->|references| MsExtDI
-    CoreProject -->|references| MsExtHost
-    CoreProject -->|references| MsExtLog
-    CoreProject -->|references| MsExtHttp
-    CoreProject -->|references| MsExtOpts
-    CoreProject -->|references| Scrutor
-
-    style CoreProject fill:#e1f5ff
-    style None fill:#f5f5f5
+flowchart LR
+  Core[AgctorSDK.Core]
+  Yaml[YamlDotNet]
+  Sql[Microsoft.Data.Sqlite]
+  Pg[Npgsql]
+  Yaml --> Core
+  Sql --> Core
+  Pg --> Core

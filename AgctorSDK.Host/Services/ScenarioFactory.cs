@@ -8,45 +8,58 @@ namespace AgctorSDK.Host.Services;
 public class ScenarioFactory : IScenarioFactory
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly Dictionary<string, Type> _scenarios;
+    private readonly IScenarioCatalog _catalog;
+    private readonly Dictionary<string, Type> _scriptedHandlers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CodeGenerationChainScenario"] = typeof(CodeGenerationChainScenario),
+        ["CodeGraphDemoScenario"] = typeof(CodeGraphDemoScenario)
+    };
 
-    public ScenarioFactory(IServiceProvider serviceProvider)
+    public ScenarioFactory(IServiceProvider serviceProvider, IScenarioCatalog catalog)
     {
         _serviceProvider = serviceProvider;
-        _scenarios = new Dictionary<string, Type>
-        {
-            { "code-generation-chain", typeof(CodeGenerationChainScenario) },
-            { "code-graph-demo", typeof(CodeGraphDemoScenario) }
-            // Add new scenarios here:
-            // { "math-generation-chain", typeof(MathGenerationChainScenario) }
-        };
+        _catalog = catalog;
     }
 
     public IScenario? GetScenario(string scenarioName)
     {
-        if (!_scenarios.TryGetValue(scenarioName, out var scenarioType))
+        var def = _catalog.Get(scenarioName);
+        if (def == null)
         {
             return null;
         }
 
-        return (IScenario)ActivatorUtilities.CreateInstance(_serviceProvider, scenarioType);
+        if (def.IsScripted)
+        {
+            if (string.IsNullOrWhiteSpace(def.Handler) || !_scriptedHandlers.TryGetValue(def.Handler, out var scenarioType))
+                return null;
+            var scripted = (IScenario)ActivatorUtilities.CreateInstance(_serviceProvider, scenarioType);
+            if (scripted is IScenarioDefinitionAware aware)
+                aware.SetDefinition(def);
+            return scripted;
+        }
+
+        return ActivatorUtilities.CreateInstance<DeclarativeScenario>(_serviceProvider, def);
     }
 
     public IEnumerable<string> GetAvailableScenarios()
     {
-        return _scenarios.Keys;
+        return _catalog.List().Select(x => x.Id);
     }
 
     public Dictionary<string, string> GetScenarioDescriptions()
     {
         var descriptions = new Dictionary<string, string>();
-        
-        foreach (var (name, type) in _scenarios)
+
+        foreach (var s in _catalog.List())
         {
-            var scenario = (IScenario)ActivatorUtilities.CreateInstance(_serviceProvider, type);
-            descriptions[name] = scenario.Description;
+            descriptions[s.Id] = string.IsNullOrWhiteSpace(s.Description)
+                ? (string.IsNullOrWhiteSpace(s.DisplayName) ? s.Id : s.DisplayName)
+                : s.Description;
         }
-        
+
         return descriptions;
     }
+
+    public IReadOnlyList<ScenarioDefinition> GetScenarioDefinitions() => _catalog.List();
 } 

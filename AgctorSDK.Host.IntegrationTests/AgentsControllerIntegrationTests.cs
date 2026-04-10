@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.ProjectMemory.Models;
 using Moq;
 
 namespace AgctorSDK.Host.IntegrationTests
@@ -425,6 +426,68 @@ namespace AgctorSDK.Host.IntegrationTests
                 messageResponse.Should().NotBeNull();
                 messageResponse!.Status.Should().Be(MessageStatus.Success);
             }
+        }
+
+        [Fact]
+        public async Task GetDefinitionById_CSharpType_ReturnsKindCSharp()
+        {
+            var response = await _client.GetAsync("/api/agents/definitions/LLMAgent");
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var el = await response.Content.ReadFromJsonAsync<JsonElement>();
+            el!.GetProperty("kind").GetString().Should().Be("csharp-type");
+            el.GetProperty("id").GetString().Should().Be("LLMAgent");
+            el.GetProperty("detail").GetProperty("clrType").GetString().Should().NotBeNullOrEmpty();
+        }
+
+        [Fact]
+        public async Task GetDefinitionById_ProjectMemoryYaml_ReturnsSpec()
+        {
+            var response = await _client.GetAsync("/api/agents/definitions/person-extractor");
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            var el = await response.Content.ReadFromJsonAsync<JsonElement>();
+            el!.GetProperty("kind").GetString().Should().Be("project-memory-yaml");
+            el.GetProperty("detail").GetProperty("spec").GetProperty("id").GetString().Should().Be("person-extractor");
+        }
+
+        [Fact]
+        public async Task PostProjectMemoryDefinition_DuplicateId_ReturnsConflict()
+        {
+            var body = new SaveAgentRequestDto
+            {
+                Spec = new AgentDefinitionSpec
+                {
+                    Id = "person-extractor",
+                    Name = "dup",
+                    Role = "test"
+                }
+            };
+            var response = await _client.PostAsJsonAsync("/api/agents/definitions/project-memory", body);
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        }
+
+        [Fact]
+        public async Task PostThenDeleteProjectMemoryDefinition_RoundTrip()
+        {
+            var id = "integration-pm-agent-" + Guid.NewGuid().ToString("N");
+            var body = new SaveAgentRequestDto
+            {
+                Spec = new AgentDefinitionSpec
+                {
+                    Id = id,
+                    Name = "Integration agent",
+                    Role = "test",
+                    ProjectTypes = new List<string> { "people" },
+                    Instructions = new List<string> { "Test only." },
+                    Input = new ContractRef { Type = "text_or_document" },
+                    Output = new ContractRef { Type = "text" }
+                }
+            };
+
+            var post = await _client.PostAsJsonAsync("/api/agents/definitions/project-memory", body);
+            post.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var del = await _client.DeleteAsync("/api/agents/definitions/project-memory/" + Uri.EscapeDataString(id));
+            del.StatusCode.Should().Be(HttpStatusCode.OK);
         }
     }
 } 

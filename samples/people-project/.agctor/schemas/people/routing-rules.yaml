@@ -1,0 +1,74 @@
+routingRules:
+  # Demographics / identity (LLMs often emit knowledgeType "person"; map to profile Basic Info)
+  - when:
+      knowledgeType: person
+      attribute: name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: person
+      attribute: age
+    target:
+      document: profile
+      section: Basic Info
+
+  # Preferred stable names (same targets; use when the model follows the schema)
+  - when:
+      knowledgeType: profile_fact
+      attribute: name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: age
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: ownership
+    target:
+      document: profile
+      section: Notes
+
+  - when:
+      knowledgeType: occupation
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: physical_attribute
+      attribute: eye_color
+    target:
+      document: profile
+      section: Physical Attributes
+
+  - when:
+      knowledgeType: skill
+    target:
+      document: skills
+      section: Technical Skills
+
+  - when:
+      knowledgeType: family_role
+    target:
+      document: relationships
+      section: Family
+
+  - when:
+      knowledgeType: event
+    target:
+      document: timeline
+      section: Events
+
+  - when:
+      knowledgeType: observation
+    target:
+      document: timeline
+      section: Observations

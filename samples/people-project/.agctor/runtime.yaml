@@ -1,0 +1,4 @@
+schemaVersion: 1
+mode: sqlite
+sqlite:
+  databasePath: .agctor/runtime/sqlite/agctor.db
