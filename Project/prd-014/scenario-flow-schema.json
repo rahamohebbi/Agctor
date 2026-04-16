@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agctor.local/schemas/scenario-flow.schema.json",
+  "title": "ScenarioFlowGraphDocument",
+  "description": "Canonical portable graph (PRD-014). Embed as `flow` on scenario DTO/catalog entries. Validates structure only; domain rules (reachability, persona ids) stay in application code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "graphId", "nodes", "edges", "outputPolicy"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "Document format version for migrations (e.g. 1.0, 1.1).",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id for this graph within a scenario."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable label (revisions UI)."
+    },
+    "status": {
+      "type": "string",
+      "description": "Lifecycle; prefer soft-delete via deleted/archived.",
+      "enum": ["active", "archived", "deleted"]
+    },
+    "createdAtUtc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional audit timestamp (RFC 3339)."
+    },
+    "updatedAtUtc": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Optional audit timestamp (RFC 3339)."
+    },
+    "outputPolicy": {
+      "type": "string",
+      "enum": ["first_non_empty", "merge_sections", "ranked"],
+      "description": "How branch outputs combine at Merge/Output."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/flowNode" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flowEdge" }
+    },
+    "ui": {
+      "type": "object",
+      "description": "Presentation-only data (e.g. node positions). Not required for execution semantics.",
+      "additionalProperties": true,
+      "properties": {
+        "nodeLayouts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            },
+            "required": ["x", "y"]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "flowNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "label", "config"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique node id within the graph."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ChatInput", "Router", "PersonaCall", "Merge", "Output"],
+          "description": "v1 node kinds (PRD-014)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label in the designer."
+        },
+        "config": {
+          "type": "object",
+          "description": "Type-specific payload (e.g. personaId for PersonaCall).",
+          "additionalProperties": true
+        }
+      }
+    },
+    "flowEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fromNodeId", "toNodeId", "mode"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique edge id within the graph."
+        },
+        "fromNodeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source node id."
+        },
+        "toNodeId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Target node id."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["sequential", "parallel"],
+          "description": "Execution mode along this edge."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Optional router/rule label or expression key (app-defined)."
+        }
+      }
+    }
+  }
+}

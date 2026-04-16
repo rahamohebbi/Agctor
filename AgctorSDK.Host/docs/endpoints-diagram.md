@@ -51,6 +51,16 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | POST | `/api/tools/batch` | Batch invoke tools |
 | GET | `/api/tools/health` | Health check |
 
+### Scenarios catalog (`/api/scenarios`)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/scenarios` | List merged scenario catalog (optional `flow` GraphDocument per scenario, PRD-014) |
+| GET | `/api/scenarios/{id}` | Get one scenario |
+| PUT | `/api/scenarios` | Save user catalog; validates flow |
+| POST | `/api/scenarios/reload` | Reload catalog from disk |
+| POST | `/api/scenarios/{id}/apply` | Apply scenario (spawn/configure per kind) |
+| POST | `/api/scenarios/{id}/flow/run` | Execute `flow` (sequential + parallel→Merge); `PersonaCall` uses project-memory YAML + Ollama; optional `personaCallTimeoutSeconds` (default 180) |
+
 ### Test (`/api/test`)
 | Method | Path | Description |
 |--------|------|-------------|

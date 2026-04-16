@@ -81,6 +81,7 @@
                 (projects || []).forEach(function (p) {
                     var opt = document.createElement('option');
                     opt.value = p.projectId;
+                    opt.dataset.scenarioId = (p.scenarioId || 'people').trim();
                     opt.textContent = (p.name || p.projectId) + ' [' + (p.scenarioId || 'people') + ']';
                     projectSel.appendChild(opt);
                 });
@@ -208,6 +209,11 @@
             mode: modeSel.value || 'auto'
         };
         if (sessionSel.value) body.sessionId = sessionSel.value;
+        // PRD-014: chat project carries scenario id — pipeline must send it or ingest stays under legacy people/ at project root.
+        if (activeProjectId && projectSel.selectedOptions && projectSel.selectedOptions[0]) {
+            var sc = projectSel.selectedOptions[0].dataset.scenarioId;
+            if (sc) body.scenarioId = sc;
+        }
 
         fetch('/api/project-memory/orchestrator/run', {
             method: 'POST',

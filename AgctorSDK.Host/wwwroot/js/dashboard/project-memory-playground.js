@@ -16,6 +16,8 @@
     var messages = document.getElementById('pm-play-messages');
     var status = document.getElementById('pm-play-status');
     var hint = document.getElementById('pm-play-hint');
+    var flowStepsEl = document.getElementById('pm-play-flow-steps');
+    var flowDetailEl = document.getElementById('pm-play-flow-detail');
     if (!agentSel || !projectSel || !projectNameInput || !scenarioSel || !newProjectBtn || !sessionSel || !newBtn || !refreshBtn || !copyLinkBtn || !sendBtn || !input || !messages || !status) return;
 
     var activeSessionId = null;
@@ -158,6 +160,7 @@
                 (projects || []).forEach(function (p) {
                     var opt = document.createElement('option');
                     opt.value = p.projectId;
+                    opt.dataset.scenarioId = (p.scenarioId || 'people').trim();
                     opt.textContent = (p.name || p.projectId) + ' [' + (p.scenarioId || 'people') + ']';
                     projectSel.appendChild(opt);
                 });
@@ -291,6 +294,76 @@
         return { rest: rest, events: events };
     }
 
+    /** Clears pipeline visualization before a new streamed request. */
+    function resetFlowViz() {
+        if (!flowStepsEl) return;
+        flowStepsEl.innerHTML = '';
+        if (flowDetailEl) flowDetailEl.textContent = '';
+    }
+
+    /** Appends step chips (used after <code>flow_plan_tail</code>); does not clear existing chips. */
+    function appendFlowPlanSteps(plan) {
+        if (!flowStepsEl || !plan || !Array.isArray(plan.steps) || plan.steps.length === 0) return;
+        plan.steps.forEach(function (s) {
+            var arr = document.createElement('span');
+            arr.className = 'text-gray-400 dark:text-gray-500 text-[10px] px-0.5 select-none';
+            arr.setAttribute('aria-hidden', 'true');
+            arr.textContent = '→';
+            flowStepsEl.appendChild(arr);
+            var d = document.createElement('div');
+            d.className =
+                'pm-flow-node pm-flow-pending flex max-w-[220px] items-center gap-1.5 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-[10px] text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
+            d.setAttribute('data-flow-step', s.id);
+            d.innerHTML =
+                '<span class="pm-flow-dot inline-block h-2 w-2 shrink-0 rounded-full"></span><span class="leading-tight">' +
+                esc(s.label) +
+                '</span>';
+            if (s.optional && s.active === false) {
+                d.classList.add('opacity-40');
+            }
+            flowStepsEl.appendChild(d);
+        });
+    }
+
+    /** Renders step chips from server <code>flow_plan</code> (bulk transparency). */
+    function applyFlowPlan(plan) {
+        if (!flowStepsEl || !plan || !Array.isArray(plan.steps)) return;
+        resetFlowViz();
+        plan.steps.forEach(function (s, idx) {
+            if (idx > 0) {
+                var arr = document.createElement('span');
+                arr.className = 'text-gray-400 dark:text-gray-500 text-[10px] px-0.5 select-none';
+                arr.setAttribute('aria-hidden', 'true');
+                arr.textContent = '→';
+                flowStepsEl.appendChild(arr);
+            }
+            var d = document.createElement('div');
+            d.className =
+                'pm-flow-node pm-flow-pending flex max-w-[220px] items-center gap-1.5 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-[10px] text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
+            d.setAttribute('data-flow-step', s.id);
+            d.innerHTML =
+                '<span class="pm-flow-dot inline-block h-2 w-2 shrink-0 rounded-full"></span><span class="leading-tight">' +
+                esc(s.label) +
+                '</span>';
+            if (s.optional && s.active === false) {
+                d.classList.add('opacity-40');
+            }
+            flowStepsEl.appendChild(d);
+        });
+    }
+
+    /** One-line status for the selected pipeline step (high-level nodes only). */
+    function setFlowStepStatus(stepId, st, detail) {
+        if (!flowStepsEl) return;
+        var n = flowStepsEl.querySelector('[data-flow-step="' + stepId + '"]');
+        if (!n) return;
+        n.classList.remove('pm-flow-pending', 'pm-flow-running', 'pm-flow-done', 'pm-flow-skipped', 'pm-flow-error');
+        n.classList.add('pm-flow-' + (st || 'pending'));
+        if (flowDetailEl && detail != null && detail !== '') {
+            flowDetailEl.textContent = String(detail);
+        }
+    }
+
     function sendStreaming() {
         var agentId = agentSel.value;
         var sessionId = sessionSel.value;
@@ -301,6 +374,15 @@
 
         sendBtn.disabled = true;
         status.textContent = 'Streaming…';
+        resetFlowViz();
+        if (flowDetailEl) flowDetailEl.textContent = 'Connecting…';
+        if (window.agctorTraceTimeline) {
+            window.agctorTraceTimeline.clear(
+                'pm-play-trace-timeline',
+                'Processing request…',
+                'Latest playground request'
+            );
+        }
 
         messages.insertAdjacentHTML(
             'beforeend',
@@ -337,10 +419,17 @@
             });
         }
 
+        var postBody = { sessionId: sessionId, agentId: agentId, payload: text };
+        if (activeProjectId && projectSel.selectedOptions && projectSel.selectedOptions[0] && projectSel.selectedOptions[0].dataset.scenarioId) {
+            postBody.scenarioId = projectSel.selectedOptions[0].dataset.scenarioId;
+        } else if (scenarioSel && scenarioSel.value) {
+            postBody.scenarioId = scenarioSel.value;
+        }
+
         fetch('/api/project-memory/playground/message/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-            body: JSON.stringify({ sessionId: sessionId, agentId: agentId, payload: text })
+            body: JSON.stringify(postBody)
         })
             .then(function (res) {
                 if (!res.ok) return res.text().then(function (t) { throw new Error(t || String(res.status)); });
@@ -356,6 +445,46 @@
                         buf = ex.rest;
                         for (var i = 0; i < ex.events.length; i++) {
                             var evt = ex.events[i];
+                            if (evt.type === 'flow_plan' && evt.payload && flowStepsEl) {
+                                try {
+                                    applyFlowPlan(JSON.parse(evt.payload));
+                                } catch (ePlan) {
+                                    /* ignore malformed debug payloads */
+                                }
+                            }
+                            if (evt.type === 'flow_plan_tail' && evt.payload && flowStepsEl) {
+                                try {
+                                    appendFlowPlanSteps(JSON.parse(evt.payload));
+                                } catch (eTail) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'flow_step' && evt.payload) {
+                                try {
+                                    var fs = JSON.parse(evt.payload);
+                                    setFlowStepStatus(fs.id, fs.status, fs.detail);
+                                } catch (eStep) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'done' && window.agctorTraceTimeline) {
+                                var tid =
+                                    evt.traceId ||
+                                    evt.TraceId ||
+                                    evt.traceID ||
+                                    evt.trace_id;
+                                if (tid) {
+                                    window.agctorTraceTimeline.load('pm-play-trace-timeline', tid, {
+                                        selectionLabel: 'Latest playground request',
+                                        emptyMessage: 'No timeline is available for this request.',
+                                        errorMessage: 'Trace timeline is unavailable for this request.'
+                                    });
+                                }
+                            }
+                            if (evt.type === 'assistant_tail' && evt.payload) {
+                                acc += evt.payload;
+                                queueMd();
+                            }
                             if (evt.type === 'llm_delta' && evt.payload) {
                                 acc += evt.payload;
                                 queueMd();
@@ -381,6 +510,7 @@
             })
             .catch(function (e) {
                 status.textContent = 'Error';
+                if (flowDetailEl) flowDetailEl.textContent = e.message || String(e);
                 if (streamBody) streamBody.textContent = e.message || String(e);
             })
             .finally(function () {

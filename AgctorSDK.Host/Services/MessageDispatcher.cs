@@ -6,6 +6,7 @@ using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Core.Streaming;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using AgctorSDK.Host.Models;
+using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Services.Traces;
 
 namespace AgctorSDK.Host.Services
@@ -51,6 +52,9 @@ namespace AgctorSDK.Host.Services
         private readonly ITraceTimelineStore _traceTimelineStore;
         private readonly IActivityTracker? _activityTracker;
         private readonly IAgentOutputStreamRegistry _streamRegistry;
+        private readonly ICurrentScenarioStore _currentScenarioStore;
+        private readonly IScenarioCatalog _scenarioCatalog;
+        private readonly IScenarioFlowExecutionService _scenarioFlowExecution;
         private readonly ILogger<MessageDispatcher> _logger;
 
         public MessageDispatcher(
@@ -58,6 +62,9 @@ namespace AgctorSDK.Host.Services
             IAgentRegistry agentRegistry,
             ISessionStore sessionStore,
             ITraceTimelineStore traceTimelineStore,
+            ICurrentScenarioStore currentScenarioStore,
+            IScenarioCatalog scenarioCatalog,
+            IScenarioFlowExecutionService scenarioFlowExecution,
             ILogger<MessageDispatcher> logger,
             IActivityTracker? activityTracker = null,
             IAgentOutputStreamRegistry? streamRegistry = null)
@@ -66,6 +73,9 @@ namespace AgctorSDK.Host.Services
             _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _traceTimelineStore = traceTimelineStore ?? throw new ArgumentNullException(nameof(traceTimelineStore));
+            _currentScenarioStore = currentScenarioStore ?? throw new ArgumentNullException(nameof(currentScenarioStore));
+            _scenarioCatalog = scenarioCatalog ?? throw new ArgumentNullException(nameof(scenarioCatalog));
+            _scenarioFlowExecution = scenarioFlowExecution ?? throw new ArgumentNullException(nameof(scenarioFlowExecution));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _activityTracker = activityTracker;
             _streamRegistry = streamRegistry ?? NullAgentOutputStreamRegistry.Instance;
@@ -114,6 +124,91 @@ namespace AgctorSDK.Host.Services
                 {
                     _logger.LogInformation("Routing natural-language prompt from coder-agent to refactor-agent");
                     agentId = "refactor-agent";
+                }
+
+                // PRD-014 Phase 8.2: when the applied scenario defines a flow, answer via flow runner instead of the coordinator actor.
+                if (string.Equals(agentId, SessionCoordinatorAgentId, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(payloadStr))
+                {
+                    var scn = _currentScenarioStore.GetCurrentScenarioName();
+                    if (!string.IsNullOrWhiteSpace(scn))
+                    {
+                        var scenarioDef = _scenarioCatalog.Get(scn.Trim());
+                        if (scenarioDef?.Flow != null)
+                        {
+                            _logger.LogInformation("Running scenario flow for {ScenarioId} (session-coordinator path)", scn);
+                            var fr = await _scenarioFlowExecution.RunAsync(
+                                scn,
+                                new ScenarioFlowRunRequest { Message = payloadStr, SessionId = sessionId },
+                                cancellationToken).ConfigureAwait(false);
+
+                            if (fr.Success && fr.Output != null)
+                            {
+                                SessionTurn? flowResponseTurn = null;
+                                if (!string.IsNullOrWhiteSpace(sessionId))
+                                {
+                                    flowResponseTurn = await TryAppendSessionTurnAsync(
+                                        sessionId,
+                                        SessionRole.Assistant,
+                                        fr.Output,
+                                        agentId,
+                                        turnGroupId,
+                                        cancellationToken).ConfigureAwait(false);
+                                }
+
+                                var flowTraceId = envelope.Headers.TryGetValue("trace-id", out var ftid) ? ftid : ExtractTraceIdFromCurrentContext();
+                                await TryCaptureTraceHistoryAsync(
+                                    sessionId,
+                                    turnGroupId,
+                                    requestTurn,
+                                    flowResponseTurn,
+                                    flowTraceId,
+                                    requestTraceId ?? flowTraceId,
+                                    flowTraceId,
+                                    agentId,
+                                    cancellationToken).ConfigureAwait(false);
+
+                                if (!string.IsNullOrWhiteSpace(agentStreamId))
+                                {
+                                    _streamRegistry.Publish(agentStreamId, new AgentStreamEvent
+                                    {
+                                        Type = "llm_delta",
+                                        Payload = fr.Output,
+                                        TraceId = flowTraceId,
+                                        AgentId = agentId
+                                    });
+                                }
+
+                                return new MessageResponse
+                                {
+                                    MessageId = envelope.Id,
+                                    Status = MessageStatus.Success,
+                                    ResponseData = fr.Output,
+                                    TraceId = flowTraceId,
+                                    ErrorMessage = null
+                                };
+                            }
+
+                            await TryCaptureTraceHistoryAsync(
+                                sessionId,
+                                turnGroupId,
+                                requestTurn,
+                                responseTurn: null,
+                                primaryTraceId: requestTraceId,
+                                requestTraceId: requestTraceId,
+                                responseTraceId: null,
+                                agentId,
+                                cancellationToken).ConfigureAwait(false);
+
+                            return new MessageResponse
+                            {
+                                MessageId = Guid.NewGuid().ToString(),
+                                Status = MessageStatus.Failed,
+                                TraceId = requestTraceId,
+                                ErrorMessage = fr.ErrorMessage ?? fr.ErrorCode ?? "Scenario flow failed."
+                            };
+                        }
+                    }
                 }
 
                 // Validate agent exists
@@ -582,7 +677,8 @@ namespace AgctorSDK.Host.Services
                         StartedAtUtc = activity.Timestamp,
                         StartOffsetMs = Math.Max(0, (activity.Timestamp - start).TotalMilliseconds),
                         DurationMs = Math.Max(1, activity.Duration.TotalMilliseconds),
-                        HasResult = activity.HasResult
+                        HasResult = activity.HasResult,
+                        TimelineDetailJson = activity.TimelineDetailJson
                     }).ToList()
                 };
 

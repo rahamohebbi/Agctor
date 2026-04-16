@@ -13,12 +13,12 @@ namespace AgctorSDK.Host.IntegrationTests
     /// <summary>
     /// End-to-end integration test that exercises the CodeGraph demo scenario via the HTTP API.
     /// </summary>
-    public class CodeGraphScenarioIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class CodeGraphScenarioIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
         private readonly HttpClient _client;
         private static int _portCounter = 14280;
 
-        public CodeGraphScenarioIntegrationTests(WebApplicationFactory<Program> factory)
+        public CodeGraphScenarioIntegrationTests(AgctorWebApplicationFactory factory)
         {
             var configured = factory.WithWebHostBuilder(builder =>
             {

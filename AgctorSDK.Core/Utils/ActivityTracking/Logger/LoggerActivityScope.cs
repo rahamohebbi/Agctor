@@ -68,6 +68,12 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
             _activityInfo.Status = ActivityStatus.Error;
             _logger.Error(exception, $"Activity [{_activityInfo.Id}] exception: {exception.Message}");
         }
+
+        /// <inheritdoc/>
+        public void SetTimelineDetailJson(string? json)
+        {
+            _activityInfo.TimelineDetailJson = json;
+        }
         
         /// <inheritdoc/>
         public void Dispose()

@@ -46,5 +46,8 @@ namespace AgctorSDK.Core.Utils.Observability.Visualization
         /// Gets the timestamp of the activity.
         /// </summary>
         DateTimeOffset Timestamp { get; }
+
+        /// <summary>Optional JSON payload for dashboard drill-down (producer-defined shape, e.g. playground LLM I/O).</summary>
+        string? TimelineDetailJson { get; }
     }
 } 

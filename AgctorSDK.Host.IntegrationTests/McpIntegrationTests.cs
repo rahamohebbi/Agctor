@@ -18,15 +18,16 @@ namespace AgctorSDK.Host.IntegrationTests
     /// Integration tests for the MCP (Model Context Protocol) listener.
     /// Tests TCP connection handling, message parsing, and agent routing.
     /// </summary>
-    public class McpIntegrationTests : IClassFixture<WebApplicationFactory<Program>>, IAsyncLifetime
+    public class McpIntegrationTests : IClassFixture<AgctorWebApplicationFactory>, IAsyncLifetime
     {
-        private readonly WebApplicationFactory<Program> _factory;
+        private readonly AgctorWebApplicationFactory _factory;
+        // WithWebHostBuilder returns the base factory type (not AgctorWebApplicationFactory).
         private WebApplicationFactory<Program>? _serverFactory;
         private static int _portCounter = 10080; // Legacy counter, unused in dynamic mode but kept for uniqueness fallback
         private int _mcpPort;
         private TcpClient? _testClient;
 
-        public McpIntegrationTests(WebApplicationFactory<Program> factory)
+        public McpIntegrationTests(AgctorWebApplicationFactory factory)
         {
             // Initially unknown; will be resolved after host starts
             _mcpPort = 0;

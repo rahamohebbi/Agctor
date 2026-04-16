@@ -24,6 +24,7 @@ public class LoggerActivityTrackerTests
             using (var child = tracker.StartActivity("child-operation", context))
             {
                 child.SetStatus(ActivityStatus.Ok);
+                child.SetTimelineDetailJson("{\"detail\":true}");
             }
         }
 
@@ -34,5 +35,8 @@ public class LoggerActivityTrackerTests
         Assert.Contains(activities, activity => activity.ParentId == null);
         Assert.Contains(activities, activity => activity.ParentId != null);
         Assert.All(activities, activity => Assert.True(activity.Duration.TotalMilliseconds >= 0));
+        var childActivity = activities.FirstOrDefault(a => a.Name == "child-operation");
+        Assert.NotNull(childActivity);
+        Assert.Equal("{\"detail\":true}", childActivity.TimelineDetailJson);
     }
 }

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agctor.local/schemas/scenario-flow-router-response.schema.json",
+  "title": "ScenarioFlowRouterLlmResponse",
+  "description": "Structured output from the Phase 10 LLM Router step. targets[].personaId must be subset of graph-discovered PersonaCall candidates for that Router node.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "targets", "needsClarification"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["personaId"],
+        "properties": {
+          "personaId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Must match config.personaId of a PersonaCall reachable from this Router."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional short justification for logs / UI."
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Optional; host may filter by Router.config.minConfidence."
+          }
+        }
+      }
+    },
+    "needsClarification": {
+      "type": "boolean",
+      "description": "If true, v1 may fail closed or return clarificationPrompt as assistant text (product choice)."
+    },
+    "clarificationPrompt": {
+      "type": ["string", "null"],
+      "description": "Suggested follow-up question when needsClarification is true."
+    }
+  }
+}

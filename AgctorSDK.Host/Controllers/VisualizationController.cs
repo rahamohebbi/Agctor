@@ -133,7 +133,8 @@ namespace AgctorSDK.Host.Controllers
                 StartedAtUtc = activity.Timestamp,
                 StartOffsetMs = Math.Max(0, (activity.Timestamp - start).TotalMilliseconds),
                 DurationMs = Math.Max(1, activity.Duration.TotalMilliseconds),
-                HasResult = activity.HasResult
+                HasResult = activity.HasResult,
+                TimelineDetailJson = activity.TimelineDetailJson
             }).ToList();
 
             return Ok(response);

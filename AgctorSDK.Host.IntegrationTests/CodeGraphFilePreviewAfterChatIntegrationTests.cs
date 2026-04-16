@@ -10,12 +10,12 @@ namespace AgctorSDK.Host.IntegrationTests
     /// <summary>
     /// Verifies file preview still works after chat interactions that refresh actor tree data.
     /// </summary>
-    public class CodeGraphFilePreviewAfterChatIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class CodeGraphFilePreviewAfterChatIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
         private readonly HttpClient _client;
         private static int _portCounter = 13080;
 
-        public CodeGraphFilePreviewAfterChatIntegrationTests(WebApplicationFactory<Program> factory)
+        public CodeGraphFilePreviewAfterChatIntegrationTests(AgctorWebApplicationFactory factory)
         {
             var configured = factory.WithWebHostBuilder(builder =>
             {

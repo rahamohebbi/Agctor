@@ -11,12 +11,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Smoke test for PRD-012 Razor page and script reference.
 /// </summary>
-public class ActorRuntimeDashboardPageIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class ActorRuntimeDashboardPageIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static int _portCounter = 14380;
 
-    public ActorRuntimeDashboardPageIntegrationTests(WebApplicationFactory<Program> factory)
+    public ActorRuntimeDashboardPageIntegrationTests(AgctorWebApplicationFactory factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
         {

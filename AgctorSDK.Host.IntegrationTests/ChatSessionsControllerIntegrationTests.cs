@@ -8,12 +8,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.IntegrationTests
 {
-    public class ChatSessionsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class ChatSessionsControllerIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
         private readonly HttpClient _client;
         private static int _portCounter = 12080;
 
-        public ChatSessionsControllerIntegrationTests(WebApplicationFactory<Program> factory)
+        public ChatSessionsControllerIntegrationTests(AgctorWebApplicationFactory factory)
         {
             var configured = factory.WithWebHostBuilder(builder =>
             {

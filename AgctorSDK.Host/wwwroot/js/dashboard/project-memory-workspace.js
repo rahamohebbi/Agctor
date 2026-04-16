@@ -1,10 +1,20 @@
 /**
- * Workspace browser: JSON tree from GET tree; file preview from GET file?path=
+ * Workspace browser: tree from GET tree; preview from GET file; Git changes under project root.
  */
 (function () {
+    const rootInput = document.getElementById('pm-root-input');
+    const rootSave = document.getElementById('pm-root-save');
+    const rootReload = document.getElementById('pm-root-reload');
+    const rootNote = document.getElementById('pm-root-note');
+    const rootBadge = document.getElementById('pm-root-badge');
     const treeMount = document.getElementById('pm-tree-mount');
     const preview = document.getElementById('pm-file-preview');
+    const gitMeta = document.getElementById('pm-git-meta');
+    const gitList = document.getElementById('pm-git-list');
+    const btnTreeRefresh = document.getElementById('pm-btn-tree-refresh');
+    const btnGitRefresh = document.getElementById('pm-btn-git-refresh');
     if (!treeMount || !preview) return;
+
     let selectedPath = null;
 
     function esc(s) {
@@ -82,6 +92,37 @@
             btn.classList.toggle('dark:bg-blue-900/40', isActive);
             btn.classList.toggle('font-semibold', isActive);
         });
+        if (gitList) {
+            gitList.querySelectorAll('.pm-git-file').forEach(function (btn) {
+                const raw = btn.getAttribute('data-path') || '';
+                let rel;
+                try {
+                    rel = normalizePath(decodeURIComponent(raw));
+                } catch {
+                    rel = normalizePath(raw);
+                }
+                const isActive = rel === selectedPath;
+                btn.classList.toggle('bg-blue-100', isActive);
+                btn.classList.toggle('dark:bg-blue-900/40', isActive);
+                btn.classList.toggle('font-semibold', isActive);
+            });
+        }
+    }
+
+    function attachTreeClickHandlers() {
+        treeMount.querySelectorAll('.pm-file').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const raw = btn.getAttribute('data-path') || '';
+                try {
+                    const rel = decodeURIComponent(raw);
+                    updateSelection(rel);
+                    loadPreview(rel);
+                } catch {
+                    updateSelection(raw);
+                    loadPreview(raw);
+                }
+            });
+        });
     }
 
     function getQueryPath() {
@@ -90,39 +131,201 @@
         return p.replace(/^\/+/, '');
     }
 
-    fetch('/api/project-memory/tree?maxDepth=6')
-        .then(function (r) {
-            if (r.status === 400)
-                return r.json().then(function (b) {
-                    throw new Error(b.error || 'Set project root');
-                });
-            return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
+    function loadTree() {
+        treeMount.innerHTML = '<p class="text-gray-500 text-xs">Loading tree…</p>';
+        fetch('/api/project-memory/tree?maxDepth=8')
+            .then(function (r) {
+                if (r.status === 400)
+                    return r.json().then(function (b) {
+                        throw new Error(b.error || 'Set project root');
+                    });
+                return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
+            })
+            .then(function (node) {
+                treeMount.innerHTML = renderNode(node, 0);
+                attachTreeClickHandlers();
+                const qp = getQueryPath();
+                if (qp) {
+                    updateSelection(qp);
+                    loadPreview(qp);
+                } else {
+                    preview.textContent = 'Select a file in the tree or under Git changes.';
+                }
+            })
+            .catch(function (e) {
+                treeMount.innerHTML = '<p class="text-amber-800 dark:text-amber-200">' + esc(e.message || '') + '</p>';
+                preview.textContent = '';
+            });
+    }
+
+    function setRootUiState(loaded, usingDefault) {
+        if (!rootBadge) return;
+        if (!loaded) {
+            rootBadge.textContent = 'Not loaded';
+            rootBadge.className = 'px-2 py-1 text-[11px] rounded border border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-300';
+            return;
+        }
+
+        if (usingDefault) {
+            rootBadge.textContent = 'Default sample';
+            rootBadge.className = 'px-2 py-1 text-[11px] rounded border border-blue-300 text-blue-700 dark:border-blue-700 dark:text-blue-300';
+            return;
+        }
+
+        rootBadge.textContent = 'Custom';
+        rootBadge.className = 'px-2 py-1 text-[11px] rounded border border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-300';
+    }
+
+    function setRootNote(message, isError) {
+        if (!rootNote) return;
+        rootNote.textContent = message || '';
+        rootNote.className = isError
+            ? 'mt-2 text-xs text-red-700 dark:text-red-300'
+            : 'mt-2 text-xs text-gray-600 dark:text-gray-400';
+    }
+
+    function loadRootStatus() {
+        fetch('/api/project-memory/status')
+            .then(function (r) {
+                return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
+            })
+            .then(function (s) {
+                if (rootInput) rootInput.value = s.projectRoot || '';
+                setRootUiState(Boolean(s.projectLoaded), Boolean(s.usesDefaultSampleProjectRoot));
+                if (s.error) {
+                    setRootNote(s.error, true);
+                } else if (s.projectRoot) {
+                    setRootNote('Active root: ' + s.projectRoot, false);
+                } else {
+                    setRootNote('Set a project root to browse tree and Git changes.', false);
+                }
+            })
+            .catch(function (e) {
+                setRootUiState(false, false);
+                setRootNote('Could not load root status: ' + (e.message || e), true);
+            });
+    }
+
+    function saveRoot() {
+        const value = (rootInput && rootInput.value ? rootInput.value : '').trim();
+        if (!value) {
+            setRootNote('Please enter an absolute folder path.', true);
+            return;
+        }
+
+        if (rootSave) rootSave.disabled = true;
+        setRootNote('Saving project root…', false);
+        fetch('/api/project-memory/project-root', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectRoot: value })
         })
-        .then(function (node) {
-            treeMount.innerHTML = renderNode(node, 0);
-            treeMount.querySelectorAll('.pm-file').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    const raw = btn.getAttribute('data-path') || '';
-                    try {
-                        const rel = decodeURIComponent(raw);
+            .then(function (r) {
+                if (!r.ok) {
+                    return r.json().then(function (b) {
+                        throw new Error((b && b.error) || String(r.status));
+                    });
+                }
+                return r.json();
+            })
+            .then(function (res) {
+                if (rootInput && res.projectRoot) rootInput.value = res.projectRoot;
+                setRootNote((res.note || 'Saved.') + ' Reloading workspace view…', false);
+                loadRootStatus();
+                loadTree();
+                loadGitChanges();
+                preview.textContent = 'Select a file in the tree or under Git changes.';
+            })
+            .catch(function (e) {
+                setRootNote('Save failed: ' + (e.message || e), true);
+            })
+            .finally(function () {
+                if (rootSave) rootSave.disabled = false;
+            });
+    }
+
+    function loadGitChanges() {
+        if (!gitMeta || !gitList) return;
+        gitMeta.textContent = 'Loading…';
+        gitList.innerHTML = '';
+        fetch('/api/project-memory/workspace/git-changes')
+            .then(function (r) {
+                if (r.status === 400)
+                    return r.json().then(function (b) {
+                        throw new Error(b.error || 'Set project root');
+                    });
+                return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
+            })
+            .then(function (d) {
+                if (!d.gitAvailable) {
+                    gitMeta.textContent = d.message || 'Git is not available for this folder.';
+                    gitList.innerHTML =
+                        '<p class="text-xs text-gray-600 dark:text-gray-400">' +
+                        esc(d.message || '') +
+                        '</p>';
+                    return;
+                }
+                gitMeta.textContent =
+                    (d.files && d.files.length
+                        ? d.files.length + ' path(s) under project root — repo: '
+                        : 'Clean — repo: ') + (d.gitRoot || '');
+                if (!d.files || d.files.length === 0) {
+                    gitList.innerHTML = '<p class="text-xs text-gray-600 dark:text-gray-400">No modified or untracked files under this project root.</p>';
+                    return;
+                }
+                let h = '<ul class="space-y-1 text-xs font-mono">';
+                for (let i = 0; i < d.files.length; i++) {
+                    const f = d.files[i];
+                    const rel = normalizePath(f.relativePath || '');
+                    const st = esc(f.status || '');
+                    h +=
+                        '<li class="flex gap-2 items-baseline">' +
+                        '<span class="shrink-0 text-gray-500 w-8">' +
+                        st +
+                        '</span>' +
+                        '<button type="button" class="text-left text-blue-600 hover:underline dark:text-blue-400 pm-git-file break-all" data-path="' +
+                        encodeURIComponent(rel) +
+                        '">' +
+                        esc(rel) +
+                        '</button></li>';
+                }
+                h += '</ul>';
+                gitList.innerHTML = h;
+                gitList.querySelectorAll('.pm-git-file').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        const raw = btn.getAttribute('data-path') || '';
+                        let rel;
+                        try {
+                            rel = normalizePath(decodeURIComponent(raw));
+                        } catch {
+                            rel = normalizePath(raw);
+                        }
                         updateSelection(rel);
                         loadPreview(rel);
-                    } catch {
-                        updateSelection(raw);
-                        loadPreview(raw);
-                    }
+                    });
                 });
+            })
+            .catch(function (e) {
+                gitMeta.textContent = '';
+                gitList.innerHTML = '<p class="text-red-600 text-xs">' + esc(e.message || '') + '</p>';
             });
-            const qp = getQueryPath();
-            if (qp) {
-                updateSelection(qp);
-                loadPreview(qp);
-            } else {
-                preview.textContent = 'Select a file in the tree.';
-            }
-        })
-        .catch(function (e) {
-            treeMount.innerHTML = '<p class="text-amber-800 dark:text-amber-200">' + esc(e.message || '') + '</p>';
-            preview.textContent = '';
+    }
+
+    if (btnTreeRefresh) btnTreeRefresh.addEventListener('click', loadTree);
+    if (btnGitRefresh) btnGitRefresh.addEventListener('click', loadGitChanges);
+    if (rootSave) rootSave.addEventListener('click', saveRoot);
+    if (rootReload) rootReload.addEventListener('click', function () {
+        loadRootStatus();
+        loadTree();
+        loadGitChanges();
+    });
+    if (rootInput) {
+        rootInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') saveRoot();
         });
+    }
+
+    loadRootStatus();
+    loadTree();
+    loadGitChanges();
 })();

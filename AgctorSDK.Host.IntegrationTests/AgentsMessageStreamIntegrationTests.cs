@@ -8,12 +8,12 @@ namespace AgctorSDK.Host.IntegrationTests
     /// <summary>
     /// PRD-011: SSE streaming endpoint returns text/event-stream and a terminal done event.
     /// </summary>
-    public class AgentsMessageStreamIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class AgentsMessageStreamIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
         private readonly WebApplicationFactory<Program> _factory;
         private static int _portCounter = 9200;
 
-        public AgentsMessageStreamIntegrationTests(WebApplicationFactory<Program> factory)
+        public AgentsMessageStreamIntegrationTests(AgctorWebApplicationFactory factory)
         {
             _factory = factory.WithWebHostBuilder(builder =>
             {

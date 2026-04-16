@@ -12,12 +12,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Verifies the CodeGraph Razor page composes PRD-007 ViewComponents and static dashboard script (smoke HTML).
 /// </summary>
-public class CodeGraphDashboardPageIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class CodeGraphDashboardPageIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static int _portCounter = 14180;
 
-    public CodeGraphDashboardPageIntegrationTests(WebApplicationFactory<Program> factory)
+    public CodeGraphDashboardPageIntegrationTests(AgctorWebApplicationFactory factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
         {

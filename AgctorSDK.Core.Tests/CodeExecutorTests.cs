@@ -198,5 +198,35 @@ namespace AgctorSDK.Core.Tests
             Xunit.Assert.Equal("python", request.Parameters["language"]);
             Xunit.Assert.Equal("print('Hello')", request.Parameters["code"]);
         }
+
+        [Fact]
+        public void ParsePrompt_ShouldAcceptCaseInsensitiveToolPrefix()
+        {
+            var tool = new CodeExecutorTool("test-executor");
+            var request = tool.ParsePrompt("codeexecutorTOOL RunCode --language python --code \"print(1)\"");
+            Xunit.Assert.Equal("RunCode", request.Operation);
+            Xunit.Assert.Equal("python", request.Parameters["language"]);
+            Xunit.Assert.Equal("print(1)", request.Parameters["code"]);
+        }
+
+        [Fact]
+        public void ParsePrompt_ShouldAcceptRunCodeLineWithoutToolPrefix()
+        {
+            var tool = new CodeExecutorTool("test-executor");
+            var request = tool.ParsePrompt("RunCode --language python --code \"print(2)\"");
+            Xunit.Assert.Equal("RunCode", request.Operation);
+            Xunit.Assert.Equal("python", request.Parameters["language"]);
+            Xunit.Assert.Equal("print(2)", request.Parameters["code"]);
+        }
+
+        [Fact]
+        public void ParsePrompt_ShouldFindToolLineAfterProseAndNewlines()
+        {
+            var tool = new CodeExecutorTool("test-executor");
+            var prompt = "Sure.\n\nCodeExecutorTool RunCode --language python --code \"print(3)\"";
+            var request = tool.ParsePrompt(prompt);
+            Xunit.Assert.Equal("RunCode", request.Operation);
+            Xunit.Assert.Equal("print(3)", request.Parameters["code"]);
+        }
     }
 } 

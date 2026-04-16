@@ -14,11 +14,19 @@ namespace AgctorSDK.Core.ProjectMemory.Loading;
 /// </summary>
 public sealed class EntityRegistry : IEntityRegistry
 {
-    public Task<IReadOnlyList<EntityRecord>> DiscoverAsync(LoadedProjectContext ctx, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<EntityRecord>> DiscoverAsync(LoadedProjectContext ctx, CancellationToken cancellationToken = default) =>
+        DiscoverAsync(ctx, null, cancellationToken);
+
+    public Task<IReadOnlyList<EntityRecord>> DiscoverAsync(
+        LoadedProjectContext ctx,
+        string? entityWorkspaceRoot,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var list = new List<EntityRecord>();
-        var root = ctx.ProjectRoot;
+        var root = string.IsNullOrWhiteSpace(entityWorkspaceRoot)
+            ? ctx.ProjectRoot
+            : Path.GetFullPath(entityWorkspaceRoot);
         var entityTypes = ctx.TypeSchema.EntityTypes.EntityTypes;
 
         foreach (var et in entityTypes)

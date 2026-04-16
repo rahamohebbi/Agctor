@@ -18,12 +18,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Verifies the full pipeline Goal -> Task DAG generation -> Task execution via TaskFlowEngine.
 /// </summary>
-public class TaskFlowEndToEndIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class TaskFlowEndToEndIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _baseFactory;
+    private readonly AgctorWebApplicationFactory _baseFactory;
     private static int _portCounter = 9100;
 
-    public TaskFlowEndToEndIntegrationTests(WebApplicationFactory<Program> baseFactory) => _baseFactory = baseFactory;
+    public TaskFlowEndToEndIntegrationTests(AgctorWebApplicationFactory baseFactory) => _baseFactory = baseFactory;
 
     [Fact(Timeout = 30000)]
     public async Task Goal_ShouldReachCompletedTasksState()

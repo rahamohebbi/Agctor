@@ -20,12 +20,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Ensures the CoderTaskExecutor + SimpleCodeGenerator produce an output file end-to-end.
 /// </summary>
-public class CodeGenerationIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class CodeGenerationIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _baseFactory;
+    private readonly AgctorWebApplicationFactory _baseFactory;
     private static int _port = 9200;
 
-    public CodeGenerationIntegrationTests(WebApplicationFactory<Program> factory) => _baseFactory = factory;
+    public CodeGenerationIntegrationTests(AgctorWebApplicationFactory factory) => _baseFactory = factory;
 
     [Fact(Timeout = 20000)]
     public async Task GoalFlow_ShouldGenerateFile()

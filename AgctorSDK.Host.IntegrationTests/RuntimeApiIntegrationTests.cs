@@ -13,12 +13,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// PRD-012: GET/PUT /api/runtime.
 /// </summary>
-public class RuntimeApiIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class RuntimeApiIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static int _portCounter = 14280;
 
-    public RuntimeApiIntegrationTests(WebApplicationFactory<Program> factory)
+    public RuntimeApiIntegrationTests(AgctorWebApplicationFactory factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
         {

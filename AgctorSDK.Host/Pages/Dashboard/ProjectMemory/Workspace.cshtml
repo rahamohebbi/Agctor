@@ -5,17 +5,52 @@
 }
 <div class="mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Workspace</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Browse the active project tree and preview text files (read-only).</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Browse the active project tree (disk) and preview text files. Git changes lists paths under the same project root when the Host runs inside a Git checkout.</p>
 </div>
 
-<div id="pm-workspace-root" class="grid gap-6 lg:grid-cols-2">
-    <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 min-h-[320px]">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Tree</h2>
-        <div id="pm-tree-mount" class="text-sm font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-[70vh]"></div>
+<div id="pm-workspace-root" class="space-y-6">
+    <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Base workspace folder</h2>
+            <span id="pm-root-badge" class="px-2 py-1 text-[11px] rounded border border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-300">Not loaded</span>
+        </div>
+        <p class="text-xs text-gray-600 dark:text-gray-400 mb-3">
+            Choose the project memory root used by this page. Value is persisted in <code>appsettings.User.json</code>.
+        </p>
+        <div class="flex flex-col gap-2 md:flex-row md:items-center">
+            <input id="pm-root-input"
+                   type="text"
+                   class="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                   placeholder="/absolute/path/to/project-root" />
+            <div class="flex items-center gap-2">
+                <button type="button" id="pm-root-save" class="px-3 py-2 text-xs font-medium rounded-lg border border-blue-600 bg-blue-600 text-white hover:bg-blue-700">Save</button>
+                <button type="button" id="pm-root-reload" class="px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800 dark:text-gray-100">Reload</button>
+            </div>
+        </div>
+        <p id="pm-root-note" class="mt-2 text-xs text-gray-600 dark:text-gray-400"></p>
     </div>
-    <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 min-h-[320px]">
-        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Preview</h2>
-        <div id="pm-file-preview" class="text-xs font-mono whitespace-pre-wrap break-all text-gray-800 dark:text-gray-200 overflow-auto max-h-[70vh]"></div>
+
+    <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Modified under project root (git)</h2>
+            <button type="button" id="pm-btn-git-refresh" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800 dark:text-gray-100">Refresh</button>
+        </div>
+        <p id="pm-git-meta" class="text-xs text-gray-600 dark:text-gray-400 mb-2 font-mono break-all"></p>
+        <div id="pm-git-list" class="max-h-[28vh] overflow-auto text-gray-800 dark:text-gray-200"></div>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+        <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 min-h-[320px]">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Tree</h2>
+                <button type="button" id="pm-btn-tree-refresh" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:hover:bg-gray-800 dark:text-gray-100">Refresh</button>
+            </div>
+            <div id="pm-tree-mount" class="text-sm font-mono text-gray-800 dark:text-gray-200 overflow-auto max-h-[70vh]"></div>
+        </div>
+        <div class="p-4 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700 min-h-[320px]">
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Preview</h2>
+            <div id="pm-file-preview" class="text-xs font-mono whitespace-pre-wrap break-all text-gray-800 dark:text-gray-200 overflow-auto max-h-[70vh]"></div>
+        </div>
     </div>
 </div>
 

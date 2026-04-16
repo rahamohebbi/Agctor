@@ -39,10 +39,11 @@ graph LR
         end
 
         subgraph "Scenarios catalog /api/scenarios"
-            ScList["GET/PUT /api/scenarios<br/>Catalog list + save"]
+            ScList["GET/PUT /api/scenarios<br/>Catalog list + save optional flow GraphDocument PRD014"]
             ScGet["GET /api/scenarios/id"]
             ScReload["POST /api/scenarios/reload"]
             ScApply["POST /api/scenarios/id/apply<br/>PRD013 Phase4 apply default id"]
+            ScFlowRun["POST /api/scenarios/id/flow/run<br/>PRD014 execute flow parallel+Merge PersonaCall"]
         end
 
         subgraph "Test /api/test"

@@ -9,12 +9,12 @@ using Microsoft.Extensions.Configuration;
 namespace AgctorSDK.Host.IntegrationTests;
 
 /// <summary>POST /api/scenarios/&#123;id&#125;/apply (PRD-013 Phase 4).</summary>
-public sealed class ScenariosApplyIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ScenariosApplyIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static int _portCounter = 15280;
 
-    public ScenariosApplyIntegrationTests(WebApplicationFactory<Program> factory)
+    public ScenariosApplyIntegrationTests(AgctorWebApplicationFactory factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
         {

@@ -50,7 +50,41 @@ routingRules:
       section: Physical Attributes
 
   - when:
+      knowledgeType: physical_attribute
+      attribute: hair
+    target:
+      document: profile
+      section: Physical Attributes
+
+  - when:
+      knowledgeType: physical_attribute
+      attribute: hair_color
+    target:
+      document: profile
+      section: Physical Attributes
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: hair
+    target:
+      document: profile
+      section: Physical Attributes
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: hair_color
+    target:
+      document: profile
+      section: Physical Attributes
+
+  - when:
       knowledgeType: skill
+    target:
+      document: skills
+      section: Technical Skills
+
+  - when:
+      knowledgeType: preference
     target:
       document: skills
       section: Technical Skills

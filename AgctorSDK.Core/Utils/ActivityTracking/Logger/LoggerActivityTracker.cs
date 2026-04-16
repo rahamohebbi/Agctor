@@ -198,6 +198,9 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         /// </summary>
         public ActivityStatus Status { get; set; } = ActivityStatus.InProgress;
 
+        /// <inheritdoc />
+        public string? TimelineDetailJson { get; set; }
+
         /// <summary>
         /// Gets the measured duration of the activity.
         /// </summary>
@@ -219,7 +222,8 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
                 TraceId = TraceId,
                 HasResult = HasResult,
                 Timestamp = Timestamp,
-                Status = Status
+                Status = Status,
+                TimelineDetailJson = TimelineDetailJson
             };
         }
     }

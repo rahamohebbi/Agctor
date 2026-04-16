@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
+using System.Threading;
 using System.Net.Http.Json;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
@@ -14,6 +15,9 @@ using AgctorSDK.Core.ProjectMemory.Validation;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
+using AgctorSDK.Host.Services.ProjectMemory;
+using AgctorSDK.Host.Services.Scenarios;
+using AgctorSDK.Core.Utils.ActivityTracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -37,6 +41,10 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly ISessionStore _sessions;
     private readonly IProjectMemoryPipelineRunner _pipeline;
     private readonly IProjectMemoryAgentYamlPersistence _agentYaml;
+    private readonly IProjectMemoryPersonaLlmRunner _personaLlmRunner;
+    private readonly IScenarioCatalog _scenarioCatalog;
+    private readonly IScenarioFlowRouterLlmService _scenarioFlowRouterLlm;
+    private readonly IActivityTracker? _activityTracker;
     private readonly ILogger<ProjectMemoryController> _logger;
     private static readonly HttpClient LlmHttp = new() { Timeout = TimeSpan.FromMinutes(10) };
 
@@ -54,7 +62,11 @@ public sealed class ProjectMemoryController : ControllerBase
         ISessionStore sessions,
         IProjectMemoryPipelineRunner pipeline,
         IProjectMemoryAgentYamlPersistence agentYaml,
-        ILogger<ProjectMemoryController> logger)
+        IProjectMemoryPersonaLlmRunner personaLlmRunner,
+        IScenarioCatalog scenarioCatalog,
+        IScenarioFlowRouterLlmService scenarioFlowRouterLlm,
+        ILogger<ProjectMemoryController> logger,
+        IActivityTracker? activityTracker = null)
     {
         _options = options;
         _loader = loader;
@@ -66,6 +78,10 @@ public sealed class ProjectMemoryController : ControllerBase
         _sessions = sessions;
         _pipeline = pipeline;
         _agentYaml = agentYaml;
+        _personaLlmRunner = personaLlmRunner;
+        _scenarioCatalog = scenarioCatalog;
+        _scenarioFlowRouterLlm = scenarioFlowRouterLlm;
+        _activityTracker = activityTracker;
         _logger = logger;
     }
 
@@ -102,7 +118,14 @@ public sealed class ProjectMemoryController : ControllerBase
     public async Task<ActionResult<ProjectMemoryStatusDto>> GetStatus(CancellationToken cancellationToken)
     {
         var root = RootOrNull();
-        var dto = new ProjectMemoryStatusDto { ProjectRoot = root ?? "" };
+        var sampleDefault = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "..", "samples", "people-project"));
+        var dto = new ProjectMemoryStatusDto
+        {
+            ProjectRoot = root ?? "",
+            DefaultSampleProjectRoot = sampleDefault
+        };
+        if (root != null)
+            dto.UsesDefaultSampleProjectRoot = string.Equals(Path.GetFullPath(root), sampleDefault, StringComparison.OrdinalIgnoreCase);
         if (root == null)
         {
             dto.Error = "Project root not configured.";
@@ -142,6 +165,14 @@ public sealed class ProjectMemoryController : ControllerBase
             Id = a.Id,
             Name = a.Name,
             Role = a.Role,
+            Description = a.Description ?? "",
+            InputType = a.Input?.Type ?? "",
+            OutputType = a.Output?.Type ?? "",
+            ToolsAllow = a.Tools.Allow,
+            ToolsDeny = a.Tools.Deny,
+            MemoryRead = a.MemoryAccess.Read,
+            MemoryWrite = a.MemoryAccess.Write,
+            Guardrails = a.Guardrails,
             ProjectTypes = a.ProjectTypes,
             SourcePath = a.SourcePath,
             RelativePath = a.SourcePath != null ? ProjectMemoryPathSecurity.ToRelativePath(root, a.SourcePath) : null
@@ -203,20 +234,24 @@ public sealed class ProjectMemoryController : ControllerBase
         var (ctx, err) = await TryLoadContextAsync(root, cancellationToken).ConfigureAwait(false);
         if (err != null || ctx == null)
             return err!;
-
         var spec = ctx.AgentSpecs.FirstOrDefault(a => string.Equals(a.Id, body.AgentId.Trim(), StringComparison.OrdinalIgnoreCase));
         if (spec == null)
             return NotFound(new { error = $"Agent spec '{body.AgentId}' not found in project memory." });
 
-        IReadOnlyList<SessionTurn>? prior = null;
-        if (!string.IsNullOrWhiteSpace(body.SessionId))
-            prior = await _sessions.GetTurnsAsync(body.SessionId.Trim(), null, cancellationToken).ConfigureAwait(false);
-
-        var prompt = BuildPlaygroundPrompt(spec, prior, body.InputText);
         var sw = Stopwatch.StartNew();
-        var output = await CallLocalLlmAsync(prompt, cancellationToken).ConfigureAwait(false);
+        var run = await _personaLlmRunner.RunAsync(
+                root,
+                body.SessionId,
+                body.AgentId,
+                body.InputText,
+                cancellationToken,
+                scenarioId: body.ScenarioId?.Trim())
+            .ConfigureAwait(false);
         sw.Stop();
+        if (!run.Ok)
+            return BadRequest(new { error = run.ErrorMessage ?? "Playground run failed." });
 
+        var output = run.OutputText ?? "";
         var looksJson = LooksLikeJson(output, out var jsonErr);
         return Ok(new ProjectMemoryPlaygroundRunResponseDto
         {
@@ -259,7 +294,8 @@ public sealed class ProjectMemoryController : ControllerBase
             UserMessage = body.UserMessage.Trim(),
             CorrelationId = body.CorrelationId?.Trim() ?? "",
             Mode = mode,
-            ConversationPrefix = conversationPrefix
+            ConversationPrefix = conversationPrefix,
+            ScenarioId = body.ScenarioId?.Trim()
         };
 
         var result = await _pipeline.RunAsync(req, cancellationToken).ConfigureAwait(false);
@@ -375,7 +411,26 @@ public sealed class ProjectMemoryController : ControllerBase
             return;
         }
 
-        var prompt = BuildPlaygroundPrompt(spec, prior, body.Payload);
+        // Match scenario-scoped flows: body may omit scenarioId — inherit from the session's chat project (same bucket as flow run).
+        var scenarioFromBody = body.ScenarioId?.Trim();
+        string? scenarioResolved = string.IsNullOrWhiteSpace(scenarioFromBody) ? null : scenarioFromBody;
+        if (string.IsNullOrWhiteSpace(scenarioResolved))
+        {
+            var sessInfo = await _sessions.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(sessInfo?.ProjectId))
+            {
+                var chatProj = await _sessions.GetProjectAsync(sessInfo.ProjectId!, cancellationToken).ConfigureAwait(false);
+                if (chatProj is { ScenarioId: var sid } && !string.IsNullOrWhiteSpace(sid))
+                    scenarioResolved = sid.Trim();
+            }
+        }
+
+        var scenarioDef = string.IsNullOrWhiteSpace(scenarioResolved) ? null : _scenarioCatalog.Get(scenarioResolved);
+        var flowCatalogOk = scenarioDef?.Flow != null && ScenarioFlowValidator.Validate(scenarioDef).Count == 0;
+        var useScenarioFlow = scenarioDef?.Flow != null && flowCatalogOk && !string.IsNullOrWhiteSpace(scenarioResolved);
+        var prompt = useScenarioFlow
+            ? ""
+            : ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(spec, prior, body.Payload, scenarioResolved);
         var turnGroupId = Guid.NewGuid().ToString();
         var messageId = Guid.NewGuid().ToString();
 
@@ -398,13 +453,432 @@ public sealed class ProjectMemoryController : ControllerBase
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, HttpContext.RequestAborted);
         var ct = linked.Token;
+        var rootFull = Path.GetFullPath(root);
+        var ingestActive = string.Equals(spec.Id, "person-extractor", StringComparison.OrdinalIgnoreCase)
+                           && !string.IsNullOrWhiteSpace(scenarioResolved);
+
+        // One trace per streamed playground turn so the Trace timeline chart can load /api/Visualization/trace/.../timeline.
+        using var streamActivity = _activityTracker?.StartActivity("http.project-memory.playground-stream");
+        string? streamTraceId = null;
+        if (_activityTracker != null)
+        {
+            var cx = _activityTracker.ExtractContext();
+            if (cx.TryGetValue("trace-id", out var tid) && !string.IsNullOrWhiteSpace(tid))
+                streamTraceId = tid;
+        }
 
         async Task WriteSseAsync(AgentStreamEvent evt)
         {
+            if (!string.IsNullOrWhiteSpace(streamTraceId))
+                evt.TraceId = streamTraceId;
             var json = JsonSerializer.Serialize(evt, JsonSse);
             await Response.WriteAsync($"data: {json}\n\n", ct).ConfigureAwait(false);
             await Response.Body.FlushAsync(ct).ConfigureAwait(false);
         }
+
+        async Task WriteFlowStepAsync(string stepId, string status, string? detail = null)
+        {
+            var payload = JsonSerializer.Serialize(new { id = stepId, status, detail }, JsonSse);
+            await WriteSseAsync(new AgentStreamEvent { Type = "flow_step", Payload = payload, AgentId = spec.Id }).ConfigureAwait(false);
+        }
+
+        // Brief "running" beat so the dashboard can show yellow → final color per chip (skipped stays grey).
+        const int flowStepVisualMs = 90;
+        async Task PulseFlowStepAsync(string stepId, string? runningDetail, string finalStatus, string? finalDetail = null)
+        {
+            await WriteFlowStepAsync(stepId, "running", runningDetail).ConfigureAwait(false);
+            try
+            {
+                await Task.Delay(flowStepVisualMs, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+
+            await WriteFlowStepAsync(stepId, finalStatus, finalDetail).ConfigureAwait(false);
+        }
+
+        if (useScenarioFlow)
+        {
+            var ingestChipActive = !string.IsNullOrWhiteSpace(scenarioResolved);
+            var prefixSteps = PlaygroundFlowPlanBuilder.BuildFlowExecutionPlanPrefix(scenarioDef!.Flow!, ingestChipActive);
+            var prefixPayload = new
+            {
+                steps = prefixSteps
+                    .Select(s => new { id = s.Id, label = s.Label, optional = s.Optional, active = s.Active })
+                    .ToArray()
+            };
+            await WriteSseAsync(new AgentStreamEvent
+                {
+                    Type = "flow_plan",
+                    Payload = JsonSerializer.Serialize(prefixPayload, JsonSse),
+                    AgentId = spec.Id
+                })
+                .ConfigureAwait(false);
+
+            var sseGate = new SemaphoreSlim(1, 1);
+            async Task GatedWriteSseAsync(AgentStreamEvent evt)
+            {
+                await sseGate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await WriteSseAsync(evt).ConfigureAwait(false);
+                }
+                finally
+                {
+                    sseGate.Release();
+                }
+            }
+
+            async Task GatedWriteFlowStepAsync(string stepId, string status, string? detail = null)
+            {
+                await sseGate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    await WriteFlowStepAsync(stepId, status, detail).ConfigureAwait(false);
+                }
+                finally
+                {
+                    sseGate.Release();
+                }
+            }
+
+            var lastPersona = spec.Id;
+            var ollamaBaseFlow = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
+            var modelFlow = LLMAgent.GetConfiguredDefaultModel();
+            var flowObserver = new PlaygroundScenarioFlowSseObserver(
+                scenarioDef.Flow!,
+                ingestChipActive,
+                GatedWriteSseAsync,
+                spec.Id,
+                JsonSse);
+
+            // memory-curator must see whether ingest actually wrote files (tools are not executed in playground).
+            ProjectMemoryIngestResult? lastExtractorIngest = null;
+
+            ScenarioFlowGraphInterpreter.PersonaInvoker invokeFlow = async (personaId, promptText, cancellationToken, flowNodeId) =>
+            {
+                lastPersona = personaId.Trim();
+                var pSpec = ctx.AgentSpecs.FirstOrDefault(a =>
+                    string.Equals(a.Id, personaId.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (pSpec == null)
+                    throw new ScenarioFlowExecutionException($"Playground flow: agent spec '{personaId}' was not found.");
+
+                string? flowAppendix = null;
+                if (string.Equals(personaId.Trim(), "memory-curator", StringComparison.OrdinalIgnoreCase))
+                {
+                    flowAppendix = lastExtractorIngest != null
+                        ? ProjectMemoryPersonaLlmRunner.BuildPlaygroundFlowIngestHint(lastExtractorIngest)
+                        : """
+                          ---
+                          Playground runtime: no person-extractor ingest ran before this step (or ingest was skipped).
+                          write_document is not executed here. Do not claim markdown files were written to disk.
+                          """;
+                }
+
+                // Flow mode is strict node-to-node chaining: each persona gets upstream payload as latest input.
+                // Prior transcript is intentionally omitted to avoid leaking older turns into intermediate steps.
+                var built = ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(
+                    pSpec,
+                    priorTurns: null,
+                    newUserText: promptText,
+                    scenarioId: scenarioResolved,
+                    playgroundFlowAppendix: flowAppendix);
+                await GatedWriteSseAsync(new AgentStreamEvent
+                    {
+                        Type = "phase",
+                        Payload = $"Running {personaId}…",
+                        AgentId = spec.Id
+                    })
+                    .ConfigureAwait(false);
+
+                var accFlow = new StringBuilder();
+                using (var personaScopeFlow = _activityTracker?.StartActivity("pm.playground.persona-llm"))
+                {
+                    using var reqFlow = new HttpRequestMessage(HttpMethod.Post, ollamaBaseFlow + "api/generate");
+                    reqFlow.Content = JsonContent.Create(new { model = modelFlow, prompt = built, stream = true });
+                    using var respFlow = await LlmHttp.SendAsync(reqFlow, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                        .ConfigureAwait(false);
+                    respFlow.EnsureSuccessStatusCode();
+                    await using var streamBody = await respFlow.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                    using var readerFlow = new StreamReader(streamBody);
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        var line = await readerFlow.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                        if (line == null)
+                            break;
+                        if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
+                            continue;
+                        if (!string.IsNullOrEmpty(token))
+                        {
+                            accFlow.Append(token);
+                            await GatedWriteSseAsync(new AgentStreamEvent
+                                {
+                                    Type = "llm_delta",
+                                    Payload = token,
+                                    AgentId = spec.Id
+                                })
+                                .ConfigureAwait(false);
+                        }
+
+                        if (done)
+                            break;
+                    }
+
+                    try
+                    {
+                        personaScopeFlow?.SetTimelineDetailJson(
+                            PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(built, accFlow.ToString(), modelFlow, ollamaBaseFlow));
+                    }
+                    catch (Exception exDetail)
+                    {
+                        _logger.LogDebug(exDetail, "Playground: persona trace detail JSON skipped");
+                    }
+                }
+
+                var rawFlow = accFlow.ToString();
+                if (string.Equals(personaId, "person-extractor", StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrWhiteSpace(scenarioResolved))
+                {
+                    var ingestStepId = !string.IsNullOrWhiteSpace(flowNodeId)
+                        ? PlaygroundFlowPlanBuilder.SyntheticIngestIdForExtractorNode(flowNodeId!)
+                        : PlaygroundFlowPlanBuilder.IngestStepId;
+                    await GatedWriteFlowStepAsync(ingestStepId, "running", "parse + route + projection…").ConfigureAwait(false);
+                    using (var ingestScopeFlow = _activityTracker?.StartActivity("pm.playground.ingest-disk"))
+                    {
+                        try
+                        {
+                            var ingestFlow = await _pipeline
+                                .IngestFromExtractorOutputAsync(rootFull, scenarioResolved!, rawFlow, cancellationToken)
+                                .ConfigureAwait(false);
+                            await GatedWriteFlowStepAsync(
+                                    ingestStepId,
+                                    "done",
+                                    ingestFlow.WroteAnyFile
+                                        ? $"Wrote {ingestFlow.UpdatedFiles.Count} path(s)"
+                                        : (ingestFlow.Summary ?? "no files"))
+                                .ConfigureAwait(false);
+                            try
+                            {
+                                ingestScopeFlow?.SetTimelineDetailJson(
+                                    PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingestFlow));
+                            }
+                            catch (Exception exDetail)
+                            {
+                                _logger.LogDebug(exDetail, "Playground: ingest trace detail JSON skipped");
+                            }
+
+                            lastExtractorIngest = ingestFlow;
+                            if (!ingestFlow.ParseSuccess)
+                                _logger.LogWarning(
+                                    "Playground flow ingest parse failed (scenario {Scenario}): {Summary}. Output prefix: {Prefix}",
+                                    scenarioResolved,
+                                    ingestFlow.Summary ?? "",
+                                    ProjectMemoryPersonaLlmRunner.TruncateForIngestLog(rawFlow));
+
+                            // Keep chain purity: downstream PersonaCall receives extractor raw output,
+                            // while ingest remains a side-effect tracked by flow_step + trace.
+                            return rawFlow;
+                        }
+                        catch (Exception exIngest)
+                        {
+                            await GatedWriteFlowStepAsync(ingestStepId, "error", exIngest.Message).ConfigureAwait(false);
+                            throw;
+                        }
+                    }
+                }
+
+                return rawFlow;
+            };
+
+            string fullTextFlow;
+            try
+            {
+                var interpreter = new ScenarioFlowGraphInterpreter();
+                fullTextFlow = await interpreter
+                    .ExecuteAsync(
+                        scenarioDef.Flow!,
+                        body.Payload,
+                        invokeFlow,
+                        Timeout.InfiniteTimeSpan,
+                        rootFull,
+                        _scenarioFlowRouterLlm,
+                        flowObserver,
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            catch (ScenarioFlowExecutionException ex)
+            {
+                _logger.LogWarning(ex, "Playground scenario flow failed");
+                await WriteSseAsync(new AgentStreamEvent { Type = "error", Payload = ex.Message, AgentId = spec.Id })
+                    .ConfigureAwait(false);
+                fullTextFlow = "Error: " + ex.Message;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Playground scenario flow failed");
+                await WriteSseAsync(new AgentStreamEvent { Type = "error", Payload = ex.Message, AgentId = spec.Id })
+                    .ConfigureAwait(false);
+                fullTextFlow = "Error: " + ex.Message;
+            }
+
+            using (var persistScopeFlow = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
+            {
+                try
+                {
+                    await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullTextFlow, lastPersona, turnGroupId, ct)
+                        .ConfigureAwait(false);
+                    try
+                    {
+                        persistScopeFlow?.SetTimelineDetailJson(
+                            PlaygroundTraceTimelineDetail.BuildPersistJson(
+                                sessionId, messageId, fullTextFlow.Length, ingest: null, rootFull));
+                    }
+                    catch (Exception exDetail)
+                    {
+                        _logger.LogDebug(exDetail, "Playground: persist trace detail JSON skipped");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Playground: append assistant turn failed");
+                }
+            }
+
+            var donePayloadFlow = new
+            {
+                type = "done",
+                status = "Success",
+                responseData = fullTextFlow,
+                traceId = streamTraceId,
+                errorMessage = (string?)null,
+                messageId,
+                sessionId
+            };
+            await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadFlow, JsonSse) + "\n\n", ct)
+                .ConfigureAwait(false);
+            await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+            return;
+        }
+
+        var flowPlan = PlaygroundFlowPlanBuilder.Build(scenarioDef, spec.Id, ingestActive, allowSyntheticPersonaStep: true);
+        var planPayload = new
+        {
+            steps = flowPlan.Steps
+                .Select(s => new { id = s.Id, label = s.Label, optional = s.Optional, active = s.Active })
+                .ToArray()
+        };
+        await WriteSseAsync(new AgentStreamEvent
+        {
+            Type = "flow_plan",
+            Payload = JsonSerializer.Serialize(planPayload, JsonSse),
+            AgentId = spec.Id
+        }).ConfigureAwait(false);
+
+        var runIdx = PlaygroundFlowPlanBuilder.ResolveRunnerStepIndex(flowPlan.Steps, spec.Id);
+        if (runIdx < 0)
+        {
+            _logger.LogWarning("Playground: no PersonaCall step in flow plan for agent {AgentId}", spec.Id);
+            for (var j = 0; j < flowPlan.Steps.Count; j++)
+            {
+                if (!string.Equals(flowPlan.Steps[j].NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                runIdx = j;
+                break;
+            }
+        }
+
+        if (runIdx < 0 || runIdx >= flowPlan.Steps.Count)
+        {
+            _logger.LogError("Playground: invalid flow plan (no PersonaCall) for agent {AgentId}", spec.Id);
+            await WriteSseAsync(new AgentStreamEvent
+            {
+                Type = "error",
+                Payload = "Invalid playground flow plan (no PersonaCall step).",
+                AgentId = spec.Id
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        async Task EmitPreStepAsync(PlaygroundFlowPlanBuilder.Step st)
+        {
+            switch (st.NodeKind)
+            {
+                case "ChatInput":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            "Accepting user message…",
+                            "done",
+                            $"{body.Payload.Length} char(s) → session")
+                        .ConfigureAwait(false);
+                    return;
+                case "Router":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            "Router…",
+                            "done",
+                            "Single HTTP request — graph router edges are not evaluated here.")
+                        .ConfigureAwait(false);
+                    return;
+                case "PersonaCall":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            $"{st.Label}…",
+                            "done",
+                            $"Not invoked — this stream runs only {spec.Id}.")
+                        .ConfigureAwait(false);
+                    return;
+                case "Merge":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            "Merge…",
+                            "done",
+                            "Playground does not execute Merge nodes (use Scenarios → flow run for convergence).")
+                        .ConfigureAwait(false);
+                    return;
+                case "Ingest":
+                    if (!ingestActive)
+                    {
+                        var why = !string.Equals(spec.Id, "person-extractor", StringComparison.OrdinalIgnoreCase)
+                            ? $"Agent is '{spec.Id}' — only person-extractor emits memoryIntents JSON for disk ingest."
+                            : "No scenario id resolved (pick Scenario, or put this session in a chat project with a scenario).";
+                        await PulseFlowStepAsync(st.Id, "Apply extractor JSON → disk…", "skipped", why).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await PulseFlowStepAsync(
+                                st.Id,
+                                "Apply extractor JSON → disk…",
+                                "skipped",
+                                "This ingest chip appears before the streamed persona in the graph — disk ingest only runs when Ingest is after the active PersonaCall.")
+                            .ConfigureAwait(false);
+                    }
+
+                    return;
+                default:
+                    await PulseFlowStepAsync(st.Id, st.Label + "…", "skipped", "Not executed in Playground.").ConfigureAwait(false);
+                    return;
+            }
+        }
+
+        for (var i = 0; i < runIdx; i++)
+            await EmitPreStepAsync(flowPlan.Steps[i]).ConfigureAwait(false);
+
+        var ollamaBase = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
+        var model = LLMAgent.GetConfiguredDefaultModel();
+        var personaDetail =
+            $"{spec.Id} @ {rootFull}; {prior.Count} prior turn(s); prompt {prompt.Length} chars"
+            + (string.IsNullOrWhiteSpace(scenarioResolved) ? "" : $"; scenarioId={scenarioResolved}")
+            + (flowPlan.UsedSyntheticPersonaStep
+                ? "; selected agent is not a PersonaCall on this scenario's sequential path — LLM still uses this YAML."
+                : "");
+        var runnerStep = flowPlan.Steps[runIdx];
+        await WriteFlowStepAsync(runnerStep.Id, "running", personaDetail).ConfigureAwait(false);
 
         await WriteSseAsync(new AgentStreamEvent
         {
@@ -413,54 +887,193 @@ public sealed class ProjectMemoryController : ControllerBase
             AgentId = spec.Id
         }).ConfigureAwait(false);
 
+        var sw = Stopwatch.StartNew();
         var acc = new StringBuilder();
-        try
+        var personaFailed = false;
+        using (var personaScope = _activityTracker?.StartActivity("pm.playground.persona-llm"))
         {
-            var ollama = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
-            var model = LLMAgent.GetConfiguredDefaultModel();
-            using var req = new HttpRequestMessage(HttpMethod.Post, ollama + "api/generate");
-            req.Content = JsonContent.Create(new { model, prompt, stream = true });
-
-            using var resp = await LlmHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            resp.EnsureSuccessStatusCode();
-
-            await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            using var reader = new StreamReader(stream);
-
-            while (!ct.IsCancellationRequested)
+            try
             {
-                var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-                if (line == null)
-                    break;
-                if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
-                    continue;
-                if (!string.IsNullOrEmpty(token))
-                {
-                    acc.Append(token);
-                    await WriteSseAsync(new AgentStreamEvent { Type = "llm_delta", Payload = token, AgentId = spec.Id }).ConfigureAwait(false);
-                }
+                using var req = new HttpRequestMessage(HttpMethod.Post, ollamaBase + "api/generate");
+                req.Content = JsonContent.Create(new { model, prompt, stream = true });
 
-                if (done)
-                    break;
+                using var resp = await LlmHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                resp.EnsureSuccessStatusCode();
+
+                await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                using var reader = new StreamReader(stream);
+
+                while (!ct.IsCancellationRequested)
+                {
+                    var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                    if (line == null)
+                        break;
+                    if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
+                        continue;
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        acc.Append(token);
+                        await WriteSseAsync(new AgentStreamEvent { Type = "llm_delta", Payload = token, AgentId = spec.Id })
+                            .ConfigureAwait(false);
+                    }
+
+                    if (done)
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                personaFailed = true;
+                _logger.LogWarning(ex, "Playground stream failed");
+                await WriteFlowStepAsync(runnerStep.Id, "error", ex.Message).ConfigureAwait(false);
+                await WriteSseAsync(new AgentStreamEvent { Type = "error", Payload = ex.Message, AgentId = spec.Id }).ConfigureAwait(false);
+                if (acc.Length == 0)
+                    acc.Append("Error: ").Append(ex.Message);
+            }
+            finally
+            {
+                sw.Stop();
+            }
+
+            try
+            {
+                personaScope?.SetTimelineDetailJson(
+                    PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(prompt, acc.ToString(), model, ollamaBase));
+            }
+            catch (Exception exDetail)
+            {
+                _logger.LogDebug(exDetail, "Playground: persona trace detail JSON skipped");
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Playground stream failed");
-            await WriteSseAsync(new AgentStreamEvent { Type = "error", Payload = ex.Message, AgentId = spec.Id }).ConfigureAwait(false);
-            if (acc.Length == 0)
-                acc.Append("Error: ").Append(ex.Message);
-        }
 
-        var fullText = acc.ToString();
-        try
+        var rawLlm = acc.ToString();
+        if (!personaFailed)
+            await WriteFlowStepAsync(runnerStep.Id, "done", $"Ollama {rawLlm.Length} char(s)").ConfigureAwait(false);
+
+        var fullText = rawLlm;
+        ProjectMemoryIngestResult? ingestSnapshot = null;
+
+        for (var i = runIdx + 1; i < flowPlan.Steps.Count; i++)
         {
-            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullText, agentId: spec.Id, turnGroupId, ct)
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Playground: append assistant turn failed");
+            var st = flowPlan.Steps[i];
+            switch (st.NodeKind)
+            {
+                case "PersonaCall":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            $"{st.Label}…",
+                            "done",
+                            $"Not invoked — only {spec.Id} ran this request.")
+                        .ConfigureAwait(false);
+                    break;
+                case "Merge":
+                    await PulseFlowStepAsync(
+                            st.Id,
+                            "Merge…",
+                            "done",
+                            "Playground does not execute Merge nodes (use Scenarios → flow run for convergence).")
+                        .ConfigureAwait(false);
+                    break;
+                case "Ingest":
+                    if (ingestActive)
+                    {
+                        await WriteFlowStepAsync(st.Id, "running", "parse + route + projection…").ConfigureAwait(false);
+                        using (var ingestScope = _activityTracker?.StartActivity("pm.playground.ingest-disk"))
+                        {
+                            try
+                            {
+                                var ingest = await _pipeline
+                                    .IngestFromExtractorOutputAsync(rootFull, scenarioResolved!, rawLlm, ct)
+                                    .ConfigureAwait(false);
+                                ingestSnapshot = ingest;
+                                fullText = ProjectMemoryPersonaLlmRunner.AppendIngestFooter(rawLlm, ingest);
+                                if (fullText.Length > rawLlm.Length)
+                                {
+                                    var tail = fullText[rawLlm.Length..];
+                                    await WriteSseAsync(new AgentStreamEvent
+                                        {
+                                            Type = "assistant_tail",
+                                            Payload = tail,
+                                            AgentId = spec.Id
+                                        })
+                                        .ConfigureAwait(false);
+                                }
+
+                                await WriteFlowStepAsync(st.Id, "done",
+                                        ingest.WroteAnyFile
+                                            ? $"Wrote {ingest.UpdatedFiles.Count} path(s)"
+                                            : (ingest.Summary ?? "no files"))
+                                    .ConfigureAwait(false);
+                                if (ingest.WroteAnyFile)
+                                    _logger.LogInformation("Playground stream: ingested {Count} file(s) for scenario {ScenarioId}",
+                                        ingest.UpdatedFiles.Count, scenarioResolved);
+                                else if (!ingest.ParseSuccess)
+                                    _logger.LogWarning(
+                                        "Playground stream ingest parse failed (scenario {Scenario}): {Summary}. Output prefix: {Prefix}",
+                                        scenarioResolved,
+                                        ingest.Summary ?? "",
+                                        ProjectMemoryPersonaLlmRunner.TruncateForIngestLog(rawLlm));
+                                try
+                                {
+                                    ingestScope?.SetTimelineDetailJson(
+                                        PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingest));
+                                }
+                                catch (Exception exDetail)
+                                {
+                                    _logger.LogDebug(exDetail, "Playground: ingest trace detail JSON skipped");
+                                }
+                            }
+                            catch (Exception exIngest)
+                            {
+                                _logger.LogWarning(exIngest, "Playground stream ingest failed");
+                                await WriteFlowStepAsync(st.Id, "error", exIngest.Message).ConfigureAwait(false);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var why = !string.Equals(spec.Id, "person-extractor", StringComparison.OrdinalIgnoreCase)
+                            ? $"Agent is '{spec.Id}' — only person-extractor emits memoryIntents JSON for disk ingest."
+                            : "No scenario id resolved (pick Scenario, or put this session in a chat project with a scenario).";
+                        await PulseFlowStepAsync(st.Id, "Apply extractor JSON → disk…", "skipped", why).ConfigureAwait(false);
+                    }
+
+                    break;
+                case "Output":
+                    await WriteFlowStepAsync(st.Id, "running", "session store…").ConfigureAwait(false);
+                    using (var persistScope = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
+                    {
+                        try
+                        {
+                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullText, agentId: spec.Id, turnGroupId, ct)
+                                .ConfigureAwait(false);
+                            await WriteFlowStepAsync(st.Id, "done", messageId).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Playground: append assistant turn failed");
+                            await WriteFlowStepAsync(st.Id, "error", ex.Message).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            try
+                            {
+                                persistScope?.SetTimelineDetailJson(
+                                    PlaygroundTraceTimelineDetail.BuildPersistJson(
+                                        sessionId, messageId, fullText.Length, ingestSnapshot, rootFull));
+                            }
+                            catch (Exception exDetail)
+                            {
+                                _logger.LogDebug(exDetail, "Playground: persist trace detail JSON skipped");
+                            }
+                        }
+                    }
+
+                    break;
+                default:
+                    await PulseFlowStepAsync(st.Id, st.Label + "…", "skipped", "Not executed in Playground.").ConfigureAwait(false);
+                    break;
+            }
         }
 
         var donePayload = new
@@ -468,7 +1081,7 @@ public sealed class ProjectMemoryController : ControllerBase
             type = "done",
             status = "Success",
             responseData = fullText,
-            traceId = (string?)null,
+            traceId = streamTraceId,
             errorMessage = (string?)null,
             messageId,
             sessionId
@@ -669,19 +1282,33 @@ public sealed class ProjectMemoryController : ControllerBase
             return BadRequest(new { error = "Folder must contain .agctor/project.yaml." });
 
         await _userProjectRoot.PersistProjectRootAsync(path, cancellationToken).ConfigureAwait(false);
-        return Ok(new { saved = true, projectRoot = path, note = "Restart the Host to apply configuration from appsettings.User.json unless options reload." });
+        return Ok(new { saved = true, projectRoot = path, note = "Saved to appsettings.User.json and applied for new requests." });
     }
 
     [HttpGet("tree")]
-    public ActionResult<TreeNodeDto> GetTree([FromQuery] int maxDepth = 4)
+    public ActionResult<TreeNodeDto> GetTree([FromQuery] int maxDepth = 6)
     {
         var root = RootOrNull();
         if (root == null)
             return BadRoot();
 
         var n = 0;
-        var node = BuildTree(root, root, "", 0, Math.Clamp(maxDepth, 1, 8), ref n);
+        var node = BuildTree(root, root, "", 0, Math.Clamp(maxDepth, 1, 12), ref n);
         return Ok(node);
+    }
+
+    /// <summary>Git working tree paths under the active project root (requires <c>git</c> on PATH and a <c>.git</c> parent).</summary>
+    [HttpGet("workspace/git-changes")]
+    [ProducesResponseType(typeof(WorkspaceGitChangesDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<WorkspaceGitChangesDto>> GetWorkspaceGitChanges(CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+        var dto = await ProjectMemoryGitWorkspaceScanner
+            .ListChangesUnderProjectRootAsync(root, _logger, cancellationToken)
+            .ConfigureAwait(false);
+        return Ok(dto);
     }
 
     [HttpGet("file")]
@@ -711,7 +1338,8 @@ public sealed class ProjectMemoryController : ControllerBase
 
     private static TreeNodeDto BuildTree(string projectRoot, string currentDir, string relativeDir, int depth, int maxDepth, ref int count)
     {
-        const int maxNodes = 400;
+        // Large enough for sample projects with many rebuild logs while staying bounded for the dashboard.
+        const int maxNodes = 2500;
         var name = string.IsNullOrEmpty(relativeDir) ? Path.GetFileName(projectRoot.TrimEnd(Path.DirectorySeparatorChar)) ?? "project" : Path.GetFileName(currentDir);
         var node = new TreeNodeDto
         {
@@ -787,45 +1415,6 @@ public sealed class ProjectMemoryController : ControllerBase
         public AgentDefinitionSpec Spec { get; set; } = new();
     }
 
-    private static string BuildPlaygroundPrompt(AgentDefinitionSpec spec, IReadOnlyList<SessionTurn>? priorTurns, string newUserText)
-    {
-        var lines = (spec.Instructions ?? new List<string>()).Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
-        var specHeader = $"Agent: {spec.Id}\nRole: {spec.Role}\nName: {spec.Name}\n";
-        var outputHint = spec.Output?.Type?.Contains("intent", StringComparison.OrdinalIgnoreCase) == true
-            ? "Return valid JSON only. Do not wrap JSON in markdown fences."
-            : "Respond in plain text unless JSON is explicitly required by the instructions.";
-
-        var sb = new StringBuilder();
-        sb.Append(string.Join('\n', lines));
-        sb.Append("\n\n").Append(specHeader).Append(outputHint);
-
-        if (priorTurns is { Count: > 0 })
-        {
-            sb.Append("\n\n---\nConversation so far:\n");
-            foreach (var t in priorTurns.OrderBy(x => x.Sequence))
-            {
-                if (t.Role is SessionRole.System or SessionRole.Tool)
-                    continue;
-                var label = t.Role == SessionRole.User ? "User" : "Assistant";
-                sb.Append(label).Append(": ").Append(t.Content).Append('\n');
-            }
-        }
-
-        sb.Append("\n---\nLatest user message:\n").Append(newUserText);
-        return sb.ToString();
-    }
-
-    private static async Task<string> CallLocalLlmAsync(string prompt, CancellationToken cancellationToken)
-    {
-        var ollama = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
-        var model = LLMAgent.GetConfiguredDefaultModel();
-        var req = new { model, prompt, stream = false };
-        var resp = await LlmHttp.PostAsJsonAsync(ollama + "api/generate", req, cancellationToken).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var doc = await resp.Content.ReadFromJsonAsync<OllamaGenDto>(cancellationToken: cancellationToken).ConfigureAwait(false);
-        return doc?.response?.Trim() ?? "";
-    }
-
     private static bool LooksLikeJson(string text, out string? error)
     {
         error = null;
@@ -844,8 +1433,4 @@ public sealed class ProjectMemoryController : ControllerBase
         }
     }
 
-    private sealed class OllamaGenDto
-    {
-        public string? response { get; set; }
-    }
 }

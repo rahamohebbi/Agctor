@@ -13,12 +13,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Integration tests for the Goals REST API.
 /// </summary>
-public class GoalsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class GoalsControllerIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly AgctorWebApplicationFactory _factory;
     private static int _portCounter = 9000; // Dedicated range for goal tests
 
-    public GoalsControllerIntegrationTests(WebApplicationFactory<Program> baseFactory)
+    public GoalsControllerIntegrationTests(AgctorWebApplicationFactory baseFactory)
     {
         _factory = baseFactory;
     }

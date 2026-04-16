@@ -166,6 +166,7 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         private readonly IAgctorLogger _logger;
         private bool _hasResult;
         private bool _disposed = false;
+        private string? _timelineDetailJson;
 
         /// <summary>
         /// Initializes a new instance of the OpenTelemetryActivityScope class.
@@ -297,6 +298,30 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         
         /// <inheritdoc />
         public DateTimeOffset Timestamp => _activity.StartTimeUtc;
+
+        /// <inheritdoc />
+        public string? TimelineDetailJson => _timelineDetailJson;
+
+        /// <inheritdoc />
+        public void SetTimelineDetailJson(string? json)
+        {
+            if (string.IsNullOrEmpty(json))
+            {
+                _timelineDetailJson = null;
+                return;
+            }
+
+            const int max = 8192;
+            _timelineDetailJson = json.Length <= max ? json : json.Substring(0, max);
+            try
+            {
+                _activity.SetTag("agctor.timeline.detail", _timelineDetailJson);
+            }
+            catch
+            {
+                // Tag store may reject oversized values depending on exporter.
+            }
+        }
 
         /// <inheritdoc />
         public void SetStatus(ActivityStatus status, string? description = null)
@@ -480,6 +505,14 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         }
 
         /// <inheritdoc />
+        public void SetTimelineDetailJson(string? json)
+        {
+        }
+
+        /// <inheritdoc />
+        public string? TimelineDetailJson => null;
+
+        /// <inheritdoc />
         public void Dispose()
         {
             if (_disposed)
@@ -523,6 +556,9 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         
         /// <inheritdoc />
         public DateTimeOffset Timestamp { get; set; }
+
+        /// <inheritdoc />
+        public string? TimelineDetailJson { get; set; }
         
         /// <inheritdoc />
         public ActivityStatus Status { get; set; } = ActivityStatus.Completed;

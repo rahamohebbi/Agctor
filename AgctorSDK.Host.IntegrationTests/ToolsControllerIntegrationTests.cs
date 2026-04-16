@@ -13,13 +13,13 @@ namespace AgctorSDK.Host.IntegrationTests
     /// Integration tests for the ToolsController.
     /// Tests tool invocation, discovery, batch operations, and error handling.
     /// </summary>
-    public class ToolsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class ToolsControllerIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
         private static int _portCounter = 9080; // Different base port from AgentsController
 
-        public ToolsControllerIntegrationTests(WebApplicationFactory<Program> factory)
+        public ToolsControllerIntegrationTests(AgctorWebApplicationFactory factory)
         {
             _factory = factory.WithWebHostBuilder(builder =>
             {

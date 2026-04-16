@@ -5,6 +5,10 @@ namespace AgctorSDK.Host.Models;
 public sealed class ProjectMemoryStatusDto
 {
     public string ProjectRoot { get; set; } = "";
+    /// <summary>Repo sample path when <c>Agctor:ProjectMemory:ProjectRoot</c> is unset (Host default: <c>samples/people-project</c>).</summary>
+    public string DefaultSampleProjectRoot { get; set; } = "";
+    /// <summary>True when <see cref="ProjectRoot"/> equals the built-in <c>samples/people-project</c> default.</summary>
+    public bool UsesDefaultSampleProjectRoot { get; set; }
     public bool ProjectLoaded { get; set; }
     public string? ProjectId { get; set; }
     public string? ProjectType { get; set; }
@@ -13,11 +17,54 @@ public sealed class ProjectMemoryStatusDto
     public string? Error { get; set; }
 }
 
+/// <summary>One path from <c>git status --porcelain</c> under the active project root.</summary>
+public sealed class WorkspaceGitChangeItemDto
+{
+    /// <summary>First two status columns (index + work tree), e.g. <c>M </c> or <c>??</c>.</summary>
+    public string Status { get; set; } = "";
+    /// <summary>Path relative to <see cref="ProjectMemoryStatusDto.ProjectRoot"/> using forward slashes.</summary>
+    public string RelativePath { get; set; } = "";
+}
+
+/// <summary>Git working tree changes limited to the configured portable project folder.</summary>
+public sealed class WorkspaceGitChangesDto
+{
+    public bool GitAvailable { get; set; }
+    public string? GitRoot { get; set; }
+    public string? Message { get; set; }
+    public IReadOnlyList<WorkspaceGitChangeItemDto> Files { get; set; } = Array.Empty<WorkspaceGitChangeItemDto>();
+}
+
 public sealed class AgentListItemDto
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Role { get; set; } = "";
+
+    /// <summary>YAML <c>description</c> — PersonaCall inspector and agent list context.</summary>
+    public string Description { get; set; } = "";
+
+    /// <summary>YAML <c>input.type</c>.</summary>
+    public string InputType { get; set; } = "";
+
+    /// <summary>YAML <c>output.type</c>.</summary>
+    public string OutputType { get; set; } = "";
+
+    /// <summary>YAML <c>tools.allow</c> (declared; flow PersonaCall is primarily one LLM step unless host adds ingest).</summary>
+    public IReadOnlyList<string> ToolsAllow { get; set; } = Array.Empty<string>();
+
+    /// <summary>YAML <c>tools.deny</c>.</summary>
+    public IReadOnlyList<string> ToolsDeny { get; set; } = Array.Empty<string>();
+
+    /// <summary>YAML <c>memoryAccess.read</c> patterns.</summary>
+    public IReadOnlyList<string> MemoryRead { get; set; } = Array.Empty<string>();
+
+    /// <summary>YAML <c>memoryAccess.write</c> patterns.</summary>
+    public IReadOnlyList<string> MemoryWrite { get; set; } = Array.Empty<string>();
+
+    /// <summary>YAML <c>guardrails</c>.</summary>
+    public IReadOnlyList<string> Guardrails { get; set; } = Array.Empty<string>();
+
     public IReadOnlyList<string> ProjectTypes { get; set; } = Array.Empty<string>();
     public string? SourcePath { get; set; }
     public string? RelativePath { get; set; }
@@ -117,6 +164,9 @@ public sealed class ProjectMemoryPlaygroundRunRequestDto
     /// <summary>Optional — when set, prior transcript turns are included in the prompt (non-streaming one-shot).</summary>
     public string? SessionId { get; set; }
 
+    /// <summary>Optional scenario id for persona path hint (<c>scenarios/&lt;id&gt;/people/</c>).</summary>
+    public string? ScenarioId { get; set; }
+
     public string AgentId { get; set; } = "";
     public string InputText { get; set; } = "";
 }
@@ -127,6 +177,9 @@ public sealed class ProjectMemoryPlaygroundStreamRequestDto
     public string SessionId { get; set; } = "";
     public string AgentId { get; set; } = "";
     public string Payload { get; set; } = "";
+
+    /// <summary>Optional scenario id for persona path hint in streamed prompts.</summary>
+    public string? ScenarioId { get; set; }
 }
 
 public sealed class ProjectMemoryPlaygroundRunResponseDto
@@ -152,6 +205,9 @@ public sealed class ProjectMemoryOrchestratorRunRequestDto
 
     /// <summary><c>auto</c> (default), <c>ingestOnly</c>, or <c>queryOnly</c>.</summary>
     public string Mode { get; set; } = "auto";
+
+    /// <summary>When set, reads/writes <c>people/</c> under <c>scenarios/&lt;sanitized&gt;/</c>.</summary>
+    public string? ScenarioId { get; set; }
 }
 
 public sealed class ProjectMemoryOrchestratorRunResponseDto

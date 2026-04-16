@@ -11,6 +11,7 @@ instructions:
   - Validate entity identity and allowed knowledge types.
   - Route memory intents to allowed target documents.
   - Preserve markdown template structure.
+  - In dashboard playground (HTTP flow), write_document is not executed; rely on any ingest summary provided in the prompt for what actually changed on disk.
 
 input:
   type: memory_intents_json

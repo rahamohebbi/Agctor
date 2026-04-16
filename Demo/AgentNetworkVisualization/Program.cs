@@ -1143,6 +1143,12 @@ namespace Agctor.Demo.AgentNetworkVisualization
                 
                 _activity.SetStatus(statusCode, description);
             }
+
+            public void SetTimelineDetailJson(string? json)
+            {
+                if (!string.IsNullOrEmpty(json))
+                    _activity.SetTag("agctor.timeline.detail", json.Length <= 4096 ? json : json.Substring(0, 4096));
+            }
         }
 
         // Null implementation for when activity creation fails
@@ -1153,6 +1159,7 @@ namespace Agctor.Demo.AgentNetworkVisualization
             public void RecordException(Exception exception) { }
             public void SetAttribute(string key, string value) { }
             public void SetStatus(ActivityStatus status, string? description = null) { }
+            public void SetTimelineDetailJson(string? json) { }
         }
     }
 
@@ -1169,6 +1176,7 @@ namespace Agctor.Demo.AgentNetworkVisualization
         public TimeSpan Duration => EndTime - StartTime;
         public bool HasResult { get; set; } = false;
         public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
+        public string? TimelineDetailJson { get; set; }
         public IDictionary<string, string> Attributes { get; } = new Dictionary<string, string>();
         public IEnumerable<IActivity> Children { get; } = Array.Empty<IActivity>();
     }

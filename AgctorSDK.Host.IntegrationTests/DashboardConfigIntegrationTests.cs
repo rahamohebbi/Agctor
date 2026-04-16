@@ -11,12 +11,12 @@ namespace AgctorSDK.Host.IntegrationTests;
 /// <summary>
 /// Integration tests for dashboard config API (PRD-006).
 /// </summary>
-public class DashboardConfigIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+public class DashboardConfigIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static int _portCounter = 14080;
 
-    public DashboardConfigIntegrationTests(WebApplicationFactory<Program> factory)
+    public DashboardConfigIntegrationTests(AgctorWebApplicationFactory factory)
     {
         var configured = factory.WithWebHostBuilder(builder =>
         {

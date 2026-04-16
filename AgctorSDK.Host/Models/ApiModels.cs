@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AgctorSDK.Host.Services.Scenarios;
 
 namespace AgctorSDK.Host.Models
 {
@@ -339,6 +340,33 @@ namespace AgctorSDK.Host.Models
     /// <summary>POST /api/scenarios/{id}/apply — optional parameters for scripted handlers.</summary>
     public record ScenarioApplyRequest(Dictionary<string, object>? Parameters = null);
 
+    /// <summary>POST /api/scenarios/{id}/flow/run — executes PRD-014 flow (sequential + parallel→Merge; PersonaCall uses project memory).</summary>
+    public sealed class ScenarioFlowRunRequest
+    {
+        public string Message { get; set; } = "";
+
+        /// <summary>Optional session id for transcript-aware persona prompts (same store as playground).</summary>
+        public string? SessionId { get; set; }
+
+        /// <summary>Per <c>PersonaCall</c> wall-clock timeout (seconds). Default 180 when omitted; use 0 to disable (only HTTP cancellation).</summary>
+        public int? PersonaCallTimeoutSeconds { get; set; }
+    }
+
+    /// <summary>Result of <see cref="ScenarioFlowRunRequest"/>.</summary>
+    public sealed class ScenarioFlowRunResponse
+    {
+        public bool Success { get; set; }
+        public string? Output { get; set; }
+        public string? ErrorCode { get; set; }
+        public string? ErrorMessage { get; set; }
+
+        public static ScenarioFlowRunResponse Ok(string output) =>
+            new() { Success = true, Output = output };
+
+        public static ScenarioFlowRunResponse Fail(string code, string message) =>
+            new() { Success = false, ErrorCode = code, ErrorMessage = message };
+    }
+
     public record ScenarioSetupResponse(
         bool Success,
         string ScenarioName,
@@ -368,6 +396,9 @@ namespace AgctorSDK.Host.Models
         public List<string> PersonaAgentIds { get; set; } = new();
         /// <summary>Optional role bindings into <see cref="PersonaAgentIds"/>.</summary>
         public ScenarioPersonaBindingsDto PersonaBindings { get; set; } = new();
+
+        /// <summary>PRD-014 optional visual flow (canonical GraphDocument).</summary>
+        public ScenarioFlowDocument? Flow { get; set; }
     }
 
     public sealed class ScenarioPersonaBindingsDto
@@ -381,6 +412,16 @@ namespace AgctorSDK.Host.Models
     {
         public int Version { get; set; } = 1;
         public List<ScenarioDto> Scenarios { get; set; } = new();
+        /// <summary>When set, hides matching ids from the default catalog in the merged view (dashboard saves this with the scenario list).</summary>
+        public List<string>? SuppressedDefaultScenarioIds { get; set; }
+    }
+
+    /// <summary>Creates a declarative scenario in the user catalog file.</summary>
+    public sealed class CreateScenarioRequest
+    {
+        public string Id { get; set; } = "";
+        public string? DisplayName { get; set; }
+        public string? Description { get; set; }
     }
 
     /// <summary>
@@ -458,5 +499,8 @@ namespace AgctorSDK.Host.Models
         public double StartOffsetMs { get; set; }
         public double DurationMs { get; set; }
         public bool HasResult { get; set; }
+
+        /// <summary>Optional JSON for dashboard drill-down (e.g. playground LLM I/O, written paths).</summary>
+        public string? TimelineDetailJson { get; set; }
     }
 } 

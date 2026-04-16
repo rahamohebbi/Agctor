@@ -55,8 +55,14 @@ namespace AgctorSDK.Core.Tools.Implementations
                 
                 if (toolRequest.Operation == "Error")
                 {
-                    LogError($"Error parsing tool request: {toolRequest.Parameters["Error"]}");
-                    await FinalizeTaskAsFailed(new Exception($"Failed to parse tool request: {toolRequest.Parameters["Error"]}"), cancellationToken);
+                    // LLM output often omits the legacy CLI shape; warn instead of error-level noise.
+                    LogWarning($"Tool request parse skipped: {toolRequest.Parameters["Error"]}. Expected a line like: CodeExecutorTool RunCode --language python --code \"...\"");
+                    var ex = new Exception($"Failed to parse tool request: {toolRequest.Parameters["Error"]}");
+                    // Avoid FinalizeTaskAsFailed when nothing listens (prevents ERROR + "no parent to notify" spam).
+                    if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
+                        await FinalizeTaskAsFailed(ex, cancellationToken);
+                    else
+                        LogWarning("Parse failed with no parent runtime wiring; failure not propagated.");
                     return;
                 }
                 
@@ -83,20 +89,34 @@ namespace AgctorSDK.Core.Tools.Implementations
         public ToolRequest ParsePrompt(string prompt)
         {
             LogInfo($"Parsing prompt for tool request: {prompt}");
-            
-            // First, extract the command line from the potentially verbose LLM output
-            var commandLineMatch = System.Text.RegularExpressions.Regex.Match(prompt, @"(CodeExecutorTool\s+\w+.*)");
-            if (!commandLineMatch.Success)
+            var text = prompt ?? string.Empty;
+
+            // LLMs often wrap prose/newlines/casing; match case-insensitive and allow newlines inside quoted --code.
+            var commandLineMatch = System.Text.RegularExpressions.Regex.Match(
+                text.Trim(),
+                @"(?is)CodeExecutorTool\s+\w+.*");
+            string commandLine;
+            if (commandLineMatch.Success)
             {
-                LogWarning($"Could not find command line in input: {prompt}");
-                return new ToolRequest { Operation = "Error", Parameters = new Dictionary<string, object> { { "Error", "Could not find command line in input" } } };
+                commandLine = commandLineMatch.Value.Trim();
+            }
+            else
+            {
+                // Some callers emit only "RunCode --language ..." without the tool prefix.
+                var runOnly = System.Text.RegularExpressions.Regex.Match(text.Trim(), @"(?is)\b(RunCode\b.*)");
+                if (!runOnly.Success)
+                {
+                    LogWarning($"Could not find command line in input (expected 'CodeExecutorTool RunCode ...' or 'RunCode ...'): {(text.Length > 400 ? text[..400] + "…" : text)}");
+                    return new ToolRequest { Operation = "Error", Parameters = new Dictionary<string, object> { { "Error", "Could not find command line in input" } } };
+                }
+
+                commandLine = ("CodeExecutorTool " + runOnly.Groups[1].Value).Trim();
             }
 
-            string commandLine = commandLineMatch.Groups[1].Value.Trim();
             LogInfo($"Found command line: {commandLine}");
 
             // Now parse the command line
-            var match = System.Text.RegularExpressions.Regex.Match(commandLine, @"CodeExecutorTool\s+(\w+)(.*)");
+            var match = System.Text.RegularExpressions.Regex.Match(commandLine, @"(?i)CodeExecutorTool\s+(\w+)(.*)");
             if (!match.Success)
             {
                 LogWarning($"Could not parse operation from command line: {commandLine}");

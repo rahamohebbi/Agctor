@@ -9,6 +9,9 @@ public sealed class ScenarioCatalogDocument
 {
     public int Version { get; set; } = 1;
     public List<ScenarioDefinition> Scenarios { get; set; } = new();
+
+    /// <summary>Default-catalog scenario ids excluded from the merged view (user removed them).</summary>
+    public List<string>? SuppressedDefaultScenarioIds { get; set; }
 }
 
 /// <summary>
@@ -26,6 +29,9 @@ public sealed class ScenarioDefinition
     public List<string> PersonaAgentIds { get; set; } = new();
     /// <summary>Optional role bindings into <see cref="PersonaAgentIds"/>.</summary>
     public ScenarioPersonaBindings PersonaBindings { get; set; } = new();
+
+    /// <summary>PRD-014 optional persona orchestration graph (portable GraphDocument, not renderer-native JSON).</summary>
+    public ScenarioFlowDocument? Flow { get; set; }
 
     [JsonIgnore]
     public bool IsScripted => string.Equals(Kind, ScenarioKinds.Scripted, StringComparison.OrdinalIgnoreCase);

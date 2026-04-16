@@ -3,6 +3,7 @@ using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Services;
+using AgctorSDK.Host.Services.ProjectMemory;
 using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
@@ -17,6 +18,8 @@ using AgctorSDK.Core.Sessions;
 using AgctorSDK.Host.Services.Sessions;
 using AgctorSDK.Host.Services.Traces;
 using AgctorSDK.Core.Streaming;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,8 +34,14 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["ASPNETCORE_URLS"]) &&
     builder.WebHost.UseUrls("http://localhost:5274");
 }
 
-// Add services to the container
-builder.Services.AddControllers();
+// Add services to the container — camelCase JSON so browser fetch() matches JS (s.flow, personaAgentIds, …).
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 builder.Services.AddRazorPages();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -168,6 +177,9 @@ builder.Services.AddSingleton<IScenarioCatalog, JsonScenarioCatalog>();
 builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
 builder.Services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
 builder.Services.AddSingleton<IScenarioApplicationService, ScenarioApplicationService>();
+builder.Services.AddSingleton<IProjectMemoryPersonaLlmRunner, ProjectMemoryPersonaLlmRunner>();
+builder.Services.AddSingleton<IScenarioFlowRouterLlmService, ScenarioFlowRouterLlmService>();
+builder.Services.AddSingleton<IScenarioFlowExecutionService, ScenarioFlowExecutionService>();
 
 // Agent type enablement persisted to appsettings.User.json (PRD-010)
 builder.Services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();

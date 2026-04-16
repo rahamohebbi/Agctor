@@ -50,7 +50,13 @@ public sealed class MemoryCuratorProjectAgent : Agent
             if (routeIssues.Any(i => i.IsError))
                 return TextEnvelope(JsonSerializer.Serialize(new { errors = routeIssues }));
 
-            var discovered = await entitiesReg.DiscoverAsync(ctx, cancellationToken).ConfigureAwait(false);
+            // Align with pipeline: optional scenario scopes entities under scenarios/<id>/people/.
+            var scenarioId = string.IsNullOrWhiteSpace(batch.ScenarioId) ? null : batch.ScenarioId.Trim();
+            var entityWorkspace = PersonaScenarioScope.GetEntityWorkspaceRoot(root, scenarioId);
+            if (!PersonaScenarioScope.IsUnderProjectRoot(root, entityWorkspace))
+                return TextEnvelope("Invalid scenario scope.");
+
+            var discovered = await entitiesReg.DiscoverAsync(ctx, entityWorkspace, cancellationToken).ConfigureAwait(false);
             var byEntity = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase);
             var updated = new List<string>();
             foreach (var g in byEntity)

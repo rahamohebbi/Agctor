@@ -8,6 +8,10 @@ namespace AgctorSDK.Core.ProjectMemory.Models;
 /// </summary>
 public sealed class MemoryIntentBatch
 {
+    /// <summary>Optional catalog id (e.g. "people") — curator uses <c>scenarios/&lt;id&gt;/people/</c> when set.</summary>
+    [JsonPropertyName("scenarioId")]
+    public string? ScenarioId { get; set; }
+
     [JsonPropertyName("memoryIntents")]
     public List<MemoryIntent> MemoryIntents { get; set; } = new();
 }

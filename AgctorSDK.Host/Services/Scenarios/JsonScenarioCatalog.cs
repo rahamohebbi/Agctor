@@ -12,6 +12,7 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         WriteIndented = true
     };
@@ -24,6 +25,7 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
     private readonly ILogger<JsonScenarioCatalog> _logger;
 
     private List<ScenarioDefinition> _merged = new();
+    private List<string> _suppressedDefaultIds = new();
 
     public JsonScenarioCatalog(
         IWebHostEnvironment env,
@@ -50,6 +52,9 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
         return match == null ? null : CloneDef(match);
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<string> GetSuppressedDefaultScenarioIds() => _suppressedDefaultIds;
+
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -57,7 +62,9 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
         {
             var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
             var user = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
-            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), user?.Scenarios ?? new List<ScenarioDefinition>());
+            var suppressed = NormalizeSuppressed(user?.SuppressedDefaultScenarioIds);
+            _suppressedDefaultIds = suppressed;
+            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), user?.Scenarios ?? new List<ScenarioDefinition>(), suppressed);
             var errors = Validate(merged);
             if (errors.Count > 0)
             {
@@ -75,26 +82,189 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
     {
         if (userDocument == null) return (false, new[] { "Request body is required." });
 
-        var errors = Validate(userDocument.Scenarios ?? new List<ScenarioDefinition>());
-        if (errors.Count > 0) return (false, errors);
-
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var dir = Path.GetDirectoryName(_userPath);
-            if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+            var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
+            var scenarios = userDocument.Scenarios ?? new List<ScenarioDefinition>();
+            var existingUser = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
+            var suppressed = NormalizeSuppressed(
+                userDocument.SuppressedDefaultScenarioIds ?? existingUser?.SuppressedDefaultScenarioIds);
+            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), scenarios, suppressed);
+            var errors = Validate(merged);
+            if (errors.Count > 0)
+                return (false, errors);
 
             userDocument.Version = 1;
-            await File.WriteAllTextAsync(_userPath, JsonSerializer.Serialize(userDocument, JsonOptions), cancellationToken).ConfigureAwait(false);
-            var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
-            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), userDocument.Scenarios ?? new List<ScenarioDefinition>());
+            userDocument.Scenarios = scenarios;
+            userDocument.SuppressedDefaultScenarioIds = suppressed;
+            await PersistUserDocumentAsync(userDocument, cancellationToken).ConfigureAwait(false);
             _merged = merged;
+            _suppressedDefaultIds = suppressed;
             return (true, Array.Empty<string>());
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<(bool Ok, IReadOnlyList<string> Errors)> SaveScenarioFlowAsync(
+        string scenarioId,
+        ScenarioFlowDocument? flow,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            return (false, new[] { "Scenario id is required." });
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var id = scenarioId.Trim();
+            var current = Get(id);
+            if (current == null)
+                return (false, new[] { "SCENARIO_NOT_FOUND" });
+
+            var updated = CloneDef(current);
+            updated.Flow = flow == null ? null : ScenarioFlowDocument.Clone(flow);
+            Normalize(updated);
+
+            var userDoc = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
+            var userList = (userDoc?.Scenarios ?? new List<ScenarioDefinition>()).Select(CloneDef).ToList();
+            var idx = userList.FindIndex(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (idx >= 0)
+                userList[idx] = updated;
+            else
+                userList.Add(updated);
+
+            var suppressed = NormalizeSuppressed(userDoc?.SuppressedDefaultScenarioIds);
+            var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
+            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), userList, suppressed);
+            var errors = Validate(merged);
+            if (errors.Count > 0)
+                return (false, errors);
+
+            var toWrite = new ScenarioCatalogDocument
+            {
+                Version = 1,
+                Scenarios = userList,
+                SuppressedDefaultScenarioIds = suppressed
+            };
+            await PersistUserDocumentAsync(toWrite, cancellationToken).ConfigureAwait(false);
+            _merged = merged;
+            _suppressedDefaultIds = suppressed;
+            return (true, Array.Empty<string>());
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(bool Ok, IReadOnlyList<string> Errors)> CreateScenarioAsync(
+        ScenarioDefinition scenario,
+        CancellationToken cancellationToken = default)
+    {
+        if (scenario == null)
+            return (false, new[] { "Scenario body is required." });
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var normalized = CloneDef(scenario);
+            Normalize(normalized);
+            if (string.IsNullOrWhiteSpace(normalized.Id))
+                return (false, new[] { "Scenario id is required." });
+            if (!string.Equals(normalized.Kind, ScenarioKinds.Declarative, StringComparison.OrdinalIgnoreCase))
+                return (false, new[] { "Only declarative scenarios can be created from the dashboard (scripted scenarios need a C# handler)." });
+            if (!string.IsNullOrWhiteSpace(normalized.Handler))
+                return (false, new[] { "Declarative scenarios must not set handler." });
+
+            var userDoc = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
+            var userList = (userDoc?.Scenarios ?? new List<ScenarioDefinition>()).Select(CloneDef).ToList();
+            var suppressed = NormalizeSuppressed(userDoc?.SuppressedDefaultScenarioIds);
+            var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
+            if (Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), userList, suppressed)
+                .Any(s => string.Equals(s.Id, normalized.Id, StringComparison.OrdinalIgnoreCase)))
+                return (false, new[] { $"Scenario id '{normalized.Id}' already exists." });
+
+            userList.Add(normalized);
+            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), userList, suppressed);
+            var errors = Validate(merged);
+            if (errors.Count > 0)
+                return (false, errors);
+
+            var toWrite = new ScenarioCatalogDocument { Version = 1, Scenarios = userList, SuppressedDefaultScenarioIds = suppressed };
+            await PersistUserDocumentAsync(toWrite, cancellationToken).ConfigureAwait(false);
+            _merged = merged;
+            _suppressedDefaultIds = suppressed;
+            return (true, Array.Empty<string>());
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<(bool Ok, IReadOnlyList<string> Errors)> DeleteScenarioAsync(string scenarioId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            return (false, new[] { "Scenario id is required." });
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var id = scenarioId.Trim();
+            var userDoc = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
+            var userList = (userDoc?.Scenarios ?? new List<ScenarioDefinition>()).Select(CloneDef).ToList();
+            var suppressed = NormalizeSuppressed(userDoc?.SuppressedDefaultScenarioIds);
+            var defaults = await ReadDocumentAsync(_defaultPath, cancellationToken).ConfigureAwait(false);
+            var defaultIds = new HashSet<string>(
+                (defaults?.Scenarios ?? new List<ScenarioDefinition>()).Where(s => !string.IsNullOrWhiteSpace(s.Id)).Select(s => s.Id.Trim()),
+                StringComparer.OrdinalIgnoreCase);
+
+            var inDefaults = defaultIds.Contains(id);
+            var hadUserRow = userList.RemoveAll(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase)) > 0;
+            if (!hadUserRow && !inDefaults)
+                return (false, new[] { "SCENARIO_NOT_FOUND" });
+
+            // Hide a shipped default only when there is no user row left (first delete removes overlay; second delete hides default).
+            if (!hadUserRow && inDefaults && !suppressed.Any(s => string.Equals(s, id, StringComparison.OrdinalIgnoreCase)))
+                suppressed.Add(id);
+
+            suppressed = NormalizeSuppressed(suppressed);
+            var merged = Merge(defaults?.Scenarios ?? new List<ScenarioDefinition>(), userList, suppressed);
+            var errors = Validate(merged);
+            if (errors.Count > 0)
+                return (false, errors);
+
+            var toWrite = new ScenarioCatalogDocument { Version = 1, Scenarios = userList, SuppressedDefaultScenarioIds = suppressed };
+            await PersistUserDocumentAsync(toWrite, cancellationToken).ConfigureAwait(false);
+            _merged = merged;
+            _suppressedDefaultIds = suppressed;
+            return (true, Array.Empty<string>());
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Write user JSON via temp file + move (same-directory replace).</summary>
+    private async Task PersistUserDocumentAsync(ScenarioCatalogDocument document, CancellationToken cancellationToken)
+    {
+        var dir = Path.GetDirectoryName(_userPath);
+        if (!string.IsNullOrWhiteSpace(dir))
+            Directory.CreateDirectory(dir);
+
+        document.Version = 1;
+        var json = JsonSerializer.Serialize(document, JsonOptions);
+        var tmp = _userPath + ".tmp";
+        await File.WriteAllTextAsync(tmp, json, cancellationToken).ConfigureAwait(false);
+        File.Move(tmp, _userPath, overwrite: true);
     }
 
     private static string ResolvePath(string root, string configured)
@@ -117,24 +287,44 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
             Extractor = src.PersonaBindings?.Extractor,
             Curator = src.PersonaBindings?.Curator,
             Query = src.PersonaBindings?.Query
-        }
+        },
+        Flow = ScenarioFlowDocument.Clone(src.Flow)
     };
 
-    private static List<ScenarioDefinition> Merge(List<ScenarioDefinition> defaults, List<ScenarioDefinition> user)
+    private static List<ScenarioDefinition> Merge(
+        List<ScenarioDefinition> defaults,
+        List<ScenarioDefinition> user,
+        IReadOnlyList<string>? suppressedDefaultIds)
     {
+        var suppressed = new HashSet<string>(
+            (suppressedDefaultIds ?? Array.Empty<string>()).Select(s => (s ?? string.Empty).Trim()).Where(s => s.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
         var map = new Dictionary<string, ScenarioDefinition>(StringComparer.OrdinalIgnoreCase);
         foreach (var d in defaults)
         {
             if (string.IsNullOrWhiteSpace(d.Id)) continue;
-            map[d.Id.Trim()] = CloneDef(Normalize(d));
+            var key = d.Id.Trim();
+            if (suppressed.Contains(key))
+                continue;
+            map[key] = CloneDef(Normalize(d));
         }
+
         foreach (var u in user)
         {
             if (string.IsNullOrWhiteSpace(u.Id)) continue;
             map[u.Id.Trim()] = CloneDef(Normalize(u));
         }
+
         return map.Values.OrderBy(x => x.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    private static List<string> NormalizeSuppressed(IEnumerable<string>? src) =>
+        (src ?? Enumerable.Empty<string>())
+            .Select(s => (s ?? string.Empty).Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static ScenarioDefinition Normalize(ScenarioDefinition d)
     {
@@ -157,7 +347,38 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
         d.PersonaBindings.Extractor = string.IsNullOrWhiteSpace(d.PersonaBindings.Extractor) ? null : d.PersonaBindings.Extractor.Trim();
         d.PersonaBindings.Curator = string.IsNullOrWhiteSpace(d.PersonaBindings.Curator) ? null : d.PersonaBindings.Curator.Trim();
         d.PersonaBindings.Query = string.IsNullOrWhiteSpace(d.PersonaBindings.Query) ? null : d.PersonaBindings.Query.Trim();
+        NormalizeFlow(d);
         return d;
+    }
+
+    private static void NormalizeFlow(ScenarioDefinition d)
+    {
+        var f = d.Flow;
+        if (f == null) return;
+        f.SchemaVersion = string.IsNullOrWhiteSpace(f.SchemaVersion) ? "1.0" : f.SchemaVersion.Trim();
+        f.GraphId = (f.GraphId ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(f.GraphId) && !string.IsNullOrWhiteSpace(d.Id))
+            f.GraphId = d.Id.Trim() + "-flow";
+        f.Name = string.IsNullOrWhiteSpace(f.Name) ? null : f.Name.Trim();
+        f.Status = string.IsNullOrWhiteSpace(f.Status) ? null : f.Status.Trim().ToLowerInvariant();
+        f.OutputPolicy = string.IsNullOrWhiteSpace(f.OutputPolicy) ? "merge_sections" : f.OutputPolicy.Trim().ToLowerInvariant();
+        f.Nodes ??= new List<ScenarioFlowNode>();
+        f.Edges ??= new List<ScenarioFlowEdge>();
+        foreach (var n in f.Nodes)
+        {
+            n.Id = (n.Id ?? string.Empty).Trim();
+            n.Type = (n.Type ?? string.Empty).Trim();
+            n.Label = (n.Label ?? string.Empty).Trim();
+        }
+
+        foreach (var e in f.Edges)
+        {
+            e.Id = (e.Id ?? string.Empty).Trim();
+            e.FromNodeId = (e.FromNodeId ?? string.Empty).Trim();
+            e.ToNodeId = (e.ToNodeId ?? string.Empty).Trim();
+            e.Mode = string.IsNullOrWhiteSpace(e.Mode) ? "sequential" : e.Mode.Trim().ToLowerInvariant();
+            e.Condition = string.IsNullOrWhiteSpace(e.Condition) ? null : e.Condition.Trim();
+        }
     }
 
     private List<string> Validate(List<ScenarioDefinition> defs)
@@ -211,6 +432,8 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
                 if (!d.PersonaAgentIds.Contains(b, StringComparer.OrdinalIgnoreCase))
                     errors.Add($"Scenario '{d.Id}' binding '{b}' must be included in personaAgentIds.");
             }
+
+            errors.AddRange(ScenarioFlowValidator.Validate(d));
         }
 
         return errors;

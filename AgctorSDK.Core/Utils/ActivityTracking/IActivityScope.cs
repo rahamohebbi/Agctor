@@ -36,5 +36,10 @@ namespace AgctorSDK.Core.Utils.ActivityTracking
         /// </summary>
         /// <param name="exception">The exception to record.</param>
         void RecordException(Exception exception);
+
+        /// <summary>
+        /// Attaches optional JSON for the trace timeline UI (e.g. LLM prompt/output). Implementations may truncate.
+        /// </summary>
+        void SetTimelineDetailJson(string? json);
     }
 } 

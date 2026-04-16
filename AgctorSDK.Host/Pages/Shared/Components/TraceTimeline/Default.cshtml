@@ -20,6 +20,7 @@
              preserveAspectRatio="xMinYMin meet"></svg>
     </div>
     <div data-role="details" class="mt-4 space-y-2"></div>
+    <div data-role="event-detail" class="mt-3 hidden rounded-lg border border-violet-200 bg-violet-50/60 p-3 text-sm text-gray-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-gray-100"></div>
 </div>
 
 <script>
@@ -62,6 +63,7 @@
             const chart = root.querySelector('[data-role="chart"]');
             const status = root.querySelector('[data-role="status"]');
             const details = root.querySelector('[data-role="details"]');
+            const panel = root.querySelector('[data-role="event-detail"]');
             applySelection(root, selectionLabel);
             if (status) status.textContent = message;
             if (chart) {
@@ -70,6 +72,106 @@
             if (details) {
                 details.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">' + esc(message) + '</p>';
             }
+            if (panel) {
+                panel.classList.add('hidden');
+                panel.innerHTML = '';
+            }
+        }
+
+        function formatTimelineDetailJson(raw) {
+            let o;
+            try {
+                o = JSON.parse(raw);
+            } catch (_) {
+                return '<pre class="text-xs whitespace-pre-wrap break-words max-h-96 overflow-auto bg-white/80 dark:bg-black/30 p-2 rounded border border-gray-200 dark:border-gray-600">' +
+                    esc(raw) + '</pre>';
+            }
+            const k = o.kind;
+            if (k === 'pm.playground.persona-llm') {
+                let h = '<div class="space-y-3">';
+                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Ollama <code class="text-[11px]">' + esc(o.ollamaBase || '') + '</code> · model <code class="text-[11px]">' + esc(o.model || '') + '</code></p>';
+                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Prompt length ' + esc(String(o.promptChars ?? '')) + ' chars · output ' + esc(String(o.outputChars ?? '')) + ' chars</p>';
+                if (o.promptTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">Prompt truncated in trace payload.</p>';
+                if (o.outputTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">Output truncated in trace payload.</p>';
+                h += '<div><h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Prompt (LLM input)</h4>';
+                h += '<pre class="max-h-72 overflow-auto text-xs bg-white/90 dark:bg-black/40 p-2 rounded border border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words">' + esc(o.prompt || '') + '</pre></div>';
+                h += '<div><h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Output (raw stream)</h4>';
+                h += '<pre class="max-h-72 overflow-auto text-xs bg-white/90 dark:bg-black/40 p-2 rounded border border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words">' + esc(o.output || '') + '</pre></div>';
+                h += '</div>';
+                return h;
+            }
+            if (k === 'pm.playground.ingest-disk') {
+                let h = '<div class="space-y-2">';
+                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Scenario <code class="text-[11px]">' + esc(o.scenarioId || '') + '</code> · parse ' + esc(String(o.parseSuccess)) + ' · wrote files: ' + esc(String(o.wroteAnyFile)) + '</p>';
+                if (o.summary) h += '<p class="text-xs">' + esc(o.summary) + '</p>';
+                if (o.paths && o.paths.length) {
+                    h += '<h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Paths touched</h4><ul class="list-disc pl-5 text-xs space-y-0.5">';
+                    o.paths.forEach(function(p) {
+                        h += '<li><code class="break-all">' + esc(p) + '</code></li>';
+                    });
+                    h += '</ul>';
+                    if (o.pathsTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">List truncated.</p>';
+                }
+                h += '</div>';
+                return h;
+            }
+            if (k === 'pm.playground.persist-assistant') {
+                let h = '<div class="space-y-2">';
+                h += '<p class="text-xs text-gray-600 dark:text-gray-400">sessionId <code class="break-all text-[11px]">' + esc(o.sessionId || '') + '</code> · messageId <code class="break-all text-[11px]">' + esc(o.messageId || '') + '</code></p>';
+                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Assistant body length: ' + esc(String(o.assistantChars ?? '')) + ' chars (includes ingest footer when applicable).</p>';
+                if (o.ingestSummary) h += '<p class="text-xs">Ingest summary: ' + esc(o.ingestSummary) + '</p>';
+                if (o.files && o.files.length) {
+                    h += '<h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Files (path + preview)</h4>';
+                    o.files.forEach(function(f) {
+                        h += '<div class="mt-2 rounded border border-gray-200 dark:border-gray-600 p-2 bg-white/70 dark:bg-black/30">';
+                        h += '<p class="text-[11px] font-mono break-all text-violet-800 dark:text-violet-200">' + esc(f.path || '') + '</p>';
+                        if (f.resolvedPath && f.resolvedPath !== f.path) {
+                            h += '<p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">resolved: <span class="font-mono break-all">' + esc(f.resolvedPath) + '</span></p>';
+                        }
+                        if (f.readError) h += '<p class="text-xs text-red-600 dark:text-red-400 mt-1">' + esc(f.readError) + '</p>';
+                        h += '<p class="text-[10px] text-gray-500 dark:text-gray-400">file ~' + esc(String(f.fileSizeBytes != null ? f.fileSizeBytes : '')) + ' bytes · preview ' + esc(String(f.previewChars != null ? f.previewChars : '')) + ' chars' + (f.previewTruncated ? ' (truncated)' : '') + '</p>';
+                        h += '<pre class="mt-1 max-h-48 overflow-auto text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900/80 p-2 rounded">' + esc(f.preview || '') + '</pre>';
+                        h += '</div>';
+                    });
+                } else {
+                    h += '<p class="text-xs text-gray-500 dark:text-gray-400">No ingest file list on this turn (ingest skipped or wrote nothing).</p>';
+                }
+                h += '</div>';
+                return h;
+            }
+            return '<pre class="text-xs whitespace-pre-wrap break-words max-h-96 overflow-auto bg-white/80 dark:bg-black/30 p-2 rounded border">' + esc(JSON.stringify(o, null, 2)) + '</pre>';
+        }
+
+        function showEventDetailPanel(root, evt, selectionBase) {
+            const panel = root.querySelector('[data-role="event-detail"]');
+            const sel = root.querySelector('[data-role="selection"]');
+            const label = '#' + String(evt.sequence || '') + ' ' + (evt.label || evt.name || 'Activity');
+            if (sel) sel.textContent = (selectionBase ? selectionBase + ' — ' : '') + label;
+            if (!panel) return;
+            const raw = evt.timelineDetailJson || evt.TimelineDetailJson;
+            if (!raw) {
+                panel.classList.remove('hidden');
+                panel.innerHTML = '<p class="text-gray-600 dark:text-gray-400 text-sm">No drill-down payload for this span.</p>';
+                return;
+            }
+            panel.classList.remove('hidden');
+            panel.innerHTML = '<p class="text-xs font-semibold text-violet-900 dark:text-violet-200 mb-2">Details · click another row to switch</p>' + formatTimelineDetailJson(raw);
+        }
+
+        function bindTimelineDetailClicks(root) {
+            if (root.dataset.agctorTimelineDetailBound === '1') return;
+            root.dataset.agctorTimelineDetailBound = '1';
+            root.addEventListener('click', function(ev) {
+                const hit = ev.target.closest('[data-timeline-idx]');
+                if (!hit || !root.contains(hit)) return;
+                const idx = Number(hit.getAttribute('data-timeline-idx'));
+                if (!Number.isFinite(idx)) return;
+                const st = getState(root.id);
+                const list = st.data && st.data.events ? st.data.events : [];
+                const evt = list[idx];
+                if (!evt) return;
+                showEventDetailPanel(root, evt, st.options.selectionLabel || '');
+            });
         }
 
         function render(id, data, options) {
@@ -132,10 +234,11 @@
                 svg += '<line x1="' + leftPad + '" y1="' + (rowTop + 17) + '" x2="' + (width - rightPad) + '" y2="' + (rowTop + 17) + '" stroke="#e5e7eb"></line>';
                 svg += '<text x="12" y="' + (rowTop + 14) + '" fill="#6b7280" font-size="11">#' + esc(String(evt.sequence)) + '</text>';
                 svg += '<text x="' + labelX + '" y="' + (rowTop + 28) + '" fill="#111827" font-size="12">' + esc(evt.label || evt.name || 'Activity') + '</text>';
-                svg += '<rect x="' + barX + '" y="' + (rowTop + 6) + '" width="' + barW + '" height="22" rx="6" fill="' + fill + '" opacity="0.88">';
-                svg += '<title>' + esc((evt.label || evt.name || 'Activity') + ' | start ' + Number(evt.startOffsetMs || 0).toFixed(1) + 'ms | duration ' + durationLabel) + '</title>';
-                svg += '</rect>';
-                svg += '<text x="' + (barX + 8) + '" y="' + (rowTop + 21) + '" fill="white" font-size="11">' + esc(durationLabel) + '</text>';
+                svg += '<g data-timeline-idx="' + index + '" style="cursor:pointer" role="button" tabindex="-1">';
+                svg += '<title>' + esc((evt.label || evt.name || 'Activity') + ' | click for details | start ' + Number(evt.startOffsetMs || 0).toFixed(1) + 'ms | duration ' + durationLabel) + '</title>';
+                svg += '<rect x="' + barX + '" y="' + (rowTop + 6) + '" width="' + barW + '" height="22" rx="6" fill="' + fill + '" opacity="0.88"></rect>';
+                svg += '<text x="' + (barX + 8) + '" y="' + (rowTop + 21) + '" fill="white" font-size="11" pointer-events="none">' + esc(durationLabel) + '</text>';
+                svg += '</g>';
             });
 
             if (chart) {
@@ -145,16 +248,25 @@
             }
 
             if (details) {
-                details.innerHTML = events.map(function(evt) {
+                details.innerHTML = events.map(function(evt, index) {
                     const startedAt = evt.startedAtUtc ? new Date(evt.startedAtUtc).toLocaleTimeString() : 'n/a';
-                    return '<div class="p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">' +
+                    const hasDetail = !!(evt.timelineDetailJson || evt.TimelineDetailJson);
+                    const hint = hasDetail ? 'Click for prompt/output or file previews.' : 'No drill-down payload.';
+                    return '<div data-timeline-idx="' + index + '" tabindex="0" role="button" class="p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400">' +
                         '<div class="flex flex-wrap items-center justify-between gap-2">' +
                         '<p class="text-sm font-medium text-gray-900 dark:text-white">#' + esc(String(evt.sequence)) + ' ' + esc(evt.label || evt.name || 'Activity') + '</p>' +
                         '<span class="text-xs text-gray-500 dark:text-gray-400">' + esc(startedAt) + '</span>' +
                         '</div>' +
                         '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">start ' + esc(Number(evt.startOffsetMs || 0).toFixed(1)) + 'ms, duration ' + esc(Number(evt.durationMs || 0).toFixed(1)) + 'ms' + (evt.parentId ? ', parent ' + esc(evt.parentId) : '') + '</p>' +
+                        '<p class="mt-1 text-[11px] text-violet-700 dark:text-violet-300">' + esc(hint) + '</p>' +
                         '</div>';
                 }).join('');
+            }
+
+            const panel = root.querySelector('[data-role="event-detail"]');
+            if (panel) {
+                panel.classList.add('hidden');
+                panel.innerHTML = '';
             }
         }
 
@@ -195,6 +307,7 @@
             const root = getRoot(id);
             if (!root) return;
 
+            bindTimelineDetailClicks(root);
             clear(id);
 
             const initialTraceId = root.dataset.initialTraceId;

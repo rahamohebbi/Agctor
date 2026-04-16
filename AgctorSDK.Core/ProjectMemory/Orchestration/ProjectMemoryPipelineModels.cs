@@ -30,6 +30,9 @@ public sealed class ProjectMemoryPipelineRequest
 
     /// <summary>Optional transcript prefix for extract/query prompts (e.g. from session store).</summary>
     public string? ConversationPrefix { get; set; }
+
+    /// <summary>When set, entity I/O uses <c>{ProjectRoot}/scenarios/&lt;sanitized&gt;/people/…</c> instead of project-root <c>people/…</c>.</summary>
+    public string? ScenarioId { get; set; }
 }
 
 /// <summary>Ordered trace of pipeline steps + final assistant text.</summary>
@@ -57,4 +60,19 @@ public sealed class ProjectMemoryPipelineStep
     public string? Detail { get; set; }
 
     public IReadOnlyList<string>? UpdatedFiles { get; set; }
+}
+
+/// <summary>Outcome of applying pre-generated person-extractor JSON (e.g. after PRD-014 <c>PersonaCall</c> LLM).</summary>
+public sealed class ProjectMemoryIngestResult
+{
+    /// <summary>True when <c>memoryIntents</c> JSON parsed.</summary>
+    public bool ParseSuccess { get; init; }
+
+    /// <summary>True when at least one markdown file was written.</summary>
+    public bool WroteAnyFile { get; init; }
+
+    public IReadOnlyList<string> UpdatedFiles { get; init; } = System.Array.Empty<string>();
+
+    /// <summary>Parse/route/write notes or errors for operators.</summary>
+    public string? Summary { get; init; }
 }

@@ -43,9 +43,12 @@
     if (!list || !refreshBtn || !empty || !editor || !idEl || !kindEl || !displayEl || !descEl || !handlerEl || !typesEl || !chipsEl || !addInput || !addBtn || !clearBtn || !suggestionEl || !validationEl || !previewEl || !personaChipsEl || !personaAddInput || !personaAddBtn || !personaClearBtn || !personaDefaultsBtn || !personaSuggestionEl || !personaValidationEl || !personaPreviewEl || !bindExtractor || !bindCurator || !bindQuery || !saveBtn || !discardBtn || !reloadBtn || !status || !applyBtn || !applyStatus || !chipDefault || !chipCurrent || !chipDirty) return;
 
     var all = [];
+    /** Default-catalog ids hidden via user file (server); included on catalog save. */
+    var suppressedDefaults = [];
     var selectedId = null;
     var dashboardDefaultScenario = '';
     var loadedSnapshot = '[]';
+    var loadedSuppressedSnapshot = '[]';
     var knownAgentTypes = [];
     var typeEnablement = {};
     var knownPersonaIds = [];
@@ -56,6 +59,8 @@
         return fetch(url, opt).then(function (r) {
             if (!r.ok) return r.json().catch(function () { return null; }).then(function (b) {
                 var msg = (b && (b.message || b.errorMessage || b.error)) || ('Request failed: ' + r.status);
+                if (b && Array.isArray(b.details) && b.details.length)
+                    msg += ' ' + b.details.join('; ');
                 throw new Error(msg);
             });
             if (r.status === 204) return null;
@@ -65,6 +70,14 @@
 
     function currentScenario() {
         return all.find(function (x) { return x.id === selectedId; }) || null;
+    }
+
+    /** Prefer camelCase from API; tolerate PascalCase if an older server returned it. */
+    function getScenarioFlow(s) {
+        if (!s) return null;
+        if (s.flow != null) return s.flow;
+        if (s.Flow != null) return s.Flow;
+        return null;
     }
 
     function normalizeType(t) {
@@ -77,7 +90,10 @@
     }
 
     function hasUnsavedChanges() {
-        return JSON.stringify(all) !== loadedSnapshot;
+        return (
+            JSON.stringify(all) !== loadedSnapshot ||
+            JSON.stringify(suppressedDefaults || []) !== loadedSuppressedSnapshot
+        );
     }
 
     function renderHeaderChips(currentScenarioName) {
@@ -105,7 +121,7 @@
             html += '<button class="w-full text-left rounded border p-2 ' + (active ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700') + ' sc-pick" data-id="' + esc(s.id) + '">';
             html += '<div class="font-medium text-gray-900 dark:text-white">' + esc(s.displayName || s.id) + '</div>';
             html += '<div class="text-xs text-gray-500 dark:text-gray-400">' + esc(s.id) + ' · ' + esc(s.kind) + '</div>';
-            html += '<div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400">' + ((s.agentTypes || []).length) + ' agent type(s)</div>';
+            html += '<div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400">' + ((s.agentTypes || []).length) + ' agent type(s)' + (getScenarioFlow(s) ? ' · flow' : '') + '</div>';
             html += '</button>';
         }
         list.innerHTML = html;
@@ -354,10 +370,14 @@
 
     function loadCatalog() {
         status.textContent = 'Loading catalog...';
-        return api('/api/scenarios')
-            .then(function (items) {
+        return Promise.all([api('/api/scenarios'), api('/api/scenarios/suppressed-default-ids')])
+            .then(function (pair) {
+                var items = pair[0];
+                var sup = pair[1];
                 all = Array.isArray(items) ? items : [];
+                suppressedDefaults = Array.isArray(sup) ? sup.slice() : [];
                 loadedSnapshot = JSON.stringify(all);
+                loadedSuppressedSnapshot = JSON.stringify(suppressedDefaults);
                 if (!selectedId && all.length) selectedId = all[0].id;
                 if (selectedId && !all.find(function (x) { return x.id === selectedId; })) selectedId = all.length ? all[0].id : null;
                 renderList();
@@ -381,7 +401,11 @@
         api('/api/scenarios', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ version: 1, scenarios: all })
+            body: JSON.stringify({
+                version: 1,
+                scenarios: all,
+                suppressedDefaultScenarioIds: suppressedDefaults
+            })
         })
             .then(function () {
                 status.textContent = 'Catalog saved';
@@ -406,6 +430,9 @@
             curator: fromSaved.personaBindings && fromSaved.personaBindings.curator || null,
             query: fromSaved.personaBindings && fromSaved.personaBindings.query || null
         };
+        var savedFlow = getScenarioFlow(fromSaved);
+        if (savedFlow) s.flow = JSON.parse(JSON.stringify(savedFlow));
+        else delete s.flow;
         renderEditor();
         renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
         status.textContent = 'Changes discarded';
@@ -490,6 +517,536 @@
     bindCurator.addEventListener('input', updateScenarioFromForm);
     bindQuery.addEventListener('input', updateScenarioFromForm);
     refreshBtn.addEventListener('click', loadAll);
+
+    var newScenarioBtn = document.getElementById('sc-new-scenario');
+    if (newScenarioBtn) {
+        newScenarioBtn.addEventListener('click', function () {
+            var rawId = window.prompt('New scenario id (letters, digits, - _ . only):', '');
+            if (rawId == null) return;
+            var id = String(rawId || '').trim();
+            if (!id) {
+                status.textContent = 'Id required.';
+                return;
+            }
+            var dn = window.prompt('Display name (optional, defaults to id):', id);
+            if (dn == null) return;
+            var disp = String(dn || '').trim() || id;
+            status.textContent = 'Creating…';
+            newScenarioBtn.disabled = true;
+            api('/api/scenarios', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, displayName: disp, description: '' })
+            })
+                .then(function (created) {
+                    status.textContent = 'Created.';
+                    selectedId = (created && created.id) || id;
+                    return loadCatalog();
+                })
+                .catch(function (e) {
+                    status.textContent = e.message || 'Create failed';
+                })
+                .finally(function () {
+                    newScenarioBtn.disabled = false;
+                });
+        });
+    }
+
+    var delScenarioBtn = document.getElementById('sc-delete-scenario');
+    if (delScenarioBtn) {
+        delScenarioBtn.addEventListener('click', function () {
+            if (!selectedId) return;
+            if (!window.confirm('Delete scenario "' + selectedId + '" from the user catalog? Built-in defaults require a second delete to hide.')) return;
+            status.textContent = 'Deleting…';
+            delScenarioBtn.disabled = true;
+            api('/api/scenarios/' + encodeURIComponent(selectedId), { method: 'DELETE' })
+                .then(function () {
+                    status.textContent = 'Deleted.';
+                    selectedId = null;
+                    return loadCatalog();
+                })
+                .catch(function (e) {
+                    status.textContent = e.message || 'Delete failed';
+                })
+                .finally(function () {
+                    delScenarioBtn.disabled = false;
+                });
+        });
+    }
+
+    /** PRD-014: modal flow designer (Cytoscape behind adapter). */
+    (function wireFlowModal() {
+        var openBtn = document.getElementById('sc-open-flow');
+        var modal = document.getElementById('sc-flow-modal');
+        var cyHost = document.getElementById('sc-flow-cy');
+        var msgEl = document.getElementById('sc-flow-message');
+        var btnValidate = document.getElementById('sc-flow-validate');
+        var btnSimulate = document.getElementById('sc-flow-simulate');
+        var btnSaveFlow = document.getElementById('sc-flow-save');
+        var btnConnect = document.getElementById('sc-flow-connect');
+        var btnDeleteEdges = document.getElementById('sc-flow-delete-edges');
+        var routerPanel = document.getElementById('sc-flow-router-panel');
+        var routerModeEl = document.getElementById('sc-flow-router-mode');
+        var routerMaxEl = document.getElementById('sc-flow-router-max');
+        var routerMinConfEl = document.getElementById('sc-flow-router-minconf');
+        var routerFallbackEl = document.getElementById('sc-flow-router-fallback');
+        var routerCandUl = document.getElementById('sc-flow-router-candidates');
+        var personaPanel = document.getElementById('sc-flow-persona-panel');
+        var personaSelect = document.getElementById('sc-flow-persona-select');
+        var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
+        var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
+        var personaCapEl = document.getElementById('sc-flow-persona-cap');
+        if (!openBtn || !modal || !cyHost || !msgEl || !btnValidate || !btnSimulate || !btnSaveFlow || !btnConnect) return;
+        if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.createGraphRenderer !== 'function') return;
+
+        var renderer = null;
+        var draftBase = null;
+        /** PRD-014 Phase 11: `id.toLowerCase()` → agent row from `GET /api/project-memory/agents`. */
+        var flowModalAgentLabels = {};
+
+        function setFlowMsg(html) {
+            msgEl.innerHTML = html || '';
+        }
+
+        function closeModal() {
+            if (renderer) {
+                renderer.destroy();
+                renderer = null;
+            }
+            draftBase = null;
+            if (routerPanel) routerPanel.classList.add('hidden');
+            if (personaPanel) personaPanel.classList.add('hidden');
+            if (personaCapEl) {
+                personaCapEl.innerHTML = '';
+                personaCapEl.classList.add('hidden');
+            }
+            modal.classList.add('hidden');
+            cyHost.innerHTML = '';
+        }
+
+        function loadFlowModalAgentLabels() {
+            return api('/api/project-memory/agents').then(function (rows) {
+                flowModalAgentLabels = {};
+                (rows || []).forEach(function (a) {
+                    if (a && a.id) flowModalAgentLabels[normalizeType(a.id).toLowerCase()] = a;
+                });
+            }).catch(function () {
+                flowModalAgentLabels = {};
+            });
+        }
+
+        function getFlowPersonaLabel(personaId) {
+            var pid = normalizeType(personaId);
+            if (!pid) return '';
+            var row = flowModalAgentLabels[pid.toLowerCase()];
+            if (!row) return pid;
+            var n = String(row.name || '').trim();
+            if (n) return n;
+            var r = String(row.role || '').trim();
+            if (r) return r + ' — ' + pid;
+            return pid;
+        }
+
+        /** Renders YAML-derived I/O, tools, memory paths, guardrails from bulk <code>GET /api/project-memory/agents</code>. */
+        function strListHtml(items) {
+            if (!items || !items.length) return '';
+            var h = '<ul class="mt-0.5 list-inside list-disc space-y-0.5 pl-0.5 font-mono text-[9px]">';
+            for (var i = 0; i < items.length; i++) {
+                h += '<li>' + esc(items[i]) + '</li>';
+            }
+            return h + '</ul>';
+        }
+
+        function renderFlowPersonaCapabilityPanel(personaId) {
+            if (!personaCapEl) return;
+            var pid = normalizeType(personaId);
+            if (!pid) {
+                personaCapEl.classList.add('hidden');
+                personaCapEl.innerHTML = '';
+                return;
+            }
+            var row = flowModalAgentLabels[pid.toLowerCase()];
+            if (!row) {
+                personaCapEl.classList.remove('hidden');
+                personaCapEl.innerHTML =
+                    '<p class="text-amber-800 dark:text-amber-200">' +
+                    esc('No metadata for "' + pid + '". Set project root, refresh scenarios, then reopen this modal.') +
+                    '</p>';
+                return;
+            }
+            var chunks = [];
+            if (row.description) {
+                chunks.push('<p class="mb-1.5 leading-snug text-gray-700 dark:text-gray-300">' + esc(row.description) + '</p>');
+            }
+            if (row.projectTypes && row.projectTypes.length) {
+                chunks.push(
+                    '<p class="mb-1"><span class="font-semibold text-gray-900 dark:text-gray-100">Project types:</span> ' +
+                    esc(row.projectTypes.join(', ')) +
+                    '</p>'
+                );
+            }
+            chunks.push(
+                '<p class="mb-1"><span class="font-semibold text-gray-900 dark:text-gray-100">I/O:</span> ' +
+                '<span class="font-mono text-[9px]">' +
+                esc(row.inputType || '—') +
+                '</span> → <span class="font-mono text-[9px]">' +
+                esc(row.outputType || '—') +
+                '</span></p>'
+            );
+            if (row.toolsAllow && row.toolsAllow.length) {
+                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Tools allow</p>' + strListHtml(row.toolsAllow));
+            }
+            if (row.toolsDeny && row.toolsDeny.length) {
+                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Tools deny</p>' + strListHtml(row.toolsDeny));
+            }
+            if (row.memoryRead && row.memoryRead.length) {
+                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Memory read</p>' + strListHtml(row.memoryRead));
+            }
+            if (row.memoryWrite && row.memoryWrite.length) {
+                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Memory write</p>' + strListHtml(row.memoryWrite));
+            }
+            if (row.guardrails && row.guardrails.length) {
+                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Guardrails</p>' + strListHtml(row.guardrails));
+            }
+            personaCapEl.innerHTML = chunks.join('');
+            personaCapEl.classList.remove('hidden');
+        }
+
+        function refreshFlowInspectors() {
+            refreshFlowRouterInspector();
+            refreshFlowPersonaInspector();
+        }
+
+        function flowDocHasLlmRouter(doc) {
+            var nodes = (doc && doc.nodes) || [];
+            return nodes.some(function (n) {
+                if (!n || n.type !== 'Router' || !n.config) return false;
+                return String(n.config.routerMode || '').toLowerCase() === 'llm';
+            });
+        }
+
+        function refreshFlowRouterInspector() {
+            if (!renderer || !routerPanel || !routerModeEl || !routerMaxEl || !routerMinConfEl || !routerFallbackEl || !routerCandUl) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) {
+                routerPanel.classList.add('hidden');
+                return;
+            }
+            var sel = cy.$('node:selected');
+            if (sel.length !== 1 || sel.data('agctorType') !== 'Router') {
+                routerPanel.classList.add('hidden');
+                return;
+            }
+            routerPanel.classList.remove('hidden');
+            var cfg = {};
+            try {
+                cfg = JSON.parse(sel.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            routerModeEl.value = (cfg.routerMode === 'llm') ? 'llm' : 'deterministic';
+            routerMaxEl.value = cfg.maxTargets != null && cfg.maxTargets !== '' ? String(cfg.maxTargets) : '';
+            routerMinConfEl.value = cfg.minConfidence != null && cfg.minConfidence !== '' ? String(cfg.minConfidence) : '';
+            routerFallbackEl.value = cfg.fallbackPersonaId ? String(cfg.fallbackPersonaId) : '';
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            var rid = sel.id();
+            routerCandUl.innerHTML = '';
+            var edges = (doc.edges || []).filter(function (e) {
+                return e && e.fromNodeId === rid && (!e.mode || e.mode === 'sequential');
+            });
+            edges.sort(function (a, b) { return String(a.id || '').localeCompare(String(b.id || '')); });
+            edges.forEach(function (e) {
+                var tn = (doc.nodes || []).filter(function (n) { return n && n.id === e.toNodeId; })[0];
+                if (!tn || tn.type !== 'PersonaCall') return;
+                var pid = (tn.config && tn.config.personaId) ? tn.config.personaId : '(no personaId)';
+                var li = document.createElement('li');
+                li.textContent = tn.id + ' → ' + (pid === '(no personaId)' ? pid : (getFlowPersonaLabel(pid) + ' (' + pid + ')'));
+                routerCandUl.appendChild(li);
+            });
+        }
+
+        function refreshFlowPersonaInspector() {
+            if (!renderer || !personaPanel || !personaSelect || !personaRosterHint || !personaInvalidHint) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) {
+                personaPanel.classList.add('hidden');
+                if (personaCapEl) {
+                    personaCapEl.innerHTML = '';
+                    personaCapEl.classList.add('hidden');
+                }
+                return;
+            }
+            var sel = cy.$('node:selected');
+            if (sel.length !== 1 || sel.data('agctorType') !== 'PersonaCall') {
+                personaPanel.classList.add('hidden');
+                if (personaCapEl) {
+                    personaCapEl.innerHTML = '';
+                    personaCapEl.classList.add('hidden');
+                }
+                return;
+            }
+            personaPanel.classList.remove('hidden');
+            var s = currentScenario();
+            var roster = (s && s.personaAgentIds) ? s.personaAgentIds.map(normalizeType).filter(Boolean) : [];
+            personaRosterHint.classList.toggle('hidden', roster.length > 0);
+            var cfg = {};
+            try {
+                cfg = JSON.parse(sel.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            var cur = normalizeType(cfg.personaId);
+            personaInvalidHint.classList.add('hidden');
+            personaInvalidHint.textContent = '';
+            if (cur && roster.length > 0 && !hasType(roster, cur)) {
+                personaInvalidHint.textContent = 'personaId "' + cur + '" is not on this scenario roster — pick a listed persona or add it on the scenario form.';
+                personaInvalidHint.classList.remove('hidden');
+            }
+            var idsForSelect = roster.slice();
+            if (cur && !hasType(idsForSelect, cur)) idsForSelect.push(cur);
+            idsForSelect.sort(function (a, b) {
+                return getFlowPersonaLabel(a).localeCompare(getFlowPersonaLabel(b), undefined, { sensitivity: 'base' });
+            });
+            personaSelect.innerHTML = '';
+            if (!idsForSelect.length) {
+                var o0 = document.createElement('option');
+                o0.value = '';
+                o0.textContent = '(add YAML personas on scenario form)';
+                personaSelect.appendChild(o0);
+            } else {
+                idsForSelect.forEach(function (id) {
+                    var o = document.createElement('option');
+                    o.value = id;
+                    o.textContent = getFlowPersonaLabel(id) + ' (' + id + ')';
+                    personaSelect.appendChild(o);
+                });
+            }
+            if (cur) {
+                var matchOpt = Array.prototype.slice.call(personaSelect.options).some(function (opt) {
+                    return normalizeType(opt.value).toLowerCase() === cur.toLowerCase();
+                });
+                if (matchOpt) {
+                    for (var i = 0; i < personaSelect.options.length; i++) {
+                        if (normalizeType(personaSelect.options[i].value).toLowerCase() === cur.toLowerCase()) {
+                            personaSelect.selectedIndex = i;
+                            break;
+                        }
+                    }
+                } else if (personaSelect.options.length) {
+                    personaSelect.selectedIndex = 0;
+                }
+            } else if (personaSelect.options.length) {
+                personaSelect.selectedIndex = 0;
+            }
+            var effectivePid = normalizeType(personaSelect.value || cur);
+            renderFlowPersonaCapabilityPanel(effectivePid);
+        }
+
+        function persistFlowPersonaInspector() {
+            if (!renderer || !personaSelect) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var n = cy.$('node:selected');
+            if (n.length !== 1 || n.data('agctorType') !== 'PersonaCall') return;
+            var cfg = {};
+            try {
+                cfg = JSON.parse(n.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            cfg.personaId = normalizeType(personaSelect.value);
+            n.data('agctorConfig', JSON.stringify(cfg));
+            setFlowMsg('');
+            refreshFlowPersonaInspector();
+        }
+
+        function persistFlowRouterInspector() {
+            if (!renderer || !routerModeEl) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var n = cy.$('node:selected');
+            if (n.length !== 1 || n.data('agctorType') !== 'Router') return;
+            var cfg = {};
+            try {
+                cfg = JSON.parse(n.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            if (routerModeEl.value === 'llm') {
+                cfg.routerMode = 'llm';
+                var mx = routerMaxEl.value.trim();
+                if (mx) {
+                    var nmx = parseInt(mx, 10);
+                    if (!isNaN(nmx) && nmx > 0) cfg.maxTargets = nmx;
+                    else delete cfg.maxTargets;
+                } else delete cfg.maxTargets;
+                var mc = routerMinConfEl.value.trim();
+                if (mc) {
+                    var nmc = parseFloat(mc);
+                    if (!isNaN(nmc)) cfg.minConfidence = nmc;
+                    else delete cfg.minConfidence;
+                } else delete cfg.minConfidence;
+                var fb = routerFallbackEl.value.trim();
+                if (fb) cfg.fallbackPersonaId = fb;
+                else delete cfg.fallbackPersonaId;
+            } else {
+                delete cfg.routerMode;
+                delete cfg.maxTargets;
+                delete cfg.minConfidence;
+                delete cfg.fallbackPersonaId;
+            }
+            n.data('agctorConfig', JSON.stringify(cfg));
+            setFlowMsg('');
+        }
+
+        function openModal() {
+            var s = currentScenario();
+            if (!s) return;
+            var existingFlow = getScenarioFlow(s);
+            draftBase = existingFlow ? JSON.parse(JSON.stringify(existingFlow)) : window.AgctorScenarioFlow.emptyFlow(s.id);
+            renderer = window.AgctorScenarioFlow.createGraphRenderer();
+            cyHost.innerHTML = '';
+            modal.classList.remove('hidden');
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    renderer.mount(cyHost, draftBase);
+                    renderer.onChange(function () {
+                        setFlowMsg('');
+                        refreshFlowInspectors();
+                    });
+                    var cy0 = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+                    if (cy0) {
+                        cy0.on('select unselect', refreshFlowInspectors);
+                    }
+                    refreshFlowInspectors();
+                    loadFlowModalAgentLabels().finally(function () {
+                        refreshFlowInspectors();
+                    });
+                    if (typeof renderer.fitViewport === 'function') renderer.fitViewport();
+                    setFlowMsg('<span class="text-gray-500">Edit the graph, then Validate or Save flow to scenario. Selected nodes show a <strong>yellow ring</strong>.</span>');
+                });
+            });
+        }
+
+        if (routerModeEl) routerModeEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerMaxEl) routerMaxEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerMinConfEl) routerMinConfEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerFallbackEl) routerFallbackEl.addEventListener('change', persistFlowRouterInspector);
+        if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
+
+        openBtn.addEventListener('click', openModal);
+        modal.addEventListener('click', function (e) {
+            if (e.target.matches('[data-sc-flow-close]') || e.target.matches('[data-sc-flow-backdrop]')) closeModal();
+        });
+
+        modal.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.getAttribute) return;
+            var add = t.getAttribute('data-flow-add');
+            if (add && renderer) {
+                var cfg = {};
+                if (add === 'PersonaCall') {
+                    var s2 = currentScenario();
+                    var ids = (s2 && s2.personaAgentIds) || [];
+                    if (!ids.length) {
+                        setFlowMsg('<span class="text-amber-700 dark:text-amber-300">No YAML personas on this scenario — add persona chips on the form, then assign each PersonaCall node.</span>');
+                        cfg.personaId = '';
+                    } else {
+                        cfg.personaId = normalizeType(ids[0]);
+                    }
+                }
+                renderer.addNode(add, add, cfg);
+                refreshFlowInspectors();
+            }
+        });
+
+        btnConnect.addEventListener('click', function () {
+            if (!renderer) return;
+            var ok = renderer.connectSelected('sequential');
+            setFlowMsg(ok ? '<span class="text-emerald-600">Connected selected nodes.</span>' : '<span class="text-amber-700">Select exactly two nodes (box-select).</span>');
+        });
+
+        if (btnDeleteEdges) {
+            btnDeleteEdges.addEventListener('click', function () {
+                if (!renderer || typeof renderer.removeSelectedEdges !== 'function') return;
+                var n = renderer.removeSelectedEdges();
+                setFlowMsg(n > 0
+                    ? '<span class="text-emerald-600">Removed ' + n + ' edge(s).</span>'
+                    : '<span class="text-amber-700">Select one or more edges (click the arrow), then delete.</span>');
+                refreshFlowInspectors();
+            });
+        }
+
+        modal.addEventListener('keydown', function (e) {
+            if (modal.classList.contains('hidden') || !renderer) return;
+            var tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+            if (typeof renderer.removeSelectedEdges !== 'function') return;
+            var n = renderer.removeSelectedEdges();
+            if (n > 0) {
+                e.preventDefault();
+                setFlowMsg('<span class="text-emerald-600">Removed ' + n + ' edge(s).</span>');
+                refreshFlowInspectors();
+            }
+        });
+
+        btnValidate.addEventListener('click', function () {
+            if (!renderer || !draftBase) return;
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            var sc = currentScenario();
+            var roster = (sc && sc.personaAgentIds) ? sc.personaAgentIds.slice() : [];
+            var v = window.AgctorScenarioFlow.validateFlowDocument(doc, { personaAgentIds: roster });
+            setFlowMsg(v.ok ? '<span class="text-emerald-600">Client checks OK (server validates on catalog save).</span>' : '<span class="text-red-600">' + esc(v.errors.join('; ')) + '</span>');
+        });
+
+        btnSimulate.addEventListener('click', function () {
+            if (!renderer || !draftBase) return;
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            var sim = window.AgctorScenarioFlow.simulateOrder(doc);
+            var llmNote = (sim.ok && flowDocHasLlmRouter(doc))
+                ? ' <span class="text-amber-700 dark:text-amber-400">(LLM routers: order is illustrative only.)</span>'
+                : '';
+            setFlowMsg(sim.ok ? '<span class="text-gray-700 dark:text-gray-300">Traversal order: <strong>' + esc(sim.order.join(' → ')) + '</strong></span>' + llmNote : '<span class="text-red-600">' + esc(sim.errors.join('; ')) + '</span>');
+        });
+
+        btnSaveFlow.addEventListener('click', function () {
+            var s = currentScenario();
+            if (!s || !renderer || !draftBase) {
+                setFlowMsg('<span class="text-amber-700">Nothing to save (open the flow editor first).</span>');
+                return;
+            }
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) {
+                setFlowMsg('<span class="text-red-600">Graph is not ready yet — wait a second after opening, then try again.</span>');
+                return;
+            }
+            persistFlowRouterInspector();
+            persistFlowPersonaInspector();
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            setFlowMsg('<span class="text-gray-600 dark:text-gray-400">Saving to disk…</span>');
+            btnSaveFlow.disabled = true;
+            api('/api/scenarios/' + encodeURIComponent(s.id) + '/flow', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(doc)
+            })
+                .then(function () {
+                    return loadCatalog();
+                })
+                .then(function () {
+                    closeModal();
+                    status.textContent = 'Flow saved to catalog file for scenario "' + String(s.id) + '".';
+                })
+                .catch(function (e) {
+                    var m = (e && e.message) ? String(e.message) : 'Save failed';
+                    setFlowMsg('<span class="text-red-600">' + esc(m) + '</span>');
+                })
+                .finally(function () {
+                    btnSaveFlow.disabled = false;
+                });
+        });
+    })();
 
     loadAll();
 })();

@@ -72,6 +72,16 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.OpenTelemetry
         {
             _span.RecordException(exception);
         }
+
+        /// <inheritdoc/>
+        public void SetTimelineDetailJson(string? json)
+        {
+            if (string.IsNullOrEmpty(json))
+                return;
+            const int max = 4096;
+            var v = json.Length <= max ? json : json.Substring(0, max);
+            _span.SetAttribute("agctor.timeline.detail", v);
+        }
         
         /// <inheritdoc/>
         public void Dispose()

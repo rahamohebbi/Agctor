@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Processing;
@@ -41,6 +42,69 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
     }
 
     /// <inheritdoc />
+    public async Task<ProjectMemoryIngestResult> IngestFromExtractorOutputAsync(
+        string projectRoot,
+        string? scenarioId,
+        string rawExtractorLlmText,
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.GetFullPath(projectRoot.Trim());
+        if (!Directory.Exists(Path.Combine(root, ".agctor")))
+        {
+            return new ProjectMemoryIngestResult
+            {
+                ParseSuccess = false,
+                Summary = "Project root must contain a .agctor directory."
+            };
+        }
+
+        var entityWorkspace = PersonaScenarioScope.GetEntityWorkspaceRoot(root, scenarioId);
+        if (!PersonaScenarioScope.IsUnderProjectRoot(root, entityWorkspace))
+        {
+            return new ProjectMemoryIngestResult { ParseSuccess = false, Summary = "Invalid scenario scope path." };
+        }
+
+        var ctx = await _loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
+        var work = await IngestFromRawExtractAsync(ctx, rawExtractorLlmText, entityWorkspace, cancellationToken).ConfigureAwait(false);
+        if (!work.ParseOk)
+        {
+            return new ProjectMemoryIngestResult
+            {
+                ParseSuccess = false,
+                Summary = work.ParseError ?? "Parse failed."
+            };
+        }
+
+        if (work.NoIntents)
+        {
+            return new ProjectMemoryIngestResult
+            {
+                ParseSuccess = true,
+                WroteAnyFile = false,
+                Summary = work.RouteDetail
+            };
+        }
+
+        if (work.RouteFatal)
+        {
+            return new ProjectMemoryIngestResult
+            {
+                ParseSuccess = true,
+                WroteAnyFile = false,
+                Summary = work.RouteDetail
+            };
+        }
+
+        return new ProjectMemoryIngestResult
+        {
+            ParseSuccess = true,
+            WroteAnyFile = work.WriteOk,
+            UpdatedFiles = work.UpdatedFiles,
+            Summary = work.WriteDetail ?? work.RouteDetail
+        };
+    }
+
+    /// <inheritdoc />
     public async Task<ProjectMemoryPipelineResult> RunAsync(ProjectMemoryPipelineRequest request, CancellationToken cancellationToken = default)
     {
         var correlationId = string.IsNullOrWhiteSpace(request.CorrelationId)
@@ -53,6 +117,10 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         {
             return Fail(correlationId, "Project root must contain a .agctor directory.", steps);
         }
+
+        var entityWorkspace = PersonaScenarioScope.GetEntityWorkspaceRoot(root, request.ScenarioId);
+        if (!PersonaScenarioScope.IsUnderProjectRoot(root, entityWorkspace))
+            return Fail(correlationId, "Invalid scenario scope path.", steps);
 
         var ctx = await _loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
         var extractorSpec = ctx.AgentSpecs.FirstOrDefault(a =>
@@ -95,7 +163,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             }
 
             if (rawExtract != null &&
-                !await TryIngestFromExtractAsync(ctx, rawExtract, steps, cancellationToken).ConfigureAwait(false))
+                !await TryIngestFromExtractAsync(ctx, rawExtract, steps, entityWorkspace, cancellationToken).ConfigureAwait(false))
             {
                 success = false;
                 if (mode == ProjectMemoryPipelineMode.IngestOnly)
@@ -113,7 +181,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 
         try
         {
-            var answer = await RunQueryAsync(querySpec!, root, request.UserMessage, request.ConversationPrefix, cancellationToken)
+            var answer = await RunQueryAsync(querySpec!, root, entityWorkspace, request.UserMessage, request.ConversationPrefix, cancellationToken)
                 .ConfigureAwait(false);
             steps.Add(new ProjectMemoryPipelineStep { Name = "query", Ok = true, Detail = Truncate(answer, 600) });
             return Finish(correlationId, success, answer, steps);
@@ -131,50 +199,119 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         LoadedProjectContext ctx,
         string rawExtract,
         List<ProjectMemoryPipelineStep> steps,
+        string entityWorkspaceRoot,
         CancellationToken cancellationToken)
     {
-        if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr))
+        var work = await IngestFromRawExtractAsync(ctx, rawExtract, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+        if (!work.ParseOk)
         {
-            steps.Add(new ProjectMemoryPipelineStep { Name = "parse", Ok = false, Detail = parseErr });
+            steps.Add(new ProjectMemoryPipelineStep { Name = "parse", Ok = false, Detail = work.ParseError });
             return false;
         }
 
+        if (work.NoIntents)
+        {
+            steps.Add(new ProjectMemoryPipelineStep { Name = "route", Ok = true, Detail = work.RouteDetail });
+            return true;
+        }
+
+        if (work.RouteFatal)
+        {
+            steps.Add(new ProjectMemoryPipelineStep { Name = "route", Ok = false, Detail = work.RouteDetail });
+            return false;
+        }
+
+        steps.Add(new ProjectMemoryPipelineStep
+        {
+            Name = "route",
+            Ok = true,
+            Detail = work.RouteDetail
+        });
+
+        var writeOk = work.WriteOk;
+        var writeDetail = work.WriteDetail;
+        steps.Add(new ProjectMemoryPipelineStep
+        {
+            Name = "write",
+            Ok = writeOk,
+            UpdatedFiles = work.UpdatedFiles,
+            Detail = writeDetail
+        });
+        return writeOk;
+    }
+
+    /// <summary>Shared parse → route → projection for ingest (pipeline steps or standalone API).</summary>
+    private async Task<RawIngestWork> IngestFromRawExtractAsync(
+        LoadedProjectContext ctx,
+        string rawExtract,
+        string entityWorkspaceRoot,
+        CancellationToken cancellationToken)
+    {
+        if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr))
+            return new RawIngestWork(false, parseErr, false, false, "", false, new List<string>(), null);
+
         if (batch!.MemoryIntents.Count == 0)
         {
-            steps.Add(new ProjectMemoryPipelineStep { Name = "route", Ok = true, Detail = "No memory intents; skipped write." });
-            return true;
+            return new RawIngestWork(
+                true,
+                null,
+                true,
+                false,
+                "No memory intents; skipped write.",
+                false,
+                new List<string>(),
+                null);
         }
 
         var routed = _processor.Route(ctx, batch.MemoryIntents, out var routeIssues);
         var routeErrors = routeIssues.Where(i => i.IsError).ToList();
         if (routeErrors.Count > 0 && routed.Count == 0)
         {
-            steps.Add(new ProjectMemoryPipelineStep
-            {
-                Name = "route",
-                Ok = false,
-                Detail = string.Join("; ", routeErrors.Select(i => i.Message))
-            });
-            return false;
+            return new RawIngestWork(
+                true,
+                null,
+                false,
+                true,
+                string.Join("; ", routeErrors.Select(i => i.Message)),
+                false,
+                new List<string>(),
+                null);
         }
 
         var routeDetail = $"Routed {routed.Count} intent(s).";
         if (routeErrors.Count > 0)
             routeDetail += " Skipped " + routeErrors.Count + " unroutable intent(s): " +
                            string.Join("; ", routeErrors.Select(i => i.Message));
-        steps.Add(new ProjectMemoryPipelineStep
-        {
-            Name = "route",
-            Ok = true,
-            Detail = routeDetail
-        });
 
-        var discovered = await _entities.DiscoverAsync(ctx, cancellationToken).ConfigureAwait(false);
+        var groups = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase).ToList();
+        var discovered = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
         var lookup = BuildEntityLookup(discovered);
-        var byEntity = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase);
         var updated = new List<string>();
+
+        // Unknown entityKey (e.g. new "Melody") has no folder yet — discovery skips it and projection needs files on disk.
+        var bootstrapped = false;
+        foreach (var g in groups)
+        {
+            if (ResolveEntityRecord(g.Key, discovered, lookup) != null)
+                continue;
+            var created = await EntityFolderBootstrapper.TryCreateIfMissingAsync(
+                    ctx, entityWorkspaceRoot, g.Key, g.ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            if (created.Count > 0)
+            {
+                updated.AddRange(created);
+                bootstrapped = true;
+            }
+        }
+
+        if (bootstrapped)
+        {
+            discovered = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+            lookup = BuildEntityLookup(discovered);
+        }
+
         var unresolved = new List<string>();
-        foreach (var g in byEntity)
+        foreach (var g in groups)
         {
             var rec = ResolveEntityRecord(g.Key, discovered, lookup);
             if (rec == null)
@@ -182,6 +319,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 unresolved.Add(g.Key);
                 continue;
             }
+
             var res = await _projection.ApplyAsync(rec, g.ToList(), cancellationToken).ConfigureAwait(false);
             updated.AddRange(res.UpdatedFiles);
         }
@@ -190,28 +328,33 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         var writeDetail = unresolved.Count > 0
             ? "Updated " + updated.Count + " file(s); unresolved entity keys: " + string.Join(", ", unresolved.Distinct(StringComparer.OrdinalIgnoreCase))
             : (updated.Count == 0 ? "No files updated (entities not found?)." : null);
-        steps.Add(new ProjectMemoryPipelineStep
-        {
-            Name = "write",
-            Ok = writeOk,
-            UpdatedFiles = updated,
-            Detail = writeDetail
-        });
-        return writeOk;
+        return new RawIngestWork(true, null, false, false, routeDetail, writeOk, updated, writeDetail);
     }
+
+    /// <param name="NoIntents">Parsed OK but <c>memoryIntents</c> empty — pipeline skips write step.</param>
+    private sealed record RawIngestWork(
+        bool ParseOk,
+        string? ParseError,
+        bool NoIntents,
+        bool RouteFatal,
+        string RouteDetail,
+        bool WriteOk,
+        List<string> UpdatedFiles,
+        string? WriteDetail);
 
     private async Task<string> RunQueryAsync(
         AgentDefinitionSpec querySpec,
         string projectRoot,
+        string entityWorkspaceRoot,
         string userMessage,
         string? conversationPrefix,
         CancellationToken cancellationToken)
     {
-        var hits = await _ops.SearchEntitiesAsync(projectRoot, null, cancellationToken).ConfigureAwait(false);
+        var hits = await _ops.SearchEntitiesAsync(projectRoot, entityWorkspaceRoot, null, cancellationToken).ConfigureAwait(false);
         var sb = new StringBuilder();
         foreach (var h in hits.Take(20))
         {
-            var profile = await _ops.ReadDocumentAsync(querySpec, projectRoot, $"people/{h.EntityKey}/profile.md", cancellationToken)
+            var profile = await _ops.ReadDocumentAsync(querySpec, projectRoot, entityWorkspaceRoot, $"people/{h.EntityKey}/profile.md", cancellationToken)
                 .ConfigureAwait(false);
             sb.AppendLine($"### {h.EntityKey}");
             sb.AppendLine(profile);

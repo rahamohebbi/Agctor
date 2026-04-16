@@ -15,13 +15,14 @@ namespace AgctorSDK.Host.IntegrationTests
     /// Integration tests for the AgentsController.
     /// Tests message routing, agent discovery, and HTTP API endpoints.
     /// </summary>
-    public class AgentsControllerIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
+    public class AgentsControllerIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
     {
+        // WithWebHostBuilder returns WebApplicationFactory<Program> (chained from AgctorWebApplicationFactory).
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
         private static int _portCounter = 8080;
 
-        public AgentsControllerIntegrationTests(WebApplicationFactory<Program> factory)
+        public AgentsControllerIntegrationTests(AgctorWebApplicationFactory factory)
         {
             _factory = factory.WithWebHostBuilder(builder =>
             {

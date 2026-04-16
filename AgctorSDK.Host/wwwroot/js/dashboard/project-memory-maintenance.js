@@ -45,8 +45,25 @@
                     statusEl.textContent = '(status unavailable)';
                     return;
                 }
-                statusEl.textContent = st.projectRoot || '(not set)';
                 if (st.projectRoot) input.value = st.projectRoot;
+                var active = esc(st.projectRoot || '(not set)');
+                var sample = esc(st.defaultSampleProjectRoot || '');
+                var badge =
+                    st.usesDefaultSampleProjectRoot === true
+                        ? '<span class="inline-block mt-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-100">Using built-in sample default</span>'
+                        : '';
+                statusEl.innerHTML =
+                    '<div class="space-y-2">' +
+                    '<div><span class="text-gray-500 dark:text-gray-400">Active root:</span><br /><span class="font-mono text-sm">' +
+                    active +
+                    '</span></div>' +
+                    (sample
+                        ? '<div class="text-xs text-gray-500 dark:text-gray-400">Built-in sample default (when config is empty):<br /><span class="font-mono">' +
+                          sample +
+                          '</span></div>'
+                        : '') +
+                    badge +
+                    '</div>';
             });
     }
 

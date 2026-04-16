@@ -1,4 +1,319 @@
 {
   "version": 1,
-  "scenarios": []
+  "scenarios": [
+    {
+      "id": "code-generation-chain",
+      "displayName": "Code generation chain",
+      "description": "Creates Root Agent -\u003E LLM Agent with CodeExecutor tool for code generation and validation",
+      "kind": "scripted",
+      "handler": "CodeGenerationChainScenario",
+      "agentTypes": [
+        "Agent",
+        "LLMAgent",
+        "CodeExecutorTool"
+      ],
+      "personaAgentIds": [],
+      "personaBindings": {
+        "extractor": null,
+        "curator": null,
+        "query": null
+      },
+      "flow": null
+    },
+    {
+      "id": "code-graph-demo",
+      "displayName": "Code graph demo",
+      "description": "Creates a minimal CodeGraph with an IndexerAgent that indexes sample files",
+      "kind": "scripted",
+      "handler": "CodeGraphDemoScenario",
+      "agentTypes": [
+        "Agent",
+        "LLMAgent",
+        "CoderAgent",
+        "SessionCoordinatorAgent"
+      ],
+      "personaAgentIds": [],
+      "personaBindings": {
+        "extractor": null,
+        "curator": null,
+        "query": null
+      },
+      "flow": {
+        "schemaVersion": "1.0",
+        "graphId": "code-graph-demo-flow-put-one",
+        "name": "Dedicated PUT",
+        "status": "active",
+        "createdAtUtc": null,
+        "updatedAtUtc": null,
+        "outputPolicy": "merge_sections",
+        "nodes": [
+          {
+            "id": "in1",
+            "type": "ChatInput",
+            "label": "Chat",
+            "config": null
+          },
+          {
+            "id": "out1",
+            "type": "Output",
+            "label": "Out",
+            "config": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "fromNodeId": "in1",
+            "toNodeId": "out1",
+            "mode": "sequential",
+            "condition": null
+          }
+        ],
+        "ui": null
+      }
+    },
+    {
+      "id": "people",
+      "displayName": "People / person",
+      "description": "Chat and session memory oriented around people workflows.",
+      "kind": "declarative",
+      "handler": null,
+      "agentTypes": [
+        "SessionCoordinatorAgent",
+        "SessionMemoryAgent"
+      ],
+      "personaAgentIds": [
+        "person-extractor",
+        "memory-curator",
+        "person-query"
+      ],
+      "personaBindings": {
+        "extractor": "person-extractor",
+        "curator": "memory-curator",
+        "query": "person-query"
+      },
+      "flow": {
+        "schemaVersion": "1.0",
+        "graphId": "people-flow",
+        "name": "Flow",
+        "status": "active",
+        "createdAtUtc": null,
+        "updatedAtUtc": null,
+        "outputPolicy": "merge_sections",
+        "nodes": [
+          {
+            "id": "in1",
+            "type": "ChatInput",
+            "label": "Chat input",
+            "config": {}
+          },
+          {
+            "id": "out1",
+            "type": "Output",
+            "label": "Output",
+            "config": {}
+          },
+          {
+            "id": "n_a01zmd6u",
+            "type": "Router",
+            "label": "Router",
+            "config": {}
+          },
+          {
+            "id": "n_ll596ej4",
+            "type": "PersonaCall",
+            "label": "PersonaCall",
+            "config": {
+              "personaId": "person-extractor"
+            }
+          },
+          {
+            "id": "n_gpa3rkrz",
+            "type": "PersonaCall",
+            "label": "PersonaCall",
+            "config": {
+              "personaId": "memory-curator"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_p4mdsaqp",
+            "fromNodeId": "in1",
+            "toNodeId": "n_a01zmd6u",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_hw83b71m",
+            "fromNodeId": "n_a01zmd6u",
+            "toNodeId": "n_ll596ej4",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_apmbxktp",
+            "fromNodeId": "n_ll596ej4",
+            "toNodeId": "n_gpa3rkrz",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_jobxjn1q",
+            "fromNodeId": "n_gpa3rkrz",
+            "toNodeId": "out1",
+            "mode": "sequential",
+            "condition": null
+          }
+        ],
+        "ui": {
+          "nodeLayouts": {
+            "in1": {
+              "x": -111.33816227471382,
+              "y": -39.955209527212595
+            },
+            "out1": {
+              "x": 299.4937498125102,
+              "y": 28.5
+            },
+            "n_a01zmd6u": {
+              "x": -59.74782363491329,
+              "y": 72.4487075589337
+            },
+            "n_ll596ej4": {
+              "x": 52.218745639804666,
+              "y": 51.24697545092618
+            },
+            "n_gpa3rkrz": {
+              "x": 175.80717864796847,
+              "y": 50.48759766176402
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "person_1",
+      "displayName": "Person 1",
+      "description": "Chat and session memory oriented around people workflows.",
+      "kind": "declarative",
+      "handler": null,
+      "agentTypes": [
+        "PersonExtractorProjectAgent",
+        "PersonQueryProjectAgent",
+        "SessionCoordinatorAgent",
+        "SessionMemoryAgent"
+      ],
+      "personaAgentIds": [
+        "memory-curator",
+        "person-extractor",
+        "person-query"
+      ],
+      "personaBindings": {
+        "extractor": null,
+        "curator": null,
+        "query": null
+      },
+      "flow": {
+        "schemaVersion": "1.0",
+        "graphId": "person_1-flow",
+        "name": "Flow",
+        "status": "active",
+        "createdAtUtc": null,
+        "updatedAtUtc": null,
+        "outputPolicy": "merge_sections",
+        "nodes": [
+          {
+            "id": "in1",
+            "type": "ChatInput",
+            "label": "Chat input",
+            "config": {}
+          },
+          {
+            "id": "out1",
+            "type": "Output",
+            "label": "Output",
+            "config": {}
+          },
+          {
+            "id": "n_lyrpqc0m",
+            "type": "Router",
+            "label": "Router",
+            "config": {}
+          },
+          {
+            "id": "n_3g8zdmai",
+            "type": "PersonaCall",
+            "label": "PersonaCall",
+            "config": {
+              "personaId": "person-extractor"
+            }
+          },
+          {
+            "id": "n_2g5asdod",
+            "type": "PersonaCall",
+            "label": "PersonaCall",
+            "config": {
+              "personaId": "memory-curator"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_kombd4hj",
+            "fromNodeId": "in1",
+            "toNodeId": "n_lyrpqc0m",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_72kl12n8",
+            "fromNodeId": "n_3g8zdmai",
+            "toNodeId": "n_2g5asdod",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_wc2kvd1u",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_3g8zdmai",
+            "mode": "sequential",
+            "condition": null
+          },
+          {
+            "id": "e_7w2fqpgp",
+            "fromNodeId": "n_2g5asdod",
+            "toNodeId": "out1",
+            "mode": "sequential",
+            "condition": null
+          }
+        ],
+        "ui": {
+          "nodeLayouts": {
+            "in1": {
+              "x": -62.961739130434765,
+              "y": 94.33391304347826
+            },
+            "out1": {
+              "x": 546.0483138476936,
+              "y": 96.58671012862847
+            },
+            "n_lyrpqc0m": {
+              "x": 41.577075669891975,
+              "y": 96.18574668275485
+            },
+            "n_3g8zdmai": {
+              "x": 194.69694576388684,
+              "y": 98.43699612089245
+            },
+            "n_2g5asdod": {
+              "x": 361.60388317798424,
+              "y": 96.14694410263262
+            }
+          }
+        }
+      }
+    }
+  ],
+  "suppressedDefaultScenarioIds": []
 }
