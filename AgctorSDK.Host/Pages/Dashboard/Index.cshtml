@@ -45,11 +45,21 @@
                         </dl>
                     </div>
                     <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-                        <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">LLM</h2>
+                        <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">LLM (Ollama)</h2>
+                        <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Global default for Host LLM usage. Base URL is set in appsettings; model can be changed here (PRD-015).</p>
                         <dl class="space-y-2 text-sm">
-                            <div><dt class="text-gray-500 dark:text-gray-400">Ollama URL</dt><dd class="font-mono text-gray-900 dark:text-white break-all">${esc(llm.ollamaApiUrl)}</dd></div>
-                            <div><dt class="text-gray-500 dark:text-gray-400">Default model</dt><dd class="font-medium text-gray-900 dark:text-white">${esc(llm.defaultModel)}</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Ollama URL</dt><dd id="llm-ollama-url" class="font-mono text-gray-900 dark:text-white break-all">${esc(llm.ollamaApiUrl)}</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Default model</dt><dd id="llm-default-model" class="font-medium text-gray-900 dark:text-white">${esc(llm.defaultModel)}</dd></div>
                         </dl>
+                        <div class="mt-4 space-y-3 border-t border-gray-200 pt-4 dark:border-gray-600">
+                            <button type="button" id="llm-refresh-models" class="inline-flex items-center px-3 py-2 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600">Refresh models</button>
+                            <div>
+                                <label for="llm-model-select" class="block text-xs font-medium text-gray-600 dark:text-gray-300">Local models</label>
+                                <select id="llm-model-select" class="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-white"></select>
+                            </div>
+                            <button type="button" id="llm-set-default" class="inline-flex items-center px-3 py-2 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Set as default</button>
+                            <p id="llm-action-msg" class="hidden text-sm"></p>
+                        </div>
                     </div>
                     <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
                         <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">MCP</h2>
@@ -80,10 +90,114 @@
                     <div class="flex flex-wrap gap-2">${scenarios.map(s => '<span class="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-gray-700 dark:text-gray-300">' + esc(s) + '</span>').join('')}</div>
                 </div>
             `;
+            initLlmCard();
         })
         .catch(() => {
             el.innerHTML = '<div class="p-6 bg-red-50 border border-red-200 rounded-lg dark:bg-gray-800 dark:border-red-800"><p class="text-red-700 dark:text-red-400">Failed to load configuration.</p></div>';
         });
+
+    function initLlmCard() {
+        const msg = document.getElementById('llm-action-msg');
+        const select = document.getElementById('llm-model-select');
+        const refresh = document.getElementById('llm-refresh-models');
+        const save = document.getElementById('llm-set-default');
+        if (!msg || !select || !refresh || !save) return;
+
+        function showMsg(text, isErr) {
+            msg.textContent = text;
+            msg.classList.remove('hidden', 'text-green-700', 'dark:text-green-400', 'text-amber-800', 'dark:text-amber-200', 'text-red-700', 'dark:text-red-400');
+            msg.classList.add(isErr ? 'text-red-700' : 'text-green-700', isErr ? 'dark:text-red-400' : 'dark:text-green-400');
+            msg.classList.remove('hidden');
+        }
+
+        function showWarn(text) {
+            msg.textContent = text;
+            msg.classList.remove('hidden', 'text-green-700', 'dark:text-green-400', 'text-red-700', 'dark:text-red-400');
+            msg.classList.add('text-amber-800', 'dark:text-amber-200');
+        }
+
+        async function reloadLlmSummary() {
+            const r = await fetch('/api/Config');
+            if (!r.ok) return;
+            const c = await r.json();
+            const llm = c.llm || {};
+            const urlEl = document.getElementById('llm-ollama-url');
+            const modelEl = document.getElementById('llm-default-model');
+            if (urlEl) urlEl.textContent = llm.ollamaApiUrl ?? '';
+            if (modelEl) modelEl.textContent = llm.defaultModel ?? '';
+        }
+
+        /** Same as Refresh: fetch /api/Llm/models and fill the select; sync selection to current default. */
+        async function loadModels(silent) {
+            if (!silent) msg.classList.add('hidden');
+            refresh.disabled = true;
+            try {
+                const r = await fetch('/api/Llm/models');
+                if (!r.ok) {
+                    const err = await r.json().catch(function () { return {}; });
+                    showMsg((err.message || 'Could not list models. Is Ollama running?'), true);
+                    return;
+                }
+                const data = await r.json();
+                const models = data.models || [];
+                select.replaceChildren();
+                for (let i = 0; i < models.length; i++) {
+                    const m = models[i];
+                    const opt = document.createElement('option');
+                    opt.value = m.name;
+                    opt.textContent = m.name;
+                    select.appendChild(opt);
+                }
+                const cur = document.getElementById('llm-default-model');
+                if (cur && cur.textContent && select.options.length) {
+                    for (let j = 0; j < select.options.length; j++) {
+                        if (select.options[j].value === cur.textContent) { select.selectedIndex = j; break; }
+                    }
+                }
+                if (!silent) {
+                    showMsg(models.length ? ('Loaded ' + models.length + ' model(s).') : 'No models reported by Ollama.', false);
+                }
+            } catch (e) {
+                showMsg('Failed to reach Host for model list.', true);
+            } finally {
+                refresh.disabled = false;
+            }
+        }
+
+        refresh.addEventListener('click', function () { loadModels(false); });
+
+        void loadModels(true);
+
+        save.addEventListener('click', async function () {
+            msg.classList.add('hidden');
+            const model = (select.value || '').trim();
+            if (!model) {
+                showMsg('Choose a model from the list (wait for models to load or use Refresh models).', true);
+                return;
+            }
+            save.disabled = true;
+            try {
+                const r = await fetch('/api/Llm/default-model', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: model })
+                });
+                if (!r.ok) {
+                    const err = await r.json().catch(function () { return {}; });
+                    showMsg(err.message || 'Save failed.', true);
+                    return;
+                }
+                const body = await r.json().catch(function () { return {}; });
+                await reloadLlmSummary();
+                if (body.warning) showWarn('Saved. ' + body.warning);
+                else showMsg('Default model updated.', false);
+            } catch (e) {
+                showMsg('Request failed.', true);
+            } finally {
+                save.disabled = false;
+            }
+        });
+    }
 })();
 </script>
 }

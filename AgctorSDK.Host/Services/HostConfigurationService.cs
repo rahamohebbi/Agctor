@@ -1,5 +1,5 @@
-using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Agents;
 using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Options;
 
@@ -46,10 +46,11 @@ public class HostConfigurationService : IHostConfigurationService
             ProtoPort = _configuration.GetValue<int?>("Agctor:ProtoPort")
         };
 
+        // Effective values from LLMAgent so /api/Config matches runtime after PUT /api/Llm/default-model (PRD-015).
         var llm = new LlmConfigDto
         {
-            OllamaApiUrl = _configuration.GetValue<string>("Agctor:LLM:OllamaApiUrl", "http://localhost:11434"),
-            DefaultModel = _configuration.GetValue<string>("Agctor:LLM:DefaultModel", "mistral")
+            OllamaApiUrl = LLMAgent.GetConfiguredOllamaApiUrl(),
+            DefaultModel = LLMAgent.GetConfiguredDefaultModel()
         };
 
         var mcp = new McpConfigDto

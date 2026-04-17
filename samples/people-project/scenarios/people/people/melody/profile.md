@@ -2,10 +2,11 @@
 
 ## Basic Info
 
-Name: melody
+Name: Melody
 Age: 47
 
 ## Physical Attributes
+
 
 Hair: brown
 

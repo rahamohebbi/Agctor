@@ -15,6 +15,12 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 |--------|------|-------------|
 | GET | `/api/Config` | Get full Host configuration (runtime, LLM, MCP, tools, scenarios, agent types, **dashboard scenario name**, **per-type enablement**) |
 
+### LLM / Ollama – Dashboard (PRD-015)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/Llm/models` | List local models (proxies Ollama `GET /api/tags` using configured base URL) |
+| PUT | `/api/Llm/default-model` | Body `{ "model": "<name>" }` — merge `Agctor:LLM:DefaultModel` into `appsettings.User.json` and apply via `LLMAgent.ConfigureDefaults` |
+
 ### Runtime – Dashboard (PRD-012)
 | Method | Path | Description |
 |--------|------|-------------|

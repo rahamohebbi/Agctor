@@ -92,6 +92,8 @@ builder.Services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelin
 builder.Services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
 builder.Services.AddSingleton<IProjectMemoryAgentYamlPersistence, ProjectMemoryAgentYamlPersistence>();
 builder.Services.AddSingleton<IUserProjectMemorySettingsService, UserProjectMemorySettingsService>();
+builder.Services.AddSingleton<ILlmUserSettingsService, LlmUserSettingsService>();
+builder.Services.AddSingleton<IOllamaModelCatalog, OllamaModelCatalog>();
 
 // Register AGCTOR Core services
 var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory");
