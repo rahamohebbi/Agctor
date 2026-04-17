@@ -6,6 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Lets Host.IntegrationTests call internal helpers (e.g. trace JSON builders) without widening public API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgctorSDK.Host.IntegrationTests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.5" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />

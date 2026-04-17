@@ -78,6 +78,14 @@
             }
         }
 
+        /** Bordered panel so Input vs Outcome reads clearly in Playground/CodeGraph traces (PRD-016). */
+        function detailCard(title, innerHtml) {
+            return '<section class="rounded-lg border border-gray-200 dark:border-gray-600 bg-white/95 dark:bg-gray-950/60 p-3 shadow-sm">' +
+                '<h4 class="text-[11px] font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200 mb-2 border-b border-gray-100 dark:border-gray-700 pb-1">' +
+                esc(title) + '</h4>' +
+                '<div class="space-y-2">' + innerHtml + '</div></section>';
+        }
+
         function formatTimelineDetailJson(raw) {
             let o;
             try {
@@ -88,56 +96,81 @@
             }
             const k = o.kind;
             if (k === 'pm.playground.persona-llm') {
-                let h = '<div class="space-y-3">';
-                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Ollama <code class="text-[11px]">' + esc(o.ollamaBase || '') + '</code> · model <code class="text-[11px]">' + esc(o.model || '') + '</code></p>';
-                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Prompt length ' + esc(String(o.promptChars ?? '')) + ' chars · output ' + esc(String(o.outputChars ?? '')) + ' chars</p>';
-                if (o.promptTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">Prompt truncated in trace payload.</p>';
-                if (o.outputTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">Output truncated in trace payload.</p>';
-                h += '<div><h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Prompt (LLM input)</h4>';
-                h += '<pre class="max-h-72 overflow-auto text-xs bg-white/90 dark:bg-black/40 p-2 rounded border border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words">' + esc(o.prompt || '') + '</pre></div>';
-                h += '<div><h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Output (raw stream)</h4>';
-                h += '<pre class="max-h-72 overflow-auto text-xs bg-white/90 dark:bg-black/40 p-2 rounded border border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words">' + esc(o.output || '') + '</pre></div>';
-                h += '</div>';
-                return h;
+                let meta = '<div class="rounded-md border border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 p-2 space-y-1">' +
+                    '<p class="text-xs text-gray-600 dark:text-gray-400">Ollama <code class="text-[11px]">' + esc(o.ollamaBase || '') + '</code> · model <code class="text-[11px]">' + esc(o.model || '') + '</code></p>' +
+                    '<p class="text-xs text-gray-600 dark:text-gray-400">Prompt length ' + esc(String(o.promptChars ?? '')) + ' chars · output ' + esc(String(o.outputChars ?? '')) + ' chars</p>';
+                if (o.promptTruncated) meta += '<p class="text-xs text-amber-700 dark:text-amber-300">Prompt truncated in trace payload.</p>';
+                if (o.outputTruncated) meta += '<p class="text-xs text-amber-700 dark:text-amber-300">Output truncated in trace payload.</p>';
+                meta += '</div>';
+                const inputBody = '<pre class="max-h-72 overflow-auto text-xs bg-gray-50 dark:bg-black/40 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-wrap break-words">' + esc(o.prompt || '') + '</pre>';
+                const outBody = '<pre class="max-h-72 overflow-auto text-xs bg-gray-50 dark:bg-black/40 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-wrap break-words">' + esc(o.output || '') + '</pre>';
+                return '<div class="space-y-3">' + meta + '<div class="grid gap-3">' +
+                    detailCard('Input (LLM prompt)', inputBody) +
+                    detailCard('Output or outcome (raw model text)', outBody) +
+                    '</div></div>';
             }
             if (k === 'pm.playground.ingest-disk') {
-                let h = '<div class="space-y-2">';
-                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Scenario <code class="text-[11px]">' + esc(o.scenarioId || '') + '</code> · parse ' + esc(String(o.parseSuccess)) + ' · wrote files: ' + esc(String(o.wroteAnyFile)) + '</p>';
-                if (o.summary) h += '<p class="text-xs">' + esc(o.summary) + '</p>';
-                if (o.paths && o.paths.length) {
-                    h += '<h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Paths touched</h4><ul class="list-disc pl-5 text-xs space-y-0.5">';
-                    o.paths.forEach(function(p) {
-                        h += '<li><code class="break-all">' + esc(p) + '</code></li>';
-                    });
-                    h += '</ul>';
-                    if (o.pathsTruncated) h += '<p class="text-xs text-amber-700 dark:text-amber-300">List truncated.</p>';
+                const hasPreview = o.extractorOutputPreview != null && String(o.extractorOutputPreview).length > 0;
+                let inputInner = '<p class="text-xs text-gray-600 dark:text-gray-400">Scenario <code class="text-[11px]">' + esc(o.scenarioId || '') + '</code></p>';
+                if (o.extractorOutputChars != null && o.extractorOutputChars > 0) {
+                    inputInner += '<p class="text-xs text-gray-600 dark:text-gray-400">Extractor output length: ' + esc(String(o.extractorOutputChars)) + ' chars.</p>';
+                } else {
+                    inputInner += '<p class="text-xs text-gray-500 dark:text-gray-400">Extractor raw output was not stored on this trace snapshot (older Host builds).</p>';
                 }
-                h += '</div>';
-                return h;
+                if (o.extractorOutputTruncated) {
+                    inputInner += '<p class="text-xs text-amber-700 dark:text-amber-300">Preview truncated for trace size limits.</p>';
+                }
+                if (hasPreview) {
+                    inputInner += '<pre class="max-h-64 overflow-auto text-xs bg-gray-50 dark:bg-black/40 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-wrap break-words">' +
+                        esc(o.extractorOutputPreview) + '</pre>';
+                } else if (o.extractorOutputChars != null && o.extractorOutputChars > 0) {
+                    inputInner += '<p class="text-xs text-gray-500 dark:text-gray-400">Preview empty (unexpected).</p>';
+                }
+                let outcomeInner = '<p class="text-xs"><span class="font-medium">Parse success:</span> ' + esc(String(o.parseSuccess)) +
+                    ' · <span class="font-medium">Wrote files:</span> ' + esc(String(o.wroteAnyFile)) + '</p>';
+                if (o.summary) outcomeInner += '<p class="text-xs text-gray-800 dark:text-gray-200">' + esc(o.summary) + '</p>';
+                if (o.paths && o.paths.length) {
+                    outcomeInner += '<ul class="list-disc pl-5 text-xs space-y-0.5">';
+                    o.paths.forEach(function(p) {
+                        outcomeInner += '<li><code class="break-all">' + esc(p) + '</code></li>';
+                    });
+                    outcomeInner += '</ul>';
+                    if (o.pathsTruncated) outcomeInner += '<p class="text-xs text-amber-700 dark:text-amber-300">Paths list truncated.</p>';
+                }
+                return '<div class="space-y-3">' +
+                    detailCard('Input (extractor raw output → ingest)', inputInner) +
+                    detailCard('Outcome (parse + disk)', outcomeInner) +
+                    '</div>';
             }
             if (k === 'pm.playground.persist-assistant') {
-                let h = '<div class="space-y-2">';
-                h += '<p class="text-xs text-gray-600 dark:text-gray-400">sessionId <code class="break-all text-[11px]">' + esc(o.sessionId || '') + '</code> · messageId <code class="break-all text-[11px]">' + esc(o.messageId || '') + '</code></p>';
-                h += '<p class="text-xs text-gray-600 dark:text-gray-400">Assistant body length: ' + esc(String(o.assistantChars ?? '')) + ' chars (includes ingest footer when applicable).</p>';
-                if (o.ingestSummary) h += '<p class="text-xs">Ingest summary: ' + esc(o.ingestSummary) + '</p>';
+                const idInner = '<p class="text-xs text-gray-600 dark:text-gray-400">sessionId</p><p class="text-[11px] font-mono break-all">' + esc(o.sessionId || '') + '</p>' +
+                    '<p class="text-xs text-gray-600 dark:text-gray-400 mt-2">messageId</p><p class="text-[11px] font-mono break-all">' + esc(o.messageId || '') + '</p>';
+                let outInner = '<p class="text-xs text-gray-800 dark:text-gray-200"><span class="font-medium">Assistant body length:</span> ' +
+                    esc(String(o.assistantChars ?? '')) + ' chars (includes ingest footer when applicable).</p>';
+                if (o.ingestSummary) {
+                    outInner += '<p class="text-xs"><span class="font-medium">Ingest summary:</span> ' + esc(o.ingestSummary) + '</p>';
+                }
+                let filesInner = '';
                 if (o.files && o.files.length) {
-                    h += '<h4 class="text-xs font-semibold text-gray-700 dark:text-gray-300">Files (path + preview)</h4>';
                     o.files.forEach(function(f) {
-                        h += '<div class="mt-2 rounded border border-gray-200 dark:border-gray-600 p-2 bg-white/70 dark:bg-black/30">';
-                        h += '<p class="text-[11px] font-mono break-all text-violet-800 dark:text-violet-200">' + esc(f.path || '') + '</p>';
+                        filesInner += '<div class="mt-2 rounded border border-gray-200 dark:border-gray-600 p-2 bg-white/70 dark:bg-black/30">';
+                        filesInner += '<p class="text-[11px] font-mono break-all text-violet-800 dark:text-violet-200">' + esc(f.path || '') + '</p>';
                         if (f.resolvedPath && f.resolvedPath !== f.path) {
-                            h += '<p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">resolved: <span class="font-mono break-all">' + esc(f.resolvedPath) + '</span></p>';
+                            filesInner += '<p class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">resolved: <span class="font-mono break-all">' + esc(f.resolvedPath) + '</span></p>';
                         }
-                        if (f.readError) h += '<p class="text-xs text-red-600 dark:text-red-400 mt-1">' + esc(f.readError) + '</p>';
-                        h += '<p class="text-[10px] text-gray-500 dark:text-gray-400">file ~' + esc(String(f.fileSizeBytes != null ? f.fileSizeBytes : '')) + ' bytes · preview ' + esc(String(f.previewChars != null ? f.previewChars : '')) + ' chars' + (f.previewTruncated ? ' (truncated)' : '') + '</p>';
-                        h += '<pre class="mt-1 max-h-48 overflow-auto text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900/80 p-2 rounded">' + esc(f.preview || '') + '</pre>';
-                        h += '</div>';
+                        if (f.readError) filesInner += '<p class="text-xs text-red-600 dark:text-red-400 mt-1">' + esc(f.readError) + '</p>';
+                        filesInner += '<p class="text-[10px] text-gray-500 dark:text-gray-400">file ~' + esc(String(f.fileSizeBytes != null ? f.fileSizeBytes : '')) + ' bytes · preview ' + esc(String(f.previewChars != null ? f.previewChars : '')) + ' chars' + (f.previewTruncated ? ' (truncated)' : '') + '</p>';
+                        filesInner += '<pre class="mt-1 max-h-48 overflow-auto text-xs whitespace-pre-wrap break-words bg-gray-50 dark:bg-gray-900/80 p-2 rounded">' + esc(f.preview || '') + '</pre>';
+                        filesInner += '</div>';
                     });
                 } else {
-                    h += '<p class="text-xs text-gray-500 dark:text-gray-400">No ingest file list on this turn (ingest skipped or wrote nothing).</p>';
+                    filesInner = '<p class="text-xs text-gray-500 dark:text-gray-400">No file previews (ingest skipped or wrote nothing).</p>';
                 }
-                h += '</div>';
-                return h;
+                return '<div class="space-y-3">' +
+                    detailCard('Identifiers', idInner) +
+                    detailCard('Outcome', outInner) +
+                    detailCard('Artifacts (disk preview)', filesInner) +
+                    '</div>';
             }
             return '<pre class="text-xs whitespace-pre-wrap break-words max-h-96 overflow-auto bg-white/80 dark:bg-black/30 p-2 rounded border">' + esc(JSON.stringify(o, null, 2)) + '</pre>';
         }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 
 namespace AgctorSDK.Host.Services.ProjectMemory;
@@ -11,12 +12,15 @@ internal static class PlaygroundTraceTimelineDetail
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
     public const int MaxPromptChars = 96 * 1024;
     public const int MaxOutputChars = 96 * 1024;
     public const int MaxFilePreviewChars = 12 * 1024;
+    /// <summary>Caps raw extractor text embedded on the ingest span so traces stay lightweight.</summary>
+    public const int MaxIngestExtractorPreviewChars = 8 * 1024;
     public const int MaxPersistFileEntries = 24;
 
     public static string BuildPersonaLlmJson(string prompt, string output, string model, string ollamaBase)
@@ -39,9 +43,20 @@ internal static class PlaygroundTraceTimelineDetail
             Json);
     }
 
-    public static string BuildIngestJson(string scenarioId, ProjectMemoryIngestResult ingest)
+    /// <param name="extractorOutput">Raw LLM output fed into ingest (person-extractor stream); truncated in JSON for the trace UI.</param>
+    public static string BuildIngestJson(string scenarioId, ProjectMemoryIngestResult ingest, string? extractorOutput = null)
     {
         var paths = ingest.UpdatedFiles.Take(40).ToArray();
+        var preview = "";
+        var extractorChars = 0;
+        var extractorTruncated = false;
+        if (!string.IsNullOrEmpty(extractorOutput))
+        {
+            extractorChars = extractorOutput.Length;
+            preview = Truncate(extractorOutput, MaxIngestExtractorPreviewChars);
+            extractorTruncated = extractorOutput.Length > preview.Length;
+        }
+
         return JsonSerializer.Serialize(
             new
             {
@@ -51,7 +66,10 @@ internal static class PlaygroundTraceTimelineDetail
                 ingest.WroteAnyFile,
                 ingest.Summary,
                 paths,
-                pathsTruncated = ingest.UpdatedFiles.Count > paths.Length
+                pathsTruncated = ingest.UpdatedFiles.Count > paths.Length,
+                extractorOutputChars = extractorChars > 0 ? extractorChars : (int?)null,
+                extractorOutputPreview = string.IsNullOrEmpty(preview) ? null : preview,
+                extractorOutputTruncated = extractorTruncated
             },
             Json);
     }

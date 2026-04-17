@@ -662,7 +662,7 @@ public sealed class ProjectMemoryController : ControllerBase
                             try
                             {
                                 ingestScopeFlow?.SetTimelineDetailJson(
-                                    PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingestFlow));
+                                    PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingestFlow, rawFlow));
                             }
                             catch (Exception exDetail)
                             {
@@ -1016,7 +1016,7 @@ public sealed class ProjectMemoryController : ControllerBase
                                 try
                                 {
                                     ingestScope?.SetTimelineDetailJson(
-                                        PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingest));
+                                        PlaygroundTraceTimelineDetail.BuildIngestJson(scenarioResolved!, ingest, rawLlm));
                                 }
                                 catch (Exception exDetail)
                                 {
