@@ -246,6 +246,68 @@ public sealed class ProjectMemoryPipelineRunnerTests
     }
 
     [TestMethod]
+    public async Task IngestFromExtractorOutputAsync_AcceptsActionIntentsEnvelope()
+    {
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        Assert.IsTrue(Directory.Exists(src), $"Missing sample at {src}");
+
+        var temp = Path.Combine(Path.GetTempPath(), "pm-ingest-actions-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+            var peopleSrc = Path.Combine(temp, "people");
+            var scenRoot = Path.Combine(temp, "scenarios", "action-scen");
+            Directory.CreateDirectory(scenRoot);
+            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+
+            const string marker = "ActionIntentIngestMarker";
+            var json =
+                $$"""
+                  {
+                    "schemaVersion":"1.0",
+                    "scenarioId":"action-scen",
+                    "actionIntents":[
+                      {
+                        "intentType":"memory.persist",
+                        "payload":{
+                          "memoryIntents":[
+                            {"entityKey":"match/people/raha/","knowledgeType":"occupation","attribute":"","value":"{{marker}}","confidence":0.95}
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                  """;
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => new QueueLlm());
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var ingest = await runner.IngestFromExtractorOutputAsync(temp, "action-scen", json).ConfigureAwait(false);
+
+            Assert.IsTrue(ingest.ParseSuccess, ingest.Summary);
+            Assert.IsTrue(ingest.WroteAnyFile, ingest.Summary);
+            var scopedProfile = Path.Combine(temp, "scenarios", "action-scen", "people", "raha", "profile.md");
+            Assert.IsTrue(File.Exists(scopedProfile), "Expected scoped profile path.");
+            var profile = await File.ReadAllTextAsync(scopedProfile).ConfigureAwait(false);
+            StringAssert.Contains(profile, marker);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(temp, recursive: true);
+            }
+            catch
+            {
+                // best-effort cleanup on CI
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task QueryOnly_UsesSingleLlmRoundTrip()
     {
         var src = Path.Combine(RepoRoot(), "samples", "people-project");

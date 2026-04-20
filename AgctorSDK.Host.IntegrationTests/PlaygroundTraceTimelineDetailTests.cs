@@ -15,6 +15,7 @@ public sealed class PlaygroundTraceTimelineDetailTests
         var ingest = new ProjectMemoryIngestResult
         {
             ParseSuccess = true,
+            ParseSource = "actionIntents.memory.persist",
             WroteAnyFile = false,
             Summary = "ok",
             UpdatedFiles = []
@@ -24,6 +25,7 @@ public sealed class PlaygroundTraceTimelineDetailTests
         using var doc = JsonDocument.Parse(json);
         var r = doc.RootElement;
         r.GetProperty("kind").GetString().Should().Be("pm.playground.ingest-disk");
+        r.GetProperty("parseSource").GetString().Should().Be("actionIntents.memory.persist");
         r.GetProperty("extractorOutputChars").GetInt32().Should().Be(longOut.Length);
         r.GetProperty("extractorOutputTruncated").GetBoolean().Should().BeTrue();
         r.GetProperty("extractorOutputPreview").GetString()!.Length.Should().Be(PlaygroundTraceTimelineDetail.MaxIngestExtractorPreviewChars);
@@ -46,5 +48,29 @@ public sealed class PlaygroundTraceTimelineDetailTests
         r.TryGetProperty("extractorOutputChars", out _).Should().BeFalse();
         r.TryGetProperty("extractorOutputPreview", out _).Should().BeFalse();
         r.GetProperty("extractorOutputTruncated").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public void BuildStreamRootJson_includes_mode_status_and_persona_chain()
+    {
+        var json = PlaygroundTraceTimelineDetail.BuildStreamRootJson(
+            sessionId: "s1",
+            messageId: "m1",
+            scenarioId: "people",
+            selectedAgentId: "memory-curator",
+            usedScenarioFlow: true,
+            status: "success",
+            personaChain: new[] { "person-extractor", "memory-curator" },
+            responseChars: 321,
+            ingestAttempted: true);
+
+        using var doc = JsonDocument.Parse(json);
+        var r = doc.RootElement;
+        r.GetProperty("kind").GetString().Should().Be("pm.playground.stream-root");
+        r.GetProperty("usedScenarioFlow").GetBoolean().Should().BeTrue();
+        r.GetProperty("status").GetString().Should().Be("success");
+        r.GetProperty("responseChars").GetInt32().Should().Be(321);
+        r.GetProperty("ingestAttempted").GetBoolean().Should().BeTrue();
+        r.GetProperty("personaChain").EnumerateArray().Select(x => x.GetString()).Should().ContainInOrder("person-extractor", "memory-curator");
     }
 }

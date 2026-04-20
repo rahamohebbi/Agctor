@@ -11,6 +11,7 @@
       "projectTypes": ["people"],
       "instructions": [
         "Identify person entities mentioned in the input.",
+        "Emit one JSON object using schemaVersion + actionIntents; include a memory.persist intent whose payload contains memoryIntents.",
         "Extract only supported knowledge types.",
         "Produce memory intents as JSON only."
       ],

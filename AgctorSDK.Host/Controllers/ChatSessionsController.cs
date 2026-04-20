@@ -180,6 +180,74 @@ namespace AgctorSDK.Host.Controllers
             }
         }
 
+        /// <summary>Renames a session (updates <c>title</c>).</summary>
+        [HttpPut("{sessionId}")]
+        [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<SessionInfo>> UpdateAsync(
+            [FromRoute] string sessionId,
+            [FromBody] UpdateChatSessionRequest? request,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                if (request == null || string.IsNullOrWhiteSpace(request.Title))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        Code = "SESSION_UPDATE_EMPTY",
+                        Message = "Provide a non-empty title."
+                    });
+                }
+
+                var existing = await _sessionStore.GetSessionAsync(sessionId, cancellationToken);
+                if (existing == null)
+                {
+                    return NotFound(new ErrorResponse
+                    {
+                        Code = "SESSION_NOT_FOUND",
+                        Message = $"Session '{sessionId}' was not found."
+                    });
+                }
+
+                var updated = await _sessionStore.UpdateSessionTitleAsync(sessionId, request.Title, cancellationToken);
+                return Ok(updated);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                return NotFound(new ErrorResponse { Code = "SESSION_NOT_FOUND", Message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new ErrorResponse { Code = "SESSION_UPDATE_INVALID", Message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update chat session {SessionId}", sessionId);
+                return StatusCode(500, new ErrorResponse { Code = "SESSION_UPDATE_FAILED", Message = ex.Message });
+            }
+        }
+
+        /// <summary>Deletes a session and all of its turns, trace links, summary, and project-move history.</summary>
+        [HttpDelete("{sessionId}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<IActionResult> DeleteAsync([FromRoute] string sessionId, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await _sessionStore.DeleteSessionAsync(sessionId, cancellationToken);
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to delete chat session {SessionId}", sessionId);
+                return StatusCode(500, new ErrorResponse { Code = "SESSION_DELETE_FAILED", Message = ex.Message });
+            }
+        }
+
         [HttpGet("{sessionId}")]
         [ProducesResponseType(typeof(SessionTranscript), StatusCodes.Status200OK)]
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]

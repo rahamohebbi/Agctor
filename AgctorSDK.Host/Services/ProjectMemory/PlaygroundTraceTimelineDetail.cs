@@ -22,6 +22,7 @@ internal static class PlaygroundTraceTimelineDetail
     /// <summary>Caps raw extractor text embedded on the ingest span so traces stay lightweight.</summary>
     public const int MaxIngestExtractorPreviewChars = 8 * 1024;
     public const int MaxPersistFileEntries = 24;
+    public const int MaxRootPersonaEntries = 12;
 
     public static string BuildPersonaLlmJson(string prompt, string output, string model, string ollamaBase)
     {
@@ -64,6 +65,7 @@ internal static class PlaygroundTraceTimelineDetail
                 scenarioId,
                 ingest.ParseSuccess,
                 ingest.WroteAnyFile,
+                ingest.ParseSource,
                 ingest.Summary,
                 paths,
                 pathsTruncated = ingest.UpdatedFiles.Count > paths.Length,
@@ -137,6 +139,43 @@ internal static class PlaygroundTraceTimelineDetail
                 assistantChars,
                 ingestSummary = ingest?.Summary,
                 files = fileEntries
+            },
+            Json);
+    }
+
+    public static string BuildStreamRootJson(
+        string sessionId,
+        string messageId,
+        string? scenarioId,
+        string selectedAgentId,
+        bool usedScenarioFlow,
+        string status,
+        string? errorMessage = null,
+        IEnumerable<string>? personaChain = null,
+        int? responseChars = null,
+        bool? ingestAttempted = null)
+    {
+        var chain = (personaChain ?? Array.Empty<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Trim())
+            .Take(MaxRootPersonaEntries)
+            .ToArray();
+
+        return JsonSerializer.Serialize(
+            new
+            {
+                kind = "pm.playground.stream-root",
+                sessionId,
+                messageId,
+                scenarioId,
+                selectedAgentId,
+                usedScenarioFlow,
+                status,
+                errorMessage,
+                responseChars,
+                ingestAttempted,
+                personaChain = chain.Length > 0 ? chain : null,
+                personaChainTruncated = (personaChain?.Count() ?? 0) > chain.Length
             },
             Json);
     }

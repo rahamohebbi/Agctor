@@ -16,7 +16,7 @@ public sealed class MemoryIntentJsonTests
             """;
         var inner = MemoryIntentJson.UnwrapMarkdownFences(raw);
         StringAssert.StartsWith(inner, "{");
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(inner, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(inner, out var batch, out var err, out _), err);
         Assert.AreEqual(1, batch!.MemoryIntents.Count);
         Assert.AreEqual("a", batch.MemoryIntents[0].EntityKey);
     }
@@ -24,7 +24,7 @@ public sealed class MemoryIntentJsonTests
     [TestMethod]
     public void TryParseBatch_Invalid_ReturnsFalse()
     {
-        Assert.IsFalse(MemoryIntentJson.TryParseBatch("not json", out _, out var err));
+        Assert.IsFalse(MemoryIntentJson.TryParseBatch("not json", out _, out var err, out _));
         Assert.IsNotNull(err);
     }
 
@@ -32,7 +32,7 @@ public sealed class MemoryIntentJsonTests
     public void TryParseBatch_OptionalScenarioId_RoundTrips()
     {
         const string json = """{"scenarioId":"people","memoryIntents":[{"entityKey":"raha","knowledgeType":"identity","value":"x","confidence":1}]}""";
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out _), err);
         Assert.AreEqual("people", batch!.ScenarioId);
         Assert.AreEqual(1, batch.MemoryIntents.Count);
     }
@@ -47,7 +47,7 @@ public sealed class MemoryIntentJsonTests
 
             Thanks.
             """;
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(raw, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(raw, out var batch, out var err, out _), err);
         Assert.AreEqual(1, batch!.MemoryIntents.Count);
         Assert.AreEqual("melody", batch.MemoryIntents[0].EntityKey);
         Assert.AreEqual("skill", batch.MemoryIntents[0].KnowledgeType);
@@ -62,7 +62,7 @@ public sealed class MemoryIntentJsonTests
               {"entityKey":"match/people/raha/","knowledgeType":"family_role","attribute":"brother","value":"Melody","confidence":1}
             ]
             """;
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out _), err);
         Assert.AreEqual(2, batch!.MemoryIntents.Count);
         Assert.AreEqual("melody", batch.MemoryIntents[0].EntityKey);
         Assert.AreEqual("raha", batch.MemoryIntents[1].EntityKey);
@@ -72,7 +72,7 @@ public sealed class MemoryIntentJsonTests
     public void TryParseBatch_IntentsAlias_RoundTrips()
     {
         const string json = """{"scenarioId":"people","intents":[{"entityKey":"x","knowledgeType":"skill","value":"y","confidence":0.5}]}""";
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out _), err);
         Assert.AreEqual("people", batch!.ScenarioId);
         Assert.AreEqual(1, batch.MemoryIntents.Count);
         Assert.AreEqual("x", batch.MemoryIntents[0].EntityKey);
@@ -86,9 +86,65 @@ public sealed class MemoryIntentJsonTests
             [{"entityKey":"a","knowledgeType":"t","value":"v","confidence":1}]
             ```
             """;
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(raw, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(raw, out var batch, out var err, out _), err);
         Assert.AreEqual(1, batch!.MemoryIntents.Count);
         Assert.AreEqual("a", batch.MemoryIntents[0].EntityKey);
+    }
+
+    [TestMethod]
+    public void TryParseBatch_ActionIntentsEnvelope_UsesMemoryPersistPayload()
+    {
+        const string json = """
+            {
+              "schemaVersion": "1.0",
+              "scenarioId": "people",
+              "actionIntents": [
+                {
+                  "intentType": "notify.send_email",
+                  "payload": { "to": "ops@example.com" }
+                },
+                {
+                  "intentType": "memory.persist",
+                  "payload": {
+                    "memoryIntents": [
+                      {"entityKey":"melody","knowledgeType":"profile_fact","attribute":"age","value":"47","confidence":1}
+                    ]
+                  }
+                }
+              ]
+            }
+            """;
+
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out var source), err);
+        Assert.AreEqual("people", batch!.ScenarioId);
+        Assert.AreEqual(1, batch.MemoryIntents.Count);
+        Assert.AreEqual("melody", batch.MemoryIntents[0].EntityKey);
+        Assert.AreEqual("actionIntents.memory.persist", source);
+    }
+
+    [TestMethod]
+    public void TryParseBatch_ActionIntentsAliasInIntentsArray_Parses()
+    {
+        const string json = """
+            {
+              "scenarioId": "people",
+              "intents": [
+                {
+                  "intentType": "memory.persist",
+                  "payload": {
+                    "intents": [
+                      {"entityKey":"raha","knowledgeType":"occupation","value":"Engineer","confidence":0.9}
+                    ]
+                  }
+                }
+              ]
+            }
+            """;
+
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out var source), err);
+        Assert.AreEqual(1, batch!.MemoryIntents.Count);
+        Assert.AreEqual("raha", batch.MemoryIntents[0].EntityKey);
+        Assert.AreEqual("actionIntents.memory.persist", source);
     }
 
     [TestMethod]
@@ -101,7 +157,7 @@ public sealed class MemoryIntentJsonTests
               ]
             }
             """;
-        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err), err);
+        Assert.IsTrue(MemoryIntentJson.TryParseBatch(json, out var batch, out var err, out _), err);
         Assert.AreEqual("47", batch!.MemoryIntents[0].Value);
     }
 }

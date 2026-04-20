@@ -128,6 +128,15 @@
                 }
                 let outcomeInner = '<p class="text-xs"><span class="font-medium">Parse success:</span> ' + esc(String(o.parseSuccess)) +
                     ' · <span class="font-medium">Wrote files:</span> ' + esc(String(o.wroteAnyFile)) + '</p>';
+                if (o.parseSource) {
+                    const isActionSource = String(o.parseSource).indexOf('actionIntents.') === 0;
+                    const badgeClass = isActionSource
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                        : 'bg-slate-100 text-slate-800 dark:bg-slate-800/70 dark:text-slate-200';
+                    const badgeLabel = isActionSource ? 'Action-intent' : 'Legacy';
+                    outcomeInner += '<p class="text-xs"><span class="font-medium">Parse source:</span> <code class="text-[11px]">' + esc(o.parseSource) + '</code>' +
+                        ' <span class="ml-1 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium ' + badgeClass + '">' + esc(badgeLabel) + '</span></p>';
+                }
                 if (o.summary) outcomeInner += '<p class="text-xs text-gray-800 dark:text-gray-200">' + esc(o.summary) + '</p>';
                 if (o.paths && o.paths.length) {
                     outcomeInner += '<ul class="list-disc pl-5 text-xs space-y-0.5">';
@@ -170,6 +179,42 @@
                     detailCard('Identifiers', idInner) +
                     detailCard('Outcome', outInner) +
                     detailCard('Artifacts (disk preview)', filesInner) +
+                    '</div>';
+            }
+            if (k === 'pm.playground.stream-root') {
+                let inputInner = '<p class="text-xs"><span class="font-medium">Session:</span> <code class="text-[11px] break-all">' + esc(o.sessionId || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Message:</span> <code class="text-[11px] break-all">' + esc(o.messageId || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Selected agent:</span> <code class="text-[11px]">' + esc(o.selectedAgentId || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Scenario:</span> <code class="text-[11px]">' + esc(o.scenarioId || '(none)') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Mode:</span> ' + (o.usedScenarioFlow ? 'Scenario flow graph' : 'Single persona stream') + '</p>';
+
+                let outcomeInner = '<p class="text-xs"><span class="font-medium">Status:</span> ' + esc(String(o.status || 'unknown')) + '</p>';
+                if (o.responseChars != null) {
+                    outcomeInner += '<p class="text-xs"><span class="font-medium">Response length:</span> ' + esc(String(o.responseChars)) + ' chars</p>';
+                }
+                if (o.ingestAttempted != null) {
+                    outcomeInner += '<p class="text-xs"><span class="font-medium">Ingest attempted:</span> ' + esc(String(o.ingestAttempted)) + '</p>';
+                }
+                if (o.errorMessage) {
+                    outcomeInner += '<pre class="max-h-48 overflow-auto text-xs bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-200 dark:border-red-700 whitespace-pre-wrap break-words">' + esc(o.errorMessage) + '</pre>';
+                }
+
+                let chainInner = '<p class="text-xs text-gray-500 dark:text-gray-400">No persona chain recorded.</p>';
+                if (o.personaChain && o.personaChain.length) {
+                    chainInner = '<ul class="list-disc pl-5 text-xs space-y-0.5">';
+                    o.personaChain.forEach(function(p) {
+                        chainInner += '<li><code class="text-[11px]">' + esc(p) + '</code></li>';
+                    });
+                    chainInner += '</ul>';
+                    if (o.personaChainTruncated) {
+                        chainInner += '<p class="text-xs text-amber-700 dark:text-amber-300">Persona chain truncated.</p>';
+                    }
+                }
+
+                return '<div class="space-y-3">' +
+                    detailCard('Input (stream request context)', inputInner) +
+                    detailCard('Outcome', outcomeInner) +
+                    detailCard('Persona chain summary', chainInner) +
                     '</div>';
             }
             return '<pre class="text-xs whitespace-pre-wrap break-words max-h-96 overflow-auto bg-white/80 dark:bg-black/30 p-2 rounded border">' + esc(JSON.stringify(o, null, 2)) + '</pre>';

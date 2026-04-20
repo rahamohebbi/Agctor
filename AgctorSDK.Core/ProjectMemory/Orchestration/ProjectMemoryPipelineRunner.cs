@@ -71,6 +71,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             return new ProjectMemoryIngestResult
             {
                 ParseSuccess = false,
+                ParseSource = work.ParseSource,
                 Summary = work.ParseError ?? "Parse failed."
             };
         }
@@ -80,6 +81,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             return new ProjectMemoryIngestResult
             {
                 ParseSuccess = true,
+                ParseSource = work.ParseSource,
                 WroteAnyFile = false,
                 Summary = work.RouteDetail
             };
@@ -90,6 +92,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             return new ProjectMemoryIngestResult
             {
                 ParseSuccess = true,
+                ParseSource = work.ParseSource,
                 WroteAnyFile = false,
                 Summary = work.RouteDetail
             };
@@ -98,6 +101,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         return new ProjectMemoryIngestResult
         {
             ParseSuccess = true,
+            ParseSource = work.ParseSource,
             WroteAnyFile = work.WriteOk,
             UpdatedFiles = work.UpdatedFiles,
             Summary = work.WriteDetail ?? work.RouteDetail
@@ -247,17 +251,40 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         string entityWorkspaceRoot,
         CancellationToken cancellationToken)
     {
-        if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr))
-            return new RawIngestWork(false, parseErr, false, false, "", false, new List<string>(), null);
+        if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr, out var parseSource))
+            return new RawIngestWork(false, parseErr, null, false, false, "", false, new List<string>(), null);
 
         if (batch!.MemoryIntents.Count == 0)
         {
             return new RawIngestWork(
                 true,
                 null,
+                parseSource,
                 true,
                 false,
                 "No memory intents; skipped write.",
+                false,
+                new List<string>(),
+                null);
+        }
+
+        // Discover early so family_role intents can be normalized against known folders before routing.
+        var discovered = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+        var familyNotes = new List<string>();
+        FamilyRoleIntentNormalizer.Apply(batch.MemoryIntents, discovered, rawExtract, familyNotes);
+
+        if (batch.MemoryIntents.Count == 0)
+        {
+            var dropped = familyNotes.Count > 0
+                ? "All intents dropped after family_role normalization: " + string.Join("; ", familyNotes)
+                : "All intents dropped after family_role normalization.";
+            return new RawIngestWork(
+                true,
+                null,
+                parseSource,
+                true,
+                false,
+                dropped,
                 false,
                 new List<string>(),
                 null);
@@ -270,6 +297,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             return new RawIngestWork(
                 true,
                 null,
+                parseSource,
                 false,
                 true,
                 string.Join("; ", routeErrors.Select(i => i.Message)),
@@ -279,12 +307,13 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         }
 
         var routeDetail = $"Routed {routed.Count} intent(s).";
+        if (familyNotes.Count > 0)
+            routeDetail = string.Join("; ", familyNotes) + " | " + routeDetail;
         if (routeErrors.Count > 0)
             routeDetail += " Skipped " + routeErrors.Count + " unroutable intent(s): " +
                            string.Join("; ", routeErrors.Select(i => i.Message));
 
         var groups = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase).ToList();
-        var discovered = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
         var lookup = BuildEntityLookup(discovered);
         var updated = new List<string>();
 
@@ -328,13 +357,14 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         var writeDetail = unresolved.Count > 0
             ? "Updated " + updated.Count + " file(s); unresolved entity keys: " + string.Join(", ", unresolved.Distinct(StringComparer.OrdinalIgnoreCase))
             : (updated.Count == 0 ? "No files updated (entities not found?)." : null);
-        return new RawIngestWork(true, null, false, false, routeDetail, writeOk, updated, writeDetail);
+        return new RawIngestWork(true, null, parseSource, false, false, routeDetail, writeOk, updated, writeDetail);
     }
 
     /// <param name="NoIntents">Parsed OK but <c>memoryIntents</c> empty — pipeline skips write step.</param>
     private sealed record RawIngestWork(
         bool ParseOk,
         string? ParseError,
+        string? ParseSource,
         bool NoIntents,
         bool RouteFatal,
         string RouteDetail,

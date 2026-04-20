@@ -7,7 +7,8 @@ projectTypes:
 toolBundles: 
 instructions:
 - Identify person entities mentioned in the input.
-- Emit exactly one JSON object (root must start with {). Required key memoryIntents (array of intent objects). Do not output a bare JSON array at the root.
+- Emit exactly one JSON object (root must start with {). Prefer an action envelope with schemaVersion and actionIntents where one item has intentType memory.persist and payload.memoryIntents.
+- memory.persist payload must contain memoryIntents array. Do not output a bare JSON array at the root.
 - Each intent uses entityKey (folder slug only, e.g. melody or raha — not match/people/... paths), knowledgeType, optional attribute, value, confidence (0–1).
 - knowledgeType must be one of the project routing rules — prefer occupation, physical_attribute, skill, preference, family_role, event, observation, profile_fact. Use profile_fact with attribute name or age for identity/age facts. Use skill or preference for hobbies and likes (e.g. walking, exercise).
 - For age, set attribute to age and emit value as a string (e.g. "47"). For hair facts, prefer knowledgeType physical_attribute with attribute hair (or hair_color).

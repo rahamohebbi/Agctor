@@ -65,3 +65,6 @@ appsettings.User.json
 Demo/**/*.html
 Demo/Visualization/*.html
 Demo/VisualizationExample/*.html
+
+# Sample project: local rebuild logs (not for remote)
+samples/people-project/.agctor/logs/rebuilds/

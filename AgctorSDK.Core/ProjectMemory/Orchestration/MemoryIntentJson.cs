@@ -12,6 +12,9 @@ namespace AgctorSDK.Core.ProjectMemory.Orchestration;
 /// </summary>
 public static class MemoryIntentJson
 {
+    private const string MemoryPersistIntentType = "memory.persist";
+    private const string LegacyMemorySaveIntentType = "memory.save";
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -41,10 +44,11 @@ public static class MemoryIntentJson
     }
 
     /// <summary>Try deserialize <see cref="MemoryIntentBatch"/> after unwrapping fences.</summary>
-    public static bool TryParseBatch(string rawLlmText, out MemoryIntentBatch? batch, out string? error)
+    public static bool TryParseBatch(string rawLlmText, out MemoryIntentBatch? batch, out string? error, out string? parseSource)
     {
         batch = null;
         error = null;
+        parseSource = null;
         var json = UnwrapMarkdownFences(rawLlmText);
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -54,7 +58,7 @@ public static class MemoryIntentJson
 
         foreach (var candidate in EnumerateJsonCandidates(json))
         {
-            if (TryDeserializeBatch(candidate, out batch, out error))
+            if (TryDeserializeBatch(candidate, out batch, out error, out parseSource))
             {
                 NormalizeEntityKeys(batch!);
                 return true;
@@ -142,10 +146,11 @@ public static class MemoryIntentJson
         return null;
     }
 
-    private static bool TryDeserializeBatch(string json, out MemoryIntentBatch? batch, out string? error)
+    private static bool TryDeserializeBatch(string json, out MemoryIntentBatch? batch, out string? error, out string? parseSource)
     {
         batch = null;
         error = null;
+        parseSource = null;
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -161,6 +166,7 @@ public static class MemoryIntentJson
                 }
 
                 batch = new MemoryIntentBatch { MemoryIntents = list };
+                parseSource = "legacy.root_array";
                 return true;
             }
 
@@ -173,19 +179,38 @@ public static class MemoryIntentJson
             if (TryGetPropertyIgnoreCase(root, "memoryIntents", out var mi) && mi.ValueKind == JsonValueKind.Array)
             {
                 batch = JsonSerializer.Deserialize<MemoryIntentBatch>(json, JsonOptions);
+                parseSource = "legacy.memoryIntents";
+            }
+            else if (TryGetPropertyIgnoreCase(root, "actionIntents", out var actions) && actions.ValueKind == JsonValueKind.Array)
+            {
+                batch = ParseActionIntentEnvelope(root, actions);
+                parseSource = "actionIntents.memory.persist";
             }
             else if (TryGetPropertyIgnoreCase(root, "intents", out var alt) && alt.ValueKind == JsonValueKind.Array)
             {
-                var list = JsonSerializer.Deserialize<List<MemoryIntent>>(alt.GetRawText(), JsonOptions);
-                batch = new MemoryIntentBatch
+                // Backward compatible aliases:
+                // - intents: [MemoryIntent]        (legacy extractor format)
+                // - intents: [ActionIntent shape]  (pub-sub contract)
+                if (LooksLikeActionIntentList(alt))
                 {
-                    MemoryIntents = list ?? new List<MemoryIntent>(),
-                    ScenarioId = TryGetStringPropertyIgnoreCase(root, "scenarioId")
-                };
+                    batch = ParseActionIntentEnvelope(root, alt);
+                    parseSource = "actionIntents.memory.persist";
+                }
+                else
+                {
+                    var list = JsonSerializer.Deserialize<List<MemoryIntent>>(alt.GetRawText(), JsonOptions);
+                    batch = new MemoryIntentBatch
+                    {
+                        MemoryIntents = list ?? new List<MemoryIntent>(),
+                        ScenarioId = TryGetStringPropertyIgnoreCase(root, "scenarioId")
+                    };
+                    parseSource = "legacy.intents";
+                }
             }
             else
             {
                 batch = JsonSerializer.Deserialize<MemoryIntentBatch>(json, JsonOptions);
+                parseSource = "legacy.object_fallback";
             }
 
             if (batch?.MemoryIntents == null)
@@ -201,6 +226,54 @@ public static class MemoryIntentJson
             error = ex.Message;
             return false;
         }
+    }
+
+    private static MemoryIntentBatch ParseActionIntentEnvelope(JsonElement root, JsonElement actionList)
+    {
+        var merged = new List<MemoryIntent>();
+        foreach (var item in actionList.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            var intentType = TryGetStringPropertyIgnoreCase(item, "intentType")?.Trim();
+            if (!string.Equals(intentType, MemoryPersistIntentType, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(intentType, LegacyMemorySaveIntentType, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!TryGetPropertyIgnoreCase(item, "payload", out var payload) || payload.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (TryGetPropertyIgnoreCase(payload, "memoryIntents", out var mi) && mi.ValueKind == JsonValueKind.Array)
+            {
+                var list = JsonSerializer.Deserialize<List<MemoryIntent>>(mi.GetRawText(), JsonOptions);
+                if (list is { Count: > 0 })
+                    merged.AddRange(list);
+            }
+            else if (TryGetPropertyIgnoreCase(payload, "intents", out var intents) && intents.ValueKind == JsonValueKind.Array)
+            {
+                var list = JsonSerializer.Deserialize<List<MemoryIntent>>(intents.GetRawText(), JsonOptions);
+                if (list is { Count: > 0 })
+                    merged.AddRange(list);
+            }
+        }
+
+        return new MemoryIntentBatch
+        {
+            ScenarioId = TryGetStringPropertyIgnoreCase(root, "scenarioId"),
+            MemoryIntents = merged
+        };
+    }
+
+    private static bool LooksLikeActionIntentList(JsonElement list)
+    {
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                continue;
+            if (TryGetPropertyIgnoreCase(item, "intentType", out _))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool TryGetPropertyIgnoreCase(JsonElement obj, string name, out JsonElement value)

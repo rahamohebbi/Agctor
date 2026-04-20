@@ -98,6 +98,85 @@ WHERE session_id = $id;";
             };
         }
 
+        public async Task<SessionInfo> UpdateSessionTitleAsync(string sessionId, string title, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                throw new InvalidOperationException("SessionId is required.");
+            var trimmed = title?.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+                throw new InvalidOperationException("Title is required.");
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+                await using (var update = conn.CreateCommand())
+                {
+                    update.CommandText = "UPDATE sessions SET title = $title, updated_at = $updatedAt WHERE session_id = $sessionId;";
+                    update.Parameters.AddWithValue("$title", trimmed);
+                    update.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+                    update.Parameters.AddWithValue("$sessionId", sessionId.Trim());
+                    var rows = await update.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    if (rows == 0)
+                        throw new InvalidOperationException($"Session '{sessionId}' was not found.");
+                }
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+
+            var refreshed = await GetSessionAsync(sessionId.Trim(), cancellationToken).ConfigureAwait(false);
+            return refreshed ?? throw new InvalidOperationException($"Session '{sessionId}' was not found after update.");
+        }
+
+        public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return;
+
+            await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+                // Explicit removal of every child row keeps behavior correct even if FK pragma is off.
+                var tables = new[]
+                {
+                    "session_turns",
+                    "session_trace_links",
+                    "session_summaries",
+                    "session_project_moves"
+                };
+                foreach (var table in tables)
+                {
+                    await using var del = conn.CreateCommand();
+                    del.Transaction = tx;
+                    del.CommandText = $"DELETE FROM {table} WHERE session_id = $sessionId;";
+                    del.Parameters.AddWithValue("$sessionId", sessionId.Trim());
+                    await del.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await using (var delSession = conn.CreateCommand())
+                {
+                    delSession.Transaction = tx;
+                    delSession.CommandText = "DELETE FROM sessions WHERE session_id = $sessionId;";
+                    delSession.Parameters.AddWithValue("$sessionId", sessionId.Trim());
+                    await delSession.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                await tx.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _dbLock.Release();
+            }
+        }
+
         public async Task<IReadOnlyList<SessionInfo>> ListSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default)
         {
             limit = limit <= 0 ? 50 : limit;

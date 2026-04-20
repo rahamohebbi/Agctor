@@ -1,16 +1,17 @@
 /**
- * Project memory playground: chat transcript + SSE streaming (PRD-013), same session API as CodeGraph.
+ * Project memory playground: chat transcript + SSE streaming (PRD-013).
+ * PRD-017: project rail + session list + project-scoped scenario; debug panels below transcript.
  */
 (function () {
     var agentSel = document.getElementById('pm-play-agent');
-    var projectSel = document.getElementById('pm-play-project');
     var projectNameInput = document.getElementById('pm-play-project-name');
-    var scenarioSel = document.getElementById('pm-play-scenario');
+    var scenarioNewSel = document.getElementById('pm-play-scenario-new');
+    var scenarioChangeSel = document.getElementById('pm-play-scenario-change');
     var newProjectBtn = document.getElementById('pm-play-new-project');
-    var sessionSel = document.getElementById('pm-play-session');
+    var projectListEl = document.getElementById('pm-play-project-list');
+    var sessionListEl = document.getElementById('pm-play-session-list');
     var newBtn = document.getElementById('pm-play-new-session');
     var refreshBtn = document.getElementById('pm-play-refresh');
-    var copyLinkBtn = document.getElementById('pm-play-copy-link');
     var sendBtn = document.getElementById('pm-play-send');
     var input = document.getElementById('pm-play-input');
     var messages = document.getElementById('pm-play-messages');
@@ -18,17 +19,65 @@
     var hint = document.getElementById('pm-play-hint');
     var flowStepsEl = document.getElementById('pm-play-flow-steps');
     var flowDetailEl = document.getElementById('pm-play-flow-detail');
-    if (!agentSel || !projectSel || !projectNameInput || !scenarioSel || !newProjectBtn || !sessionSel || !newBtn || !refreshBtn || !copyLinkBtn || !sendBtn || !input || !messages || !status) return;
+    var projectHeaderEl = document.getElementById('pm-play-project-header');
+    var projectTitleEl = document.getElementById('pm-play-project-title');
+    var scenarioLabelEl = document.getElementById('pm-play-project-scenario-label');
+    var changeScenarioBtn = document.getElementById('pm-play-change-scenario');
+    var scenarioPanelEl = document.getElementById('pm-play-scenario-change-panel');
+    var scenarioApplyBtn = document.getElementById('pm-play-scenario-apply');
+    var scenarioCancelBtn = document.getElementById('pm-play-scenario-cancel');
+    var advancedEl = document.getElementById('pm-play-advanced');
+    var agentAutoLabelEl = document.getElementById('pm-play-agent-auto-label');
+    var agentResetBtn = document.getElementById('pm-play-agent-reset');
 
+    if (
+        !agentSel ||
+        !projectNameInput ||
+        !scenarioNewSel ||
+        !scenarioChangeSel ||
+        !newProjectBtn ||
+        !projectListEl ||
+        !sessionListEl ||
+        !newBtn ||
+        !refreshBtn ||
+        !sendBtn ||
+        !input ||
+        !messages ||
+        !status
+    ) {
+        return;
+    }
+
+    /** Last project list from API; used for labels without an extra round-trip. */
+    var projectsCache = [];
+    /** Catalog rows from GET /api/scenarios (includes personaBindings + personaAgentIds + flow). */
+    var scenariosCache = [];
+    /** Global agent list from GET /api/project-memory/agents (labels). */
+    var agentsCache = [];
     var activeSessionId = null;
     var activeProjectId = null;
+    /** Scenario id for the active project (stream body + header). */
+    var activeProjectScenarioId = '';
+    /** Operator-picked override (cleared on scenario/project change and by Reset). */
+    var agentOverrideId = '';
+    /** Project id currently in inline-rename mode in the Projects rail (null = none). */
+    var renamingProjectId = null;
+    /** Session id currently in inline-rename mode in the Sessions column (null = none). */
+    var renamingSessionId = null;
+    /** Session id currently in inline-delete-confirm state (null = none). */
+    var confirmingDeleteSessionId = null;
+    /** Last session list rendered (cached for in-place re-renders after rename). */
+    var sessionsCache = [];
 
     function syncUrl() {
         var qp = new URLSearchParams(window.location.search);
-        var agentId = agentSel.value || qp.get('agentId') || '';
-        if (agentId) qp.set('agentId', agentId); else qp.delete('agentId');
-        if (activeProjectId) qp.set('projectId', activeProjectId); else qp.delete('projectId');
-        if (activeSessionId) qp.set('sessionId', activeSessionId); else qp.delete('sessionId');
+        // Only persist an explicit override in the URL; auto-defaults stay implicit.
+        if (agentOverrideId) qp.set('agentId', agentOverrideId);
+        else qp.delete('agentId');
+        if (activeProjectId) qp.set('projectId', activeProjectId);
+        else qp.delete('projectId');
+        if (activeSessionId) qp.set('sessionId', activeSessionId);
+        else qp.delete('sessionId');
         var next = window.location.pathname + (qp.toString() ? '?' + qp.toString() : '');
         window.history.replaceState({}, '', next);
     }
@@ -39,28 +88,58 @@
         return d.innerHTML;
     }
 
-    function copyCurrentUrl() {
-        var url = window.location.href;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(url);
-        }
-        return new Promise(function (resolve, reject) {
-            var el = document.createElement('textarea');
-            el.value = url;
-            el.setAttribute('readonly', '');
-            el.style.position = 'absolute';
-            el.style.left = '-9999px';
-            document.body.appendChild(el);
-            el.select();
-            try {
-                var ok = document.execCommand('copy');
-                document.body.removeChild(el);
-                if (ok) resolve(); else reject(new Error('Copy failed'));
-            } catch (e) {
-                document.body.removeChild(el);
-                reject(e);
+    function scenarioDisplayName(id) {
+        var sid = String(id || '').trim();
+        for (var i = 0; i < scenariosCache.length; i++) {
+            if (scenariosCache[i].id === sid) {
+                return (scenariosCache[i].displayName || scenariosCache[i].id) + ' (' + sid + ')';
             }
+        }
+        return sid || '—';
+    }
+
+    function fillScenarioSelects() {
+        scenarioNewSel.innerHTML = '';
+        scenarioChangeSel.innerHTML = '';
+        scenariosCache.forEach(function (s) {
+            var o1 = document.createElement('option');
+            o1.value = s.id;
+            o1.textContent = (s.displayName || s.id) + ' [' + s.id + ']';
+            scenarioNewSel.appendChild(o1);
+            var o2 = document.createElement('option');
+            o2.value = s.id;
+            o2.textContent = (s.displayName || s.id) + ' [' + s.id + ']';
+            scenarioChangeSel.appendChild(o2);
         });
+        if (!scenarioNewSel.value && scenarioNewSel.options.length > 0) {
+            scenarioNewSel.value = 'people';
+        }
+    }
+
+    function setScenarioPanelVisible(show) {
+        if (!scenarioPanelEl) return;
+        if (show) scenarioPanelEl.classList.remove('hidden');
+        else scenarioPanelEl.classList.add('hidden');
+    }
+
+    function updateProjectHeader() {
+        if (!projectHeaderEl || !projectTitleEl || !scenarioLabelEl) return;
+        if (!activeProjectId) {
+            projectHeaderEl.classList.add('hidden');
+            return;
+        }
+        var p = null;
+        for (var i = 0; i < projectsCache.length; i++) {
+            if (projectsCache[i].projectId === activeProjectId) {
+                p = projectsCache[i];
+                break;
+            }
+        }
+        var title = p ? p.name || p.projectId : activeProjectId;
+        projectTitleEl.textContent = title;
+        scenarioLabelEl.textContent =
+            'Current scenario for this project: ' + scenarioDisplayName(activeProjectScenarioId || (p && p.scenarioId) || '');
+        projectHeaderEl.classList.remove('hidden');
     }
 
     function renderChatMarkdown(text) {
@@ -77,7 +156,13 @@
 
     function normalizeRole(roleRaw) {
         return typeof roleRaw === 'number'
-            ? (roleRaw === 0 ? 'user' : roleRaw === 1 ? 'assistant' : roleRaw === 2 ? 'system' : 'tool')
+            ? roleRaw === 0
+                ? 'user'
+                : roleRaw === 1
+                  ? 'assistant'
+                  : roleRaw === 2
+                    ? 'system'
+                    : 'tool'
             : String(roleRaw || '').toLowerCase();
     }
 
@@ -89,7 +174,8 @@
     function renderTranscript(transcript) {
         var turns = transcript && transcript.turns ? transcript.turns : [];
         if (turns.length === 0) {
-            messages.innerHTML = '<div class="text-gray-500 dark:text-gray-400 text-sm">No messages yet. Send a prompt below.</div>';
+            messages.innerHTML =
+                '<div class="text-gray-500 dark:text-gray-400 text-sm">No messages yet. Send a prompt below.</div>';
             return;
         }
         var html = '';
@@ -101,7 +187,10 @@
                 ? 'border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800 text-gray-800 dark:text-gray-100'
                 : 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 text-green-900 dark:text-green-100';
             html += '<div class="rounded-lg border p-3 ' + bubble + '">';
-            html += '<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">' + esc(roleLabel(role, turn)) + '</div>';
+            html +=
+                '<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">' +
+                esc(roleLabel(role, turn)) +
+                '</div>';
             if (isUser) {
                 html += '<div class="whitespace-pre-wrap break-words">' + esc(content) + '</div>';
             } else {
@@ -114,7 +203,11 @@
     }
 
     function loadTranscript(sessionId) {
-        if (!sessionId) return Promise.resolve();
+        if (!sessionId) {
+            messages.innerHTML =
+                '<div class="text-gray-500 dark:text-gray-400 text-sm">Select a session from the list.</div>';
+            return Promise.resolve();
+        }
         return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId))
             .then(function (r) {
                 if (!r.ok) throw new Error('Failed to load transcript');
@@ -131,42 +224,9 @@
                 return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
             })
             .then(function (list) {
-                agentSel.innerHTML = '';
-                (list || []).forEach(function (a) {
-                    var opt = document.createElement('option');
-                    opt.value = a.id;
-                    opt.textContent = a.id + (a.name ? ' — ' + a.name : '');
-                    agentSel.appendChild(opt);
-                });
-                if (presetAgent) agentSel.value = presetAgent;
-                if (!agentSel.options.length) {
-                    var o = document.createElement('option');
-                    o.value = '';
-                    o.textContent = 'No agents';
-                    agentSel.appendChild(o);
-                }
-            });
-    }
-
-    function loadProjects(preferredId) {
-        return fetch('/api/chat/projects?limit=100')
-            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('projects')); })
-            .then(function (projects) {
-                projectSel.innerHTML = '';
-                var none = document.createElement('option');
-                none.value = '';
-                none.textContent = '(all sessions)';
-                projectSel.appendChild(none);
-                (projects || []).forEach(function (p) {
-                    var opt = document.createElement('option');
-                    opt.value = p.projectId;
-                    opt.dataset.scenarioId = (p.scenarioId || 'people').trim();
-                    opt.textContent = (p.name || p.projectId) + ' [' + (p.scenarioId || 'people') + ']';
-                    projectSel.appendChild(opt);
-                });
-                activeProjectId = preferredId || activeProjectId || '';
-                projectSel.value = activeProjectId;
-                syncUrl();
+                agentsCache = list || [];
+                // If an override is present in the URL, respect it until the user resets.
+                if (presetAgent) agentOverrideId = presetAgent;
             });
     }
 
@@ -174,26 +234,579 @@
         return fetch('/api/scenarios')
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('scenarios')); })
             .then(function (items) {
-                scenarioSel.innerHTML = '';
-                (items || []).forEach(function (s) {
-                    var opt = document.createElement('option');
-                    opt.value = s.id;
-                    opt.textContent = (s.displayName || s.id) + ' [' + s.id + ']';
-                    scenarioSel.appendChild(opt);
-                });
-                if (!scenarioSel.value && scenarioSel.options.length > 0) {
-                    scenarioSel.value = 'people';
+                scenariosCache = items || [];
+                fillScenarioSelects();
+            });
+    }
+
+    /** Lookup full scenario DTO (PersonaBindings, personaAgentIds, flow). */
+    function scenarioFor(id) {
+        var sid = String(id || '').trim();
+        for (var i = 0; i < scenariosCache.length; i++) {
+            if (scenariosCache[i].id === sid) return scenariosCache[i];
+        }
+        return null;
+    }
+
+    /** Human label for an agent id from the global catalog. */
+    function agentLabel(id) {
+        for (var i = 0; i < agentsCache.length; i++) {
+            if (agentsCache[i].id === id) {
+                return agentsCache[i].id + (agentsCache[i].name ? ' — ' + agentsCache[i].name : '');
+            }
+        }
+        return String(id || '');
+    }
+
+    /**
+     * Collect agent ids available for the active scenario.
+     * Priority: personaAgentIds (scenario roster) → flow PersonaCall config.personaId → empty = global list.
+     */
+    function scopedAgentIdsForActive() {
+        var scen = scenarioFor(activeProjectScenarioId);
+        if (!scen) return [];
+        var ids = [];
+        (scen.personaAgentIds || []).forEach(function (id) {
+            if (id && ids.indexOf(id) < 0) ids.push(id);
+        });
+        var nodes = (scen.flow && scen.flow.nodes) || [];
+        nodes.forEach(function (n) {
+            if (n && n.type === 'PersonaCall' && n.config && n.config.personaId && ids.indexOf(n.config.personaId) < 0) {
+                ids.push(n.config.personaId);
+            }
+        });
+        return ids;
+    }
+
+    /** Scenario-default agent: Extractor binding wins (ingest-capable), else first scoped id. */
+    function defaultAgentIdForActive() {
+        var scen = scenarioFor(activeProjectScenarioId);
+        if (scen && scen.personaBindings && scen.personaBindings.extractor) {
+            return String(scen.personaBindings.extractor).trim();
+        }
+        var scoped = scopedAgentIdsForActive();
+        if (scoped.length > 0) return scoped[0];
+        return agentsCache.length > 0 ? agentsCache[0].id : '';
+    }
+
+    /**
+     * Rebuild the agent select using scenario-scoped options (fallback: global list).
+     * Resolves effective agent = override (if still valid) else scenario default,
+     * then updates the Advanced summary caption.
+     */
+    function refreshAgentSelection() {
+        if (!agentSel) return;
+        var scoped = scopedAgentIdsForActive();
+        var options = scoped.length > 0
+            ? scoped
+            : agentsCache.map(function (a) { return a.id; });
+        agentSel.innerHTML = '';
+        if (options.length === 0) {
+            var empty = document.createElement('option');
+            empty.value = '';
+            empty.textContent = 'No agents';
+            agentSel.appendChild(empty);
+        } else {
+            options.forEach(function (id) {
+                var opt = document.createElement('option');
+                opt.value = id;
+                opt.textContent = agentLabel(id);
+                agentSel.appendChild(opt);
+            });
+        }
+
+        var effectiveDefault = defaultAgentIdForActive();
+        var effective =
+            agentOverrideId && options.indexOf(agentOverrideId) >= 0 ? agentOverrideId : effectiveDefault;
+        // Drop an override that's no longer valid for this scenario.
+        if (agentOverrideId && options.indexOf(agentOverrideId) < 0) agentOverrideId = '';
+        if (effective) agentSel.value = effective;
+
+        if (agentAutoLabelEl) {
+            if (agentOverrideId && agentOverrideId === effective) {
+                agentAutoLabelEl.textContent = 'override: ' + effective;
+            } else if (effective) {
+                agentAutoLabelEl.textContent = 'auto: ' + effective;
+            } else {
+                agentAutoLabelEl.textContent = '';
+            }
+        }
+        syncUrl();
+    }
+
+    /** Renders a normal project row (select + Rename affordance for the active row). */
+    function renderProjectRow(p) {
+        var isActive = p.projectId === activeProjectId;
+        var scen = (p.scenarioId || 'people').trim();
+
+        var row = document.createElement('div');
+        row.className = 'pm-play-project-row relative group';
+        row.dataset.projectId = p.projectId;
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pm-play-list-btn text-gray-800 dark:text-gray-100 w-full pr-14';
+        if (isActive) btn.classList.add('pm-play-active');
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        btn.innerHTML =
+            '<div class="font-medium truncate">' +
+            esc(p.name || p.projectId) +
+            '</div><div class="text-[11px] text-gray-500 dark:text-gray-400 truncate">' +
+            esc(scen) +
+            '</div>';
+        btn.addEventListener('click', function () {
+            selectProject(p.projectId);
+        });
+        row.appendChild(btn);
+
+        // Rename only for the active project to keep project-level intent unambiguous.
+        if (isActive) {
+            var renameLink = document.createElement('button');
+            renameLink.type = 'button';
+            renameLink.className =
+                'absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-300';
+            renameLink.textContent = 'Rename';
+            renameLink.setAttribute('aria-label', 'Rename project');
+            renameLink.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                startRename(p.projectId);
+            });
+            row.appendChild(renameLink);
+        }
+        return row;
+    }
+
+    /** Renders the edit-in-place form (input + Save + Cancel) for a project row. */
+    function renderProjectEditor(p) {
+        var wrap = document.createElement('div');
+        wrap.className =
+            'pm-play-project-row rounded-lg border border-blue-300 bg-blue-50 p-2 space-y-2 dark:border-blue-500 dark:bg-blue-900/20';
+        wrap.dataset.projectId = p.projectId;
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className =
+            'w-full rounded-lg border border-gray-300 bg-white p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white';
+        input.value = p.name || p.projectId;
+        input.setAttribute('aria-label', 'New project name');
+        input.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                applyRename(p.projectId, input.value);
+            } else if (ev.key === 'Escape') {
+                ev.preventDefault();
+                cancelRename();
+            }
+        });
+
+        var actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2';
+        var save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700';
+        save.textContent = 'Save';
+        save.addEventListener('click', function () {
+            save.disabled = true;
+            applyRename(p.projectId, input.value).finally(function () { save.disabled = false; });
+        });
+        var cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className =
+            'px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-100';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', cancelRename);
+        actions.appendChild(save);
+        actions.appendChild(cancel);
+
+        wrap.appendChild(input);
+        wrap.appendChild(actions);
+
+        // Defer focus until the element is in the DOM.
+        setTimeout(function () { input.focus(); input.select(); }, 0);
+        return wrap;
+    }
+
+    function renderProjectList() {
+        projectListEl.innerHTML = '';
+        if (!projectsCache.length) {
+            projectListEl.innerHTML =
+                '<div class="text-xs text-gray-500 dark:text-gray-400">No projects yet. Create one below.</div>';
+            return;
+        }
+        projectsCache.forEach(function (p) {
+            var node = renamingProjectId === p.projectId
+                ? renderProjectEditor(p)
+                : renderProjectRow(p);
+            projectListEl.appendChild(node);
+        });
+    }
+
+    function startRename(projectId) {
+        if (!projectId) return;
+        renamingProjectId = projectId;
+        renderProjectList();
+    }
+
+    function cancelRename() {
+        renamingProjectId = null;
+        renderProjectList();
+    }
+
+    function selectProject(projectId) {
+        renamingProjectId = null;
+        renamingSessionId = null;
+        confirmingDeleteSessionId = null;
+        activeProjectId = projectId || null;
+        activeSessionId = null;
+        var p = null;
+        for (var i = 0; i < projectsCache.length; i++) {
+            if (projectsCache[i].projectId === activeProjectId) {
+                p = projectsCache[i];
+                break;
+            }
+        }
+        activeProjectScenarioId = p ? String(p.scenarioId || 'people').trim() : '';
+        // Moving to a different project clears a sticky override (safer default).
+        agentOverrideId = '';
+        renderProjectList();
+        updateProjectHeader();
+        refreshAgentSelection();
+        syncUrl();
+        if (scenarioChangeSel && activeProjectScenarioId) scenarioChangeSel.value = activeProjectScenarioId;
+        return loadSessionsForProject(null);
+    }
+
+    function loadProjects(preferredId) {
+        return fetch('/api/chat/projects?limit=100')
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('projects')); })
+            .then(function (projects) {
+                projectsCache = projects || [];
+                var inList = preferredId && projectsCache.some(function (x) { return x.projectId === preferredId; });
+                activeProjectId = inList ? preferredId : null;
+                var p = null;
+                for (var j = 0; j < projectsCache.length; j++) {
+                    if (projectsCache[j].projectId === activeProjectId) {
+                        p = projectsCache[j];
+                        break;
+                    }
                 }
+                activeProjectScenarioId = p ? String(p.scenarioId || 'people').trim() : '';
+                renderProjectList();
+                updateProjectHeader();
+                refreshAgentSelection();
+                syncUrl();
+            });
+    }
+
+    /** Renders one session row with a hover-only Rename link on the active row. */
+    function renderSessionRow(s, isActive) {
+        var row = document.createElement('div');
+        row.className = 'pm-play-session-row relative group';
+        row.dataset.sessionId = s.sessionId;
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'pm-play-list-btn text-gray-800 dark:text-gray-100 w-full pr-14';
+        if (isActive) btn.classList.add('pm-play-active');
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+        btn.innerHTML =
+            '<div class="font-medium truncate">' +
+            esc(s.title || s.sessionId) +
+            '</div><div class="text-[11px] text-gray-500 dark:text-gray-400">' +
+            esc(String(s.turnCount != null ? s.turnCount : 0)) +
+            ' turns</div>';
+        btn.addEventListener('click', function () {
+            renamingSessionId = null;
+            confirmingDeleteSessionId = null;
+            activeSessionId = s.sessionId;
+            renderSessionList(sessionsCache, activeSessionId);
+            syncUrl();
+            loadTranscript(activeSessionId);
+        });
+        row.appendChild(btn);
+
+        // Rename + Delete live on the active session row only to keep actions unambiguous.
+        if (isActive) {
+            var actions = document.createElement('div');
+            actions.className =
+                'absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity';
+
+            var renameLink = document.createElement('button');
+            renameLink.type = 'button';
+            renameLink.className = 'text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-300';
+            renameLink.textContent = 'Rename';
+            renameLink.setAttribute('aria-label', 'Rename session');
+            renameLink.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                startSessionRename(s.sessionId);
+            });
+
+            var deleteLink = document.createElement('button');
+            deleteLink.type = 'button';
+            deleteLink.className = 'text-[11px] font-medium text-red-700 hover:underline dark:text-red-300';
+            deleteLink.textContent = 'Delete';
+            deleteLink.setAttribute('aria-label', 'Delete session');
+            deleteLink.addEventListener('click', function (ev) {
+                ev.stopPropagation();
+                startSessionDelete(s.sessionId);
+            });
+
+            actions.appendChild(renameLink);
+            actions.appendChild(deleteLink);
+            row.appendChild(actions);
+        }
+        return row;
+    }
+
+    /** Inline delete-confirm row: "Delete 'title'? [Delete] [Cancel]" with red primary. */
+    function renderSessionDeleteConfirm(s) {
+        var wrap = document.createElement('div');
+        wrap.className =
+            'pm-play-session-row rounded-lg border border-red-300 bg-red-50 p-2 space-y-2 dark:border-red-500 dark:bg-red-900/20';
+        wrap.dataset.sessionId = s.sessionId;
+
+        var msg = document.createElement('div');
+        msg.className = 'text-xs text-red-900 dark:text-red-200';
+        msg.innerHTML =
+            'Delete <strong>' +
+            esc(s.title || s.sessionId) +
+            '</strong>? This removes its transcript and trace links.';
+        wrap.appendChild(msg);
+
+        var actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2';
+        var confirm = document.createElement('button');
+        confirm.type = 'button';
+        confirm.className = 'px-2.5 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700';
+        confirm.textContent = 'Delete';
+        confirm.addEventListener('click', function () {
+            confirm.disabled = true;
+            applySessionDelete(s.sessionId).finally(function () { confirm.disabled = false; });
+        });
+        var cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className =
+            'px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-100';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', cancelSessionDelete);
+        actions.appendChild(confirm);
+        actions.appendChild(cancel);
+        wrap.appendChild(actions);
+
+        // Keyboard: Enter confirms, Esc cancels (focus the confirm button).
+        setTimeout(function () { confirm.focus(); }, 0);
+        wrap.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Escape') { ev.preventDefault(); cancelSessionDelete(); }
+            else if (ev.key === 'Enter') { ev.preventDefault(); confirm.click(); }
+        });
+        wrap.tabIndex = -1;
+        return wrap;
+    }
+
+    /** Inline editor for renaming a session row. */
+    function renderSessionEditor(s) {
+        var wrap = document.createElement('div');
+        wrap.className =
+            'pm-play-session-row rounded-lg border border-blue-300 bg-blue-50 p-2 space-y-2 dark:border-blue-500 dark:bg-blue-900/20';
+        wrap.dataset.sessionId = s.sessionId;
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className =
+            'w-full rounded-lg border border-gray-300 bg-white p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white';
+        input.value = s.title || s.sessionId;
+        input.setAttribute('aria-label', 'New session title');
+        input.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                applySessionRename(s.sessionId, input.value);
+            } else if (ev.key === 'Escape') {
+                ev.preventDefault();
+                cancelSessionRename();
+            }
+        });
+
+        var actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2';
+        var save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'px-2.5 py-1 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700';
+        save.textContent = 'Save';
+        save.addEventListener('click', function () {
+            save.disabled = true;
+            applySessionRename(s.sessionId, input.value).finally(function () { save.disabled = false; });
+        });
+        var cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.className =
+            'px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-100';
+        cancel.textContent = 'Cancel';
+        cancel.addEventListener('click', cancelSessionRename);
+        actions.appendChild(save);
+        actions.appendChild(cancel);
+
+        wrap.appendChild(input);
+        wrap.appendChild(actions);
+        setTimeout(function () { input.focus(); input.select(); }, 0);
+        return wrap;
+    }
+
+    function renderSessionList(sessions, preferredSessionId) {
+        sessionsCache = sessions || [];
+        sessionListEl.innerHTML = '';
+        if (!activeProjectId) {
+            sessionListEl.innerHTML =
+                '<div class="text-xs text-gray-500 dark:text-gray-400">Select a project to list its sessions.</div>';
+            if (hint) hint.textContent = '';
+            newBtn.disabled = true;
+            return Promise.resolve();
+        }
+        newBtn.disabled = false;
+        if (!sessionsCache.length) {
+            sessionListEl.innerHTML =
+                '<div class="text-xs text-gray-500 dark:text-gray-400">No sessions yet. Click New session.</div>';
+            if (hint) hint.textContent = 'Sessions belong to this project only.';
+            activeSessionId = null;
+            syncUrl();
+            return loadTranscript(null);
+        }
+        var pick =
+            preferredSessionId &&
+            sessionsCache.some(function (s) { return s.sessionId === preferredSessionId; })
+                ? preferredSessionId
+                : activeSessionId && sessionsCache.some(function (s2) { return s2.sessionId === activeSessionId; })
+                  ? activeSessionId
+                  : sessionsCache[0].sessionId;
+        sessionsCache.forEach(function (s) {
+            var node;
+            if (confirmingDeleteSessionId === s.sessionId) node = renderSessionDeleteConfirm(s);
+            else if (renamingSessionId === s.sessionId) node = renderSessionEditor(s);
+            else node = renderSessionRow(s, s.sessionId === pick);
+            sessionListEl.appendChild(node);
+        });
+        activeSessionId = pick;
+        syncUrl();
+        if (hint) hint.textContent = 'Sessions belong to this project only.';
+        return loadTranscript(activeSessionId);
+    }
+
+    function startSessionRename(sessionId) {
+        if (!sessionId) return;
+        confirmingDeleteSessionId = null;
+        renamingSessionId = sessionId;
+        renderSessionList(sessionsCache, activeSessionId);
+    }
+
+    function cancelSessionRename() {
+        renamingSessionId = null;
+        renderSessionList(sessionsCache, activeSessionId);
+    }
+
+    function startSessionDelete(sessionId) {
+        if (!sessionId) return;
+        renamingSessionId = null;
+        confirmingDeleteSessionId = sessionId;
+        renderSessionList(sessionsCache, activeSessionId);
+    }
+
+    function cancelSessionDelete() {
+        confirmingDeleteSessionId = null;
+        renderSessionList(sessionsCache, activeSessionId);
+    }
+
+    /** DELETEs the session, removes it from cache, and re-selects a neighbor or none. */
+    function applySessionDelete(sessionId) {
+        if (!sessionId) return Promise.resolve();
+        return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId), { method: 'DELETE' })
+            .then(function (r) {
+                if (!r.ok && r.status !== 204) throw new Error('Could not delete session');
+            })
+            .then(function () {
+                // Pick the next neighbor in the list to select after removal (stable feel).
+                var idx = -1;
+                for (var i = 0; i < sessionsCache.length; i++) {
+                    if (sessionsCache[i].sessionId === sessionId) { idx = i; break; }
+                }
+                sessionsCache = sessionsCache.filter(function (s) { return s.sessionId !== sessionId; });
+                var nextPick = null;
+                if (sessionsCache.length > 0) {
+                    var neighbor = sessionsCache[Math.min(idx, sessionsCache.length - 1)];
+                    nextPick = neighbor ? neighbor.sessionId : sessionsCache[0].sessionId;
+                }
+                confirmingDeleteSessionId = null;
+                activeSessionId = nextPick;
+                renderSessionList(sessionsCache, activeSessionId);
+                status.textContent = 'Session deleted.';
+            })
+            .catch(function (e) { status.textContent = e.message || 'Delete failed'; });
+    }
+
+    /** PUTs a new title for the session, updates cache + row in place. */
+    function applySessionRename(sessionId, proposedTitle) {
+        if (!sessionId) return Promise.resolve();
+        var nextTitle = String(proposedTitle || '').trim();
+        if (!nextTitle) {
+            status.textContent = 'Session name cannot be empty.';
+            return Promise.resolve();
+        }
+        var current = '';
+        for (var i = 0; i < sessionsCache.length; i++) {
+            if (sessionsCache[i].sessionId === sessionId) {
+                current = sessionsCache[i].title || '';
+                break;
+            }
+        }
+        if (nextTitle === current) {
+            cancelSessionRename();
+            return Promise.resolve();
+        }
+        return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: nextTitle })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Could not rename session');
+                return r.json();
+            })
+            .then(function (updated) {
+                for (var j = 0; j < sessionsCache.length; j++) {
+                    if (sessionsCache[j].sessionId === sessionId) {
+                        sessionsCache[j].title = updated.title || nextTitle;
+                        break;
+                    }
+                }
+                renamingSessionId = null;
+                renderSessionList(sessionsCache, activeSessionId);
+                status.textContent = 'Session renamed.';
+            })
+            .catch(function (e) { status.textContent = e.message || 'Rename failed'; });
+    }
+
+    function loadSessionsForProject(preferredSessionId) {
+        if (!activeProjectId) {
+            renderSessionList([], null);
+            return Promise.resolve();
+        }
+        return fetch('/api/chat/projects/' + encodeURIComponent(activeProjectId) + '/sessions?limit=100')
+            .then(function (r) {
+                if (!r.ok) return Promise.reject(new Error('sessions'));
+                return r.json();
+            })
+            .then(function (sessions) {
+                return renderSessionList(sessions, preferredSessionId);
             });
     }
 
     function createProject() {
         var name = String(projectNameInput.value || '').trim();
         if (!name) {
-            status.textContent = 'Enter a project name (e.g. a person or business label).';
+            status.textContent = 'Enter a project name.';
             return Promise.reject(new Error('missing name'));
         }
-        var scenarioId = String(scenarioSel.value || 'people').trim();
+        var scenarioId = String(scenarioNewSel.value || 'people').trim();
         return fetch('/api/chat/projects', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -206,64 +819,23 @@
             .then(function (created) {
                 projectNameInput.value = '';
                 activeProjectId = created.projectId || '';
+                activeProjectScenarioId = String(created.scenarioId || scenarioId).trim();
                 return loadProjects(activeProjectId);
-            });
-    }
-
-    function refreshSessions(preferredId) {
-        var url = '/api/chat/sessions?limit=100';
-        if (activeProjectId) url += '&projectId=' + encodeURIComponent(activeProjectId);
-        return fetch(url)
-            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('sessions')); })
-            .then(function (sessions) {
-                sessionSel.innerHTML = '';
-                (sessions || []).forEach(function (s) {
-                    var opt = document.createElement('option');
-                    opt.value = s.sessionId;
-                    opt.textContent = (s.title || s.sessionId) + ' (' + s.turnCount + ')';
-                    sessionSel.appendChild(opt);
-                });
-                var pick = preferredId || activeSessionId || (sessions && sessions[0] ? sessions[0].sessionId : null);
-                if (pick) {
-                    sessionSel.value = pick;
-                    activeSessionId = pick;
-                }
-                syncUrl();
-                if (hint) {
-                    hint.textContent = activeProjectId
-                        ? 'Project-selected sessions only. New session will be created inside this project.'
-                        : 'All sessions shown (including standalone). Select/create a project to scope sessions.';
-                }
-                return activeSessionId;
             })
-            .then(function (sid) { return loadTranscript(sid); });
-    }
-
-    /** First visit: create a PM Playground session if none exist (avoids empty dropdown). */
-    function ensureSessionThenRefresh(urlSessionId) {
-        var url = '/api/chat/sessions?limit=100';
-        if (activeProjectId) url += '&projectId=' + encodeURIComponent(activeProjectId);
-        return fetch(url)
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .then(function (sessions) {
-                if (sessions && sessions.length > 0) {
-                    return refreshSessions(urlSessionId || null);
-                }
-                return fetch('/api/chat/sessions', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: 'PM Playground', projectId: activeProjectId || null })
-                })
-                    .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('create session')); })
-                    .then(function (created) { return refreshSessions(created.sessionId); });
+            .then(function () {
+                return loadSessionsForProject(null);
             });
     }
 
     function createSession() {
+        if (!activeProjectId) {
+            status.textContent = 'Select a project first.';
+            return Promise.reject(new Error('no project'));
+        }
         return fetch('/api/chat/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: 'PM Playground', projectId: activeProjectId || null })
+            body: JSON.stringify({ title: 'PM Playground', projectId: activeProjectId })
         })
             .then(function (r) {
                 if (!r.ok) throw new Error('Could not create session');
@@ -271,8 +843,85 @@
             })
             .then(function (created) {
                 activeSessionId = created.sessionId;
-                return refreshSessions(activeSessionId);
+                return loadSessionsForProject(activeSessionId);
             });
+    }
+
+    function applyScenarioChange() {
+        if (!activeProjectId || !scenarioChangeSel) return Promise.resolve();
+        var nextId = String(scenarioChangeSel.value || '').trim();
+        if (!nextId || nextId === activeProjectScenarioId) {
+            setScenarioPanelVisible(false);
+            return Promise.resolve();
+        }
+        return fetch('/api/chat/projects/' + encodeURIComponent(activeProjectId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scenarioId: nextId })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Could not update scenario');
+                return r.json();
+            })
+            .then(function (updated) {
+                activeProjectScenarioId = String(updated.scenarioId || nextId).trim();
+                for (var i = 0; i < projectsCache.length; i++) {
+                    if (projectsCache[i].projectId === activeProjectId) {
+                        projectsCache[i].scenarioId = activeProjectScenarioId;
+                        break;
+                    }
+                }
+                // Scenario change resets the agent override (new scenario may not include the old one).
+                agentOverrideId = '';
+                renderProjectList();
+                updateProjectHeader();
+                refreshAgentSelection();
+                setScenarioPanelVisible(false);
+                status.textContent = 'Scenario updated for this project.';
+            });
+    }
+
+    /** Submits a new name for the given project; refreshes rail + header in place. */
+    function applyRename(projectId, proposedName) {
+        if (!projectId) return Promise.resolve();
+        var nextName = String(proposedName || '').trim();
+        if (!nextName) {
+            status.textContent = 'Project name cannot be empty.';
+            return Promise.resolve();
+        }
+        var current = '';
+        for (var i = 0; i < projectsCache.length; i++) {
+            if (projectsCache[i].projectId === projectId) {
+                current = projectsCache[i].name || '';
+                break;
+            }
+        }
+        if (nextName === current) {
+            cancelRename();
+            return Promise.resolve();
+        }
+        return fetch('/api/chat/projects/' + encodeURIComponent(projectId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: nextName })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Could not rename project');
+                return r.json();
+            })
+            .then(function (updated) {
+                for (var j = 0; j < projectsCache.length; j++) {
+                    if (projectsCache[j].projectId === projectId) {
+                        projectsCache[j].name = updated.name || nextName;
+                        break;
+                    }
+                }
+                renamingProjectId = null;
+                renderProjectList();
+                updateProjectHeader();
+                status.textContent = 'Project renamed.';
+            })
+            .catch(function (e) { status.textContent = e.message || 'Rename failed'; });
     }
 
     function extractSseEvents(buffer) {
@@ -286,7 +935,11 @@
                 if (line.indexOf('data:') === 0) {
                     var j = line.slice(5).trim();
                     if (j) {
-                        try { events.push(JSON.parse(j)); } catch (e2) { /* ignore */ }
+                        try {
+                            events.push(JSON.parse(j));
+                        } catch (e2) {
+                            /* ignore */
+                        }
                     }
                 }
             });
@@ -294,14 +947,12 @@
         return { rest: rest, events: events };
     }
 
-    /** Clears pipeline visualization before a new streamed request. */
     function resetFlowViz() {
         if (!flowStepsEl) return;
         flowStepsEl.innerHTML = '';
         if (flowDetailEl) flowDetailEl.textContent = '';
     }
 
-    /** Appends step chips (used after <code>flow_plan_tail</code>); does not clear existing chips. */
     function appendFlowPlanSteps(plan) {
         if (!flowStepsEl || !plan || !Array.isArray(plan.steps) || plan.steps.length === 0) return;
         plan.steps.forEach(function (s) {
@@ -325,7 +976,6 @@
         });
     }
 
-    /** Renders step chips from server <code>flow_plan</code> (bulk transparency). */
     function applyFlowPlan(plan) {
         if (!flowStepsEl || !plan || !Array.isArray(plan.steps)) return;
         resetFlowViz();
@@ -352,7 +1002,6 @@
         });
     }
 
-    /** One-line status for the selected pipeline step (high-level nodes only). */
     function setFlowStepStatus(stepId, st, detail) {
         if (!flowStepsEl) return;
         var n = flowStepsEl.querySelector('[data-flow-step="' + stepId + '"]');
@@ -365,11 +1014,18 @@
     }
 
     function sendStreaming() {
-        var agentId = agentSel.value;
-        var sessionId = sessionSel.value;
+        // Effective agent = override (if still in the scoped list) else scenario default.
+        var agentId = agentSel && agentSel.value ? agentSel.value : defaultAgentIdForActive();
+        var sessionId = activeSessionId;
         var text = input.value.trim();
-        if (!agentId) { status.textContent = 'Pick an agent spec.'; return; }
-        if (!sessionId) { status.textContent = 'Pick or create a session.'; return; }
+        if (!agentId) {
+            status.textContent = 'No agent available for this scenario.';
+            return;
+        }
+        if (!sessionId) {
+            status.textContent = 'Pick or create a session.';
+            return;
+        }
         if (!text) return;
 
         sendBtn.disabled = true;
@@ -387,19 +1043,23 @@
         messages.insertAdjacentHTML(
             'beforeend',
             '<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800 p-3">' +
-            '<div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">You</div>' +
-            '<div class="whitespace-pre-wrap break-words text-gray-800 dark:text-gray-100">' + esc(text) + '</div></div>'
+                '<div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">You</div>' +
+                '<div class="whitespace-pre-wrap break-words text-gray-800 dark:text-gray-100">' +
+                esc(text) +
+                '</div></div>'
         );
 
-        var sid = 'pm-stream-' + Date.now();
+        var streamElId = 'pm-stream-' + Date.now();
         var bubbleHtml =
-            '<div id="' + sid + '" class="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 p-3">' +
+            '<div id="' +
+            streamElId +
+            '" class="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 p-3">' +
             '<div class="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Assistant</div>' +
             '<div class="pm-play-md text-sm text-green-900 dark:text-green-100" data-role="stream-body"></div></div>';
         messages.insertAdjacentHTML('beforeend', bubbleHtml);
         messages.scrollTop = messages.scrollHeight;
 
-        var streamBody = document.querySelector('#' + sid + ' [data-role="stream-body"]');
+        var streamBody = document.querySelector('#' + streamElId + ' [data-role="stream-body"]');
         var acc = '';
         var markdownRaf = null;
         function applyMd() {
@@ -420,10 +1080,8 @@
         }
 
         var postBody = { sessionId: sessionId, agentId: agentId, payload: text };
-        if (activeProjectId && projectSel.selectedOptions && projectSel.selectedOptions[0] && projectSel.selectedOptions[0].dataset.scenarioId) {
-            postBody.scenarioId = projectSel.selectedOptions[0].dataset.scenarioId;
-        } else if (scenarioSel && scenarioSel.value) {
-            postBody.scenarioId = scenarioSel.value;
+        if (activeProjectId && activeProjectScenarioId) {
+            postBody.scenarioId = activeProjectScenarioId;
         }
 
         fetch('/api/project-memory/playground/message/stream', {
@@ -449,7 +1107,7 @@
                                 try {
                                     applyFlowPlan(JSON.parse(evt.payload));
                                 } catch (ePlan) {
-                                    /* ignore malformed debug payloads */
+                                    /* ignore */
                                 }
                             }
                             if (evt.type === 'flow_plan_tail' && evt.payload && flowStepsEl) {
@@ -469,10 +1127,7 @@
                             }
                             if (evt.type === 'done' && window.agctorTraceTimeline) {
                                 var tid =
-                                    evt.traceId ||
-                                    evt.TraceId ||
-                                    evt.traceID ||
-                                    evt.trace_id;
+                                    evt.traceId || evt.TraceId || evt.traceID || evt.trace_id;
                                 if (tid) {
                                     window.agctorTraceTimeline.load('pm-play-trace-timeline', tid, {
                                         selectionLabel: 'Latest playground request',
@@ -522,41 +1177,42 @@
         newBtn.disabled = true;
         createSession()
             .catch(function (e) { status.textContent = e.message || 'Failed'; })
-            .finally(function () { newBtn.disabled = false; });
+            .finally(function () { newBtn.disabled = !activeProjectId; });
     });
 
     refreshBtn.addEventListener('click', function () {
-        refreshSessions(sessionSel.value).catch(function () { status.textContent = 'Refresh failed'; });
-    });
-
-    copyLinkBtn.addEventListener('click', function () {
-        copyCurrentUrl()
-            .then(function () { status.textContent = 'Link copied'; })
-            .catch(function () { status.textContent = 'Copy link failed'; });
+        loadSessionsForProject(activeSessionId).catch(function () { status.textContent = 'Refresh failed'; });
     });
 
     newProjectBtn.addEventListener('click', function () {
         newProjectBtn.disabled = true;
         createProject()
-            .then(function () { return refreshSessions(null); })
             .catch(function (e) {
                 if (e && e.message !== 'missing name') status.textContent = e.message || 'Create project failed';
             })
             .finally(function () { newProjectBtn.disabled = false; });
     });
 
-    projectSel.addEventListener('change', function () {
-        activeProjectId = projectSel.value || null;
-        activeSessionId = null;
-        syncUrl();
-        refreshSessions(null).catch(function () { status.textContent = 'Project filter failed'; });
-    });
-
-    sessionSel.addEventListener('change', function () {
-        activeSessionId = sessionSel.value;
-        syncUrl();
-        loadTranscript(activeSessionId);
-    });
+    if (changeScenarioBtn) {
+        changeScenarioBtn.addEventListener('click', function () {
+            if (!activeProjectId) return;
+            if (scenarioChangeSel && activeProjectScenarioId) scenarioChangeSel.value = activeProjectScenarioId;
+            setScenarioPanelVisible(true);
+        });
+    }
+    if (scenarioCancelBtn) {
+        scenarioCancelBtn.addEventListener('click', function () {
+            setScenarioPanelVisible(false);
+        });
+    }
+    if (scenarioApplyBtn) {
+        scenarioApplyBtn.addEventListener('click', function () {
+            scenarioApplyBtn.disabled = true;
+            applyScenarioChange()
+                .catch(function (e) { status.textContent = e.message || 'Update failed'; })
+                .finally(function () { scenarioApplyBtn.disabled = false; });
+        });
+    }
 
     sendBtn.addEventListener('click', sendStreaming);
     input.addEventListener('keydown', function (ev) {
@@ -566,16 +1222,55 @@
         }
     });
 
+    // Changing the Advanced agent select promotes the pick to an override.
+    agentSel.addEventListener('change', function () {
+        agentOverrideId = agentSel.value || '';
+        refreshAgentSelection();
+    });
+
+    if (agentResetBtn) {
+        agentResetBtn.addEventListener('click', function () {
+            agentOverrideId = '';
+            refreshAgentSelection();
+            status.textContent = 'Agent reset to scenario default.';
+        });
+    }
+
     var qs = new URLSearchParams(window.location.search);
     var qProject = qs.get('projectId');
     var qSession = qs.get('sessionId');
+
     loadAgents()
         .then(loadScenarios)
+        .then(function () {
+            // Resolve owning project from the session whenever sessionId is present (fixes stale or missing projectId in URL).
+            if (qSession) {
+                return fetch('/api/chat/sessions/' + encodeURIComponent(qSession))
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (tr) {
+                        if (tr && tr.session && tr.session.projectId) qProject = tr.session.projectId;
+                    });
+            }
+        })
         .then(function () { return loadProjects(qProject || null); })
-        .then(function () { return ensureSessionThenRefresh(qSession); })
+        .then(function () {
+            if (activeProjectId) {
+                return loadSessionsForProject(qSession || null);
+            }
+            if (qSession) {
+                activeSessionId = qSession;
+                syncUrl();
+                if (hint) {
+                    hint.textContent =
+                        'This session is not linked to a project (or no project was resolved). Pick a project to manage sessions.';
+                }
+                return loadTranscript(qSession);
+            }
+            renderSessionList([], null);
+            return Promise.resolve();
+        })
         .catch(function (e) {
             status.textContent = e.message || 'Load failed';
             if (hint) hint.textContent = 'Set project root on Maintenance if agents fail to load.';
         });
 })();
-

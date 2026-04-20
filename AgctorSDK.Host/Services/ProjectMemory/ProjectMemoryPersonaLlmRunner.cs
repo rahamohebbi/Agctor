@@ -177,15 +177,15 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         sb.AppendLine("---");
         sb.AppendLine("Playground runtime: write_document and other tools are NOT executed in this HTTP flow.");
         sb.AppendLine(
-            "Disk changes come only from parsing the upstream person-extractor memoryIntents JSON (ingest may already have run).");
+            "Disk changes come only from parsing upstream person-extractor intent JSON (ingest may already have run).");
         if (!ingest.ParseSuccess)
         {
             sb.Append("Ingest: PARSE FAILED — ").AppendLine(ingest.Summary ?? "");
             sb.AppendLine("Do not claim any markdown files were created or updated on disk.");
             sb.AppendLine(
-                "Canonical extractor shape: a single JSON object with key \"memoryIntents\" (array). Root must be { ... }, not a bare [ ... ] array.");
+                "Canonical extractor shape: {\"schemaVersion\":\"1.0\",\"actionIntents\":[{\"intentType\":\"memory.persist\",\"payload\":{\"memoryIntents\":[...]}}]}");
             sb.AppendLine(
-                "Example: {\"memoryIntents\":[{\"entityKey\":\"melody\",\"knowledgeType\":\"profile_fact\",\"attribute\":\"name\",\"value\":\"Melody\",\"confidence\":1}]}");
+                "Legacy shape still accepted: {\"memoryIntents\":[{\"entityKey\":\"melody\",\"knowledgeType\":\"profile_fact\",\"attribute\":\"name\",\"value\":\"Melody\",\"confidence\":1}]}");
             sb.AppendLine("Use entityKey as a short folder slug (e.g. melody), not a match/ path.");
             return sb.ToString().TrimEnd();
         }

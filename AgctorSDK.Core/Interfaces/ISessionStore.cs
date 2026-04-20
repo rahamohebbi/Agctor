@@ -13,6 +13,10 @@ namespace AgctorSDK.Core.Interfaces
         /// <param name="projectId">Optional chat project bucket; must exist when set.</param>
         Task<SessionInfo> CreateSessionAsync(string? sessionId = null, string? title = null, string? projectId = null, CancellationToken cancellationToken = default);
         Task<SessionInfo?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default);
+        /// <summary>Updates the session title (trims whitespace, rejects empty). Returns the latest session metadata.</summary>
+        Task<SessionInfo> UpdateSessionTitleAsync(string sessionId, string title, CancellationToken cancellationToken = default);
+        /// <summary>Removes a session and all of its turns, trace links, summary, and project moves. No-op if the id is missing.</summary>
+        Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SessionInfo>> ListSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SessionInfo>> ListSessionsByProjectAsync(string projectId, int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SessionInfo>> ListStandaloneSessionsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);

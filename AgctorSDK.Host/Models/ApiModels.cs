@@ -451,6 +451,12 @@ namespace AgctorSDK.Host.Models
         public string? ScenarioId { get; set; }
     }
 
+    /// <summary>Updates a chat session (currently: title only).</summary>
+    public class UpdateChatSessionRequest
+    {
+        public string? Title { get; set; }
+    }
+
     /// <summary>Assigns a session to a project (<c>PUT /api/chat/sessions/.../project</c>).</summary>
     public class AssignChatSessionProjectRequest
     {

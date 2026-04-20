@@ -5,74 +5,103 @@
 }
 <div class="mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Project memory agent playground</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Chat-style testing with <strong>streaming</strong> and a persisted transcript (same session store as CodeGraph). Pick an agent spec, choose or create a session, then send messages. The <strong>Trace timeline</strong> below uses the same visualization as CodeGraph and refreshes after each streamed turn.</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Chat-style testing with <strong>streaming</strong> and a persisted transcript. Pick a <strong>project</strong>, then a <strong>session</strong>, then send messages. Each project has a <strong>scenario</strong> (set at creation; changeable from the chat column). The scenario auto-picks the right agent; use <em>Advanced</em> under the composer to override. The <strong>Trace timeline</strong> below refreshes after each streamed turn.</p>
 </div>
 
 <div id="pm-play-root" class="space-y-4">
-    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div class="md:col-span-4">
-                <label for="pm-play-project-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">New project name</label>
-                <input type="text" id="pm-play-project-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="e.g. Raha Mohebbi, or Portable Toilet business — Irvine" autocomplete="off" />
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Used when you click New project. Choose a label that identifies this chat bucket for you.</p>
+    @* Three-region workspace: projects | sessions | chat (stacks on small screens). *@
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-stretch xl:gap-0 xl:rounded-lg xl:overflow-hidden xl:border xl:border-gray-200 xl:dark:border-gray-700 xl:shadow dark:xl:bg-gray-800/50">
+        @* Projects rail *@
+        <aside class="w-full shrink-0 xl:w-56 xl:border-r xl:border-gray-200 xl:dark:border-gray-700 p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 xl:rounded-none xl:border-0 xl:shadow-none">
+            <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Projects</h2>
+            <div id="pm-play-project-list" class="max-h-[40vh] xl:max-h-none xl:overflow-y-auto space-y-1 mb-4" role="listbox" aria-label="Projects"></div>
+            <div class="border-t border-gray-200 dark:border-gray-600 pt-3 space-y-2">
+                <label for="pm-play-project-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300">New project</label>
+                <input type="text" id="pm-play-project-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Name…" autocomplete="off" />
+                <label for="pm-play-scenario-new" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Scenario</label>
+                <select id="pm-play-scenario-new" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+                <button type="button" id="pm-play-new-project" class="w-full px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Create project</button>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400">Scenario applies to this project only. You can change it later from the chat column.</p>
             </div>
-            <div>
-                <label for="pm-play-agent" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agent spec</label>
-                <select id="pm-play-agent" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+        </aside>
+
+        @* Sessions column *@
+        <aside class="w-full shrink-0 xl:w-64 xl:border-r xl:border-gray-200 xl:dark:border-gray-700 p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 xl:rounded-none xl:border-0 xl:shadow-none flex flex-col min-h-[12rem]">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Sessions</h2>
+                <button type="button" id="pm-play-refresh" class="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
             </div>
-            <div class="md:col-span-2">
-                <label for="pm-play-project" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project (optional)</label>
-                <select id="pm-play-project" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
-            </div>
-            <div class="md:col-span-2 space-y-2">
-                <div>
-                    <label for="pm-play-scenario" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario</label>
+            <div id="pm-play-session-list" class="flex-1 overflow-y-auto max-h-[40vh] xl:max-h-[min(60vh,28rem)] space-y-1 mb-3" role="listbox" aria-label="Sessions in this project"></div>
+            <button type="button" id="pm-play-new-session" class="w-full px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">New session</button>
+            <p id="pm-play-hint" class="mt-2 text-[11px] text-gray-500 dark:text-gray-400"></p>
+        </aside>
+
+        @* Chat + debug (flow + trace below transcript per PRD-017). *@
+        <div class="flex-1 min-w-0 p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 xl:rounded-none xl:border-0 xl:shadow-none space-y-4">
+            <div id="pm-play-project-header" class="hidden rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-900/40">
+                <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">Selected project</div>
+                <div id="pm-play-project-title" class="text-sm font-semibold text-gray-900 dark:text-white truncate"></div>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span id="pm-play-project-scenario-label" class="text-sm text-gray-800 dark:text-gray-200"></span>
+                    <button type="button" id="pm-play-change-scenario" class="text-xs font-medium text-blue-700 hover:underline dark:text-blue-300">Change scenario…</button>
+                </div>
+                <div id="pm-play-scenario-change-panel" class="hidden mt-3 pt-3 border-t border-gray-200 dark:border-gray-600 space-y-2">
+                    <p class="text-[11px] text-amber-800 dark:text-amber-200/90">Changing scenario affects routing and flow for <strong>this project</strong> going forward; older transcript lines were produced under the previous scenario.</p>
+                    <label for="pm-play-scenario-change" class="block text-xs font-medium text-gray-700 dark:text-gray-300">New scenario</label>
+                    <select id="pm-play-scenario-change" class="w-full max-w-md rounded-lg border border-gray-300 bg-white p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
                     <div class="flex flex-wrap gap-2">
-                        <select id="pm-play-scenario" class="min-w-[12rem] flex-1 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+                        <button type="button" id="pm-play-scenario-apply" class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded hover:bg-blue-700">Apply</button>
+                        <button type="button" id="pm-play-scenario-cancel" class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-100">Cancel</button>
                     </div>
                 </div>
-                <button type="button" id="pm-play-new-project" class="w-full sm:w-auto px-3 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">New project</button>
             </div>
-            <div class="md:col-span-2">
-                <label for="pm-play-session" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Chat session</label>
-                <select id="pm-play-session" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+
+            <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg dark:bg-gray-900/30 dark:border-gray-600 min-h-[280px] flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Transcript</h2>
+                    <span id="pm-play-status" class="text-xs text-gray-500 dark:text-gray-400" role="status"></span>
+                </div>
+                <div id="pm-play-messages" class="flex-1 overflow-y-auto max-h-[50vh] space-y-3 pr-1 text-sm"></div>
+                <div class="mt-4 flex gap-2">
+                    <textarea id="pm-play-input" rows="3" class="flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Type a message…"></textarea>
+                    <button type="button" id="pm-play-send" class="self-end px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0">Send</button>
+                </div>
+
+                @* PRD-017 Advanced disclosure: agent is auto-picked from the scenario; operators rarely need to touch it. *@
+                <details id="pm-play-advanced" class="mt-3 group">
+                    <summary class="cursor-pointer select-none text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                        <span class="inline-flex items-center gap-1">
+                            <svg class="h-3 w-3 transition-transform group-open:rotate-90" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
+                            Advanced
+                        </span>
+                        <span id="pm-play-agent-auto-label" class="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400"></span>
+                    </summary>
+                    <div class="mt-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/70 space-y-2">
+                        <label for="pm-play-agent" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Agent spec (override)</label>
+                        <select id="pm-play-agent" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400">Options are scoped to this scenario's personas. The <strong>extractor</strong> is chosen automatically because it's the only agent that can write updates to disk. Override only for debugging a specific persona.</p>
+                        <button type="button" id="pm-play-agent-reset" class="text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-300">Reset to scenario default</button>
+                    </div>
+                </details>
             </div>
-            <div class="flex items-end gap-2">
-                <button type="button" id="pm-play-new-session" class="flex-1 px-3 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">New session</button>
-                <button type="button" id="pm-play-refresh" class="px-3 py-2.5 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
-                <button type="button" id="pm-play-copy-link" class="px-3 py-2.5 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-200">Copy link</button>
+
+            <div id="pm-play-flow-card" class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Request pipeline (debug)</h2>
+                    <span class="text-[10px] text-gray-500 dark:text-gray-400">SSE from <code class="text-[10px]">/playground/message/stream</code></span>
+                </div>
+                <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">When a <strong>scenario id</strong> is resolved and the catalog scenario has a valid <strong>flow</strong> graph, the server runs that graph: each step uses the previous step’s output as input; Router uses the graph (LLM or rule-based). Initial chips show the path through Chat input (and through Router when branching); remaining chips arrive in a <code>flow_plan_tail</code> event after routing. Parallel branches may interleave streamed tokens in one assistant bubble. Without a runnable flow graph, a fixed single-agent template is used. Markdown on disk is updated only when <strong>person-extractor</strong> output parses as <code>memoryIntents</code> JSON and ingest succeeds; later personas (e.g. memory-curator) do not run <code>write_document</code> in this stream—their text is narrative unless the prompt includes ingest results.</p>
+                <div id="pm-play-flow-steps" class="flex flex-wrap items-center gap-1 min-h-[2rem]"></div>
+                <p id="pm-play-flow-detail" class="mt-2 text-[11px] font-mono text-gray-600 dark:text-gray-400 break-words"></p>
             </div>
-        </div>
-        <p id="pm-play-hint" class="mt-3 text-xs text-gray-500 dark:text-gray-400"></p>
-    </div>
 
-    <div id="pm-play-flow-card" class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-        <div class="flex items-center justify-between gap-2 mb-2">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Request pipeline (debug)</h2>
-            <span class="text-[10px] text-gray-500 dark:text-gray-400">SSE from <code class="text-[10px]">/playground/message/stream</code></span>
-        </div>
-        <p class="text-xs text-gray-600 dark:text-gray-300 mb-2">When a <strong>scenario id</strong> is resolved and the catalog scenario has a valid <strong>flow</strong> graph, the server runs that graph: each step uses the previous step’s output as input; Router uses the graph (LLM or rule-based). Initial chips show the path through Chat input (and through Router when branching); remaining chips arrive in a <code>flow_plan_tail</code> event after routing. Parallel branches may interleave streamed tokens in one assistant bubble. Without a runnable flow graph, a fixed single-agent template is used. Markdown on disk is updated only when <strong>person-extractor</strong> output parses as <code>memoryIntents</code> JSON and ingest succeeds; later personas (e.g. memory-curator) do not run <code>write_document</code> in this stream—their text is narrative unless the prompt includes ingest results.</p>
-        <div id="pm-play-flow-steps" class="flex flex-wrap items-center gap-1 min-h-[2rem]"></div>
-        <p id="pm-play-flow-detail" class="mt-2 text-[11px] font-mono text-gray-600 dark:text-gray-400 break-words"></p>
-    </div>
-
-    @await Component.InvokeAsync("TraceTimeline", new
-    {
-        componentId = "pm-play-trace-timeline",
-        title = "Trace timeline",
-        emptyMessage = "Send a message to see LLM, ingest, and persist spans for this request.",
-        heightPx = 320
-    })
-
-    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 min-h-[280px] flex flex-col">
-        <div class="flex items-center justify-between mb-2">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Transcript</h2>
-            <span id="pm-play-status" class="text-xs text-gray-500 dark:text-gray-400" role="status"></span>
-        </div>
-        <div id="pm-play-messages" class="flex-1 overflow-y-auto max-h-[50vh] space-y-3 pr-1 text-sm"></div>
-        <div class="mt-4 flex gap-2">
-            <textarea id="pm-play-input" rows="3" class="flex-1 rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder="Type a message…"></textarea>
-            <button type="button" id="pm-play-send" class="self-end px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shrink-0">Send</button>
+            @await Component.InvokeAsync("TraceTimeline", new
+            {
+                componentId = "pm-play-trace-timeline",
+                title = "Trace timeline",
+                emptyMessage = "Send a message to see LLM, ingest, and persist spans for this request.",
+                heightPx = 320
+            })
         </div>
     </div>
 </div>
@@ -92,6 +121,11 @@
     .pm-flow-done { border-color: #22c55e !important; }
     .pm-flow-error { border-color: #ef4444 !important; }
     @@keyframes pm-flow-pulse { 50% { opacity: 0.45; } }
+    .pm-play-list-btn { width: 100%; text-align: left; padding: 0.5rem 0.625rem; border-radius: 0.5rem; border: 1px solid transparent; font-size: 0.875rem; }
+    .pm-play-list-btn:hover { background-color: rgba(243, 244, 246, 1); }
+    .dark .pm-play-list-btn:hover { background-color: rgba(55, 65, 81, 0.6); }
+    .pm-play-list-btn.pm-play-active { border-color: rgb(59, 130, 246); background-color: rgb(239, 246, 255); }
+    .dark .pm-play-list-btn.pm-play-active { border-color: rgb(96, 165, 250); background-color: rgba(30, 58, 138, 0.35); }
 </style>
 
 @section Scripts {

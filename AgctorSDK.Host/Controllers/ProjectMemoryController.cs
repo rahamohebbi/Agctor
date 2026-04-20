@@ -467,6 +467,35 @@ public sealed class ProjectMemoryController : ControllerBase
                 streamTraceId = tid;
         }
 
+        void SetStreamRootDetail(
+            string status,
+            string? errorMessage = null,
+            IEnumerable<string>? personaChain = null,
+            int? responseChars = null,
+            bool? ingestAttempted = null)
+        {
+            try
+            {
+                streamActivity?.SetTimelineDetailJson(
+                    PlaygroundTraceTimelineDetail.BuildStreamRootJson(
+                        sessionId,
+                        messageId,
+                        scenarioResolved,
+                        spec.Id,
+                        useScenarioFlow,
+                        status,
+                        errorMessage,
+                        personaChain,
+                        responseChars,
+                        ingestAttempted));
+            }
+            catch (Exception exDetail)
+            {
+                _logger.LogDebug(exDetail, "Playground: stream root trace detail JSON skipped");
+            }
+        }
+        SetStreamRootDetail(status: "running");
+
         async Task WriteSseAsync(AgentStreamEvent evt)
         {
             if (!string.IsNullOrWhiteSpace(streamTraceId))
@@ -501,6 +530,7 @@ public sealed class ProjectMemoryController : ControllerBase
 
         if (useScenarioFlow)
         {
+            var personasSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var ingestChipActive = !string.IsNullOrWhiteSpace(scenarioResolved);
             var prefixSteps = PlaygroundFlowPlanBuilder.BuildFlowExecutionPlanPrefix(scenarioDef!.Flow!, ingestChipActive);
             var prefixPayload = new
@@ -560,6 +590,7 @@ public sealed class ProjectMemoryController : ControllerBase
             ScenarioFlowGraphInterpreter.PersonaInvoker invokeFlow = async (personaId, promptText, cancellationToken, flowNodeId) =>
             {
                 lastPersona = personaId.Trim();
+                personasSeen.Add(lastPersona);
                 var pSpec = ctx.AgentSpecs.FirstOrDefault(a =>
                     string.Equals(a.Id, personaId.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (pSpec == null)
@@ -763,6 +794,13 @@ public sealed class ProjectMemoryController : ControllerBase
             await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadFlow, JsonSse) + "\n\n", ct)
                 .ConfigureAwait(false);
             await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+            var flowError = fullTextFlow.StartsWith("Error:", StringComparison.OrdinalIgnoreCase);
+            SetStreamRootDetail(
+                status: flowError ? "error" : "success",
+                errorMessage: flowError ? fullTextFlow : null,
+                personaChain: personasSeen,
+                responseChars: fullTextFlow.Length,
+                ingestAttempted: lastExtractorIngest != null);
             return;
         }
 
@@ -796,6 +834,9 @@ public sealed class ProjectMemoryController : ControllerBase
         if (runIdx < 0 || runIdx >= flowPlan.Steps.Count)
         {
             _logger.LogError("Playground: invalid flow plan (no PersonaCall) for agent {AgentId}", spec.Id);
+            SetStreamRootDetail(
+                status: "error",
+                errorMessage: "Invalid playground flow plan (no PersonaCall step).");
             await WriteSseAsync(new AgentStreamEvent
             {
                 Type = "error",
@@ -1088,6 +1129,12 @@ public sealed class ProjectMemoryController : ControllerBase
         };
         await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayload, JsonSse) + "\n\n", ct).ConfigureAwait(false);
         await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+        SetStreamRootDetail(
+            status: personaFailed ? "error" : "success",
+            errorMessage: personaFailed ? rawLlm : null,
+            personaChain: new[] { spec.Id },
+            responseChars: fullText.Length,
+            ingestAttempted: ingestSnapshot != null);
     }
 
     private async Task EnsurePlaygroundSessionAsync(string sessionId, CancellationToken cancellationToken)

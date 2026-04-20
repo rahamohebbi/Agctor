@@ -194,7 +194,7 @@
     },
     {
       "id": "person_1",
-      "displayName": "Person 1",
+      "displayName": "Person 2",
       "description": "Chat and session memory oriented around people workflows.",
       "kind": "declarative",
       "handler": null,

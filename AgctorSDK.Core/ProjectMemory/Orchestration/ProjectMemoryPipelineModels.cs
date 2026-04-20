@@ -75,4 +75,7 @@ public sealed class ProjectMemoryIngestResult
 
     /// <summary>Parse/route/write notes or errors for operators.</summary>
     public string? Summary { get; init; }
+
+    /// <summary>Which JSON shape produced ingest intents (e.g. legacy.memoryIntents or actionIntents.memory.persist).</summary>
+    public string? ParseSource { get; init; }
 }
