@@ -1,0 +1,44 @@
+%% PRD-018 - Cross-session resolution flow (Raha / Ryan example)
+%% Session A learns about Raha. Session B independently says Ryan's father is Raha.
+%% The reconciler connects them without either session being aware of the other.
+sequenceDiagram
+  autonumber
+  participant SA as Session_A
+  participant SB as Session_B
+  participant Ext as PersonExtractor
+  participant Rec as ReconcilerActor
+  participant Midx as MentionIndexActor
+  participant RRaha as ResolutionActor_raha
+  participant Ing as IngestPipeline
+  participant Disk as Disk
+
+  Note over SA: Session A describes Raha hometown and job
+  SA->>Ext: turn text and context
+  Ext->>Ing: memoryIntents profile facts for people/raha
+  Ing->>Disk: write people/raha/profile.md
+  Ext-->>Rec: MentionObserved surface Raha scope projectRoot
+  SA-->>Rec: SessionSummary A
+
+  Note over SB: Session B asserts Ryan father is Raha
+  SB->>Ext: turn text and context
+  Ext-->>Rec: MentionObserved mention ryan.family[0] surface Raha scope scenario
+  Rec->>Midx: LookupBySurface Raha
+  Midx-->>Rec: candidates people/raha alias uniq
+  Rec->>RRaha: ResolveCandidate mention and people/raha
+
+  RRaha->>RRaha: signal ensemble S1 S2 S3 S7
+  RRaha->>Disk: append incoming.yaml soft edge conf 0.72
+  RRaha-->>Rec: EvidenceAppended conf 0.72 state soft
+  RRaha-->>Ing: IngestIntentDraft softLinkTo people/raha
+  Ing->>Disk: apply validated intent to relationships.md
+
+  SB-->>Rec: SessionSummary B
+  Note over Rec: Coalesce window of about 2s ends
+
+  Note over SA,SB: Later Session C adds attribute overlap S4
+  Rec->>RRaha: ResolveCandidate same edge new signals
+  RRaha->>RRaha: confidence 0.93
+  RRaha->>Disk: append promotions.log.yaml from soft to hard by auto
+  RRaha-->>Rec: LinkStateChanged soft to hard
+  RRaha-->>Ing: IngestIntentDraft softLinkTo to entityRef
+  Ing->>Disk: apply canonical update to relationships.md

@@ -1,0 +1,146 @@
+@page "/Dashboard/ProjectMemory/ResolutionReview"
+@model AgctorSDK.Host.Pages.Dashboard.ProjectMemory.ResolutionReviewModel
+@{
+    ViewData["Title"] = "Resolution review";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Resolution review</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Pending soft links proposed by the PRD-018 entity-resolution subsystem. Confirm, demote, or reject each row — evidence, thresholds, and history are preserved on disk.</p>
+</div>
+
+<div id="pm-res-root" class="space-y-4">
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <div class="grid gap-3 md:grid-cols-3 items-end">
+            <div>
+                <label for="pm-res-min" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Min confidence</label>
+                <input id="pm-res-min" type="number" step="0.01" min="0" max="1" value="0.0" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+            </div>
+            <div>
+                <label for="pm-res-max" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Max rows</label>
+                <input id="pm-res-max" type="number" step="1" min="1" max="500" value="50" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" id="pm-res-refresh" class="px-4 py-2.5 text-sm font-medium text-white bg-violet-600 rounded-lg hover:bg-violet-700">Refresh</button>
+                <span id="pm-res-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Pending soft links</h2>
+        <div id="pm-res-list" class="space-y-2 text-sm">
+            <p class="text-xs text-gray-500 dark:text-gray-400">Loading…</p>
+        </div>
+    </div>
+
+    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
+        <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Metrics</h2>
+        <pre id="pm-res-metrics" class="text-[11px] font-mono whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300">loading…</pre>
+    </div>
+</div>
+
+<script>
+(function() {
+    const listEl = document.getElementById('pm-res-list');
+    const statusEl = document.getElementById('pm-res-status');
+    const metricsEl = document.getElementById('pm-res-metrics');
+    const minEl = document.getElementById('pm-res-min');
+    const maxEl = document.getElementById('pm-res-max');
+    const refreshBtn = document.getElementById('pm-res-refresh');
+
+    function esc(value) { const d = document.createElement('div'); d.textContent = value ?? ''; return d.innerHTML; }
+
+    async function loadPending() {
+        statusEl.textContent = 'Loading…';
+        const min = Number(minEl.value) || 0;
+        const max = Number(maxEl.value) || 50;
+        try {
+            const r = await fetch('/api/project-memory/resolution/pending?max=' + max + '&minConfidence=' + min);
+            if (!r.ok) { statusEl.textContent = 'Error ' + r.status; listEl.innerHTML = ''; return; }
+            const data = await r.json();
+            render(data);
+            statusEl.textContent = (data.rows || []).length + ' pending';
+        } catch (e) {
+            statusEl.textContent = 'Failed: ' + (e?.message || 'unknown');
+        }
+    }
+
+    async function loadMetrics() {
+        try {
+            const r = await fetch('/api/project-memory/resolution/metrics');
+            if (!r.ok) { metricsEl.textContent = 'metrics unavailable'; return; }
+            const data = await r.json();
+            metricsEl.textContent = JSON.stringify(data.counters || data, null, 2);
+        } catch (_) { metricsEl.textContent = 'metrics fetch failed'; }
+    }
+
+    function render(data) {
+        const rows = data.rows || [];
+        if (rows.length === 0) {
+            listEl.innerHTML = '<p class="text-xs text-gray-500 dark:text-gray-400">No pending soft links. Metrics below show cumulative activity.</p>';
+            return;
+        }
+        let html = '';
+        rows.forEach(function(row) {
+            const edge = row.edge || {};
+            const mention = edge.mention || {};
+            const signals = (edge.signals || []).map(function(s) {
+                const neg = s.isNegative ? ' text-rose-700 dark:text-rose-300' : '';
+                return '<li class="' + neg + '"><span class="font-mono">' + esc(s.kind) + '</span> · score ' + Number(s.score||0).toFixed(2) + ' · weight ' + Number(s.weight||0).toFixed(2) + ' · <span class="text-gray-500 dark:text-gray-400">' + esc(s.rationale||'') + '</span></li>';
+            }).join('');
+            html += '<div class="rounded-lg border border-gray-200 dark:border-gray-600 p-3 bg-gray-50 dark:bg-gray-900/40" data-entity-key="' + esc(row.entityKey) + '" data-edge-id="' + esc(edge.edgeId||'') + '">';
+            html +=   '<div class="flex flex-wrap items-start justify-between gap-2">';
+            html +=     '<div>';
+            html +=       '<p class="text-sm font-medium text-gray-900 dark:text-white">' + esc(mention.surfaceForm || '(surface?)') + ' <span class="text-gray-500 dark:text-gray-400">→</span> <code class="text-[11px]">' + esc(row.entityKey) + '</code></p>';
+            html +=       '<p class="text-[11px] text-gray-500 dark:text-gray-400 break-all">' + esc(edge.edgeId || '') + '</p>';
+            html +=       '<p class="text-[11px] text-gray-500 dark:text-gray-400">session <code class="text-[11px]">' + esc(mention.sessionId || '(none)') + '</code> · scope <code class="text-[11px]">' + esc((mention.scope && mention.scope.kind) || 'project') + '</code></p>';
+            html +=     '</div>';
+            html +=     '<div class="text-right">';
+            html +=       '<p class="text-sm font-semibold text-violet-700 dark:text-violet-300">' + Number(edge.confidence || 0).toFixed(2) + '</p>';
+            html +=       '<p class="text-[11px] text-gray-500 dark:text-gray-400">' + esc(String(edge.state || 'soft')) + '</p>';
+            html +=     '</div>';
+            html +=   '</div>';
+            if (signals.length > 0) {
+                html += '<details class="mt-2"><summary class="text-[11px] text-gray-600 dark:text-gray-400 cursor-pointer">Signals (' + (edge.signals||[]).length + ')</summary><ul class="mt-1 list-disc pl-5 text-xs space-y-0.5">' + signals + '</ul></details>';
+            }
+            html += '<div class="mt-2 flex flex-wrap items-center gap-2">';
+            html +=   '<button data-action="promote" class="px-2.5 py-1 text-xs font-medium text-white bg-emerald-600 rounded hover:bg-emerald-700">Promote</button>';
+            html +=   '<button data-action="reject"  class="px-2.5 py-1 text-xs font-medium text-white bg-rose-600 rounded hover:bg-rose-700">Reject</button>';
+            html +=   '<button data-action="demote"  class="px-2.5 py-1 text-xs font-medium text-gray-800 bg-gray-200 rounded hover:bg-gray-300 dark:bg-gray-600 dark:text-gray-100 dark:hover:bg-gray-500">Demote</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+
+        listEl.querySelectorAll('button[data-action]').forEach(function(btn) {
+            btn.addEventListener('click', async function() {
+                const row = btn.closest('[data-entity-key]');
+                if (!row) return;
+                const entityKey = row.getAttribute('data-entity-key');
+                const edgeId = row.getAttribute('data-edge-id');
+                const action = btn.getAttribute('data-action');
+                btn.disabled = true;
+                const reason = prompt('Reason (optional)') || null;
+                try {
+                    const resp = await fetch('/api/project-memory/resolution/' + action, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ entityKey, edgeId, reason })
+                    });
+                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                    await loadPending();
+                    await loadMetrics();
+                } catch (e) {
+                    alert('Action failed: ' + (e?.message || 'unknown'));
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        });
+    }
+
+    refreshBtn.addEventListener('click', function() { loadPending(); loadMetrics(); });
+    loadPending();
+    loadMetrics();
+})();
+</script>

@@ -1,0 +1,62 @@
+%% PRD-018 — Resolution actor topology
+%% Per-project supervisor owns a reconciler, a mention index, and one resolution actor per canonical entity.
+graph TD
+  subgraph Host["AgctorSDK.Host"]
+    Extractor["person-extractor<br/>(existing ingest path)"]
+    Playground["ProjectMemoryController<br/>(SSE + trace spans)"]
+    Review["ResolutionReview<br/>(Razor page + controller)"]
+  end
+
+  subgraph Core["AgctorSDK.Core / ProjectMemory / Resolution"]
+    Sup["ResolutionSupervisorActor<br/>ressup:&lt;projectId&gt;"]
+    Rec["ReconcilerActor<br/>rec:&lt;projectId&gt;"]
+    Midx["MentionIndexActor<br/>midx:&lt;projectId&gt;"]
+    RA1["ResolutionActor<br/>res:&lt;projectId&gt;:raha"]
+    RA2["ResolutionActor<br/>res:&lt;projectId&gt;:ryan"]
+    RAN["ResolutionActor<br/>res:&lt;projectId&gt;:&lt;other&gt;"]
+    Bridge["IngestIntentDraftEmitter"]
+  end
+
+  subgraph Disk["Disk (git-reviewable)"]
+    Reg[("EntityRegistry<br/>entity.yaml + aliases")]
+    Inc[(".resolution/incoming.yaml<br/>per entity")]
+    Prom[(".resolution/promotions.log.yaml<br/>per entity")]
+    Sum[("sessions/&lt;id&gt;/summary.yaml")]
+    Pol[(".agctor/resolution.yaml")]
+  end
+
+  Extractor -- "MentionObserved" --> Rec
+  Playground -- "SessionSummary" --> Rec
+  Review -- "PromotionRequested / DemotionRequested" --> RA1
+  Review -- "PromotionRequested / DemotionRequested" --> RA2
+
+  Sup -. spawns / supervises .-> Rec
+  Sup -. spawns / supervises .-> Midx
+  Sup -. spawns / supervises .-> RA1
+  Sup -. spawns / supervises .-> RA2
+  Sup -. spawns / supervises .-> RAN
+
+  Rec -- "LookupBySurface" --> Midx
+  Midx -- "LookupResponse (candidates)" --> Rec
+  Rec -- "ResolveCandidate" --> RA1
+  Rec -- "ResolveCandidate" --> RA2
+  Rec -- "ResolveCandidate" --> RAN
+
+  RA1 -- "EvidenceAppended / LinkStateChanged" --> Bridge
+  RA2 -- "EvidenceAppended / LinkStateChanged" --> Bridge
+  Bridge -- "IngestIntentDraft" --> Extractor
+
+  Reg --> Midx
+  RA1 <--> Inc
+  RA1 --> Prom
+  RA2 <--> Inc
+  RA2 --> Prom
+  Sum --> Rec
+  Pol --> Sup
+
+  classDef actor fill:#f3e8ff,stroke:#7e22ce,stroke-width:1px,color:#1f1f1f
+  classDef disk fill:#ecfeff,stroke:#0891b2,stroke-width:1px,color:#1f1f1f
+  classDef host fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#1f1f1f
+  class Sup,Rec,Midx,RA1,RA2,RAN,Bridge actor
+  class Reg,Inc,Prom,Sum,Pol disk
+  class Extractor,Playground,Review host

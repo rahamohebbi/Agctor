@@ -550,6 +550,159 @@ public sealed class ProjectMemoryPipelineRunnerTests
     }
 
     [TestMethod]
+    public async Task IngestOnly_LastName_IsWrittenToBasicInfo()
+    {
+        // Regression guard: the Mohebbi-style last_name intent used to drop as "route_miss" because
+        // routing only knew about profile_fact/name. Now it should land in Basic Info.
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        var temp = Path.Combine(Path.GetTempPath(), "pm-lastname-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+
+            var llm = new QueueLlm();
+            llm.Responses.Enqueue(
+                """
+                {
+                  "memoryIntents": [
+                    {"entityKey":"raha","knowledgeType":"profile_fact","attribute":"name","value":"Raha","confidence":1},
+                    {"entityKey":"raha","knowledgeType":"profile_fact","attribute":"last_name","value":"Mohebbi","confidence":1}
+                  ]
+                }
+                """);
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => llm);
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var result = await runner.RunAsync(new ProjectMemoryPipelineRequest
+            {
+                ProjectRoot = temp,
+                UserMessage = "My name is Raha. My last name is Mohebbi.",
+                Mode = ProjectMemoryPipelineMode.IngestOnly
+            }).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success, result.FinalText);
+            var profile = await File.ReadAllTextAsync(Path.Combine(temp, "people", "raha", "profile.md")).ConfigureAwait(false);
+            StringAssert.Contains(profile, "Mohebbi");
+            // Projection renders attribute labels with underscores flipped to spaces and each word
+            // title-cased; "last_name" → "Last name:" (whole label lowercased except first letter).
+            StringAssert.Contains(profile, "Last name: Mohebbi");
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task IngestOnly_FamilyRole_Bootstraps_Referenced_Person_Folder()
+    {
+        // "I have a son called Ryan" should materialize people/ryan even when the only Ryan-facing
+        // intent is a family_role edge whose value is "Ryan" — previously this was dropped.
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        var temp = Path.Combine(Path.GetTempPath(), "pm-family-boot-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+            // Remove any pre-existing ryan folder so we're testing bootstrap, not reuse.
+            var ryanDir = Path.Combine(temp, "people", "ryan");
+            if (Directory.Exists(ryanDir)) Directory.Delete(ryanDir, true);
+
+            var llm = new QueueLlm();
+            llm.Responses.Enqueue(
+                """
+                {
+                  "memoryIntents": [
+                    {"entityKey":"raha","knowledgeType":"family_role","attribute":"son","value":"Ryan","confidence":1}
+                  ]
+                }
+                """);
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => llm);
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var result = await runner.RunAsync(new ProjectMemoryPipelineRequest
+            {
+                ProjectRoot = temp,
+                UserMessage = "I have a son called Ryan.",
+                Mode = ProjectMemoryPipelineMode.IngestOnly
+            }).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success, result.FinalText);
+            Assert.IsTrue(File.Exists(Path.Combine(temp, "people", "ryan", "entity.yaml")), "ryan entity.yaml should exist after family_role value bootstrap");
+            var ryanYaml = await File.ReadAllTextAsync(Path.Combine(temp, "people", "ryan", "entity.yaml")).ConfigureAwait(false);
+            StringAssert.Contains(ryanYaml, "displayName: Ryan");
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task IngestOnly_UserPrompt_CapturesLastName_And_BootstrapsReferencedSon()
+    {
+        // Full regression from the playground run: "My name is Raha. My last name is Mohebbi.
+        // I have a son called Ryan who was born on 27th of October."
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        var temp = Path.Combine(Path.GetTempPath(), "pm-userprompt-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+            var ryanDir = Path.Combine(temp, "people", "ryan");
+            if (Directory.Exists(ryanDir)) Directory.Delete(ryanDir, true);
+
+            var llm = new QueueLlm();
+            // Extractor emits: raha name + raha last_name + family edge + ryan's spoken name + ryan DOB.
+            llm.Responses.Enqueue(
+                """
+                {
+                  "memoryIntents": [
+                    {"entityKey":"raha","knowledgeType":"profile_fact","attribute":"name","value":"Raha","confidence":1},
+                    {"entityKey":"raha","knowledgeType":"profile_fact","attribute":"last_name","value":"Mohebbi","confidence":1},
+                    {"entityKey":"raha","knowledgeType":"family_role","attribute":"son","value":"Ryan","confidence":1},
+                    {"entityKey":"ryan","knowledgeType":"profile_fact","attribute":"name","value":"Ryan","confidence":1},
+                    {"entityKey":"ryan","knowledgeType":"profile_fact","attribute":"date_of_birth","value":"27th of October","confidence":0.9}
+                  ]
+                }
+                """);
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => llm);
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var result = await runner.RunAsync(new ProjectMemoryPipelineRequest
+            {
+                ProjectRoot = temp,
+                UserMessage = "My name is Raha. My last name is Mohebbi. I have a son called Ryan who was born on 27th of October",
+                Mode = ProjectMemoryPipelineMode.IngestOnly
+            }).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success, result.FinalText);
+
+            var rahaProfile = await File.ReadAllTextAsync(Path.Combine(temp, "people", "raha", "profile.md")).ConfigureAwait(false);
+            StringAssert.Contains(rahaProfile, "Mohebbi");
+
+            var ryanEntity = Path.Combine(temp, "people", "ryan", "entity.yaml");
+            Assert.IsTrue(File.Exists(ryanEntity), "ryan entity.yaml should have been bootstrapped");
+            var ryanProfile = await File.ReadAllTextAsync(Path.Combine(temp, "people", "ryan", "profile.md")).ConfigureAwait(false);
+            StringAssert.Contains(ryanProfile, "27th of October");
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
     public async Task IngestFromExtractor_ScenarioScoped_NewEntity_WritesUnderScenariosFolder()
     {
         var src = Path.Combine(RepoRoot(), "samples", "people-project");

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory.Resolution.Trace;
 
 namespace AgctorSDK.Host.Services.ProjectMemory;
 
@@ -9,6 +10,22 @@ namespace AgctorSDK.Host.Services.ProjectMemory;
 /// </summary>
 internal static class PlaygroundTraceTimelineDetail
 {
+    /// <summary>
+    /// Build the <c>timelineDetailJson</c> payload for a <c>pm.playground.resolve</c> span (PRD-018).
+    /// Exposes Input / Evidence / Outcome so the trace timeline renderer can reuse the same
+    /// drill-down card layout as the other playground spans.
+    /// </summary>
+    public static string BuildResolveJson(ResolveSpanDetail detail)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            kind = "pm.playground.resolve",
+            input = detail.Input,
+            evidence = detail.Evidence,
+            outcome = detail.Outcome
+        }, Json);
+    }
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

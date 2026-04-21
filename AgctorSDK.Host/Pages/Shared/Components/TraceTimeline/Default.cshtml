@@ -217,6 +217,43 @@
                     detailCard('Persona chain summary', chainInner) +
                     '</div>';
             }
+            if (k === 'pm.playground.resolve') {
+                const input = o.input || {};
+                const ev = o.evidence || {};
+                const outcome = o.outcome || {};
+                let inputInner = '<p class="text-xs"><span class="font-medium">Surface:</span> <code class="text-[11px]">' + esc(input.surfaceForm || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Scope:</span> <code class="text-[11px]">' + esc(input.scope || 'project') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Candidate:</span> <code class="text-[11px]">' + esc(input.candidateEntityKey || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Mention id:</span> <code class="text-[11px] break-all">' + esc(input.mentionId || '') + '</code></p>';
+                if (input.allCandidates && input.allCandidates.length) {
+                    inputInner += '<div class="mt-2"><p class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Candidates considered</p><ul class="list-disc pl-5 text-xs">';
+                    input.allCandidates.forEach(function(c) {
+                        inputInner += '<li><code class="text-[11px]">' + esc(c.entityKey) + '</code> surface=' + Number(c.surfaceScore || 0).toFixed(2) + ' unique=' + Number(c.uniquenessScore || 0).toFixed(2) + '</li>';
+                    });
+                    inputInner += '</ul></div>';
+                }
+                let evidenceInner = '<p class="text-xs"><span class="font-medium">Confidence:</span> ' + Number(ev.confidence || 0).toFixed(3) + '</p>';
+                if (ev.signals && ev.signals.length) {
+                    evidenceInner += '<table class="mt-1 text-xs w-full"><thead><tr class="text-left text-gray-500 dark:text-gray-400"><th class="pr-2">kind</th><th class="pr-2">score</th><th class="pr-2">weight</th><th>rationale</th></tr></thead><tbody>';
+                    ev.signals.forEach(function(s) {
+                        const neg = s.isNegative ? ' text-rose-700 dark:text-rose-300' : '';
+                        evidenceInner += '<tr class="align-top' + neg + '"><td class="pr-2 font-mono">' + esc(s.kind) + '</td><td class="pr-2">' + Number(s.score || 0).toFixed(2) + '</td><td class="pr-2">' + Number(s.weight || 0).toFixed(2) + '</td><td>' + esc(s.rationale || '') + '</td></tr>';
+                    });
+                    evidenceInner += '</tbody></table>';
+                } else {
+                    evidenceInner += '<p class="text-xs text-gray-500 dark:text-gray-400">No scored signals yet.</p>';
+                }
+                let outcomeInner = '<p class="text-xs"><span class="font-medium">Edge:</span> <code class="text-[11px] break-all">' + esc(outcome.edgeId || '') + '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">State:</span> <span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">' + esc(outcome.state || '') + '</span></p>';
+                if (outcome.promotedBy) {
+                    outcomeInner += '<p class="text-xs"><span class="font-medium">Promoted by:</span> <code class="text-[11px]">' + esc(outcome.promotedBy) + '</code></p>';
+                }
+                return '<div class="space-y-3">' +
+                    detailCard('Input (candidate + registry slice)', inputInner) +
+                    detailCard('Evidence (signals table)', evidenceInner) +
+                    detailCard('Outcome (edge state + confidence)', outcomeInner) +
+                    '</div>';
+            }
             return '<pre class="text-xs whitespace-pre-wrap break-words max-h-96 overflow-auto bg-white/80 dark:bg-black/30 p-2 rounded border">' + esc(JSON.stringify(o, null, 2)) + '</pre>';
         }
 

@@ -22,9 +22,69 @@ routingRules:
       document: profile
       section: Basic Info
 
+  # Name sub-attributes people commonly mention ("My last name is Mohebbi").
+  # Routed to the same Basic Info section so the surface form reads like a profile header.
+  - when:
+      knowledgeType: profile_fact
+      attribute: first_name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: last_name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: family_name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: full_name
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: middle_name
+    target:
+      document: profile
+      section: Basic Info
+
   - when:
       knowledgeType: profile_fact
       attribute: age
+    target:
+      document: profile
+      section: Basic Info
+
+  # Birth-date style facts. Extractors often emit one of these three spellings; all land next to
+  # name/age in Basic Info so the profile header stays together on disk.
+  - when:
+      knowledgeType: profile_fact
+      attribute: date_of_birth
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: birth_date
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: profile_fact
+      attribute: birthday
     target:
       document: profile
       section: Basic Info

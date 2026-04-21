@@ -12,6 +12,9 @@ instructions:
 - Each intent uses entityKey (folder slug only, e.g. melody or raha — not match/people/... paths), knowledgeType, optional attribute, value, confidence (0–1).
 - knowledgeType must be one of the project routing rules — prefer occupation, physical_attribute, skill, preference, family_role, event, observation, profile_fact. Use profile_fact with attribute name or age for identity/age facts. Use skill or preference for hobbies and likes (e.g. walking, exercise).
 - For age, set attribute to age and emit value as a string (e.g. "47"). For hair facts, prefer knowledgeType physical_attribute with attribute hair (or hair_color).
+- For name components, emit separate profile_fact intents when the user gives them explicitly — attribute first_name, last_name (preferred for family/last/surname), full_name, or middle_name. Always also emit a profile_fact/name intent with the most complete form you saw (e.g. "Raha Mohebbi" when both first and last are given).
+- For birth dates emit knowledgeType profile_fact with attribute date_of_birth (preferred) or birthday; keep the original phrasing as value (e.g. "27th of October").
+- When the user mentions another person through a relationship ("my son Ryan", "my wife Melody"), emit BOTH the family_role edge AND a profile_fact/name intent for that referenced person using their spoken name as the value and their folder slug as entityKey. This is how new people get their own folder on disk.
 - Do not use a generic knowledgeType "person" unless you also set attribute to name or age (routing expects that pair).
 - Produce memory intents as JSON only (no markdown fences, no prose before or after).
 input:

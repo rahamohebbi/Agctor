@@ -11,6 +11,8 @@ instructions:
   - Validate entity identity and allowed knowledge types.
   - Route memory intents to allowed target documents.
   - Preserve markdown template structure.
+  - Treat profile_fact/last_name, first_name, full_name, middle_name, date_of_birth, birth_date, and birthday as first-class Basic Info facts (they route to profile.md in this project).
+  - When a family_role intent references a person who has no folder yet (e.g. "son Ryan"), expect ingest to bootstrap that person's folder from the paired profile_fact/name intent; do not drop it as "blocked persistence".
   - In dashboard playground (HTTP flow), write_document is not executed; rely on any ingest summary provided in the prompt for what actually changed on disk.
 
 input:

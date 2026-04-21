@@ -1,4 +1,6 @@
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.ProjectMemory.Resolution;
+using AgctorSDK.Core.ProjectMemory.Resolution.Bridge;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Host.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -15,11 +17,22 @@ namespace AgctorSDK.Host.Controllers
     {
         private readonly ISessionStore _sessionStore;
         private readonly ILogger<ChatSessionsController> _logger;
+        private readonly SessionSummaryEmitter? _summaryEmitter;
+        private readonly SessionMentionAccumulator? _accumulator;
+        private readonly ResolutionBootstrapper? _resolutionBootstrap;
 
-        public ChatSessionsController(ISessionStore sessionStore, ILogger<ChatSessionsController> logger)
+        public ChatSessionsController(
+            ISessionStore sessionStore,
+            ILogger<ChatSessionsController> logger,
+            SessionSummaryEmitter? summaryEmitter = null,
+            SessionMentionAccumulator? accumulator = null,
+            ResolutionBootstrapper? resolutionBootstrap = null)
         {
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _summaryEmitter = summaryEmitter;
+            _accumulator = accumulator;
+            _resolutionBootstrap = resolutionBootstrap;
         }
 
         [HttpPost]
@@ -238,6 +251,10 @@ namespace AgctorSDK.Host.Controllers
         {
             try
             {
+                // PRD-018: emit the session's accumulated mentions to the reconciler before we drop
+                // the session record. Best-effort so resolver failures never block a legitimate delete.
+                await TryEmitSessionSummaryAsync(sessionId, cancellationToken);
+
                 await _sessionStore.DeleteSessionAsync(sessionId, cancellationToken);
                 return NoContent();
             }
@@ -246,6 +263,45 @@ namespace AgctorSDK.Host.Controllers
                 _logger.LogError(ex, "Failed to delete chat session {SessionId}", sessionId);
                 return StatusCode(500, new ErrorResponse { Code = "SESSION_DELETE_FAILED", Message = ex.Message });
             }
+        }
+
+        /// <summary>
+        /// Best-effort push of the accumulated per-session mentions to the resolution reconciler.
+        /// The reconciler re-checks each mention against the latest registry so soft links that were
+        /// blocked earlier in the session (e.g. entity not yet discovered) still land.
+        /// </summary>
+        private async Task TryEmitSessionSummaryAsync(string sessionId, CancellationToken cancellationToken)
+        {
+            if (_summaryEmitter == null || _accumulator == null || _resolutionBootstrap == null) return;
+            if (string.IsNullOrWhiteSpace(sessionId)) return;
+            try
+            {
+                var projectId = _resolutionBootstrap.ProjectId;
+                var projectRoot = _resolutionBootstrap.ProjectRoot;
+                if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(projectRoot)) return;
+                var mentions = _accumulator.Snapshot(sessionId);
+                if (mentions.Count == 0) return;
+                await _summaryEmitter.EmitAsync(
+                    projectId!, projectRoot!, sessionId, mentions,
+                    _accumulator.Facts(sessionId),
+                    _accumulator.Negatives(sessionId),
+                    cancellationToken);
+                _accumulator.Clear(sessionId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Session summary emit skipped for {SessionId}", sessionId);
+            }
+        }
+
+        [HttpPost("{sessionId}/checkpoint")]
+        [ProducesResponseType(StatusCodes.Status202Accepted)]
+        public async Task<IActionResult> CheckpointAsync([FromRoute] string sessionId, CancellationToken cancellationToken = default)
+        {
+            // Manual checkpoint hook: flush the session's mentions without deleting the session. Useful
+            // for long-running assistant sessions that should propagate evidence before they end.
+            await TryEmitSessionSummaryAsync(sessionId, cancellationToken);
+            return Accepted(new { ok = true, sessionId });
         }
 
         [HttpGet("{sessionId}")]

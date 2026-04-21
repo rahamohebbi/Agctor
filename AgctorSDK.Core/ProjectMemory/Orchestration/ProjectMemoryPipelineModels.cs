@@ -33,6 +33,12 @@ public sealed class ProjectMemoryPipelineRequest
 
     /// <summary>When set, entity I/O uses <c>{ProjectRoot}/scenarios/&lt;sanitized&gt;/people/…</c> instead of project-root <c>people/…</c>.</summary>
     public string? ScenarioId { get; set; }
+
+    /// <summary>Optional session id used by the PRD-018 resolution subsystem to correlate mentions.</summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>Optional turn id used by the PRD-018 resolution subsystem for trace stitching.</summary>
+    public string? TurnId { get; set; }
 }
 
 /// <summary>Ordered trace of pipeline steps + final assistant text.</summary>

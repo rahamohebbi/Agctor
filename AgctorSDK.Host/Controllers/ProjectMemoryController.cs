@@ -295,7 +295,8 @@ public sealed class ProjectMemoryController : ControllerBase
             CorrelationId = body.CorrelationId?.Trim() ?? "",
             Mode = mode,
             ConversationPrefix = conversationPrefix,
-            ScenarioId = body.ScenarioId?.Trim()
+            ScenarioId = body.ScenarioId?.Trim(),
+            SessionId = body.SessionId?.Trim(), // PRD-018: tags resolver mentions with the session.
         };
 
         var result = await _pipeline.RunAsync(req, cancellationToken).ConfigureAwait(false);

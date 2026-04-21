@@ -1,0 +1,35 @@
+%% PRD-018 — Edge state machine for a resolution edge (mention -> entity)
+stateDiagram-v2
+  [*] --> Proposed : MentionObserved<br/>candidate found via MentionIndex
+
+  Proposed --> Soft : confidence &ge; softThreshold<br/>no strong negatives
+  Proposed --> Rejected : strong negative signal<br/>or operator reject
+  Proposed --> [*] : no viable candidate<br/>(recorded as needsDisambiguation)
+
+  Soft --> Soft : new evidence<br/>(append-only signals)
+  Soft --> Hard : auto-promote<br/>confidence &ge; hardThreshold<br/>AND &ge; 2 independent signal families<br/>AND no negatives
+  Soft --> Hard : operator promote<br/>PromotionRequested(user)
+  Soft --> Rejected : operator reject
+  Soft --> Superseded : registry rename / delete
+
+  Hard --> Soft : demote<br/>new strong negative<br/>or operator demote
+  Hard --> Superseded : registry rename / delete
+
+  Rejected --> Soft : new corroborating evidence<br/>after rejection window
+
+  note right of Soft
+    Query-visible but NOT authoritative.
+    Aggregations must opt-in with a threshold.
+    Mention site carries softLinkTo: &lt;path&gt;.
+  end note
+
+  note right of Hard
+    Canonical. Downstream aggregations use it by default.
+    Mention site carries entityRef: &lt;path&gt;.
+    Promotion snapshots signals for audit.
+  end note
+
+  note left of Rejected
+    Append-only record; reappears in review
+    only when new evidence crosses threshold.
+  end note

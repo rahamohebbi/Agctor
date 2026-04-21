@@ -87,6 +87,10 @@ builder.Services.Configure<ProjectMemoryAgentOptions>(o =>
     o.ProjectRoot = !string.IsNullOrWhiteSpace(cfgPath) ? Path.GetFullPath(cfgPath) : defaultProjectMemoryRoot;
 });
 builder.Services.AddAgctorProjectMemory();
+// PRD-018: entity-resolution subsystem (signal producers, metrics, bootstrapper).
+builder.Services.AddAgctorResolution();
+builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.Resolution.Trace.IResolveSpanSink>(sp =>
+    new AgctorSDK.Host.Services.ProjectMemory.ResolveSpanTraceSink(sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
 builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaProjectMemoryLlmClient>();
 builder.Services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
 builder.Services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
@@ -245,6 +249,25 @@ if (runtime.Name == "Proto.Actor")
 
 await runtime.InitializeAsync(runtimeConfig);
 Console.WriteLine("✅ Actor Runtime initialized successfully");
+
+// PRD-018: bootstrap the entity-resolution subsystem for the configured project root (if any).
+// Safe when the subsystem is disabled — the supervisor still spawns but does no work.
+try
+{
+    var resolutionProjectRoot = Path.GetFullPath(
+        builder.Configuration["Agctor:ProjectMemory:ProjectRoot"]?.Trim() ?? defaultProjectMemoryRoot);
+    if (Directory.Exists(Path.Combine(resolutionProjectRoot, ".agctor")))
+    {
+        var bootstrap = app.Services.GetRequiredService<AgctorSDK.Core.ProjectMemory.Resolution.ResolutionBootstrapper>();
+        var projectId = Path.GetFileName(Path.TrimEndingDirectorySeparator(resolutionProjectRoot));
+        await bootstrap.StartAsync(resolutionProjectRoot, projectId);
+        Console.WriteLine($"🔗 Resolution subsystem bootstrapped for project '{projectId}' at {resolutionProjectRoot}");
+    }
+}
+catch (Exception resEx)
+{
+    Console.WriteLine($"⚠️  Resolution bootstrap skipped: {resEx.Message}");
+}
 
 // Keep session coordination available even before a demo scenario is applied.
 var startupAgentFactory = app.Services.GetRequiredService<IAgentFactory>();

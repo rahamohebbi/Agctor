@@ -9,6 +9,8 @@ using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Processing;
+using AgctorSDK.Core.ProjectMemory.Resolution.Bridge;
+using AgctorSDK.Core.ProjectMemory.Resolution.Review;
 using AgctorSDK.Core.ProjectMemory.Tools;
 
 namespace AgctorSDK.Core.ProjectMemory.Orchestration;
@@ -24,6 +26,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
     private readonly IDocumentProjectionService _projection;
     private readonly ProjectMemoryOperations _ops;
     private readonly IProjectMemoryLlmClient _llm;
+    private readonly MentionObservationPublisher? _mentions;
 
     public ProjectMemoryPipelineRunner(
         IProjectLoader loader,
@@ -31,7 +34,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         IMemoryIntentProcessor processor,
         IDocumentProjectionService projection,
         ProjectMemoryOperations ops,
-        IProjectMemoryLlmClient llm)
+        IProjectMemoryLlmClient llm,
+        MentionObservationPublisher? mentions = null)
     {
         _loader = loader;
         _entities = entities;
@@ -39,13 +43,24 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         _projection = projection;
         _ops = ops;
         _llm = llm;
+        _mentions = mentions;
     }
 
     /// <inheritdoc />
+    public Task<ProjectMemoryIngestResult> IngestFromExtractorOutputAsync(
+        string projectRoot,
+        string? scenarioId,
+        string rawExtractorLlmText,
+        CancellationToken cancellationToken = default) =>
+        IngestFromExtractorOutputAsync(projectRoot, scenarioId, rawExtractorLlmText, sessionId: null, turnId: null, cancellationToken);
+
+    /// <summary>Overload that tags published mentions with session/turn ids (PRD-018 resolution subsystem).</summary>
     public async Task<ProjectMemoryIngestResult> IngestFromExtractorOutputAsync(
         string projectRoot,
         string? scenarioId,
         string rawExtractorLlmText,
+        string? sessionId,
+        string? turnId,
         CancellationToken cancellationToken = default)
     {
         var root = Path.GetFullPath(projectRoot.Trim());
@@ -65,7 +80,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         }
 
         var ctx = await _loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
-        var work = await IngestFromRawExtractAsync(ctx, rawExtractorLlmText, entityWorkspace, cancellationToken).ConfigureAwait(false);
+        var work = await IngestFromRawExtractAsync(ctx, rawExtractorLlmText, entityWorkspace, sessionId, turnId, cancellationToken).ConfigureAwait(false);
         if (!work.ParseOk)
         {
             return new ProjectMemoryIngestResult
@@ -167,7 +182,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             }
 
             if (rawExtract != null &&
-                !await TryIngestFromExtractAsync(ctx, rawExtract, steps, entityWorkspace, cancellationToken).ConfigureAwait(false))
+                !await TryIngestFromExtractAsync(ctx, rawExtract, steps, entityWorkspace, request.SessionId, request.TurnId, cancellationToken).ConfigureAwait(false))
             {
                 success = false;
                 if (mode == ProjectMemoryPipelineMode.IngestOnly)
@@ -187,6 +202,9 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         {
             var answer = await RunQueryAsync(querySpec!, root, entityWorkspace, request.UserMessage, request.ConversationPrefix, cancellationToken)
                 .ConfigureAwait(false);
+            // PRD-018 §5.7 U4: decorate mentions in the final answer with their resolution grade so
+            // soft links read as "likely Raha (72%)" instead of the plain "Raha".
+            answer = await TryAnnotateWithResolutionAsync(ctx, entityWorkspace, answer, cancellationToken).ConfigureAwait(false);
             steps.Add(new ProjectMemoryPipelineStep { Name = "query", Ok = true, Detail = Truncate(answer, 600) });
             return Finish(correlationId, success, answer, steps);
         }
@@ -204,9 +222,11 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         string rawExtract,
         List<ProjectMemoryPipelineStep> steps,
         string entityWorkspaceRoot,
+        string? sessionId,
+        string? turnId,
         CancellationToken cancellationToken)
     {
-        var work = await IngestFromRawExtractAsync(ctx, rawExtract, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+        var work = await IngestFromRawExtractAsync(ctx, rawExtract, entityWorkspaceRoot, sessionId, turnId, cancellationToken).ConfigureAwait(false);
         if (!work.ParseOk)
         {
             steps.Add(new ProjectMemoryPipelineStep { Name = "parse", Ok = false, Detail = work.ParseError });
@@ -249,6 +269,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         LoadedProjectContext ctx,
         string rawExtract,
         string entityWorkspaceRoot,
+        string? sessionId,
+        string? turnId,
         CancellationToken cancellationToken)
     {
         if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr, out var parseSource))
@@ -270,6 +292,10 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 
         // Discover early so family_role intents can be normalized against known folders before routing.
         var discovered = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+        // Snapshot the raw (pre-normalization) surface forms of every family_role intent's participants
+        // so when we later bootstrap folders for referenced people we preserve display name casing
+        // (e.g. "Ryan" → displayName "Ryan" rather than the slug "ryan").
+        var familyReferencedRaw = CollectFamilyReferencedEntityKeys(batch.MemoryIntents);
         var familyNotes = new List<string>();
         FamilyRoleIntentNormalizer.Apply(batch.MemoryIntents, discovered, rawExtract, familyNotes);
 
@@ -288,6 +314,24 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 false,
                 new List<string>(),
                 null);
+        }
+
+        // PRD-018: every retained intent is a first-class mention observation. Published to the
+        // resolution reconciler only when the subsystem is wired in; otherwise this is a no-op.
+        if (_mentions != null)
+        {
+            try
+            {
+                var scenarioId = TryExtractScenarioId(ctx, entityWorkspaceRoot);
+                var mentions = MentionObservationPublisher.FromMemoryIntents(
+                    batch.MemoryIntents, scenarioId, sessionId, turnId);
+                if (mentions.Count > 0)
+                    await _mentions.PublishAsync(ProjectIdFor(ctx), mentions, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Resolution is strictly additive; never fail ingest because of a mention-publish error.
+            }
         }
 
         var routed = _processor.Route(ctx, batch.MemoryIntents, out var routeIssues);
@@ -325,6 +369,27 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 continue;
             var created = await EntityFolderBootstrapper.TryCreateIfMissingAsync(
                     ctx, entityWorkspaceRoot, g.Key, g.ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            if (created.Count > 0)
+            {
+                updated.AddRange(created);
+                bootstrapped = true;
+            }
+        }
+
+        // Family edges frequently *reference* people who don't exist yet ("I have a son called Ryan").
+        // Bootstrap those too so a mention of a person is enough to give them a first-class folder,
+        // using the raw surface form (captured before FamilyRoleIntentNormalizer slugged the values)
+        // as the display name hint so the new profile reads correctly.
+        foreach (var (entityKey, displayNameHint) in familyReferencedRaw)
+        {
+            if (ResolveEntityRecord(entityKey, discovered, lookup) != null)
+                continue;
+            if (groups.Any(g => string.Equals(g.Key, entityKey, StringComparison.OrdinalIgnoreCase)))
+                continue; // already bootstrapped in the primary pass
+            var synthetic = SyntheticNameIntents(entityKey, displayNameHint);
+            var created = await EntityFolderBootstrapper.TryCreateIfMissingAsync(
+                    ctx, entityWorkspaceRoot, entityKey, synthetic, cancellationToken)
                 .ConfigureAwait(false);
             if (created.Count > 0)
             {
@@ -408,6 +473,117 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             sys += "\nPrior conversation:\n" + conversationPrefix.Trim() + "\n---\n";
         return sys + "\nInput:\n" + userMessage;
     }
+
+    /// <summary>
+    /// Pulls referenced people out of <c>family_role</c> intents (both the <c>entityKey</c> side and
+    /// the <c>value</c> side) so the pipeline can give them their own folder when they are mentioned
+    /// for the first time. Returns (folderSlug, displayNameHint) pairs keyed by slug; the hint is the
+    /// raw surface form a user would recognize on disk ("Ryan" rather than "ryan").
+    /// </summary>
+    private static IReadOnlyList<(string EntityKey, string DisplayNameHint)> CollectFamilyReferencedEntityKeys(
+        IReadOnlyList<MemoryIntent> intents)
+    {
+        var byKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (intents == null) return Array.Empty<(string, string)>();
+        foreach (var intent in intents)
+        {
+            if (intent == null) continue;
+            if (!string.Equals(intent.KnowledgeType, "family_role", StringComparison.OrdinalIgnoreCase)) continue;
+
+            // Both sides of a family edge may name a new person. entityKey usually resolves to an
+            // existing entity but we still handle the "both new" case (e.g. two freshly introduced kids).
+            AddFamilyToken(byKey, intent.EntityKey);
+            AddFamilyToken(byKey, intent.Value);
+        }
+        return byKey.Select(kv => (kv.Key, kv.Value)).ToList();
+    }
+
+    private static void AddFamilyToken(Dictionary<string, string> byKey, string? rawToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken)) return;
+        var slug = EntityFolderBootstrapper.SlugFolderSegment(rawToken);
+        if (string.IsNullOrEmpty(slug)) return;
+        if (byKey.ContainsKey(slug)) return;
+        byKey[slug] = rawToken.Trim();
+    }
+
+    /// <summary>
+    /// Builds a single synthetic <c>profile_fact/name</c> routed intent so
+    /// <see cref="EntityFolderBootstrapper.TryCreateIfMissingAsync"/> has a display-name hint to use
+    /// when creating the folder for a person who was only referenced as a family edge value.
+    /// </summary>
+    private static IReadOnlyList<RoutedMemoryIntent> SyntheticNameIntents(string entityKey, string displayNameHint)
+    {
+        var display = string.IsNullOrWhiteSpace(displayNameHint)
+            ? (entityKey.Length == 0 ? entityKey : char.ToUpperInvariant(entityKey[0]) + entityKey[1..])
+            : displayNameHint.Trim();
+        return new List<RoutedMemoryIntent>
+        {
+            new()
+            {
+                Original = new MemoryIntent
+                {
+                    EntityKey = entityKey,
+                    KnowledgeType = "profile_fact",
+                    Attribute = "name",
+                    Value = display,
+                    Confidence = 1.0
+                },
+                DocumentTypeId = "profile",
+                SectionTitle = "Basic Info",
+                UpdateMode = "replace_section",
+                FileName = "profile.md"
+            }
+        };
+    }
+
+    /// <summary>
+    /// Decorates the person-query answer with resolution-grade footnotes ("(soft-linked 72%)", etc.).
+    /// Runs on best-effort: an annotator failure leaves the raw answer untouched.
+    /// </summary>
+    private async Task<string> TryAnnotateWithResolutionAsync(
+        LoadedProjectContext ctx,
+        string entityWorkspaceRoot,
+        string answer,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(answer)) return answer;
+        try
+        {
+            var entities = await _entities.DiscoverAsync(ctx, entityWorkspaceRoot, cancellationToken).ConfigureAwait(false);
+            var rooted = entities.Select(e => (e.EntityKey, e.Metadata?.DisplayName ?? e.EntityKey, e.RootPath));
+            var annotator = ResolutionAnnotator.FromEntities(rooted);
+            return annotator.AnnotateInline(answer);
+        }
+        catch
+        {
+            return answer;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort scenario id when the entity workspace is <c>scenarios/&lt;id&gt;/</c>; returns null for
+    /// project-root ingests.
+    /// </summary>
+    private static string? TryExtractScenarioId(LoadedProjectContext ctx, string entityWorkspaceRoot)
+    {
+        if (string.IsNullOrWhiteSpace(entityWorkspaceRoot)) return null;
+        var scenariosDir = Path.Combine(ctx.ProjectRoot, "scenarios");
+        var full = Path.GetFullPath(entityWorkspaceRoot);
+        if (!full.StartsWith(scenariosDir, StringComparison.OrdinalIgnoreCase)) return null;
+        var rel = Path.GetRelativePath(scenariosDir, full);
+        var first = rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)[0];
+        return string.IsNullOrWhiteSpace(first) ? null : first;
+    }
+
+    /// <summary>
+    /// Deterministic project id used as the resolution actor key prefix. Using the folder name
+    /// keeps the id readable in traces while remaining stable across restarts.
+    /// </summary>
+    private static string ProjectIdFor(LoadedProjectContext ctx) =>
+        string.IsNullOrWhiteSpace(ctx.ProjectRoot)
+            ? "default"
+            : Path.GetFileName(Path.TrimEndingDirectorySeparator(ctx.ProjectRoot));
 
     private static string Truncate(string s, int max)
     {

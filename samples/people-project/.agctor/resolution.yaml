@@ -1,0 +1,18 @@
+enabled: true
+hardThreshold: 0.90
+softThreshold: 0.55
+signalWeights:
+  aliasMatch: 0.25
+  uniqueness: 0.20
+  corefInSession: 0.20
+  attrOverlap: 0.15
+  embedding: 0.10
+  graphConsistency: 0.10
+reconciler:
+  coalesceWindowMs: 2000
+  perEntityQueueSize: 32
+  batchSize: 16
+review:
+  autoPromote: true
+  requireReviewer: false
+  minIndependentSignalFamiliesForAutoPromote: 2
