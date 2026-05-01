@@ -52,10 +52,16 @@ public sealed class FamilyRoleIntentNormalizerTests
 
         FamilyRoleIntentNormalizer.Apply(intents, discovered, corpus, notes);
 
-        Assert.AreEqual(1, intents.Count);
-        Assert.AreEqual("melody", intents[0].EntityKey, ignoreCase: true);
-        Assert.AreEqual("child", intents[0].Attribute, ignoreCase: true);
-        Assert.AreEqual("raha", intents[0].Value, ignoreCase: true);
+        // Parent→child canonicalization now also emits the inverse (child→parent).
+        Assert.AreEqual(2, intents.Count);
+        Assert.IsTrue(intents.Exists(m =>
+            m.EntityKey.Equals("melody", System.StringComparison.OrdinalIgnoreCase)
+            && m.Attribute!.Equals("child", System.StringComparison.OrdinalIgnoreCase)
+            && m.Value.Equals("raha", System.StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(intents.Exists(m =>
+            m.EntityKey.Equals("raha", System.StringComparison.OrdinalIgnoreCase)
+            && m.Attribute!.Equals("parent", System.StringComparison.OrdinalIgnoreCase)
+            && m.Value.Equals("melody", System.StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]
@@ -78,8 +84,12 @@ public sealed class FamilyRoleIntentNormalizerTests
 
         FamilyRoleIntentNormalizer.Apply(intents, discovered, corpus, notes);
 
-        Assert.AreEqual(1, intents.Count);
-        Assert.AreEqual("raha", intents[0].Value, ignoreCase: true);
+        // Child edge + auto-inverse parent edge.
+        Assert.AreEqual(2, intents.Count);
+        Assert.IsTrue(intents.Exists(m =>
+            m.EntityKey.Equals("melody", System.StringComparison.OrdinalIgnoreCase)
+            && m.Attribute!.Equals("child", System.StringComparison.OrdinalIgnoreCase)
+            && m.Value.Equals("raha", System.StringComparison.OrdinalIgnoreCase)));
         Assert.IsTrue(notes.Exists(n => n.Contains("fuzzy-matched", System.StringComparison.OrdinalIgnoreCase)));
     }
 
@@ -154,9 +164,48 @@ public sealed class FamilyRoleIntentNormalizerTests
 
         FamilyRoleIntentNormalizer.Apply(intents, discovered, corpus, notes);
 
-        Assert.AreEqual(1, intents.Count);
-        Assert.IsTrue(string.Equals("melody", intents[0].EntityKey, System.StringComparison.OrdinalIgnoreCase));
-        Assert.IsTrue(string.Equals("raha", intents[0].Value, System.StringComparison.OrdinalIgnoreCase));
+        // Child edge kept + inverse parent edge auto-added.
+        Assert.AreEqual(2, intents.Count);
+        Assert.IsTrue(intents.Exists(m =>
+            string.Equals(m.EntityKey, "melody", System.StringComparison.OrdinalIgnoreCase)
+            && string.Equals(m.Attribute, "child", System.StringComparison.OrdinalIgnoreCase)
+            && string.Equals(m.Value, "raha", System.StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(intents.Exists(m =>
+            string.Equals(m.EntityKey, "raha", System.StringComparison.OrdinalIgnoreCase)
+            && string.Equals(m.Attribute, "parent", System.StringComparison.OrdinalIgnoreCase)
+            && string.Equals(m.Value, "melody", System.StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void Apply_SonEdge_AddsInverseParentEdge()
+    {
+        // "raha son ryan" is normalized to (raha, child, ryan); we expect an auto-generated
+        // (ryan, parent, raha) so Ryan's relationships.md also records the tie.
+        var discovered = new List<EntityRecord> { Person("raha", "Raha") };
+        var intents = new List<MemoryIntent>
+        {
+            new()
+            {
+                EntityKey = "raha",
+                KnowledgeType = "family_role",
+                Attribute = "son",
+                Value = "ryan",
+                Confidence = 0.9
+            }
+        };
+        var notes = new List<string>();
+
+        FamilyRoleIntentNormalizer.Apply(intents, discovered, "Latest user message:\nI have a son called Ryan.", notes);
+
+        Assert.AreEqual(2, intents.Count, string.Join("; ", notes));
+        Assert.IsTrue(intents.Exists(m =>
+            m.EntityKey.Equals("raha", System.StringComparison.OrdinalIgnoreCase)
+            && m.Attribute!.Equals("child", System.StringComparison.OrdinalIgnoreCase)
+            && m.Value.Equals("ryan", System.StringComparison.OrdinalIgnoreCase)));
+        Assert.IsTrue(intents.Exists(m =>
+            m.EntityKey.Equals("ryan", System.StringComparison.OrdinalIgnoreCase)
+            && m.Attribute!.Equals("parent", System.StringComparison.OrdinalIgnoreCase)
+            && m.Value.Equals("raha", System.StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]

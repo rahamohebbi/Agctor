@@ -10,13 +10,17 @@ instructions:
 - Emit exactly one JSON object (root must start with {). Prefer an action envelope with schemaVersion and actionIntents where one item has intentType memory.persist and payload.memoryIntents.
 - memory.persist payload must contain memoryIntents array. Do not output a bare JSON array at the root.
 - Each intent uses entityKey (folder slug only, e.g. melody or raha — not match/people/... paths), knowledgeType, optional attribute, value, confidence (0–1).
-- knowledgeType must be one of the project routing rules — prefer occupation, physical_attribute, skill, preference, family_role, event, observation, profile_fact. Use profile_fact with attribute name or age for identity/age facts. Use skill or preference for hobbies and likes (e.g. walking, exercise).
+- knowledgeType must be one of the project routing rules — prefer occupation, physical_attribute, education, skill, preference, family_role, event, observation, profile_fact. Use profile_fact with attribute name or age for identity/age facts. Use skill or preference for hobbies and likes (e.g. walking, exercise).
 - For age, set attribute to age and emit value as a string (e.g. "47"). For hair facts, prefer knowledgeType physical_attribute with attribute hair (or hair_color).
 - For name components, emit separate profile_fact intents when the user gives them explicitly — attribute first_name, last_name (preferred for family/last/surname), full_name, or middle_name. Always also emit a profile_fact/name intent with the most complete form you saw (e.g. "Raha Mohebbi" when both first and last are given).
 - For birth dates emit knowledgeType profile_fact with attribute date_of_birth (preferred) or birthday; keep the original phrasing as value (e.g. "27th of October").
+- For degrees, schools, universities, or fields of study, emit knowledgeType education and keep the full phrase as value (e.g. "Computer Science degree from the University of Salford in the UK").
 - When the user mentions another person through a relationship ("my son Ryan", "my wife Melody"), emit BOTH the family_role edge AND a profile_fact/name intent for that referenced person using their spoken name as the value and their folder slug as entityKey. This is how new people get their own folder on disk.
+- family_role attributes must be one of son, daughter, child, father, mother, parent, brother, sister, sibling, husband, wife, spouse. entityKey is the anchor person and value is the related person's folder slug (lowercase). The inverse edge is generated for you — do not emit both sides.
+- 'Example — user says "I have a son called Ryan": emit {"entityKey":"raha","knowledgeType":"family_role","attribute":"son","value":"ryan","confidence":0.95} AND {"entityKey":"ryan","knowledgeType":"profile_fact","attribute":"name","value":"Ryan","confidence":1.0}. Do not emit a "father" edge on ryan — ingest adds the canonical inverse.'
 - Do not use a generic knowledgeType "person" unless you also set attribute to name or age (routing expects that pair).
 - Produce memory intents as JSON only (no markdown fences, no prose before or after).
+- When the user states a valuable fact that does not clearly map to an existing routing rule (e.g. pets, vehicles, one-off life details), still emit a structured intent with your best knowledgeType/attribute guess and an honest confidence. The runtime will surface unrouted intents so the user can confirm storing them in a generic inbox — do not silently drop interesting information.
 input:
   type: text_or_document
 output:

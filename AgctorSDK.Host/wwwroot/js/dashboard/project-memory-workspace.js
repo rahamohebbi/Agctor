@@ -16,11 +16,49 @@
     if (!treeMount || !preview) return;
 
     let selectedPath = null;
+    let currentTree = null;
+    const collapsedStorageKey = 'agctor.projectMemory.workspace.collapsedFolders.v1';
+    const collapsedFolders = loadCollapsedFolders();
 
     function esc(s) {
         const d = document.createElement('div');
         d.textContent = s ?? '';
         return d.innerHTML;
+    }
+
+    function loadCollapsedFolders() {
+        try {
+            const raw = window.localStorage.getItem(collapsedStorageKey);
+            const values = JSON.parse(raw || '[]');
+            return new Set(Array.isArray(values) ? values.map(normalizePath) : []);
+        } catch {
+            return new Set();
+        }
+    }
+
+    function saveCollapsedFolders() {
+        try {
+            window.localStorage.setItem(collapsedStorageKey, JSON.stringify(Array.from(collapsedFolders).sort()));
+        } catch {
+            // Browsers can deny local storage; folder toggling should still work for this page load.
+        }
+    }
+
+    function folderKey(relPath) {
+        const rel = normalizePath(relPath);
+        return rel || '__root__';
+    }
+
+    function isFolderExpanded(relPath) {
+        return !collapsedFolders.has(folderKey(relPath));
+    }
+
+    function expandAncestors(relPath) {
+        const parts = normalizePath(relPath).split('/').filter(Boolean);
+        collapsedFolders.delete('__root__');
+        for (let i = 1; i < parts.length; i++) {
+            collapsedFolders.delete(parts.slice(0, i).join('/'));
+        }
     }
 
     function renderNode(node, depth) {
@@ -30,15 +68,25 @@
         if (node.isDirectory) {
             let inner = '';
             const kids = node.children || [];
-            for (let i = 0; i < kids.length; i++) {
-                inner += renderNode(kids[i], depth + 1);
+            const expanded = isFolderExpanded(rel);
+            if (expanded) {
+                for (let i = 0; i < kids.length; i++) {
+                    inner += renderNode(kids[i], depth + 1);
+                }
             }
             return (
                 '<div style="padding-left:' +
                 pad +
-                'px" class="py-0.5"><span class="text-gray-500">📁</span> ' +
+                'px" class="py-0.5">' +
+                '<button type="button" class="text-left rounded px-1 hover:bg-gray-100 dark:hover:bg-gray-700 pm-folder" aria-expanded="' +
+                String(expanded) +
+                '" data-path="' +
+                encodeURIComponent(normalizePath(rel)) +
+                '"><span class="text-gray-500">' +
+                (expanded ? '▾' : '▸') +
+                '</span> <span class="text-gray-500">📁</span> ' +
                 name +
-                '</div>' +
+                '</button></div>' +
                 inner
             );
         }
@@ -52,6 +100,13 @@
             name +
             '</button></div>'
         );
+    }
+
+    function renderTree() {
+        if (!currentTree) return;
+        treeMount.innerHTML = renderNode(currentTree, 0);
+        attachTreeClickHandlers();
+        updateSelection(selectedPath);
     }
 
     function loadPreview(relPath) {
@@ -110,6 +165,26 @@
     }
 
     function attachTreeClickHandlers() {
+        treeMount.querySelectorAll('.pm-folder').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const raw = btn.getAttribute('data-path') || '';
+                let rel;
+                try {
+                    rel = normalizePath(decodeURIComponent(raw));
+                } catch {
+                    rel = normalizePath(raw);
+                }
+
+                const key = folderKey(rel);
+                if (collapsedFolders.has(key)) {
+                    collapsedFolders.delete(key);
+                } else {
+                    collapsedFolders.add(key);
+                }
+                saveCollapsedFolders();
+                renderTree();
+            });
+        });
         treeMount.querySelectorAll('.pm-file').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 const raw = btn.getAttribute('data-path') || '';
@@ -142,13 +217,16 @@
                 return r.ok ? r.json() : Promise.reject(new Error(String(r.status)));
             })
             .then(function (node) {
-                treeMount.innerHTML = renderNode(node, 0);
-                attachTreeClickHandlers();
+                currentTree = node;
                 const qp = getQueryPath();
                 if (qp) {
+                    expandAncestors(qp);
+                    saveCollapsedFolders();
+                    renderTree();
                     updateSelection(qp);
                     loadPreview(qp);
                 } else {
+                    renderTree();
                     preview.textContent = 'Select a file in the tree or under Git changes.';
                 }
             })

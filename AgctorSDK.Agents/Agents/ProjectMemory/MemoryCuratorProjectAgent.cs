@@ -9,7 +9,6 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
-using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Agents.ProjectMemory;
 
@@ -18,8 +17,11 @@ namespace AgctorSDK.Agents.ProjectMemory;
 /// </summary>
 public sealed class MemoryCuratorProjectAgent : Agent
 {
-    public MemoryCuratorProjectAgent(string id) : base(id)
+    private readonly IProjectMemoryAgentServices _services;
+
+    public MemoryCuratorProjectAgent(string id, IProjectMemoryAgentServices? services = null) : base(id)
     {
+        _services = services ?? ProjectMemoryAgentServices.Default;
     }
 
     public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -29,16 +31,11 @@ public sealed class MemoryCuratorProjectAgent : Agent
 
         try
         {
-            var root = ProjectMemoryServiceAccessor.GetRequiredService<IOptions<ProjectMemoryAgentOptions>>().Value.ProjectRoot;
+            var root = _services.GetProjectRoot();
             if (string.IsNullOrWhiteSpace(root))
                 return TextEnvelope("Configure Agctor:ProjectMemory:ProjectRoot.");
 
-            var loader = ProjectMemoryServiceAccessor.GetRequiredService<IProjectLoader>();
-            var entitiesReg = ProjectMemoryServiceAccessor.GetRequiredService<IEntityRegistry>();
-            var processor = ProjectMemoryServiceAccessor.GetRequiredService<IMemoryIntentProcessor>();
-            var projection = ProjectMemoryServiceAccessor.GetRequiredService<IDocumentProjectionService>();
-
-            var ctx = await loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
+            var ctx = await _services.LoadProjectAsync(root, cancellationToken).ConfigureAwait(false);
             var spec = ctx.AgentSpecs.FirstOrDefault(a => a.Id == "memory-curator")
                        ?? throw new InvalidOperationException("memory-curator agent spec missing.");
 
@@ -46,7 +43,7 @@ public sealed class MemoryCuratorProjectAgent : Agent
             if (batch?.MemoryIntents == null || batch.MemoryIntents.Count == 0)
                 return TextEnvelope("{}");
 
-            var routed = processor.Route(ctx, batch.MemoryIntents, out var routeIssues);
+            var routed = _services.Route(ctx, batch.MemoryIntents, out var routeIssues);
             if (routeIssues.Any(i => i.IsError))
                 return TextEnvelope(JsonSerializer.Serialize(new { errors = routeIssues }));
 
@@ -56,7 +53,7 @@ public sealed class MemoryCuratorProjectAgent : Agent
             if (!PersonaScenarioScope.IsUnderProjectRoot(root, entityWorkspace))
                 return TextEnvelope("Invalid scenario scope.");
 
-            var discovered = await entitiesReg.DiscoverAsync(ctx, entityWorkspace, cancellationToken).ConfigureAwait(false);
+            var discovered = await _services.DiscoverAsync(ctx, entityWorkspace, cancellationToken).ConfigureAwait(false);
             var byEntity = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase);
             var updated = new List<string>();
             foreach (var g in byEntity)
@@ -64,7 +61,7 @@ public sealed class MemoryCuratorProjectAgent : Agent
                 var rec = discovered.FirstOrDefault(e => e.EntityKey.Equals(g.Key, StringComparison.OrdinalIgnoreCase));
                 if (rec == null)
                     continue;
-                var res = await projection.ApplyAsync(rec, g.ToList(), cancellationToken).ConfigureAwait(false);
+                var res = await _services.ApplyProjectionAsync(rec, g.ToList(), cancellationToken).ConfigureAwait(false);
                 updated.AddRange(res.UpdatedFiles);
             }
 
@@ -78,5 +75,5 @@ public sealed class MemoryCuratorProjectAgent : Agent
 
     private static MessageEnvelope TextEnvelope(string text) =>
         new(text, new Dictionary<string, object> { ["Timestamp"] = DateTimeOffset.UtcNow }, id: null,
-            new Dictionary<string, string> { ["SenderId"] = "memory-curator", ["MessageType"] = "LLMResponse" });
+            new Dictionary<string, string> { [AgctorMessageHeaders.SenderId] = "memory-curator", [AgctorMessageHeaders.MessageType] = "LLMResponse" });
 }

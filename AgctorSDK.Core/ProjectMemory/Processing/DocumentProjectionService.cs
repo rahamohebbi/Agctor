@@ -68,7 +68,7 @@ public sealed class DocumentProjectionService : IDocumentProjectionService
 
                 map[key] = intent.UpdateMode switch
                 {
-                    "merge_list" => MergeList(body, intent.Original.Value),
+                    "merge_list" => MergeList(body, FormatMergeEntry(intent.Original)),
                     "append_chronological" => AppendChronological(body, intent.Original.Value),
                     _ => ReplaceSectionBody(body, intent.Original)
                 };
@@ -163,6 +163,27 @@ public sealed class DocumentProjectionService : IDocumentProjectionService
             sb.AppendLine();
         sb.AppendLine(line);
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Formats the value a merge_list section should receive. Family edges carry a meaningful
+    /// <c>Attribute</c> (e.g. <c>child</c>, <c>parent</c>, <c>sibling</c>); without it the
+    /// relationship file would just list bare entity keys and lose the relation type. Other
+    /// knowledge types fall back to the raw value so existing skills/preferences merging is intact.
+    /// </summary>
+    private static string FormatMergeEntry(MemoryIntent intent)
+    {
+        var value = (intent.Value ?? "").Trim();
+        if (string.IsNullOrEmpty(value)) return value;
+
+        if (string.Equals(intent.KnowledgeType, "family_role", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(intent.Attribute))
+        {
+            var attr = intent.Attribute!.Trim().ToLowerInvariant();
+            return $"{attr}: {value}";
+        }
+
+        return value;
     }
 
     private static string AppendChronological(string body, string value)

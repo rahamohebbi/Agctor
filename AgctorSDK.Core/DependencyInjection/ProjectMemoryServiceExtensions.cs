@@ -1,6 +1,7 @@
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Indexing;
 using AgctorSDK.Core.ProjectMemory.Loading;
+using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Parsing;
 using AgctorSDK.Core.ProjectMemory.Processing;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +18,7 @@ public static class ProjectMemoryServiceExtensions
         services.AddSingleton<IEntityRegistry, EntityRegistry>();
         services.AddSingleton<IDocumentParser, DocumentParser>();
         services.AddSingleton<IMemoryIntentProcessor, MemoryIntentProcessor>();
+        services.AddSingleton<IGenericInboxStore, GenericInboxStore>();
         services.AddSingleton<IDocumentProjectionService, DocumentProjectionService>();
         services.AddSingleton<ProjectMemory.Tools.ProjectMemoryOperations>();
         services.AddSingleton<SqliteRuntimeIndexStoreFactory>();

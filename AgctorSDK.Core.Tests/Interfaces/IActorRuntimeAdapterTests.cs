@@ -40,6 +40,7 @@ namespace AgctorSDK.Core.Tests.Interfaces
             public event EventHandler<ActorSpawnedEventArgs>? ActorSpawned;
             public event EventHandler<ActorStoppedEventArgs>? ActorStopped;
             public event EventHandler<MessageSentEventArgs>? MessageSent;
+            public event EventHandler<DeadLetterEventArgs>? DeadLetter;
 
             public TestActorRuntimeAdapter(string name = "TestRuntime", string version = "1.0.0")
             {

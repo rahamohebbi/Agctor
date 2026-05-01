@@ -17,7 +17,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
     private static string RepoRoot() =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
-    private sealed class QueueLlm : IProjectMemoryLlmClient
+    internal sealed class QueueLlm : IProjectMemoryLlmClient
     {
         public readonly Queue<string> Responses = new();
 
@@ -598,6 +598,58 @@ public sealed class ProjectMemoryPipelineRunnerTests
     }
 
     [TestMethod]
+    public async Task IngestOnly_Education_IsWrittenToBasicInfo()
+    {
+        // Education is a stable person profile fact; it should not be promoted through the generic inbox.
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        var temp = Path.Combine(Path.GetTempPath(), "pm-education-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+            var inboxDir = Path.Combine(temp, ".agctor", "runtime", "generic-inbox");
+            if (Directory.Exists(inboxDir)) Directory.Delete(inboxDir, recursive: true);
+
+            var llm = new QueueLlm();
+            llm.Responses.Enqueue(
+                """
+                {
+                  "memoryIntents": [
+                    {"entityKey":"raha","knowledgeType":"education","attribute":"","value":"Computer Science degree from the university of Salford in the UK","confidence":1}
+                  ]
+                }
+                """);
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => llm);
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var result = await runner.RunAsync(new ProjectMemoryPipelineRequest
+            {
+                ProjectRoot = temp,
+                UserMessage = "Raha has a degree in Computer Science from the university of Salford in the UK",
+                Mode = ProjectMemoryPipelineMode.IngestOnly
+            }).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success, result.FinalText);
+            var profile = await File.ReadAllTextAsync(Path.Combine(temp, "people", "raha", "profile.md")).ConfigureAwait(false);
+            StringAssert.Contains(profile, "Education: Computer Science degree from the university of Salford in the UK");
+
+            var pending = Path.Combine(temp, ".agctor", "runtime", "generic-inbox", "pending.yaml");
+            if (File.Exists(pending))
+            {
+                var pendingText = await File.ReadAllTextAsync(pending).ConfigureAwait(false);
+                Assert.IsFalse(pendingText.Contains("Computer Science", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
     public async Task IngestOnly_FamilyRole_Bootstraps_Referenced_Person_Folder()
     {
         // "I have a son called Ryan" should materialize people/ryan even when the only Ryan-facing
@@ -695,6 +747,13 @@ public sealed class ProjectMemoryPipelineRunnerTests
             Assert.IsTrue(File.Exists(ryanEntity), "ryan entity.yaml should have been bootstrapped");
             var ryanProfile = await File.ReadAllTextAsync(Path.Combine(temp, "people", "ryan", "profile.md")).ConfigureAwait(false);
             StringAssert.Contains(ryanProfile, "27th of October");
+
+            // Family edge should land on both sides with the relation type preserved
+            // ("- child: ryan" on Raha, "- parent: raha" on Ryan via the auto-inverse).
+            var rahaRels = await File.ReadAllTextAsync(Path.Combine(temp, "people", "raha", "relationships.md")).ConfigureAwait(false);
+            var ryanRels = await File.ReadAllTextAsync(Path.Combine(temp, "people", "ryan", "relationships.md")).ConfigureAwait(false);
+            StringAssert.Contains(rahaRels, "- child: ryan");
+            StringAssert.Contains(ryanRels, "- parent: raha");
         }
         finally
         {

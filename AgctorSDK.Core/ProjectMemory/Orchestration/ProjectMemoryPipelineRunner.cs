@@ -9,6 +9,7 @@ using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Processing;
+using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Resolution.Bridge;
 using AgctorSDK.Core.ProjectMemory.Resolution.Review;
 using AgctorSDK.Core.ProjectMemory.Tools;
@@ -17,6 +18,7 @@ namespace AgctorSDK.Core.ProjectMemory.Orchestration;
 
 /// <summary>
 /// Code-first orchestrator: chains person-extractor → routing/projection → person-query without actor envelopes (same file effects as the dedicated agents).
+/// Heavy steps delegate to <see cref="ProjectMemoryQueryService"/> and <see cref="ProjectMemoryIngestService"/> to keep this class a thinner coordinator.
 /// </summary>
 public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 {
@@ -26,7 +28,12 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
     private readonly IDocumentProjectionService _projection;
     private readonly ProjectMemoryOperations _ops;
     private readonly IProjectMemoryLlmClient _llm;
+    // Search + profile snippets + query prompt + LLM call.
+    private readonly ProjectMemoryQueryService _queryService;
+    // Raw JSON ingest, generic inbox proposals, and confirm/reject handling.
+    private readonly ProjectMemoryIngestService _ingestService;
     private readonly MentionObservationPublisher? _mentions;
+    private readonly IGenericInboxStore _genericInbox;
 
     public ProjectMemoryPipelineRunner(
         IProjectLoader loader,
@@ -35,6 +42,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         IDocumentProjectionService projection,
         ProjectMemoryOperations ops,
         IProjectMemoryLlmClient llm,
+        IGenericInboxStore genericInbox,
         MentionObservationPublisher? mentions = null)
     {
         _loader = loader;
@@ -43,7 +51,30 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         _projection = projection;
         _ops = ops;
         _llm = llm;
+        _queryService = new ProjectMemoryQueryService(_ops, _llm);
+        _genericInbox = genericInbox;
         _mentions = mentions;
+        _ingestService = new ProjectMemoryIngestService(_entities, _processor, _projection, _genericInbox, _mentions);
+    }
+
+    /// <inheritdoc />
+    public Task<GenericInboxPersistResult> PersistApprovedGenericFactsAsync(
+        string projectRoot,
+        string? scenarioId,
+        IReadOnlyList<ApprovedGenericFact> approvals,
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.GetFullPath(projectRoot.Trim());
+        if (!Directory.Exists(Path.Combine(root, ".agctor")))
+        {
+            return Task.FromResult(new GenericInboxPersistResult
+            {
+                Errors = new[] { "Project root must contain a .agctor directory." }
+            });
+        }
+
+        var seg = string.IsNullOrWhiteSpace(scenarioId) ? null : PersonaScenarioScope.SanitizeFolderSegment(scenarioId);
+        return _genericInbox.PersistApprovedAsync(root, seg, approvals, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -80,14 +111,15 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         }
 
         var ctx = await _loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
-        var work = await IngestFromRawExtractAsync(ctx, rawExtractorLlmText, entityWorkspace, sessionId, turnId, cancellationToken).ConfigureAwait(false);
+        var work = await _ingestService.IngestFromRawExtractAsync(ctx, rawExtractorLlmText, entityWorkspace, sessionId, turnId, cancellationToken).ConfigureAwait(false);
         if (!work.ParseOk)
         {
             return new ProjectMemoryIngestResult
             {
                 ParseSuccess = false,
                 ParseSource = work.ParseSource,
-                Summary = work.ParseError ?? "Parse failed."
+                Summary = work.ParseError ?? "Parse failed.",
+                OutOfSchemaProposals = work.OutOfSchemaProposals
             };
         }
 
@@ -98,7 +130,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 ParseSuccess = true,
                 ParseSource = work.ParseSource,
                 WroteAnyFile = false,
-                Summary = work.RouteDetail
+                Summary = work.RouteDetail,
+                OutOfSchemaProposals = work.OutOfSchemaProposals
             };
         }
 
@@ -109,7 +142,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 ParseSuccess = true,
                 ParseSource = work.ParseSource,
                 WroteAnyFile = false,
-                Summary = work.RouteDetail
+                Summary = work.RouteDetail,
+                OutOfSchemaProposals = work.OutOfSchemaProposals
             };
         }
 
@@ -119,7 +153,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             ParseSource = work.ParseSource,
             WroteAnyFile = work.WriteOk,
             UpdatedFiles = work.UpdatedFiles,
-            Summary = work.WriteDetail ?? work.RouteDetail
+            Summary = work.WriteDetail ?? work.RouteDetail,
+            OutOfSchemaProposals = work.OutOfSchemaProposals
         };
     }
 
@@ -155,6 +190,16 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 
         var success = true;
         string? rawExtract = null;
+
+        // PRD-019: if this user turn is a pure "yes/no" to the previous out-of-schema prompt,
+        // short-circuit the extractor and act on the pending generic-inbox rows directly.
+        var confirmSignal = ConfirmationInputDetector.Classify(request.UserMessage);
+        if (confirmSignal != ConfirmationInputDetector.ConfirmationSignal.None)
+        {
+            var handled = await _ingestService.TryHandleConfirmationAsync(ctx, request, confirmSignal, steps, cancellationToken).ConfigureAwait(false);
+            if (handled.Handled)
+                return Finish(correlationId, handled.Success, handled.FinalText, steps);
+        }
 
         if (mode != ProjectMemoryPipelineMode.QueryOnly)
         {
@@ -200,7 +245,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 
         try
         {
-            var answer = await RunQueryAsync(querySpec!, root, entityWorkspace, request.UserMessage, request.ConversationPrefix, cancellationToken)
+            var answer = await _queryService.RunAsync(querySpec!, root, entityWorkspace, request.UserMessage, request.ConversationPrefix, cancellationToken)
                 .ConfigureAwait(false);
             // PRD-018 §5.7 U4: decorate mentions in the final answer with their resolution grade so
             // soft links read as "likely Raha (72%)" instead of the plain "Raha".
@@ -226,7 +271,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         string? turnId,
         CancellationToken cancellationToken)
     {
-        var work = await IngestFromRawExtractAsync(ctx, rawExtract, entityWorkspaceRoot, sessionId, turnId, cancellationToken).ConfigureAwait(false);
+        var work = await _ingestService.IngestFromRawExtractAsync(ctx, rawExtract, entityWorkspaceRoot, sessionId, turnId, cancellationToken).ConfigureAwait(false);
         if (!work.ParseOk)
         {
             steps.Add(new ProjectMemoryPipelineStep { Name = "parse", Ok = false, Detail = work.ParseError });
@@ -261,6 +306,12 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
             UpdatedFiles = work.UpdatedFiles,
             Detail = writeDetail
         });
+
+        // No file writes is still a successful turn when the runtime has surfaced out-of-schema
+        // proposals for the user to confirm (PRD-019) — the pipeline will honor the next "yes".
+        if (!writeOk && work.OutOfSchemaProposals.Count > 0)
+            return true;
+
         return writeOk;
     }
 
@@ -274,7 +325,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         CancellationToken cancellationToken)
     {
         if (!MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out var parseErr, out var parseSource))
-            return new RawIngestWork(false, parseErr, null, false, false, "", false, new List<string>(), null);
+            return new RawIngestWork(false, parseErr, null, false, false, "", false, new List<string>(), null, Array.Empty<OutOfSchemaFactProposal>());
 
         if (batch!.MemoryIntents.Count == 0)
         {
@@ -287,7 +338,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 "No memory intents; skipped write.",
                 false,
                 new List<string>(),
-                null);
+                null,
+                Array.Empty<OutOfSchemaFactProposal>());
         }
 
         // Discover early so family_role intents can be normalized against known folders before routing.
@@ -313,7 +365,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 dropped,
                 false,
                 new List<string>(),
-                null);
+                null,
+                Array.Empty<OutOfSchemaFactProposal>());
         }
 
         // PRD-018: every retained intent is a first-class mention observation. Published to the
@@ -335,9 +388,34 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         }
 
         var routed = _processor.Route(ctx, batch.MemoryIntents, out var routeIssues);
+        var oosProposals = OutOfSchemaProposalFactory.FromRouteIssues(routeIssues, ctx.Runtime.OutOfSchema).ToList();
+        if (oosProposals.Count > 0)
+        {
+            // Persist every proposal (immediate + review) so a follow-up "yes" turn can honor it.
+            var scen = TryExtractScenarioId(ctx, entityWorkspaceRoot);
+            await _genericInbox.AppendPendingAsync(ctx.ProjectRoot, scen, oosProposals, cancellationToken).ConfigureAwait(false);
+        }
+
         var routeErrors = routeIssues.Where(i => i.IsError).ToList();
         if (routeErrors.Count > 0 && routed.Count == 0)
         {
+            // When every intent is out-of-schema, treat it as "awaiting user confirmation" rather
+            // than a hard failure — the host can still surface the prompt lines to the user.
+            if (oosProposals.Count > 0)
+            {
+                return new RawIngestWork(
+                    true,
+                    null,
+                    parseSource,
+                    false,
+                    false,
+                    "No routable intents; " + oosProposals.Count + " out-of-schema fact(s) await user confirmation.",
+                    false,
+                    new List<string>(),
+                    null,
+                    oosProposals);
+            }
+
             return new RawIngestWork(
                 true,
                 null,
@@ -347,7 +425,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 string.Join("; ", routeErrors.Select(i => i.Message)),
                 false,
                 new List<string>(),
-                null);
+                null,
+                oosProposals);
         }
 
         var routeDetail = $"Routed {routed.Count} intent(s).";
@@ -356,6 +435,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         if (routeErrors.Count > 0)
             routeDetail += " Skipped " + routeErrors.Count + " unroutable intent(s): " +
                            string.Join("; ", routeErrors.Select(i => i.Message));
+        if (oosProposals.Count > 0)
+            routeDetail += " | Out-of-schema: " + oosProposals.Count + " fact(s) surfaced for confirmation (see ingest metadata).";
 
         var groups = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase).ToList();
         var lookup = BuildEntityLookup(discovered);
@@ -422,7 +503,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         var writeDetail = unresolved.Count > 0
             ? "Updated " + updated.Count + " file(s); unresolved entity keys: " + string.Join(", ", unresolved.Distinct(StringComparer.OrdinalIgnoreCase))
             : (updated.Count == 0 ? "No files updated (entities not found?)." : null);
-        return new RawIngestWork(true, null, parseSource, false, false, routeDetail, writeOk, updated, writeDetail);
+        return new RawIngestWork(true, null, parseSource, false, false, routeDetail, writeOk, updated, writeDetail, oosProposals);
     }
 
     /// <param name="NoIntents">Parsed OK but <c>memoryIntents</c> empty — pipeline skips write step.</param>
@@ -435,44 +516,111 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         string RouteDetail,
         bool WriteOk,
         List<string> UpdatedFiles,
-        string? WriteDetail);
+        string? WriteDetail,
+        IReadOnlyList<OutOfSchemaFactProposal> OutOfSchemaProposals);
 
-    private async Task<string> RunQueryAsync(
-        AgentDefinitionSpec querySpec,
-        string projectRoot,
-        string entityWorkspaceRoot,
-        string userMessage,
-        string? conversationPrefix,
+    private sealed record ConfirmationHandling(bool Handled, bool Success, string FinalText);
+
+    /// <summary>
+    /// Matches pending generic-inbox rows for the same scenario and (on "yes") persists them or (on "no") drops them.
+    /// Keeps the window short (10 minutes) so unrelated later affirmatives don't promote stale proposals.
+    /// </summary>
+    private async Task<ConfirmationHandling> TryHandleConfirmationAsync(
+        LoadedProjectContext ctx,
+        ProjectMemoryPipelineRequest request,
+        ConfirmationInputDetector.ConfirmationSignal signal,
+        List<ProjectMemoryPipelineStep> steps,
         CancellationToken cancellationToken)
     {
-        var hits = await _ops.SearchEntitiesAsync(projectRoot, entityWorkspaceRoot, null, cancellationToken).ConfigureAwait(false);
-        var sb = new StringBuilder();
-        foreach (var h in hits.Take(20))
+        var pending = await _genericInbox.LoadPendingAsync(ctx.ProjectRoot, cancellationToken).ConfigureAwait(false);
+        if (pending.Count == 0)
+            return new ConfirmationHandling(false, false, "");
+
+        var scenSeg = string.IsNullOrWhiteSpace(request.ScenarioId)
+            ? ""
+            : PersonaScenarioScope.SanitizeFolderSegment(request.ScenarioId);
+        var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromMinutes(10);
+
+        var candidates = new List<GenericInboxPendingRow>();
+        foreach (var row in pending)
         {
-            var profile = await _ops.ReadDocumentAsync(querySpec, projectRoot, entityWorkspaceRoot, $"people/{h.EntityKey}/profile.md", cancellationToken)
-                .ConfigureAwait(false);
-            sb.AppendLine($"### {h.EntityKey}");
-            sb.AppendLine(profile);
-            sb.AppendLine();
+            if (!string.Equals(row.ScenarioSegment ?? "", scenSeg, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!DateTimeOffset.TryParse(row.QueuedAtUtc, out var queuedAt))
+                continue;
+            if (queuedAt < cutoff)
+                continue;
+            candidates.Add(row);
         }
 
-        var instructions = string.Join('\n', querySpec.Instructions ?? new List<string>());
-        var prefix = string.IsNullOrWhiteSpace(conversationPrefix)
-            ? ""
-            : "Prior conversation:\n" + conversationPrefix.Trim() + "\n---\n";
-        var prompt = instructions + "\nContext:\n" + sb + "\n" + prefix + "Question:\n" + userMessage;
-        return await _llm.GenerateAsync(prompt, cancellationToken).ConfigureAwait(false);
+        if (candidates.Count == 0)
+            return new ConfirmationHandling(false, false, "");
+
+        if (signal == ConfirmationInputDetector.ConfirmationSignal.Negative)
+        {
+            var dropped = await _genericInbox
+                .DropPendingAsync(ctx.ProjectRoot, candidates.Select(c => c.ProposalId).ToList(), cancellationToken)
+                .ConfigureAwait(false);
+            steps.Add(new ProjectMemoryPipelineStep
+            {
+                Name = "confirm",
+                Ok = true,
+                Detail = "rejected " + dropped + " pending generic-inbox row(s)."
+            });
+            return new ConfirmationHandling(
+                true,
+                true,
+                "Got it — I will not store " + dropped + " out-of-schema fact(s). You can always re-enter them later.");
+        }
+
+        var approvals = candidates.Select(r => new ApprovedGenericFact
+        {
+            ProposalId = r.ProposalId,
+            EntityKey = r.EntityKey,
+            KnowledgeType = r.KnowledgeType,
+            Attribute = r.Attribute,
+            Value = r.Value,
+            Confidence = r.Confidence
+        }).ToList();
+
+        var result = await _genericInbox.PersistApprovedAsync(
+                ctx.ProjectRoot,
+                string.IsNullOrEmpty(scenSeg) ? null : scenSeg,
+                approvals,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var msg = new StringBuilder();
+        msg.Append("Stored ").Append(result.Appended)
+            .Append(" fact(s) in the generic inbox (.agctor/runtime/generic-inbox/confirmed.yaml). ");
+        if (result.Appended > 0)
+        {
+            msg.AppendLine();
+            foreach (var a in approvals.Take(10))
+            {
+                var attr = string.IsNullOrWhiteSpace(a.Attribute) ? "" : "/" + a.Attribute;
+                msg.Append("- ").Append(a.EntityKey).Append(" · ").Append(a.KnowledgeType)
+                    .Append(attr).Append(" = ").AppendLine(a.Value);
+            }
+            if (approvals.Count > 10)
+                msg.Append("(+").Append(approvals.Count - 10).AppendLine(" more)");
+        }
+
+        if (result.RejectedMismatch > 0)
+            msg.Append(" (").Append(result.RejectedMismatch).Append(" hash mismatches skipped)");
+
+        steps.Add(new ProjectMemoryPipelineStep
+        {
+            Name = "confirm",
+            Ok = result.Appended > 0,
+            Detail = "persisted " + result.Appended + " generic-inbox row(s); rejected " + result.RejectedMismatch + "."
+        });
+
+        return new ConfirmationHandling(true, result.Appended > 0 || approvals.Count == 0, msg.ToString().TrimEnd());
     }
 
-    private static string BuildExtractPrompt(AgentDefinitionSpec spec, string userMessage, string? conversationPrefix)
-    {
-        var lines = (spec.Instructions ?? new List<string>()).Where(i => !string.IsNullOrWhiteSpace(i));
-        var sys = string.Join('\n', lines)
-                    + "\n\nRespond with ONLY valid JSON: {\"memoryIntents\":[{\"entityKey\":\"\",\"knowledgeType\":\"\",\"attribute\":\"\",\"value\":\"\",\"confidence\":0.9}]}\n";
-        if (!string.IsNullOrWhiteSpace(conversationPrefix))
-            sys += "\nPrior conversation:\n" + conversationPrefix.Trim() + "\n---\n";
-        return sys + "\nInput:\n" + userMessage;
-    }
+    private static string BuildExtractPrompt(AgentDefinitionSpec spec, string userMessage, string? conversationPrefix) =>
+        ProjectMemoryPromptBuilder.BuildExtractPrompt(spec, userMessage, conversationPrefix);
 
     /// <summary>
     /// Pulls referenced people out of <c>family_role</c> intents (both the <c>entityKey</c> side and

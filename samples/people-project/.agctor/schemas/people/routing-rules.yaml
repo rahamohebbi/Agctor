@@ -89,6 +89,21 @@ routingRules:
       document: profile
       section: Basic Info
 
+  # Education is stable profile context, so degree/university facts should land on the
+  # person profile instead of being queued as generic out-of-schema information.
+  - when:
+      knowledgeType: profile_fact
+      attribute: education
+    target:
+      document: profile
+      section: Basic Info
+
+  - when:
+      knowledgeType: education
+    target:
+      document: profile
+      section: Basic Info
+
   - when:
       knowledgeType: profile_fact
       attribute: ownership

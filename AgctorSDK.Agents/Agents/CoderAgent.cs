@@ -42,27 +42,27 @@ namespace AgctorSDK.Core.Agents
         public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
         {
             // Passthrough: self-sent result so ReplyProxy completes the pending HTTP request
-            if (envelope.Headers.TryGetValue("MessageType", out var msgType) &&
-                (msgType == "ToolResult" || msgType == "Result" || msgType == "Error"))
+            if (envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var msgType) &&
+                (msgType == "ToolResult" || msgType == AgctorMessageTypes.Result || msgType == AgctorMessageTypes.Error))
             {
                 return envelope;
             }
 
             // Capture sender + correlation id for later reply
-            if (envelope.Payload is string prompt && envelope.Headers.TryGetValue("MessageType", out var mt) && mt == "Prompt")
+            if (envelope.Payload is string prompt && envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var mt) && mt == AgctorMessageTypes.Prompt)
             {
                 await _requestLock.WaitAsync(cancellationToken);
                 _requestLockHeld = true;
                 // Attempt to capture SenderId (case-insensitive) and CorrelationId
-                _originalSenderId = envelope.Headers.GetValueOrDefault("SenderId")
+                _originalSenderId = envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId)
                                    ?? envelope.Headers.GetValueOrDefault("senderId")
                                    ?? envelope.Headers.GetValueOrDefault("sender-id");
 
-                if (envelope.Metadata != null && envelope.Metadata.TryGetValue("CorrelationId", out var cidObj))
+                if (envelope.Metadata != null && envelope.Metadata.TryGetValue(AgctorMessageHeaders.CorrelationId, out var cidObj))
                 {
                     _correlationId = cidObj?.ToString();
                 }
-                else if (envelope.Headers.TryGetValue("CorrelationId", out var cidHdr))
+                else if (envelope.Headers.TryGetValue(AgctorMessageHeaders.CorrelationId, out var cidHdr))
                 {
                     _correlationId = cidHdr;
                 }
@@ -84,9 +84,9 @@ namespace AgctorSDK.Core.Agents
 
                     var guidanceAckHeaders = new Dictionary<string, string>
                     {
-                        { "SenderId", Id },
-                        { "ReceiverId", _originalSenderId ?? "unknown" },
-                        { "MessageType", "Acknowledgment" }
+                        { AgctorMessageHeaders.SenderId, Id },
+                        { AgctorMessageHeaders.ReceiverId, _originalSenderId ?? "unknown" },
+                        { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Acknowledgment }
                     };
                     var guidanceAckMeta = new Dictionary<string, object>
                     {
@@ -100,9 +100,9 @@ namespace AgctorSDK.Core.Agents
                 // Return immediate ACK so this ReceiveAsync completes and actor can process further messages
                 var ackHeaders = new Dictionary<string,string>
                 {
-                    {"SenderId", Id},
-                    {"ReceiverId", _originalSenderId ?? "unknown"},
-                    {"MessageType","Acknowledgment"}
+                    {AgctorMessageHeaders.SenderId, Id},
+                    {AgctorMessageHeaders.ReceiverId, _originalSenderId ?? "unknown"},
+                    {AgctorMessageHeaders.MessageType, AgctorMessageTypes.Acknowledgment}
                 };
                 var ackMeta = new Dictionary<string,object>
                 {
@@ -296,13 +296,13 @@ namespace AgctorSDK.Core.Agents
                 var meta = new Dictionary<string, object>
                 {
                     ["Timestamp"] = DateTimeOffset.UtcNow,
-                    ["CorrelationId"] = _correlationId
+                    [AgctorMessageHeaders.CorrelationId] = _correlationId
                 };
                 var headers = new Dictionary<string, string>
                 {
-                    ["SenderId"] = Id,
-                    ["ReceiverId"] = Id,
-                    ["MessageType"] = "ToolResult"
+                    [AgctorMessageHeaders.SenderId] = Id,
+                    [AgctorMessageHeaders.ReceiverId] = Id,
+                    [AgctorMessageHeaders.MessageType] = "ToolResult"
                 };
                 var envelope = new MessageEnvelope(tr, meta, null, headers);
                 await AgentFactory.RuntimeAdapter.SendMessageAsync(Id, envelope, Id, null, ct);
@@ -327,7 +327,7 @@ namespace AgctorSDK.Core.Agents
                     _embeddingCoordinatorAgentId,
                     "mark embeddings stale",
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "Prompt" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = AgctorMessageTypes.Prompt },
                     cancellationToken: cancellationToken);
                 LogInfo($"[CoderAgent] Marked embeddings stale via {_embeddingCoordinatorAgentId}");
             }

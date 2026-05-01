@@ -55,6 +55,7 @@ namespace AgctorSDK.Core.Adapters
         public event EventHandler<ActorSpawnedEventArgs>? ActorSpawned;
         public event EventHandler<ActorStoppedEventArgs>? ActorStopped;
         public event EventHandler<MessageSentEventArgs>? MessageSent;
+        public event EventHandler<DeadLetterEventArgs>? DeadLetter;
 
         /// <summary>
         /// Represents an actor instance with its message queue and processing task.
@@ -283,8 +284,20 @@ namespace AgctorSDK.Core.Adapters
 
             if (!_actors.TryGetValue(targetActorId, out var actorInstance))
             {
-                // Optionally, could dead-letter or log with higher severity
-                LogTrace($"Target actor '{targetActorId}' not found for SendMessageAsync. Message of type '{message?.GetType().Name ?? "null"}' will be dropped.");
+                var deadLetterId = message is IMessageEnvelope env && !string.IsNullOrWhiteSpace(env.Id)
+                    ? env.Id
+                    : Guid.NewGuid().ToString();
+                var deadLetterType = message is IMessageEnvelope envType
+                    ? envType.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageType, envType.PayloadType())
+                    : (message is string ? AgctorMessageTypes.Prompt : message?.GetType().Name ?? "Unknown");
+                LogTrace($"Target actor '{targetActorId}' not found for SendMessageAsync. Message of type '{deadLetterType}' will be dead-lettered.");
+                DeadLetter?.Invoke(this, new DeadLetterEventArgs(
+                    deadLetterId,
+                    senderId,
+                    targetActorId,
+                    deadLetterType,
+                    message is IMessageEnvelope payloadEnvelope ? payloadEnvelope.Payload : message,
+                    "target-actor-not-found"));
                 return Task.CompletedTask; // Or throw new InvalidOperationException($"Target actor '{targetActorId}' not found");
             }
 
@@ -306,39 +319,39 @@ namespace AgctorSDK.Core.Adapters
                     }
                 }
 
-                if (!mergedHeaders.ContainsKey("SenderId"))
+                if (!mergedHeaders.ContainsKey(AgctorMessageHeaders.SenderId))
                 {
-                    mergedHeaders["SenderId"] = effectiveSenderId;
+                    mergedHeaders[AgctorMessageHeaders.SenderId] = effectiveSenderId;
                 }
-                if (!mergedHeaders.ContainsKey("ReceiverId"))
+                if (!mergedHeaders.ContainsKey(AgctorMessageHeaders.ReceiverId))
                 {
-                    mergedHeaders["ReceiverId"] = targetActorId;
+                    mergedHeaders[AgctorMessageHeaders.ReceiverId] = targetActorId;
                 }
-                if (!mergedHeaders.ContainsKey("MessageType"))
+                if (!mergedHeaders.ContainsKey(AgctorMessageHeaders.MessageType))
                 {
-                    mergedHeaders["MessageType"] = existingEnvelope.Payload is string
-                        ? "Prompt"
+                    mergedHeaders[AgctorMessageHeaders.MessageType] = existingEnvelope.Payload is string
+                        ? AgctorMessageTypes.Prompt
                         : (existingEnvelope.Payload?.GetType().Name ?? "Unknown");
                 }
                 if (!mergedHeaders.ContainsKey("trace-id") && _activityTracker != null)
                 {
                     _activityTracker.PropagateContext(mergedHeaders);
                 }
-                mergedHeaders["Version"] = "1.0";
+                mergedHeaders[AgctorMessageHeaders.Version] = AgctorEnvelopeBuilder.ProtocolVersion;
 
                 var mergedMetadata = new Dictionary<string, object>(existingEnvelope.Metadata);
                 if (!mergedMetadata.ContainsKey("Timestamp"))
                 {
                     mergedMetadata["Timestamp"] = DateTimeOffset.UtcNow;
                 }
-                if (!mergedMetadata.ContainsKey("CorrelationId") &&
-                    mergedHeaders.TryGetValue("CorrelationId", out var headerCorr))
+                if (!mergedMetadata.ContainsKey(AgctorMessageHeaders.CorrelationId) &&
+                    mergedHeaders.TryGetValue(AgctorMessageHeaders.CorrelationId, out var headerCorr))
                 {
-                    mergedMetadata["CorrelationId"] = headerCorr;
+                    mergedMetadata[AgctorMessageHeaders.CorrelationId] = headerCorr;
                 }
 
                 messageId = string.IsNullOrWhiteSpace(existingEnvelope.Id) ? Guid.NewGuid().ToString() : existingEnvelope.Id;
-                messageType = mergedHeaders.GetValueOrDefault("MessageType", "Unknown");
+                messageType = mergedHeaders.GetValueOrDefault(AgctorMessageHeaders.MessageType, "Unknown");
 
                 envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
                     id: messageId,
@@ -352,17 +365,17 @@ namespace AgctorSDK.Core.Adapters
                 messageId = Guid.NewGuid().ToString();
 
                 var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
-                mcpHeaders["SenderId"] = effectiveSenderId; // Per MCP, use originating agent or "system"
-                mcpHeaders["ReceiverId"] = targetActorId;   // Per MCP
-                if (!mcpHeaders.ContainsKey("MessageType"))
+                mcpHeaders[AgctorMessageHeaders.SenderId] = effectiveSenderId; // Per MCP, use originating agent or "system"
+                mcpHeaders[AgctorMessageHeaders.ReceiverId] = targetActorId;   // Per MCP
+                if (!mcpHeaders.ContainsKey(AgctorMessageHeaders.MessageType))
                 {
-                    mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+                    mcpHeaders[AgctorMessageHeaders.MessageType] = message is string ? AgctorMessageTypes.Prompt : (message?.GetType().Name ?? "Unknown");
                 }
                 if (!mcpHeaders.ContainsKey("trace-id") && _activityTracker != null)
                 {
                     _activityTracker.PropagateContext(mcpHeaders);
                 }
-                mcpHeaders["Version"] = "1.0";
+                mcpHeaders[AgctorMessageHeaders.Version] = AgctorEnvelopeBuilder.ProtocolVersion;
 
                 var mcpMetadata = new Dictionary<string, object>
                 {
@@ -370,12 +383,12 @@ namespace AgctorSDK.Core.Adapters
                 };
 
                 // Propagate correlation ID from headers if present so responders can match request-response.
-                if (mcpHeaders.TryGetValue("CorrelationId", out var corr))
+                if (mcpHeaders.TryGetValue(AgctorMessageHeaders.CorrelationId, out var corr))
                 {
-                    mcpMetadata["CorrelationId"] = corr;
+                    mcpMetadata[AgctorMessageHeaders.CorrelationId] = corr;
                 }
 
-                messageType = mcpHeaders["MessageType"];
+                messageType = mcpHeaders[AgctorMessageHeaders.MessageType];
                 envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
                     id: messageId,
                     payload: message ?? new object(),
@@ -425,34 +438,30 @@ namespace AgctorSDK.Core.Adapters
             }
 
             var mcpHeaders = headers != null ? new Dictionary<string, string>(headers) : new Dictionary<string, string>();
-            mcpHeaders["SenderId"] = senderId ?? "system";
-            mcpHeaders["ReceiverId"] = targetActorId;
-            if (!mcpHeaders.ContainsKey("MessageType"))
+            mcpHeaders[AgctorMessageHeaders.SenderId] = senderId ?? "system";
+            mcpHeaders[AgctorMessageHeaders.ReceiverId] = targetActorId;
+            if (!mcpHeaders.ContainsKey(AgctorMessageHeaders.MessageType))
             {
-                mcpHeaders["MessageType"] = message is string ? "Prompt" : (message?.GetType().Name ?? "Unknown");
+                mcpHeaders[AgctorMessageHeaders.MessageType] = message is string ? AgctorMessageTypes.Prompt : (message?.GetType().Name ?? "Unknown");
             }
             if (!mcpHeaders.ContainsKey("trace-id") && _activityTracker != null)
             {
                 _activityTracker.PropagateContext(mcpHeaders);
             }
-            mcpHeaders["Version"] = "1.0";
+            mcpHeaders[AgctorMessageHeaders.Version] = AgctorEnvelopeBuilder.ProtocolVersion;
             // mcpHeaders["ReplyTo"] could be added if a specific reply path is known, e.g. runtime's own address.
             // For now, relies on correlationId.
 
-            var mcpMetadata = new Dictionary<string, object>
-            {
-                ["Timestamp"] = DateTimeOffset.UtcNow,
-                ["CorrelationId"] = correlationId // Key for matching response
-            };
-
-            var envelope = new AgctorSDK.Core.Messages.MessageEnvelope(
-                id: messageId,
+            var envelope = AgctorEnvelopeBuilder.Request(
                 payload: message ?? new object(),
-                metadata: mcpMetadata,
+                senderId: mcpHeaders[AgctorMessageHeaders.SenderId],
+                receiverId: targetActorId,
+                correlationId: correlationId,
+                messageType: mcpHeaders[AgctorMessageHeaders.MessageType],
                 headers: mcpHeaders
-            );
+            ).WithHeader(AgctorMessageHeaders.MessageId, messageId);
             
-            LogTrace($"Attempting to send request-response message '{messageId}' (CorrId: {correlationId}) from '{senderId ?? "system"}' to '{targetActorId}' (Type: {mcpHeaders["MessageType"]})");
+            LogTrace($"Attempting to send request-response message '{messageId}' (CorrId: {correlationId}) from '{senderId ?? "system"}' to '{targetActorId}' (Type: {mcpHeaders[AgctorMessageHeaders.MessageType]})");
 
             if (!actorInstance.MessageQueue.Writer.TryWrite(envelope))
             {
@@ -461,7 +470,7 @@ namespace AgctorSDK.Core.Adapters
             }
             
             Interlocked.Increment(ref _totalMessagesProcessed);
-            MessageSent?.Invoke(this, new MessageSentEventArgs(messageId, senderId, targetActorId, mcpHeaders["MessageType"]));
+            MessageSent?.Invoke(this, new MessageSentEventArgs(messageId, senderId, targetActorId, mcpHeaders[AgctorMessageHeaders.MessageType]));
             LogTrace($"Successfully enqueued request-response message '{messageId}' to '{targetActorId}'");
 
             // Await response with timeout
@@ -703,13 +712,13 @@ namespace AgctorSDK.Core.Adapters
                         messageActivity?.SetAttribute("message.type", envelope.PayloadType());
                         
                         string? senderId = null;
-                        if (envelope.Headers != null && envelope.Headers.TryGetValue("SenderId", out var sid))
+                        if (envelope.Headers != null && envelope.Headers.TryGetValue(AgctorMessageHeaders.SenderId, out var sid))
                         {
                             senderId = sid;
                         }
                         
                         string? correlationId = null;
-                        if (envelope.Metadata != null && envelope.Metadata.TryGetValue("CorrelationId", out var cid))
+                        if (envelope.Metadata != null && envelope.Metadata.TryGetValue(AgctorMessageHeaders.CorrelationId, out var cid))
                         {
                             correlationId = cid?.ToString();
                         }
@@ -739,32 +748,11 @@ namespace AgctorSDK.Core.Adapters
                             }
                             else
                             {
-                                // Create standard error response
-                                var errorHeaders = new Dictionary<string, string>
-                                {
-                                    ["SenderId"] = actorId,
-                                    ["ReceiverId"] = senderId ?? "unknown",
-                                    ["MessageType"] = "ErrorResponse",
-                                    ["OriginalMessageId"] = envelope.Id ?? "unknown"
-                                };
-                                
-                                var errorMetadata = new Dictionary<string, object>
-                                {
-                                    ["Timestamp"] = DateTimeOffset.UtcNow,
-                                    ["ExceptionType"] = ex.GetType().Name
-                                };
-                                
-                                if (!string.IsNullOrEmpty(correlationId))
-                                {
-                                    errorMetadata["CorrelationId"] = correlationId;
-                                }
-                                
-                                responseEnvelope = new MessageEnvelope(
-                                    payload: $"Error: {ex.Message}",
-                                    metadata: errorMetadata,
-                                    id: Guid.NewGuid().ToString(),
-                                    headers: errorHeaders
-                                );
+                                responseEnvelope = AgctorEnvelopeBuilder.Error(
+                                    request: envelope,
+                                    senderId: actorId,
+                                    error: $"Error: {ex.Message}",
+                                    exception: ex);
                             }
                         }
                         
@@ -772,8 +760,8 @@ namespace AgctorSDK.Core.Adapters
                         if (!string.IsNullOrEmpty(correlationId) && _pendingRequests.TryGetValue(correlationId, out var tcs))
                         {
                             // Treat Acknowledgment as interim – do not complete the pending request
-                            var respType = responseEnvelope?.Headers?.GetValueOrDefault("MessageType", string.Empty);
-                            if (respType == "Acknowledgment")
+                            var respType = responseEnvelope?.Headers?.GetValueOrDefault(AgctorMessageHeaders.MessageType, string.Empty);
+                            if (respType == AgctorMessageTypes.Acknowledgment)
                             {
                                 LogTrace($"Ignoring interim Acknowledgment for correlation ID '{correlationId}'");
                             }
@@ -785,18 +773,10 @@ namespace AgctorSDK.Core.Adapters
                             else
                             {
                                 LogTrace($"No response envelope provided for correlation ID '{correlationId}' from actor '{actorId}'");
-                                var noResponseErrorEnvelope = new MessageEnvelope(
-                                    payload: new InvalidOperationException($"Actor '{actorId}' did not provide a response"),
-                                    metadata: new Dictionary<string, object> { ["CorrelationId"] = correlationId, ["Timestamp"] = DateTimeOffset.UtcNow },
-                                    id: Guid.NewGuid().ToString(),
-                                    headers: new Dictionary<string, string>
-                                    {
-                                        ["SenderId"] = actorId,
-                                        ["ReceiverId"] = senderId ?? "unknown",
-                                        ["MessageType"] = "ErrorResponse",
-                                        ["OriginalMessageId"] = envelope.Id ?? "unknown"
-                                    }
-                                );
+                                var noResponseErrorEnvelope = AgctorEnvelopeBuilder.Error(
+                                    request: envelope,
+                                    senderId: actorId,
+                                    error: $"Actor '{actorId}' did not provide a response");
                                 tcs.TrySetResult(noResponseErrorEnvelope);
                             }
                         }

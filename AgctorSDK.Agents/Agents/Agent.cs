@@ -213,11 +213,11 @@ namespace AgctorSDK.Core.Agents
                 var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                 var errorHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id }, // This agent is sending the error
+                    { AgctorMessageHeaders.SenderId, Id }, // This agent is sending the error
                     // ReceiverId might be unknown if envelope is null
-                    { "MessageId", errorId },
-                    { "MessageType", "Error" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.MessageId, errorId },
+                    { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Error },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(errorPayload, errorMetadata, null, errorHeaders);
             }
@@ -227,7 +227,7 @@ namespace AgctorSDK.Core.Agents
                 var message = envelope.Payload;
                 var headers = envelope.Headers;
                 
-                var msgTypeLog = envelope.Headers.GetValueOrDefault("MessageType", "Unknown");
+                var msgTypeLog = envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageType, "Unknown");
                 if (msgTypeLog == "Unknown") msgTypeLog = "Init";
                 LogInfo($"Received message: {msgTypeLog}");
                 
@@ -238,17 +238,17 @@ namespace AgctorSDK.Core.Agents
                 }
                 
                 // If we have a prompt message, process it as a prompt
-                if (envelope.Headers.TryGetValue("MessageType", out var messageType) &&
-                    ((messageType == "Prompt") || (messageType == "String")) &&
+                if (envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var messageType) &&
+                    ((messageType == AgctorMessageTypes.Prompt) || (messageType == "String")) &&
                     message is string promptText)
                 {
                     // Capture sender/correlation so we can send the final result back when done (if we have no parent)
-                    _rootRequestSenderId = envelope.Headers.GetValueOrDefault("SenderId", null);
-                    if (envelope.Metadata?.TryGetValue("CorrelationId", out var cidObj) == true)
+                    _rootRequestSenderId = envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, null);
+                    if (envelope.Metadata?.TryGetValue(AgctorMessageHeaders.CorrelationId, out var cidObj) == true)
                     {
                         _rootCorrelationId = cidObj?.ToString();
                     }
-                    else if (envelope.Headers.TryGetValue("CorrelationId", out var cidHeader))
+                    else if (envelope.Headers.TryGetValue(AgctorMessageHeaders.CorrelationId, out var cidHeader))
                     {
                         _rootCorrelationId = cidHeader;
                     }
@@ -260,17 +260,17 @@ namespace AgctorSDK.Core.Agents
                     {
                         var resHeaders = new Dictionary<string,string>
                         {
-                            {"SenderId", Id},
-                            {"ReceiverId", _rootRequestSenderId ?? envelope.Headers.GetValueOrDefault("SenderId", "unknown")},
-                            {"MessageId", Guid.NewGuid().ToString()},
-                            {"InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "")},
-                            {"MessageType", "Result"},
-                            {"CorrelationId", _rootCorrelationId ?? string.Empty}
+                            {AgctorMessageHeaders.SenderId, Id},
+                            {AgctorMessageHeaders.ReceiverId, _rootRequestSenderId ?? envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown")},
+                            {AgctorMessageHeaders.MessageId, Guid.NewGuid().ToString()},
+                            {AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "")},
+                            {AgctorMessageHeaders.MessageType, AgctorMessageTypes.Result},
+                            {AgctorMessageHeaders.CorrelationId, _rootCorrelationId ?? string.Empty}
                         };
                         var resMeta = new Dictionary<string, object>
                         {
                             {"Timestamp", DateTimeOffset.UtcNow},
-                            {"CorrelationId", _rootCorrelationId ?? string.Empty}
+                            {AgctorMessageHeaders.CorrelationId, _rootCorrelationId ?? string.Empty}
                         };
 
                         var resultPayload = _immediateResult;
@@ -284,18 +284,18 @@ namespace AgctorSDK.Core.Agents
                     var ackMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                     var ackHeaders = new Dictionary<string, string> 
                     { 
-                        { "SenderId", Id },
-                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                        { "MessageId", ackId },
-                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                        { "MessageType", "Acknowledgment" },
-                        { "ContentType", "text/plain" }
+                        { AgctorMessageHeaders.SenderId, Id },
+                        { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                        { AgctorMessageHeaders.MessageId, ackId },
+                        { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                        { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Acknowledgment },
+                        { AgctorMessageHeaders.ContentType, "text/plain" }
                     };
                     return new MessageEnvelope(ackPayload, ackMetadata, ackId, ackHeaders);
                 }
                 
                 // Handle subtask assignment
-                if (envelope.Headers.TryGetValue("MessageType", out var msgType) && 
+                if (envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var msgType) && 
                     msgType == "SubtaskAssignment" &&
                     message is string subtaskPrompt)
                 {
@@ -311,18 +311,18 @@ namespace AgctorSDK.Core.Agents
                     };
                     var subtaskHeaders = new Dictionary<string, string> 
                     { 
-                        { "SenderId", Id },
-                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                        { "MessageId", subtaskReplyId },
-                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                        { "MessageType", "SubtaskCreated" },
-                        { "ContentType", "text/plain" }
+                        { AgctorMessageHeaders.SenderId, Id },
+                        { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                        { AgctorMessageHeaders.MessageId, subtaskReplyId },
+                        { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                        { AgctorMessageHeaders.MessageType, "SubtaskCreated" },
+                        { AgctorMessageHeaders.ContentType, "text/plain" }
                     };
                     return new MessageEnvelope(subtaskPayload, subtaskMetadata, subtaskReplyId, subtaskHeaders);
                 }
                 
                 // Handle subtask completion notification
-                if (envelope.Headers.TryGetValue("MessageType", out var completionMsgType) && 
+                if (envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var completionMsgType) && 
                     completionMsgType == "SubtaskCompleted" &&
                     envelope.Headers.TryGetValue("SubtaskId", out var childId))
                 {
@@ -334,18 +334,18 @@ namespace AgctorSDK.Core.Agents
                     var completionAckMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                     var completionAckHeaders = new Dictionary<string, string> 
                     { 
-                        { "SenderId", Id },
-                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                        { "MessageId", completionAckId },
-                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                        { "MessageType", "Acknowledgment" },
-                        { "ContentType", "text/plain" }
+                        { AgctorMessageHeaders.SenderId, Id },
+                        { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                        { AgctorMessageHeaders.MessageId, completionAckId },
+                        { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                        { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Acknowledgment },
+                        { AgctorMessageHeaders.ContentType, "text/plain" }
                     };
                     return new MessageEnvelope(completionAckPayload, completionAckMetadata, completionAckId, completionAckHeaders);
                 }
                 
                 // Handle subtask failure notification
-                if (envelope.Headers.TryGetValue("MessageType", out var failureMsgType) && 
+                if (envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var failureMsgType) && 
                     failureMsgType == "SubtaskFailed")
                 {
                     string failedChildId;
@@ -377,12 +377,12 @@ namespace AgctorSDK.Core.Agents
                     var failureAckMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                     var failureAckHeaders = new Dictionary<string, string> 
                     { 
-                        { "SenderId", Id },
-                        { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                        { "MessageId", failureAckId },
-                        { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                        { "MessageType", "Acknowledgment" },
-                        { "ContentType", "text/plain" }
+                        { AgctorMessageHeaders.SenderId, Id },
+                        { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                        { AgctorMessageHeaders.MessageId, failureAckId },
+                        { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                        { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Acknowledgment },
+                        { AgctorMessageHeaders.ContentType, "text/plain" }
                     };
                     return new MessageEnvelope(failureAckPayload, failureAckMetadata, failureAckId, failureAckHeaders);
                 }
@@ -393,12 +393,12 @@ namespace AgctorSDK.Core.Agents
                 var defaultMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                 var defaultHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id },
-                    { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                    { "MessageId", defaultId },
-                    { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                    { "MessageType", "Reply" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                    { AgctorMessageHeaders.MessageId, defaultId },
+                    { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                    { AgctorMessageHeaders.MessageType, "Reply" },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(defaultPayload, defaultMetadata, defaultId, defaultHeaders);
             }
@@ -416,12 +416,12 @@ namespace AgctorSDK.Core.Agents
                 };
                 var errorHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id },
-                    { "ReceiverId", envelope.Headers.GetValueOrDefault("SenderId", "unknown") },
-                    { "MessageId", errorId },
-                    { "InReplyTo", envelope.Headers.GetValueOrDefault("MessageId", "") },
-                    { "MessageType", "Error" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown") },
+                    { AgctorMessageHeaders.MessageId, errorId },
+                    { AgctorMessageHeaders.InReplyTo, envelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                    { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Error },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
@@ -945,10 +945,10 @@ namespace AgctorSDK.Core.Agents
         /// </summary>
         private async Task<IMessageEnvelope> HandleStatusRequestAsync(GetAgentStatusMessage statusMsg, IMessageEnvelope originalEnvelope, CancellationToken cancellationToken)
         {
-            LogInfo($"Handling status request from: {originalEnvelope.Headers?.FirstOrDefault(h => h.Key == "SenderId").Value ?? "unknown"}");
+            LogInfo($"Handling status request from: {originalEnvelope.Headers?.FirstOrDefault(h => h.Key == AgctorMessageHeaders.SenderId).Value ?? "unknown"}");
 
             string? originalSenderId = null;
-            if (originalEnvelope.Headers?.TryGetValue("SenderId", out var sid) == true)
+            if (originalEnvelope.Headers?.TryGetValue(AgctorMessageHeaders.SenderId, out var sid) == true)
             {
                 originalSenderId = sid;
             }
@@ -961,10 +961,10 @@ namespace AgctorSDK.Core.Agents
                 var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                 var errorHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id },
-                    { "MessageId", errorId },
-                    { "MessageType", "Error" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.MessageId, errorId },
+                    { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Error },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
@@ -977,11 +977,11 @@ namespace AgctorSDK.Core.Agents
                 var errorMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
                 var errorHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id },
-                    { "ReceiverId", originalSenderId },
-                    { "MessageId", errorId },
-                    { "MessageType", "Error" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, originalSenderId },
+                    { AgctorMessageHeaders.MessageId, errorId },
+                    { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Error },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
@@ -995,20 +995,20 @@ namespace AgctorSDK.Core.Agents
             };
             
             var mcpMetadata = new Dictionary<string, object> { { "Timestamp", DateTimeOffset.UtcNow } };
-            if (originalEnvelope.Metadata?.TryGetValue("CorrelationId", out var corrId) == true)
+            if (originalEnvelope.Metadata?.TryGetValue(AgctorMessageHeaders.CorrelationId, out var corrId) == true)
             {
-                mcpMetadata["CorrelationId"] = corrId; // Echo correlation ID
+                mcpMetadata[AgctorMessageHeaders.CorrelationId] = corrId; // Echo correlation ID
             }
 
             var messageId = Guid.NewGuid().ToString();
             var mcpHeaders = new Dictionary<string, string>
             {
-                { "SenderId", Id }, // This agent is the sender of the response
-                { "ReceiverId", originalSenderId }, // Send back to original sender
-                { "MessageId", messageId },
-                { "InReplyTo", originalEnvelope.Headers.GetValueOrDefault("MessageId", "") },
-                { "MessageType", "AgentStatusResponse" },
-                { "ContentType", "application/json" }
+                { AgctorMessageHeaders.SenderId, Id }, // This agent is the sender of the response
+                { AgctorMessageHeaders.ReceiverId, originalSenderId }, // Send back to original sender
+                { AgctorMessageHeaders.MessageId, messageId },
+                { AgctorMessageHeaders.InReplyTo, originalEnvelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                { AgctorMessageHeaders.MessageType, "AgentStatusResponse" },
+                { AgctorMessageHeaders.ContentType, "application/json" }
             };
 
             try
@@ -1034,12 +1034,12 @@ namespace AgctorSDK.Core.Agents
                 };
                 var errorHeaders = new Dictionary<string, string> 
                 { 
-                    { "SenderId", Id },
-                    { "ReceiverId", originalSenderId },
-                    { "MessageId", errorId },
-                    { "InReplyTo", originalEnvelope.Headers.GetValueOrDefault("MessageId", "") },
-                    { "MessageType", "Error" },
-                    { "ContentType", "text/plain" }
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, originalSenderId },
+                    { AgctorMessageHeaders.MessageId, errorId },
+                    { AgctorMessageHeaders.InReplyTo, originalEnvelope.Headers.GetValueOrDefault(AgctorMessageHeaders.MessageId, "") },
+                    { AgctorMessageHeaders.MessageType, AgctorMessageTypes.Error },
+                    { AgctorMessageHeaders.ContentType, "text/plain" }
                 };
                 return new MessageEnvelope(errorPayload, errorMetadata, errorId, errorHeaders);
             }
@@ -1128,10 +1128,10 @@ namespace AgctorSDK.Core.Agents
                 var messageId = Guid.NewGuid().ToString();
                 var headers = new Dictionary<string, string>
                 {
-                    { "SenderId", Id },
-                    { "ReceiverId", ParentAgentId },
-                    { "MessageId", messageId },
-                    { "MessageType", "SubtaskCompleted" },
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, ParentAgentId },
+                    { AgctorMessageHeaders.MessageId, messageId },
+                    { AgctorMessageHeaders.MessageType, "SubtaskCompleted" },
                     { "SubtaskId", Id }
                 };
 
@@ -1155,10 +1155,10 @@ namespace AgctorSDK.Core.Agents
                 var messageId = Guid.NewGuid().ToString();
                 var headers = new Dictionary<string, string>
                 {
-                    { "SenderId", Id },
-                    { "ReceiverId", ParentAgentId },
-                    { "MessageId", messageId },
-                    { "MessageType", "SubtaskFailed" },
+                    { AgctorMessageHeaders.SenderId, Id },
+                    { AgctorMessageHeaders.ReceiverId, ParentAgentId },
+                    { AgctorMessageHeaders.MessageId, messageId },
+                    { AgctorMessageHeaders.MessageType, "SubtaskFailed" },
                     { "SubtaskId", Id }
                 };
                 await AgentFactory.RuntimeAdapter.SendMessageAsync(ParentAgentId, failureMessage, Id, headers, cancellationToken);

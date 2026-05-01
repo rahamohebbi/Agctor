@@ -89,6 +89,12 @@ namespace AgctorSDK.CodeGraph.Tests.Agents
                 remove { }
             }
 
+            public event EventHandler<DeadLetterEventArgs>? DeadLetter
+            {
+                add { }
+                remove { }
+            }
+
             public Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task ShutdownAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task RegisterActorAsync(IActor actor, CancellationToken cancellationToken = default) => Task.CompletedTask;

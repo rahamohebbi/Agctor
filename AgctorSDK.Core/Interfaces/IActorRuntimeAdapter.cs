@@ -164,6 +164,13 @@ namespace AgctorSDK.Core.Interfaces
         event EventHandler<MessageSentEventArgs>? MessageSent;
 
         /// <summary>
+        /// Event raised when a send-only message cannot be delivered to its target actor.
+        /// This makes fire-and-forget delivery failures observable without changing the
+        /// compatibility behavior of send-only calls.
+        /// </summary>
+        event EventHandler<DeadLetterEventArgs>? DeadLetter;
+
+        /// <summary>
         /// New method for requesting human input, added for Human Agent Fallback (prd-cli-001.md).
         /// The runtime adapter implementation is responsible for interacting with the user (e.g., via CLI).
         /// </summary>
@@ -269,6 +276,37 @@ namespace AgctorSDK.Core.Interfaces
             SenderId = senderId;
             ReceiverId = receiverId;
             MessageType = messageType;
+            Timestamp = DateTimeOffset.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Event arguments for undeliverable send-only messages.
+    /// </summary>
+    public class DeadLetterEventArgs : EventArgs
+    {
+        public string MessageId { get; }
+        public string? SenderId { get; }
+        public string ReceiverId { get; }
+        public string MessageType { get; }
+        public object? Payload { get; }
+        public string Reason { get; }
+        public DateTimeOffset Timestamp { get; }
+
+        public DeadLetterEventArgs(
+            string messageId,
+            string? senderId,
+            string receiverId,
+            string messageType,
+            object? payload,
+            string reason)
+        {
+            MessageId = messageId;
+            SenderId = senderId;
+            ReceiverId = receiverId;
+            MessageType = messageType;
+            Payload = payload;
+            Reason = reason;
             Timestamp = DateTimeOffset.UtcNow;
         }
     }

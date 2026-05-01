@@ -1,0 +1,15 @@
+# Example shape for PRD-019 generic inbox files (runtime, not loaded by ProjectLoader).
+# Confirmed facts: .agctor/runtime/generic-inbox/confirmed.yaml
+# Pending review:   .agctor/runtime/generic-inbox/pending.yaml
+#
+# schemaVersion: 1
+# items:
+#   - proposalId: "ab12…"   # SHA-256 hex of canonical intent fields
+#     entityKey: "raha"
+#     knowledgeType: "pets"
+#     attribute: "dogs"
+#     value: "two dogs"
+#     confidence: 0.82
+#     scenarioSegment: "demo-scen"
+#     source: "user_approved"
+#     capturedAtUtc: "2026-04-21T12:00:00.0000000+00:00"

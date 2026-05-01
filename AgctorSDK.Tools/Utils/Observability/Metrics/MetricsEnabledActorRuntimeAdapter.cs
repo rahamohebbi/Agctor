@@ -62,6 +62,13 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
         }
 
         /// <inheritdoc />
+        public event EventHandler<DeadLetterEventArgs>? DeadLetter
+        {
+            add => _innerAdapter.DeadLetter += value;
+            remove => _innerAdapter.DeadLetter -= value;
+        }
+
+        /// <inheritdoc />
         public async Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default)
         {
             using var timer = _metricsCollector.TimeOperation(

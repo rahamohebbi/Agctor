@@ -56,6 +56,7 @@ namespace AgctorSDK.Core.Tests.Runtime
             public event EventHandler<ActorSpawnedEventArgs>? ActorSpawned { add { } remove { } }
             public event EventHandler<ActorStoppedEventArgs>? ActorStopped { add { } remove { } }
             public event EventHandler<MessageSentEventArgs>? MessageSent { add { } remove { } }
+            public event EventHandler<DeadLetterEventArgs>? DeadLetter { add { } remove { } }
 
             public Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task ShutdownAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

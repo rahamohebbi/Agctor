@@ -43,6 +43,9 @@ public sealed class ValidationIssue
     public string Message { get; set; } = "";
     public string? Path { get; set; }
     public bool IsError { get; set; } = true;
+
+    /// <summary>When <see cref="Code"/> is <c>route_miss</c>, the intent that failed routing (PRD-019).</summary>
+    public MemoryIntent? RelatedIntent { get; set; }
 }
 
 public sealed class RebuildReport

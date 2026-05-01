@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 
 namespace AgctorSDK.Core.ProjectMemory.Orchestration;
 
@@ -84,4 +85,7 @@ public sealed class ProjectMemoryIngestResult
 
     /// <summary>Which JSON shape produced ingest intents (e.g. legacy.memoryIntents or actionIntents.memory.persist).</summary>
     public string? ParseSource { get; init; }
+
+    /// <summary>Unrouted intents the user may confirm for generic inbox storage (PRD-019).</summary>
+    public IReadOnlyList<OutOfSchemaFactProposal> OutOfSchemaProposals { get; init; } = System.Array.Empty<OutOfSchemaFactProposal>();
 }

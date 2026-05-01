@@ -28,7 +28,8 @@ public sealed class MemoryIntentProcessor : IMemoryIntentProcessor
                 {
                     Code = "route_miss",
                     Message = $"No routing rule for knowledgeType '{intent.KnowledgeType}' (attribute '{intent.Attribute ?? ""}').",
-                    IsError = true
+                    IsError = true,
+                    RelatedIntent = intent
                 });
                 continue;
             }

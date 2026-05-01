@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Host.Services.ProjectMemory;
 using FluentAssertions;
@@ -29,6 +30,40 @@ public sealed class PlaygroundTraceTimelineDetailTests
         r.GetProperty("extractorOutputChars").GetInt32().Should().Be(longOut.Length);
         r.GetProperty("extractorOutputTruncated").GetBoolean().Should().BeTrue();
         r.GetProperty("extractorOutputPreview").GetString()!.Length.Should().Be(PlaygroundTraceTimelineDetail.MaxIngestExtractorPreviewChars);
+    }
+
+    [Fact]
+    public void BuildIngestJson_includes_out_of_schema_proposals_when_present()
+    {
+        var ingest = new ProjectMemoryIngestResult
+        {
+            ParseSuccess = true,
+            WroteAnyFile = true,
+            Summary = "ok",
+            UpdatedFiles = ["people/a/profile.md"],
+            OutOfSchemaProposals =
+            [
+                new OutOfSchemaFactProposal
+                {
+                    ProposalId = "abc",
+                    EntityKey = "raha",
+                    KnowledgeType = "pets",
+                    Attribute = "dogs",
+                    Value = "two",
+                    Confidence = 0.9,
+                    Disposition = OutOfSchemaDisposition.ImmediateConfirmation,
+                    UserPromptLine = "Ask user?"
+                }
+            ]
+        };
+
+        var json = PlaygroundTraceTimelineDetail.BuildIngestJson("s1", ingest, null);
+        using var doc = JsonDocument.Parse(json);
+        var r = doc.RootElement;
+        r.GetProperty("outOfSchemaTruncated").GetBoolean().Should().BeFalse();
+        var arr = r.GetProperty("outOfSchemaProposals");
+        arr.GetArrayLength().Should().Be(1);
+        arr[0].GetProperty("proposalId").GetString().Should().Be("abc");
     }
 
     [Fact]

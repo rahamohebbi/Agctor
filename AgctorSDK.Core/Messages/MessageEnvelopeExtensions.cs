@@ -65,5 +65,31 @@ namespace AgctorSDK.Core.Messages
         {
             return envelope.Payload?.GetType().Name ?? "Unknown";
         }
+
+        /// <summary>
+        /// Reads the correlation id from metadata first, then from headers. This keeps
+        /// request-response matching stable while older call sites migrate to builders.
+        /// </summary>
+        public static string? GetCorrelationId(this IMessageEnvelope envelope)
+        {
+            if (envelope.Metadata.TryGetValue(AgctorMessageHeaders.CorrelationId, out var metadataValue))
+            {
+                return metadataValue?.ToString();
+            }
+
+            return envelope.Headers.TryGetValue(AgctorMessageHeaders.CorrelationId, out var headerValue)
+                ? headerValue
+                : null;
+        }
+
+        /// <summary>
+        /// Returns the standard message type header, if present.
+        /// </summary>
+        public static string? GetMessageType(this IMessageEnvelope envelope)
+        {
+            return envelope.Headers.TryGetValue(AgctorMessageHeaders.MessageType, out var value)
+                ? value
+                : null;
+        }
     }
 } 

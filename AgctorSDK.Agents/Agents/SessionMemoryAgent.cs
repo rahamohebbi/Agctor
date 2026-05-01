@@ -118,18 +118,18 @@ namespace AgctorSDK.Core.Agents
         {
             var headers = new Dictionary<string, string>
             {
-                ["SenderId"] = request.Headers.GetValueOrDefault("ReceiverId", "session-memory-agent"),
-                ["ReceiverId"] = request.Headers.GetValueOrDefault("SenderId", "unknown"),
-                ["MessageType"] = "Result"
+                [AgctorMessageHeaders.SenderId] = request.Headers.GetValueOrDefault(AgctorMessageHeaders.ReceiverId, "session-memory-agent"),
+                [AgctorMessageHeaders.ReceiverId] = request.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown"),
+                [AgctorMessageHeaders.MessageType] = AgctorMessageTypes.Result
             };
             var metadata = new Dictionary<string, object>
             {
                 ["Timestamp"] = DateTimeOffset.UtcNow
             };
 
-            if (request.Metadata.TryGetValue("CorrelationId", out var corr))
+            if (request.Metadata.TryGetValue(AgctorMessageHeaders.CorrelationId, out var corr))
             {
-                metadata["CorrelationId"] = corr;
+                metadata[AgctorMessageHeaders.CorrelationId] = corr;
             }
 
             return new MessageEnvelope(payload, metadata, null, headers);

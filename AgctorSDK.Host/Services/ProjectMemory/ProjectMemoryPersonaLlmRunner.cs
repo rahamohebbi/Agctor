@@ -114,11 +114,30 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
     /// <summary>Footer text after extractor JSON ingest (playground stream + persona runner).</summary>
     public static string FormatIngestFooter(ProjectMemoryIngestResult ingest)
     {
+        var sb = new StringBuilder();
         if (!ingest.ParseSuccess)
-            return "Ingest (parse): " + (ingest.Summary ?? "failed");
-        if (!ingest.WroteAnyFile)
-            return "Ingest: " + (ingest.Summary ?? "No files updated.");
-        return "Written:\n" + string.Join("\n", ingest.UpdatedFiles);
+            sb.Append("Ingest (parse): ").Append(ingest.Summary ?? "failed");
+        else if (!ingest.WroteAnyFile)
+            sb.Append("Ingest: ").Append(ingest.Summary ?? "No files updated.");
+        else
+        {
+            sb.AppendLine("Written:");
+            foreach (var f in ingest.UpdatedFiles)
+                sb.AppendLine(f);
+        }
+
+        if (ingest.OutOfSchemaProposals is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.AppendLine("---");
+            sb.AppendLine("Out-of-schema facts — ask the user clearly before storing (generic inbox, PRD-019):");
+            foreach (var p in ingest.OutOfSchemaProposals.Take(12))
+                sb.AppendLine(p.UserPromptLine);
+            if (ingest.OutOfSchemaProposals.Count > 12)
+                sb.Append("(+").Append(ingest.OutOfSchemaProposals.Count - 12).AppendLine(" more)");
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     /// <summary>Appends standard <c>---</c> ingest block to raw LLM output.</summary>
@@ -192,7 +211,8 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
 
         if (ingest.WroteAnyFile && ingest.UpdatedFiles.Count > 0)
         {
-            sb.AppendLine("Ingest: files were written (paths below). You may summarize these.");
+            sb.AppendLine("Ingest: files written (AUTHORITATIVE list below).");
+            sb.AppendLine("Rules: copy paths verbatim. Do not add, paraphrase, pluralize, or invent paths. Do not replace entity keys (e.g. raha) with placeholders (e.g. person_1).");
             foreach (var p in ingest.UpdatedFiles.Take(25))
                 sb.Append("- ").AppendLine(p);
             if (ingest.UpdatedFiles.Count > 25)
@@ -201,7 +221,16 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         else
         {
             sb.Append("Ingest: NO files written — ").AppendLine(ingest.Summary ?? "no detail");
-            sb.AppendLine("Do not claim markdown files were created or updated unless you are quoting the list above.");
+            sb.AppendLine("STRICT: do not list any file paths. Do not claim markdown files were created or updated.");
+        }
+
+        if (ingest.OutOfSchemaProposals is { Count: > 0 })
+        {
+            sb.AppendLine();
+            sb.Append("Out-of-schema: ").Append(ingest.OutOfSchemaProposals.Count)
+                .AppendLine(" unrouted fact(s) need explicit user confirmation before generic inbox storage.");
+            sb.AppendLine("If the user has not yet said yes/no, ask clearly. Do not claim the fact was stored.");
+            sb.AppendLine("Pending rows are recorded at .agctor/runtime/generic-inbox/pending.yaml; confirmed rows at .agctor/runtime/generic-inbox/confirmed.yaml.");
         }
 
         return sb.ToString().TrimEnd();

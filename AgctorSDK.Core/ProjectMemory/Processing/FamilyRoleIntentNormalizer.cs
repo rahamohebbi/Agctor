@@ -136,6 +136,7 @@ public static class FamilyRoleIntentNormalizer
         }
 
         AddSymmetricFamilyEdges(kept, notes);
+        AddParentChildInverseEdges(kept, notes);
         DedupeFamilyIntents(kept);
 
         intents.Clear();
@@ -164,6 +165,43 @@ public static class FamilyRoleIntentNormalizer
 
             i++;
         }
+    }
+
+    /// <summary>
+    /// Parent/child edges are not symmetric (same attribute on both sides), so add the directional
+    /// inverse so both entities' <c>relationships.md</c> end up with a matching row. For a canonical
+    /// <c>(parent, child, child)</c> edge this emits <c>(child, parent, parent)</c>.
+    /// </summary>
+    private static void AddParentChildInverseEdges(List<MemoryIntent> intents, IList<string> notes)
+    {
+        var family = intents.Where(m => string.Equals(m.KnowledgeType, "family_role", StringComparison.OrdinalIgnoreCase)).ToList();
+        var toAdd = new List<MemoryIntent>();
+        foreach (var m in family)
+        {
+            var attr = m.Attribute ?? "";
+            string? inverseAttr = null;
+            if (string.Equals(attr, "child", StringComparison.OrdinalIgnoreCase)) inverseAttr = "parent";
+            else if (string.Equals(attr, "parent", StringComparison.OrdinalIgnoreCase)) inverseAttr = "child";
+            if (inverseAttr == null) continue;
+
+            var hasInverse = family.Any(x =>
+                string.Equals(x.Attribute, inverseAttr, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.EntityKey, m.Value, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.Value, m.EntityKey, StringComparison.OrdinalIgnoreCase));
+            if (hasInverse) continue;
+
+            toAdd.Add(new MemoryIntent
+            {
+                EntityKey = m.Value,
+                KnowledgeType = "family_role",
+                Attribute = inverseAttr,
+                Value = m.EntityKey,
+                Confidence = m.Confidence
+            });
+            notes.Add($"family_role: added inverse {inverseAttr} edge {m.Value} → {m.EntityKey}.");
+        }
+
+        intents.AddRange(toAdd);
     }
 
     private static void AddSymmetricFamilyEdges(List<MemoryIntent> intents, IList<string> notes)

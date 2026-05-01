@@ -60,6 +60,10 @@ namespace AgctorSDK.Core.Adapters
         public event EventHandler<MessageSentEventArgs>? MessageSent;
 #pragma warning restore CS0067
 
+#pragma warning disable CS0067 // Event is never used
+        public event EventHandler<DeadLetterEventArgs>? DeadLetter;
+#pragma warning restore CS0067
+
         /// <summary>
         /// Initializes the Orleans runtime with the provided configuration.
         /// TODO: Implement Orleans silo host initialization and grain registration.

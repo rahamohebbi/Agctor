@@ -85,6 +85,13 @@ builder.Services.Configure<ProjectMemoryAgentOptions>(o =>
 {
     var cfgPath = builder.Configuration["Agctor:ProjectMemory:ProjectRoot"];
     o.ProjectRoot = !string.IsNullOrWhiteSpace(cfgPath) ? Path.GetFullPath(cfgPath) : defaultProjectMemoryRoot;
+    if (Enum.TryParse<ProjectMemoryPipelineExecutionMode>(
+            builder.Configuration["Agctor:ProjectMemory:ExecutionMode"],
+            ignoreCase: true,
+            out var executionMode))
+    {
+        o.ExecutionMode = executionMode;
+    }
 });
 builder.Services.AddAgctorProjectMemory();
 // PRD-018: entity-resolution subsystem (signal producers, metrics, bootstrapper).
@@ -92,7 +99,16 @@ builder.Services.AddAgctorResolution();
 builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.Resolution.Trace.IResolveSpanSink>(sp =>
     new AgctorSDK.Host.Services.ProjectMemory.ResolveSpanTraceSink(sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
 builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaProjectMemoryLlmClient>();
-builder.Services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+builder.Services.AddSingleton<ProjectMemoryPipelineRunner>();
+builder.Services.AddSingleton<IProjectMemoryPipelineRunner>(sp =>
+{
+    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectMemoryAgentOptions>>().Value;
+    return options.ExecutionMode == ProjectMemoryPipelineExecutionMode.ActorWorkflow
+        ? new ActorBackedProjectMemoryPipelineRunner(
+            sp.GetRequiredService<IActorRuntimeAdapter>(),
+            sp.GetRequiredService<ProjectMemoryPipelineRunner>())
+        : sp.GetRequiredService<ProjectMemoryPipelineRunner>();
+});
 builder.Services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
 builder.Services.AddSingleton<IProjectMemoryAgentYamlPersistence, ProjectMemoryAgentYamlPersistence>();
 builder.Services.AddSingleton<IUserProjectMemorySettingsService, UserProjectMemorySettingsService>();

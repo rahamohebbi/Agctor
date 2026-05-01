@@ -107,42 +107,42 @@ namespace AgctorSDK.Core.Agents
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 GetSessionTranscriptMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTranscript>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 AppendSessionTurnMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTurn>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 UpsertSessionTraceLinkMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTraceLink>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 GetSessionTraceLinksMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<IReadOnlyList<SessionTraceLink>>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 GetSessionTraceLinkByTurnMessage => await AgentFactory.RuntimeAdapter.SendMessageAsync<SessionTraceLink>(
                     actorId,
                     command,
                     timeout: TimeSpan.FromSeconds(20),
                     senderId: Id,
-                    headers: new Dictionary<string, string> { ["MessageType"] = "SessionCommand" },
+                    headers: new Dictionary<string, string> { [AgctorMessageHeaders.MessageType] = "SessionCommand" },
                     cancellationToken: cancellationToken),
                 _ => throw new InvalidOperationException($"Unsupported command type '{command.GetType().Name}'.")
             };
@@ -188,17 +188,17 @@ namespace AgctorSDK.Core.Agents
         {
             var headers = new Dictionary<string, string>
             {
-                ["SenderId"] = Id,
-                ["ReceiverId"] = request.Headers.GetValueOrDefault("SenderId", "unknown"),
-                ["MessageType"] = "Result"
+                [AgctorMessageHeaders.SenderId] = Id,
+                [AgctorMessageHeaders.ReceiverId] = request.Headers.GetValueOrDefault(AgctorMessageHeaders.SenderId, "unknown"),
+                [AgctorMessageHeaders.MessageType] = AgctorMessageTypes.Result
             };
             var metadata = new Dictionary<string, object>
             {
                 ["Timestamp"] = DateTimeOffset.UtcNow
             };
-            if (request.Metadata.TryGetValue("CorrelationId", out var corr))
+            if (request.Metadata.TryGetValue(AgctorMessageHeaders.CorrelationId, out var corr))
             {
-                metadata["CorrelationId"] = corr;
+                metadata[AgctorMessageHeaders.CorrelationId] = corr;
             }
 
             return new MessageEnvelope(payload, metadata, null, headers);

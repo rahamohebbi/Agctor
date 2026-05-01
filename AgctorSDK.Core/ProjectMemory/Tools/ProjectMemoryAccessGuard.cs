@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using AgctorSDK.Core.ProjectMemory.Models;
 
@@ -25,5 +26,15 @@ public static class ProjectMemoryAccessGuard
             return p.StartsWith("people/", StringComparison.OrdinalIgnoreCase) && p.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
 
         return spec.MemoryAccess.Write.Any(g => GlobMatcher.IsMatch(p, g.Trim()));
+    }
+
+    /// <summary>True when <paramref name="absolutePath"/> is under <c>{projectRoot}/.agctor/runtime/</c>.</summary>
+    public static bool IsAgctorRuntimePath(string projectRoot, string absolutePath)
+    {
+        var pr = Path.GetFullPath(projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var allowed = Path.GetFullPath(Path.Combine(pr, ".agctor", "runtime"));
+        var p = Path.GetFullPath(absolutePath);
+        return p.StartsWith(allowed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(p, allowed, StringComparison.OrdinalIgnoreCase);
     }
 }

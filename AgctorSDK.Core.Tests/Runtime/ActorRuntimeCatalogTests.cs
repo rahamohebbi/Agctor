@@ -35,4 +35,13 @@ public class ActorRuntimeCatalogTests
     {
         ActorRuntimeCatalog.GetById("wasmCloud").Should().BeNull();
     }
+
+    [Theory]
+    [InlineData("InMemory", "supported")]
+    [InlineData("Proto.Actor", "experimental")]
+    [InlineData("Orleans", "placeholder")]
+    public void Maturity_Reflects_Runtime_Conformance_Status(string id, string maturity)
+    {
+        ActorRuntimeCatalog.GetById(id)!.Maturity.Should().Be(maturity);
+    }
 }

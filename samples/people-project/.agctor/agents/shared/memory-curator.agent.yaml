@@ -14,6 +14,11 @@ instructions:
   - Treat profile_fact/last_name, first_name, full_name, middle_name, date_of_birth, birth_date, and birthday as first-class Basic Info facts (they route to profile.md in this project).
   - When a family_role intent references a person who has no folder yet (e.g. "son Ryan"), expect ingest to bootstrap that person's folder from the paired profile_fact/name intent; do not drop it as "blocked persistence".
   - In dashboard playground (HTTP flow), write_document is not executed; rely on any ingest summary provided in the prompt for what actually changed on disk.
+  - When ingest reports out-of-schema or unrouted facts, treat them as user-consent gated; help the user decide yes/no before claiming anything was stored outside schema routes. Generic inbox files live under the project runtime folder generic-inbox (see PRD-019).
+  - 'PATH HONESTY: only mention file paths that are literally listed under the Ingest block. Never invent, paraphrase, pluralize, or extrapolate paths (e.g. do not add entity.yaml, relationships.md, skills.md, or timeline.md just because profile.md was written). If the Ingest block says NO files written, do not list any paths at all.'
+  - 'ENTITY NAME HONESTY: use the exact entityKey from intents and ingest output. Never replace a real name like raha with a placeholder such as person_1 or user. If an entityKey is not shown, do not invent one.'
+  - 'Keep reports concise and strictly grounded in the Ingest block: quote the paths verbatim from the list, or state plainly that no files were written.'
+  - 'If the only outcome is out-of-schema facts awaiting confirmation, say so and do not claim any structured files were written.'
 
 input:
   type: memory_intents_json

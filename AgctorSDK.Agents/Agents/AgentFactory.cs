@@ -159,19 +159,7 @@ namespace AgctorSDK.Core.Agents
 
                 _logger.Info($"AgentFactory: Using initialization data type {initData.GetType().Name} for child '{agentId}', has factory={(initData.AgentFactory!=null)}");
 
-                // Call _runtimeAdapter.SpawnActorAsync<type> via reflection
-                var method = _runtimeAdapter.GetType().GetMethod(nameof(IActorRuntimeAdapter.SpawnActorAsync), new[]
-                {
-                    typeof(string),
-                    typeof(object),
-                    typeof(CancellationToken)
-                });
-
-                var genericMethod = method!.MakeGenericMethod(type);
-                var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { agentId, initData, cancellationToken })!;
-                await task.ConfigureAwait(false);
-
-                var agent = (IAgent)task.GetType().GetProperty("Result")!.GetValue(task)!;
+                var agent = await SpawnViaRuntimeAsync(type, agentId, initData, cancellationToken).ConfigureAwait(false);
 
                 // Register with global registry for discovery
                 await _agentRegistry.RegisterAgentAsync(agent);
@@ -184,9 +172,9 @@ namespace AgctorSDK.Core.Agents
                 {
                     var headers = new Dictionary<string, string>
                     {
-                        {"SenderId", parentAgentId ?? "system"},
-                        {"ReceiverId", agentId},
-                        {"MessageType", "Prompt"}
+                        {AgctorMessageHeaders.SenderId, parentAgentId ?? "system"},
+                        {AgctorMessageHeaders.ReceiverId, agentId},
+                        {AgctorMessageHeaders.MessageType, AgctorMessageTypes.Prompt}
                     };
 
                     _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
@@ -242,9 +230,9 @@ namespace AgctorSDK.Core.Agents
 
             var headers = new Dictionary<string,string>
             {
-                {"SenderId", parentAgentId ?? "system"},
-                {"ReceiverId", agentId},
-                {"MessageType","Prompt"}
+                {AgctorMessageHeaders.SenderId, parentAgentId ?? "system"},
+                {AgctorMessageHeaders.ReceiverId, agentId},
+                {AgctorMessageHeaders.MessageType, AgctorMessageTypes.Prompt}
             };
 
             _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
@@ -293,25 +281,16 @@ namespace AgctorSDK.Core.Agents
                 AgentFactory = this
             };
 
-            // Use reflection to call the generic SpawnActorAsync method
-            var method = _runtimeAdapter.GetType().GetMethod(nameof(IActorRuntimeAdapter.SpawnActorAsync), new[] { typeof(string), typeof(object), typeof(CancellationToken) });
-            var genericMethod = method!.MakeGenericMethod(agentType);
-            
-            var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { agentId, initData, cancellationToken })!;
-            await task;
-
-            // Get the result from the task
-            var resultProperty = task.GetType().GetProperty("Result");
-            var agent = (IAgent)resultProperty!.GetValue(task)!;
+            var agent = await SpawnViaRuntimeAsync(agentType, agentId, initData, cancellationToken).ConfigureAwait(false);
 
             // Ensure registration complete then send prompt
             await WaitForActorReadyAsync(agentId, cancellationToken);
 
             var headers = new Dictionary<string,string>
             {
-                {"SenderId", parentAgentId ?? "system"},
-                {"ReceiverId", agentId},
-                {"MessageType","Prompt"}
+                {AgctorMessageHeaders.SenderId, parentAgentId ?? "system"},
+                {AgctorMessageHeaders.ReceiverId, agentId},
+                {AgctorMessageHeaders.MessageType, AgctorMessageTypes.Prompt}
             };
 
             _logger.Info($"AgentFactory: actor '{agentId}' ready, sending initial prompt");
@@ -371,6 +350,32 @@ namespace AgctorSDK.Core.Agents
             }
 
             _logger.Warning($"AgentFactory: actor '{id}' was not visible in runtime after waiting. Initial prompt may still race.");
+        }
+
+        private async Task<IAgent> SpawnViaRuntimeAsync(Type actorType, string actorId, AgentInitializationData initData, CancellationToken cancellationToken)
+        {
+            // Centralize reflection-based spawn so future runtime API changes are
+            // handled in one place instead of duplicating fragile invocation code.
+            var method = _runtimeAdapter.GetType().GetMethod(
+                nameof(IActorRuntimeAdapter.SpawnActorAsync),
+                new[] { typeof(string), typeof(object), typeof(CancellationToken) });
+
+            if (method == null)
+            {
+                throw new InvalidOperationException("Runtime adapter does not expose SpawnActorAsync(string, object, CancellationToken).");
+            }
+
+            var genericMethod = method.MakeGenericMethod(actorType);
+            var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { actorId, initData, cancellationToken })!;
+            await task.ConfigureAwait(false);
+
+            var resultProperty = task.GetType().GetProperty("Result");
+            if (resultProperty?.GetValue(task) is not IAgent agent)
+            {
+                throw new InvalidOperationException($"Runtime spawn for actor type '{actorType.Name}' did not return an IAgent instance.");
+            }
+
+            return agent;
         }
     }
 

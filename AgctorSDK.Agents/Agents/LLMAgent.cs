@@ -148,26 +148,26 @@ namespace AgctorSDK.Core.Agents
             string? requestSenderId = null;
             string? requestCorrelationId = null;
 
-            if (envelope?.Headers?.TryGetValue("SenderId", out var sid) == true) requestSenderId = sid;
-            if (envelope?.Metadata?.TryGetValue("CorrelationId", out var corrIdObj) == true && corrIdObj is string corrIdStr) requestCorrelationId = corrIdStr;
+            if (envelope?.Headers?.TryGetValue(AgctorMessageHeaders.SenderId, out var sid) == true) requestSenderId = sid;
+            if (envelope?.Metadata?.TryGetValue(AgctorMessageHeaders.CorrelationId, out var corrIdObj) == true && corrIdObj is string corrIdStr) requestCorrelationId = corrIdStr;
 
             var responseMetadata = new Dictionary<string, object>
             {
                 { "Timestamp", DateTimeOffset.UtcNow }
             };
-            if (requestCorrelationId != null) responseMetadata["CorrelationId"] = requestCorrelationId;
+            if (requestCorrelationId != null) responseMetadata[AgctorMessageHeaders.CorrelationId] = requestCorrelationId;
 
             var responseHeaders = new Dictionary<string, string>
             {
-                { "SenderId", Id },
-                { "ReceiverId", requestSenderId ?? "unknown" }, // Default to unknown if not present
-                { "Version", "1.0" }
+                { AgctorMessageHeaders.SenderId, Id },
+                { AgctorMessageHeaders.ReceiverId, requestSenderId ?? "unknown" }, // Default to unknown if not present
+                { AgctorMessageHeaders.Version, AgctorEnvelopeBuilder.ProtocolVersion }
             };
 
             if (State != ActorState.Active)
             {
                 Console.WriteLine($"LLMAgent ({Id}) received message while not active. State: {State}");
-                responseHeaders["MessageType"] = "AgentNotActiveError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "AgentNotActiveError";
                 return new MessageEnvelope(
                     payload: $"Agent not active. Current state: {State}",
                     metadata: responseMetadata,
@@ -178,7 +178,7 @@ namespace AgctorSDK.Core.Agents
             if (envelope.Payload is not string prompt)
             {
                 Console.WriteLine($"LLMAgent ({Id}) received invalid prompt payload type: {envelope.Payload?.GetType().Name}");
-                responseHeaders["MessageType"] = "InvalidPromptError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "InvalidPromptError";
                 return new MessageEnvelope(
                     payload: "Error: Prompt must be a non-empty string.",
                     metadata: responseMetadata,
@@ -189,7 +189,7 @@ namespace AgctorSDK.Core.Agents
             if (string.IsNullOrWhiteSpace(prompt) || int.TryParse(prompt, out _))
             {
                 Console.WriteLine($"LLMAgent ({Id}) received empty or invalid prompt string.");
-                responseHeaders["MessageType"] = "InvalidPromptError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "InvalidPromptError";
                 return new MessageEnvelope(
                     payload: "Error: Prompt must be a non-empty string.",
                     metadata: responseMetadata,
@@ -233,7 +233,7 @@ namespace AgctorSDK.Core.Agents
                 {
                     // HttpClient timeout
                     PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "error", Payload = "LLM request timed out before completion." });
-                    responseHeaders["MessageType"] = "OllamaTimeout";
+                    responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaTimeout";
                     return new MessageEnvelope(
                         payload: "Error: LLM request timed out before completion.",
                         metadata: responseMetadata,
@@ -248,7 +248,7 @@ namespace AgctorSDK.Core.Agents
                         var streamed = await ReadOllamaStreamAsync(httpResponse, streamId, traceForStream, cancellationToken);
                         if (streamed.Error != null)
                         {
-                            responseHeaders["MessageType"] = "OllamaStreamError";
+                            responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaStreamError";
                             return new MessageEnvelope(
                                 payload: streamed.Error,
                                 metadata: responseMetadata,
@@ -256,7 +256,7 @@ namespace AgctorSDK.Core.Agents
                                 headers: responseHeaders);
                         }
 
-                        responseHeaders["MessageType"] = "LLMResponse";
+                        responseHeaders[AgctorMessageHeaders.MessageType] = "LLMResponse";
                         PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "llm_done", Payload = streamed.FullText });
                         return new MessageEnvelope(
                             payload: streamed.FullText,
@@ -268,7 +268,7 @@ namespace AgctorSDK.Core.Agents
                     var ollamaResponse = await httpResponse.Content.ReadFromJsonAsync<OllamaGenerateResponse>(cancellationToken: cancellationToken);
                     if (ollamaResponse != null && ollamaResponse.Done)
                     {
-                        responseHeaders["MessageType"] = "LLMResponse";
+                        responseHeaders[AgctorMessageHeaders.MessageType] = "LLMResponse";
                         return new MessageEnvelope(
                             payload: ollamaResponse.Response,
                             metadata: responseMetadata,
@@ -280,7 +280,7 @@ namespace AgctorSDK.Core.Agents
                         string responseText = ollamaResponse?.Response ?? "no response text";
                         string errorDetail = ollamaResponse == null ? "null response object" : $"done flag is {ollamaResponse.Done}, response text: {responseText}";
                         Console.WriteLine($"LLMAgent ({Id}) received incomplete or non-final response from Ollama: {errorDetail}");
-                        responseHeaders["MessageType"] = "OllamaIncompleteResponseError";
+                        responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaIncompleteResponseError";
                         return new MessageEnvelope(
                             payload: $"Error: Ollama did not return a final response. Detail: {errorDetail}",
                             metadata: responseMetadata,
@@ -293,7 +293,7 @@ namespace AgctorSDK.Core.Agents
                     string errorContent = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
                     Console.WriteLine($"LLMAgent ({Id}) error from Ollama API: {httpResponse.StatusCode}. Details: {errorContent}");
                     PublishIfStreaming(streamId, traceForStream, new AgentStreamEvent { Type = "error", Payload = $"Ollama HTTP {(int)httpResponse.StatusCode}: {errorContent}" });
-                    responseHeaders["MessageType"] = "OllamaApiError";
+                    responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaApiError";
                     return new MessageEnvelope(
                         payload: $"Error: Ollama API request failed with status {httpResponse.StatusCode}. Details: {errorContent}",
                         metadata: responseMetadata,
@@ -308,7 +308,7 @@ namespace AgctorSDK.Core.Agents
                 var hdrTraceId = TryGetHeaderInsensitive(envelope.Headers, "trace-id");
                 PublishIfStreaming(hdrStreamId, hdrTraceId, new AgentStreamEvent { Type = "error", Payload = $"Network error: {ex.Message}" });
                 ChangeActorState(ActorState.Faulted);
-                responseHeaders["MessageType"] = "OllamaHttpRequestError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaHttpRequestError";
                 return new MessageEnvelope(
                     payload: $"Error: Network communication with Ollama failed. {ex.Message}",
                     metadata: responseMetadata,
@@ -321,7 +321,7 @@ namespace AgctorSDK.Core.Agents
                 var hdrStreamId2 = TryGetHeaderInsensitive(envelope.Headers, AgentStreamHeaders.StreamId);
                 var hdrTraceId2 = TryGetHeaderInsensitive(envelope.Headers, "trace-id");
                 PublishIfStreaming(hdrStreamId2, hdrTraceId2, new AgentStreamEvent { Type = "error", Payload = $"Parse error: {ex.Message}" });
-                responseHeaders["MessageType"] = "OllamaJsonError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "OllamaJsonError";
                 return new MessageEnvelope(
                     payload: $"Error: Failed to parse Ollama response. {ex.Message}",
                     metadata: responseMetadata,
@@ -331,7 +331,7 @@ namespace AgctorSDK.Core.Agents
             catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
             {
                 Console.WriteLine($"LLMAgent ({Id}) task was canceled: {ex.Message}");
-                responseHeaders["MessageType"] = "TaskCanceledError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "TaskCanceledError";
                 return new MessageEnvelope(
                     payload: "Error: Task was canceled.",
                     metadata: responseMetadata,
@@ -342,7 +342,7 @@ namespace AgctorSDK.Core.Agents
             {
                 Console.WriteLine($"LLMAgent ({Id}) an unexpected error occurred: {ex.Message}");
                 ChangeActorState(ActorState.Faulted);
-                responseHeaders["MessageType"] = "UnexpectedError";
+                responseHeaders[AgctorMessageHeaders.MessageType] = "UnexpectedError";
                 return new MessageEnvelope(
                     payload: $"Error: An unexpected error occurred. {ex.Message}",
                     metadata: responseMetadata,
@@ -361,8 +361,8 @@ namespace AgctorSDK.Core.Agents
                 // Create a message envelope for the prompt to pass to ReceiveAsync
                 var promptEnvelope = new MessageEnvelope(prompt, new Dictionary<string, object>(), Id, new Dictionary<string, string>
                 {
-                    { "SenderId", ParentAgentId ?? "root" },
-                    { "ReceiverId", Id }
+                    { AgctorMessageHeaders.SenderId, ParentAgentId ?? "root" },
+                    { AgctorMessageHeaders.ReceiverId, Id }
                 });
 
                 // Use ReceiveAsync to get the LLM's response

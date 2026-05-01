@@ -2,3 +2,9 @@ schemaVersion: 1
 mode: sqlite
 sqlite:
   databasePath: .agctor/runtime/sqlite/agctor.db
+# Optional PRD-019 — out-of-schema fact prompts (omit to use defaults).
+# outOfSchema:
+#   enabled: true
+#   immediateConfirmationMinConfidence: 0.75
+#   reviewQueueMinConfidence: 0.35
+#   discardBelowConfidence: 0.0

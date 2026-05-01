@@ -26,6 +26,8 @@ namespace AgctorSDK.Core.Tests
         
         public event EventHandler<MessageSentEventArgs>? MessageSent;
 
+        public event EventHandler<DeadLetterEventArgs>? DeadLetter;
+
         /// <inheritdoc />
         public Task<TResponse> CallActorAsync<TResponse>(string actorId, object message, CancellationToken cancellationToken = default)
         {

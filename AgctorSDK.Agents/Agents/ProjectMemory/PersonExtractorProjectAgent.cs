@@ -1,16 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory;
-using Microsoft.Extensions.Options;
+using AgctorSDK.Core.ProjectMemory.Orchestration;
 
 namespace AgctorSDK.Agents.ProjectMemory;
 
@@ -19,10 +16,11 @@ namespace AgctorSDK.Agents.ProjectMemory;
 /// </summary>
 public sealed class PersonExtractorProjectAgent : Agent
 {
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(3) };
+    private readonly IProjectMemoryAgentServices _services;
 
-    public PersonExtractorProjectAgent(string id) : base(id)
+    public PersonExtractorProjectAgent(string id, IProjectMemoryAgentServices? services = null) : base(id)
     {
+        _services = services ?? ProjectMemoryAgentServices.Default;
     }
 
     public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -32,27 +30,18 @@ public sealed class PersonExtractorProjectAgent : Agent
 
         try
         {
-            var root = ProjectMemoryServiceAccessor.GetRequiredService<IOptions<ProjectMemoryAgentOptions>>().Value.ProjectRoot;
+            var root = _services.GetProjectRoot();
             if (string.IsNullOrWhiteSpace(root))
                 return Env("Configure Agctor:ProjectMemory:ProjectRoot.");
 
-            var loader = ProjectMemoryServiceAccessor.GetRequiredService<IProjectLoader>();
-            var ctx = await loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
+            var ctx = await _services.LoadProjectAsync(root, cancellationToken).ConfigureAwait(false);
             var spec = ctx.AgentSpecs.FirstOrDefault(a => a.Id == "person-extractor")
                        ?? throw new InvalidOperationException("person-extractor agent spec missing.");
 
-            var sys = string.Join('\n', spec.Instructions)
-                      + "\n\nRespond with ONLY valid JSON: {\"memoryIntents\":[{\"entityKey\":\"\",\"knowledgeType\":\"\",\"attribute\":\"\",\"value\":\"\",\"confidence\":0.9}]}\n";
-
-            var ollama = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
-            var model = LLMAgent.GetConfiguredDefaultModel();
-            var prompt = sys + "\nInput:\n" + inputText;
-
-            var req = new { model, prompt, stream = false };
-            var resp = await Http.PostAsJsonAsync(ollama + "api/generate", req, cancellationToken).ConfigureAwait(false);
-            resp.EnsureSuccessStatusCode();
-            var doc = await resp.Content.ReadFromJsonAsync<OllamaGen>(cancellationToken: cancellationToken).ConfigureAwait(false);
-            var text = doc?.response?.Trim() ?? "";
+            var prompt = string.Join('\n', spec.Instructions)
+                         + "\n\nReturn valid JSON only. Do not wrap JSON in markdown fences."
+                         + "\nInput:\n" + inputText;
+            var text = (await _services.GenerateAsync(prompt, cancellationToken).ConfigureAwait(false)).Trim();
             return Env(text);
         }
         catch (Exception ex)
@@ -61,12 +50,7 @@ public sealed class PersonExtractorProjectAgent : Agent
         }
     }
 
-    private sealed class OllamaGen
-    {
-        public string? response { get; set; }
-    }
-
     private static MessageEnvelope Env(string text) =>
         new(text, new Dictionary<string, object> { ["Timestamp"] = DateTimeOffset.UtcNow }, null,
-            new Dictionary<string, string> { ["SenderId"] = "person-extractor", ["MessageType"] = "LLMResponse" });
+            new Dictionary<string, string> { [AgctorMessageHeaders.SenderId] = "person-extractor", [AgctorMessageHeaders.MessageType] = "LLMResponse" });
 }

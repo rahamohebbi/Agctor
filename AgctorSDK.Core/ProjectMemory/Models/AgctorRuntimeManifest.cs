@@ -13,6 +13,24 @@ public sealed class AgctorRuntimeManifest
     public SqliteRuntimeOptions? Sqlite { get; set; }
 
     public PostgresRuntimeOptions? Postgres { get; set; }
+
+    /// <summary>Optional PRD-019 thresholds for out-of-schema fact prompts and review queue.</summary>
+    public OutOfSchemaCaptureOptions? OutOfSchema { get; set; }
+}
+
+/// <summary>Runtime tuning for <c>route_miss</c> facts: confirm vs queue vs discard.</summary>
+public sealed class OutOfSchemaCaptureOptions
+{
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>At or above this confidence, surface an immediate yes/no question in ingest output.</summary>
+    public double ImmediateConfirmationMinConfidence { get; set; } = 0.75;
+
+    /// <summary>Between <see cref="ReviewQueueMinConfidence"/> and <see cref="ImmediateConfirmationMinConfidence"/> (exclusive of immediate band), enqueue for deferred review.</summary>
+    public double ReviewQueueMinConfidence { get; set; } = 0.35;
+
+    /// <summary>Below this confidence, proposals are dropped (noise control).</summary>
+    public double DiscardBelowConfidence { get; set; } = 0.0;
 }
 
 public sealed class SqliteRuntimeOptions

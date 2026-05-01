@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
@@ -75,6 +76,15 @@ internal static class PlaygroundTraceTimelineDetail
             extractorTruncated = extractorOutput.Length > preview.Length;
         }
 
+        var oos = ingest.OutOfSchemaProposals?.Take(20)
+            .Select(p => new
+            {
+                p.ProposalId,
+                disposition = p.Disposition.ToString(),
+                p.UserPromptLine
+            })
+            .ToArray();
+
         return JsonSerializer.Serialize(
             new
             {
@@ -88,7 +98,9 @@ internal static class PlaygroundTraceTimelineDetail
                 pathsTruncated = ingest.UpdatedFiles.Count > paths.Length,
                 extractorOutputChars = extractorChars > 0 ? extractorChars : (int?)null,
                 extractorOutputPreview = string.IsNullOrEmpty(preview) ? null : preview,
-                extractorOutputTruncated = extractorTruncated
+                extractorOutputTruncated = extractorTruncated,
+                outOfSchemaProposals = oos is { Length: > 0 } ? oos : null,
+                outOfSchemaTruncated = (ingest.OutOfSchemaProposals?.Count ?? 0) > 20
             },
             Json);
     }
