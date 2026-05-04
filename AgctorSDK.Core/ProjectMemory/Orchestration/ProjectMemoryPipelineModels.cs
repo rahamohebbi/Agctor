@@ -69,7 +69,7 @@ public sealed class ProjectMemoryPipelineStep
     public IReadOnlyList<string>? UpdatedFiles { get; set; }
 }
 
-/// <summary>Outcome of applying pre-generated person-extractor JSON (e.g. after PRD-014 <c>PersonaCall</c> LLM).</summary>
+/// <summary>Outcome of applying pre-generated person-extractor JSON (e.g. after PRD-014 <c>LlmNode</c> LLM).</summary>
 public sealed class ProjectMemoryIngestResult
 {
     /// <summary>True when <c>memoryIntents</c> JSON parsed.</summary>

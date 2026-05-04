@@ -43,12 +43,12 @@ public sealed class ScenarioFlowNode
 {
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>ChatInput | Router | PersonaCall | Merge | Output</summary>
+    /// <summary>ChatInput | Router | LlmNode | Merge | Output</summary>
     public string Type { get; set; } = string.Empty;
 
     public string Label { get; set; } = string.Empty;
 
-    /// <summary>Type-specific payload (e.g. personaId for PersonaCall).</summary>
+    /// <summary>Type-specific payload (e.g. personaId for LlmNode).</summary>
     public JsonElement? Config { get; set; }
 }
 

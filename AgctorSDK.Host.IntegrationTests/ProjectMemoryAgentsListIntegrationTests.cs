@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace AgctorSDK.Host.IntegrationTests;
 
-/// <summary>PRD-014 Phase 11: <c>GET /api/project-memory/agents</c> supplies YAML <c>name</c> for PersonaCall picker labels.</summary>
+/// <summary>PRD-014 Phase 11: <c>GET /api/project-memory/agents</c> supplies YAML <c>name</c> for LlmNode picker labels.</summary>
 public sealed class ProjectMemoryAgentsListIntegrationTests : IClassFixture<AgctorWebApplicationFactory>
 {
     private readonly HttpClient _client;

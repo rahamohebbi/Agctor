@@ -30,7 +30,7 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         if (string.IsNullOrWhiteSpace(projectRoot))
             return ScenarioFlowRouterLlmResult.Fail("Project root is required for LLM routing.");
         if (candidates.Count == 0)
-            return ScenarioFlowRouterLlmResult.Fail("No PersonaCall candidates from Router.");
+            return ScenarioFlowRouterLlmResult.Fail("No LlmNode candidates from Router.");
 
         LoadedProjectContext ctx;
         try

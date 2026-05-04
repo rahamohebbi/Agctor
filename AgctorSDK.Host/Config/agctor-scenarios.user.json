@@ -121,16 +121,16 @@
           },
           {
             "id": "n_ll596ej4",
-            "type": "PersonaCall",
-            "label": "PersonaCall",
+            "type": "LlmNode",
+            "label": "LlmNode",
             "config": {
               "personaId": "person-extractor"
             }
           },
           {
             "id": "n_gpa3rkrz",
-            "type": "PersonaCall",
-            "label": "PersonaCall",
+            "type": "LlmNode",
+            "label": "LlmNode",
             "config": {
               "personaId": "memory-curator"
             }
@@ -243,16 +243,16 @@
           },
           {
             "id": "n_3g8zdmai",
-            "type": "PersonaCall",
-            "label": "PersonaCall",
+            "type": "LlmNode",
+            "label": "LlmNode",
             "config": {
               "personaId": "person-extractor"
             }
           },
           {
             "id": "n_2g5asdod",
-            "type": "PersonaCall",
-            "label": "PersonaCall",
+            "type": "LlmNode",
+            "label": "LlmNode",
             "config": {
               "personaId": "memory-curator"
             }

@@ -191,7 +191,7 @@ public sealed class ProjectMemoryWorkflowActorTests
         await actor.InitializeAsync();
 
         var envelope = AgctorEnvelopeBuilder.Request(
-            new ProjectMemoryQueryWorkflowRequest(projectRoot, "Who is Raha?", "Earlier context"),
+            new ProjectMemoryQueryWorkflowRequest(projectRoot, "Who is Raha?", "Earlier context", "person_1"),
             senderId: "test",
             receiverId: actor.Id,
             correlationId: "corr-query");

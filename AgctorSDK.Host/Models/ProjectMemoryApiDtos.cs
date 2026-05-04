@@ -41,7 +41,7 @@ public sealed class AgentListItemDto
     public string Name { get; set; } = "";
     public string Role { get; set; } = "";
 
-    /// <summary>YAML <c>description</c> — PersonaCall inspector and agent list context.</summary>
+    /// <summary>YAML <c>description</c> — LlmNode inspector and agent list context.</summary>
     public string Description { get; set; } = "";
 
     /// <summary>YAML <c>input.type</c>.</summary>
@@ -50,7 +50,7 @@ public sealed class AgentListItemDto
     /// <summary>YAML <c>output.type</c>.</summary>
     public string OutputType { get; set; } = "";
 
-    /// <summary>YAML <c>tools.allow</c> (declared; flow PersonaCall is primarily one LLM step unless host adds ingest).</summary>
+    /// <summary>YAML <c>tools.allow</c> (declared; flow LlmNode is primarily one LLM step unless host adds ingest).</summary>
     public IReadOnlyList<string> ToolsAllow { get; set; } = Array.Empty<string>();
 
     /// <summary>YAML <c>tools.deny</c>.</summary>

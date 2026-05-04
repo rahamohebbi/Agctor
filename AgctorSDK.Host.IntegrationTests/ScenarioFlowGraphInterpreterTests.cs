@@ -7,7 +7,7 @@ namespace AgctorSDK.Host.IntegrationTests;
 public sealed class ScenarioFlowGraphInterpreterTests
 {
     [Fact]
-    public async Task ExecuteAsync_LinearPersonaCall_ReturnsOutput()
+    public async Task ExecuteAsync_LinearLlmNode_ReturnsOutput()
     {
         var flow = new ScenarioFlowDocument
         {
@@ -17,7 +17,7 @@ public sealed class ScenarioFlowGraphInterpreterTests
             Nodes =
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
-                new ScenarioFlowNode { Id = "p1", Type = "PersonaCall", Label = "P", Config = JsonPersona("alice") },
+                new ScenarioFlowNode { Id = "p1", Type = "LlmNode", Label = "P", Config = JsonPersona("alice") },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
             Edges =
@@ -57,8 +57,8 @@ public sealed class ScenarioFlowGraphInterpreterTests
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
                 new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R" },
-                new ScenarioFlowNode { Id = "pA", Type = "PersonaCall", Label = "A", Config = JsonPersona("a") },
-                new ScenarioFlowNode { Id = "pB", Type = "PersonaCall", Label = "B", Config = JsonPersona("b") },
+                new ScenarioFlowNode { Id = "pA", Type = "LlmNode", Label = "A", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "pB", Type = "LlmNode", Label = "B", Config = JsonPersona("b") },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
             Edges =
@@ -98,8 +98,8 @@ public sealed class ScenarioFlowGraphInterpreterTests
             Nodes =
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
-                new ScenarioFlowNode { Id = "p1", Type = "PersonaCall", Label = "P1", Config = JsonPersona("a") },
-                new ScenarioFlowNode { Id = "p2", Type = "PersonaCall", Label = "P2", Config = JsonPersona("b") },
+                new ScenarioFlowNode { Id = "p1", Type = "LlmNode", Label = "P1", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "p2", Type = "LlmNode", Label = "P2", Config = JsonPersona("b") },
                 new ScenarioFlowNode { Id = "m1", Type = "Merge", Label = "M" },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
@@ -135,10 +135,10 @@ public sealed class ScenarioFlowGraphInterpreterTests
             Nodes =
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
-                new ScenarioFlowNode { Id = "p1", Type = "PersonaCall", Label = "P1", Config = JsonPersona("p1") },
-                new ScenarioFlowNode { Id = "p2", Type = "PersonaCall", Label = "P2", Config = JsonPersona("p2") },
-                new ScenarioFlowNode { Id = "x1", Type = "PersonaCall", Label = "X", Config = JsonPersona("x") },
-                new ScenarioFlowNode { Id = "x2", Type = "PersonaCall", Label = "Y", Config = JsonPersona("y") },
+                new ScenarioFlowNode { Id = "p1", Type = "LlmNode", Label = "P1", Config = JsonPersona("p1") },
+                new ScenarioFlowNode { Id = "p2", Type = "LlmNode", Label = "P2", Config = JsonPersona("p2") },
+                new ScenarioFlowNode { Id = "x1", Type = "LlmNode", Label = "X", Config = JsonPersona("x") },
+                new ScenarioFlowNode { Id = "x2", Type = "LlmNode", Label = "Y", Config = JsonPersona("y") },
                 new ScenarioFlowNode { Id = "m1", Type = "Merge", Label = "M" },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
@@ -178,8 +178,8 @@ public sealed class ScenarioFlowGraphInterpreterTests
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
                 new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R", Config = JsonRouterLlm() },
-                new ScenarioFlowNode { Id = "pA", Type = "PersonaCall", Label = "A", Config = JsonPersona("a") },
-                new ScenarioFlowNode { Id = "pB", Type = "PersonaCall", Label = "B", Config = JsonPersona("b") },
+                new ScenarioFlowNode { Id = "pA", Type = "LlmNode", Label = "A", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "pB", Type = "LlmNode", Label = "B", Config = JsonPersona("b") },
                 new ScenarioFlowNode { Id = "m1", Type = "Merge", Label = "M" },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
@@ -226,7 +226,7 @@ public sealed class ScenarioFlowGraphInterpreterTests
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
                 new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R", Config = JsonRouterLlm() },
-                new ScenarioFlowNode { Id = "pA", Type = "PersonaCall", Label = "A", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "pA", Type = "LlmNode", Label = "A", Config = JsonPersona("a") },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
             Edges =
@@ -263,9 +263,9 @@ public sealed class ScenarioFlowGraphInterpreterTests
             Nodes =
             [
                 new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
-                new ScenarioFlowNode { Id = "p1", Type = "PersonaCall", Label = "Pre", Config = JsonPersona("alice") },
+                new ScenarioFlowNode { Id = "p1", Type = "LlmNode", Label = "Pre", Config = JsonPersona("alice") },
                 new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R", Config = JsonRouterLlm() },
-                new ScenarioFlowNode { Id = "pA", Type = "PersonaCall", Label = "A", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "pA", Type = "LlmNode", Label = "A", Config = JsonPersona("a") },
                 new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
             ],
             Edges =

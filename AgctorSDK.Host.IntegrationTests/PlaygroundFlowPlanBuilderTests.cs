@@ -22,8 +22,8 @@ public sealed class PlaygroundFlowPlanBuilderTests
                 [
                     new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "Chat input", Config = JsonSerializer.SerializeToElement(new { }) },
                     new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "Router", Config = JsonSerializer.SerializeToElement(new { }) },
-                    new ScenarioFlowNode { Id = "ext", Type = "PersonaCall", Label = "PersonaCall", Config = JsonPersona("person-extractor") },
-                    new ScenarioFlowNode { Id = "cur", Type = "PersonaCall", Label = "PersonaCall", Config = JsonPersona("memory-curator") },
+                    new ScenarioFlowNode { Id = "ext", Type = "LlmNode", Label = "LlmNode", Config = JsonPersona("person-extractor") },
+                    new ScenarioFlowNode { Id = "cur", Type = "LlmNode", Label = "LlmNode", Config = JsonPersona("memory-curator") },
                     new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Output", Config = JsonSerializer.SerializeToElement(new { }) }
                 ],
                 Edges =
@@ -38,15 +38,15 @@ public sealed class PlaygroundFlowPlanBuilderTests
 
         var r = PlaygroundFlowPlanBuilder.Build(scenario, "memory-curator", ingestActive: false);
         r.FromScenarioGraph.Should().BeTrue();
-        r.UsedSyntheticPersonaStep.Should().BeFalse();
+        r.UsedSyntheticLlmNode.Should().BeFalse();
 
         var labels = r.Steps.Select(s => s.Label).ToList();
         labels.Should().ContainInOrder(
             "Chat input",
             "Router",
-            "PersonaCall (person-extractor)",
+            "LlmNode (person-extractor)",
             "Apply extractor JSON → disk",
-            "PersonaCall (memory-curator)",
+            "LlmNode (memory-curator)",
             "Output");
 
         var run = PlaygroundFlowPlanBuilder.ResolveRunnerStepIndex(r.Steps, "memory-curator");
@@ -69,8 +69,8 @@ public sealed class PlaygroundFlowPlanBuilderTests
                 [
                     new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "Chat input", Config = JsonSerializer.SerializeToElement(new { }) },
                     new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "Router", Config = JsonSerializer.SerializeToElement(new { }) },
-                    new ScenarioFlowNode { Id = "ext", Type = "PersonaCall", Label = "PersonaCall", Config = JsonPersona("person-extractor") },
-                    new ScenarioFlowNode { Id = "cur", Type = "PersonaCall", Label = "PersonaCall", Config = JsonPersona("memory-curator") },
+                    new ScenarioFlowNode { Id = "ext", Type = "LlmNode", Label = "LlmNode", Config = JsonPersona("person-extractor") },
+                    new ScenarioFlowNode { Id = "cur", Type = "LlmNode", Label = "LlmNode", Config = JsonPersona("memory-curator") },
                     new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Output", Config = JsonSerializer.SerializeToElement(new { }) }
                 ],
                 Edges =
@@ -100,7 +100,7 @@ public sealed class PlaygroundFlowPlanBuilderTests
     {
         var r = PlaygroundFlowPlanBuilder.Build(null, "memory-curator", ingestActive: false);
         r.FromScenarioGraph.Should().BeFalse();
-        r.Steps.Select(s => s.Id).Should().Equal("chatInput", "router", "personaCall", "ingest", "output");
+        r.Steps.Select(s => s.Id).Should().Equal("chatInput", "router", "llmNode", "ingest", "output");
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class PlaygroundFlowPlanBuilderTests
                 Nodes =
                 [
                     new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In", Config = JsonSerializer.SerializeToElement(new { }) },
-                    new ScenarioFlowNode { Id = "p1", Type = "PersonaCall", Label = "P", Config = JsonPersona("alice") },
+                    new ScenarioFlowNode { Id = "p1", Type = "LlmNode", Label = "P", Config = JsonPersona("alice") },
                     new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out", Config = JsonSerializer.SerializeToElement(new { }) }
                 ],
                 Edges =
@@ -126,9 +126,9 @@ public sealed class PlaygroundFlowPlanBuilderTests
         };
 
         var r = PlaygroundFlowPlanBuilder.Build(scenario, "bob", ingestActive: false);
-        r.UsedSyntheticPersonaStep.Should().BeTrue();
-        r.Steps[^2].Label.Should().Be("PersonaCall (bob)");
-        r.Steps[^2].Id.Should().StartWith(PlaygroundFlowPlanBuilder.SyntheticPersonaStepIdPrefix);
+        r.UsedSyntheticLlmNode.Should().BeTrue();
+        r.Steps[^2].Label.Should().Be("LlmNode (bob)");
+        r.Steps[^2].Id.Should().StartWith(PlaygroundFlowPlanBuilder.SyntheticLlmNodeStepIdPrefix);
         PlaygroundFlowPlanBuilder.ResolveRunnerStepIndex(r.Steps, "bob").Should().Be(r.Steps.Count - 2);
     }
 }

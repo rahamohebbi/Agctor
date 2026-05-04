@@ -65,7 +65,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | PUT | `/api/scenarios` | Save user catalog; validates flow |
 | POST | `/api/scenarios/reload` | Reload catalog from disk |
 | POST | `/api/scenarios/{id}/apply` | Apply scenario (spawn/configure per kind) |
-| POST | `/api/scenarios/{id}/flow/run` | Execute `flow` (sequential + parallel→Merge); `PersonaCall` uses project-memory YAML + Ollama; optional `personaCallTimeoutSeconds` (default 180) |
+| POST | `/api/scenarios/{id}/flow/run` | Execute `flow` (sequential + parallel→Merge); `LlmNode` uses project-memory YAML + Ollama; optional `llmNodeTimeoutSeconds` (default 180) |
 
 ### Test (`/api/test`)
 | Method | Path | Description |

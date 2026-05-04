@@ -79,7 +79,7 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         {
             var output = await OllamaGenerateApi.GenerateNonStreamingAsync(prompt, cancellationToken).ConfigureAwait(false);
 
-            // PRD-014 PersonaCall + playground: person-extractor emits JSON; when a scenario id is present, apply the same ingest as the deterministic pipeline.
+            // PRD-014 LlmNode + playground: person-extractor emits JSON; when a scenario id is present, apply the same ingest as the deterministic pipeline.
             var scoped = !string.IsNullOrWhiteSpace(scenarioId)
                          && string.Equals(agentId.Trim(), "person-extractor", StringComparison.OrdinalIgnoreCase);
             if (!scoped)

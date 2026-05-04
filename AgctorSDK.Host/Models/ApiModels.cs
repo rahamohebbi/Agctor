@@ -340,7 +340,7 @@ namespace AgctorSDK.Host.Models
     /// <summary>POST /api/scenarios/{id}/apply — optional parameters for scripted handlers.</summary>
     public record ScenarioApplyRequest(Dictionary<string, object>? Parameters = null);
 
-    /// <summary>POST /api/scenarios/{id}/flow/run — executes PRD-014 flow (sequential + parallel→Merge; PersonaCall uses project memory).</summary>
+    /// <summary>POST /api/scenarios/{id}/flow/run — executes PRD-014 flow (sequential + parallel→Merge; LlmNode uses project memory).</summary>
     public sealed class ScenarioFlowRunRequest
     {
         public string Message { get; set; } = "";
@@ -348,8 +348,8 @@ namespace AgctorSDK.Host.Models
         /// <summary>Optional session id for transcript-aware persona prompts (same store as playground).</summary>
         public string? SessionId { get; set; }
 
-        /// <summary>Per <c>PersonaCall</c> wall-clock timeout (seconds). Default 180 when omitted; use 0 to disable (only HTTP cancellation).</summary>
-        public int? PersonaCallTimeoutSeconds { get; set; }
+        /// <summary>Per <c>LlmNode</c> wall-clock timeout (seconds). Default 180 when omitted; use 0 to disable (only HTTP cancellation).</summary>
+        public int? LlmNodeTimeoutSeconds { get; set; }
     }
 
     /// <summary>Result of <see cref="ScenarioFlowRunRequest"/>.</summary>

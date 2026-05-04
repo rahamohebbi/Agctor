@@ -260,7 +260,7 @@
 
     /**
      * Collect agent ids available for the active scenario.
-     * Priority: personaAgentIds (scenario roster) → flow PersonaCall config.personaId → empty = global list.
+     * Priority: personaAgentIds (scenario roster) → flow LlmNode config.personaId → empty = global list.
      */
     function scopedAgentIdsForActive() {
         var scen = scenarioFor(activeProjectScenarioId);
@@ -271,7 +271,7 @@
         });
         var nodes = (scen.flow && scen.flow.nodes) || [];
         nodes.forEach(function (n) {
-            if (n && n.type === 'PersonaCall' && n.config && n.config.personaId && ids.indexOf(n.config.personaId) < 0) {
+            if (n && n.type === 'LlmNode' && n.config && n.config.personaId && ids.indexOf(n.config.personaId) < 0) {
                 ids.push(n.config.personaId);
             }
         });

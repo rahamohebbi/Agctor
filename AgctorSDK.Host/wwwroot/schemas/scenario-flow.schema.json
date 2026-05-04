@@ -84,7 +84,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["ChatInput", "Router", "PersonaCall", "Merge", "Output"],
+          "enum": ["ChatInput", "Router", "LlmNode", "Merge", "Output"],
           "description": "v1 node kinds (PRD-014)."
         },
         "label": {
@@ -93,7 +93,7 @@
         },
         "config": {
           "type": "object",
-          "description": "Type-specific payload (e.g. personaId for PersonaCall).",
+          "description": "Type-specific payload (e.g. personaId for LlmNode).",
           "additionalProperties": true
         }
       }

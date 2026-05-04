@@ -11,7 +11,7 @@ public interface IScenarioFlowExecutionObserver
     /// <param name="detail">Short summary (e.g. char counts, branch id, persona id).</param>
     Task OnNodeCompletedAsync(string nodeId, string nodeType, string? detail, CancellationToken cancellationToken = default);
 
-    /// <summary>After Router resolves targets; before PersonaCall branches run. <paramref name="mergeNodeIdForParallel"/> set when multiple entries fan in.</summary>
+    /// <summary>After Router resolves targets; before LlmNode branches run. <paramref name="mergeNodeIdForParallel"/> set when multiple entries fan in.</summary>
     Task OnRouterBranchResolvedAsync(
         string routerNodeId,
         IReadOnlyList<string> orderedEntryNodeIds,
