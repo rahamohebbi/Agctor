@@ -135,6 +135,57 @@ Connect to `localhost:8080` via TCP and send JSON messages:
 
 ## Configuration
 
+Configure via `appsettings.json` (and optional `appsettings.User.json`, which the Host loads when present). Nested keys use `:` in JSON; on the command line you can pass the same keys after `dotnet run --`, or use environment variables with `__` instead of `:`.
+
+### Default Ollama model (`dotnet run`)
+
+The default LLM model for `LLMAgent` and related flows is **`Agctor:LLM:DefaultModel`**. The Ollama base URL is **`Agctor:LLM:OllamaApiUrl`** (default `http://localhost:11434`). At startup the Host prints the effective values (see `Program.cs`).
+
+**Bash / Git Bash** — application arguments must follow `--` so they are not consumed by the .NET CLI:
+
+```bash
+cd AgctorSDK.Host
+dotnet run -- --Agctor:LLM:DefaultModel=gemma4:31b
+```
+
+From the repository root (same app args after `--`):
+
+```bash
+dotnet run --project AgctorSDK.Host/AgctorSDK.Host.csproj -- --Agctor:LLM:DefaultModel=gemma4:31b
+```
+
+**Windows PowerShell** — quote the argument so `:` is not parsed as a drive or scope operator:
+
+```powershell
+Set-Location AgctorSDK.Host
+dotnet run -- '--Agctor:LLM:DefaultModel=gemma4:31b'
+
+# Or from the repository root:
+dotnet run --project AgctorSDK.Host/AgctorSDK.Host.csproj -- '--Agctor:LLM:DefaultModel=gemma4:31b'
+```
+
+**Combine model and Ollama URL** (same rules; quote each token in PowerShell if it contains `:`):
+
+```bash
+dotnet run -- --Agctor:LLM:DefaultModel=gemma4:31b --Agctor:LLM:OllamaApiUrl=http://127.0.0.1:11434
+```
+
+**Environment variables** (hierarchical segments use double underscore `__`). Handy when your shell makes `:` awkward:
+
+```powershell
+$env:Agctor__LLM__DefaultModel = 'gemma4:31b'
+$env:Agctor__LLM__OllamaApiUrl = 'http://localhost:11434'
+dotnet run
+```
+
+```bash
+export Agctor__LLM__DefaultModel=gemma4:31b
+export Agctor__LLM__OllamaApiUrl=http://localhost:11434
+dotnet run
+```
+
+Command-line and environment overrides take precedence over `appsettings.json`. To persist a default across restarts without flags, use `appsettings.User.json` or the Host API `PUT /api/Llm/default-model` (dashboard).
+
 Configure via `appsettings.json`:
 
 ```json
@@ -142,6 +193,12 @@ Configure via `appsettings.json`:
   "Mcp": {
     "Host": "0.0.0.0",
     "Port": 8080
+  },
+  "Agctor": {
+    "LLM": {
+      "OllamaApiUrl": "http://localhost:11434",
+      "DefaultModel": "gemma4:31b"
+    }
   },
   "Logging": {
     "LogLevel": {

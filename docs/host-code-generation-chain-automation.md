@@ -50,16 +50,16 @@ Verify connectivity:
 curl -sS "http://localhost:11434/api/tags" | jq
 ```
 
-### B) Pull the model expected by default (`mistral`)
+### B) Pull the model expected by default (`gemma4:31b`)
 
 If you are using appsettings configuration, pull the model configured in:
 
 - `Agctor:LLM:DefaultModel`
 
-If you did not override config, the fallback is `mistral`.
+If you did not override config, the code fallback is still `mistral` until you set `Agctor:LLM:DefaultModel` (see `AgctorSDK.Host/README.md` and `appsettings.json`).
 
 ```bash
-ollama pull mistral
+ollama pull gemma4:31b
 ```
 
 Quick model check:
@@ -67,7 +67,7 @@ Quick model check:
 ```bash
 curl -sS "http://localhost:11434/api/generate" \
   -H "Content-Type: application/json" \
-  -d '{"model":"mistral","prompt":"Say hello in one line.","stream":false}' | jq
+  -d '{"model":"gemma4:31b","prompt":"Say hello in one line.","stream":false}' | jq
 ```
 
 ### C) Target a specific local model (via appsettings)
@@ -81,7 +81,7 @@ Update `AgctorSDK.Host/appsettings.json`:
   "Agctor": {
     "LLM": {
       "OllamaApiUrl": "http://localhost:11434",
-      "DefaultModel": "llama3.1"
+      "DefaultModel": "gemma4:31b"
     }
   }
 }
@@ -99,13 +99,13 @@ Host startup prints the configured values, so you can confirm which model is act
 After changing the model, verify with:
 
 ```bash
-ollama pull llama3.1
+ollama pull gemma4:31b
 curl -sS "http://localhost:11434/api/generate" \
   -H "Content-Type: application/json" \
-  -d '{"model":"llama3.1","prompt":"Respond with OK.","stream":false}' | jq -e '.response != null'
+  -d '{"model":"gemma4:31b","prompt":"Respond with OK.","stream":false}' | jq -e '.response != null'
 ```
 
-If you want to stay on `mistral`, set:
+If you want a different model (for example the code fallback `mistral`), set:
 
 ```json
 "DefaultModel": "mistral"
@@ -116,7 +116,7 @@ If you want to stay on `mistral`, set:
 - If Host runs but LLM responses fail, check Ollama first:
   - `curl -sS http://localhost:11434/api/tags | jq`
 - If model is missing, pull it:
-  - `ollama pull mistral` (or your chosen model)
+  - `ollama pull gemma4:31b` (or whatever matches your `DefaultModel`)
 - If port is occupied, stop conflicting process or restart Ollama on default port `11434`.
 
 ## 1) Start `AgctorSDK.Host`
