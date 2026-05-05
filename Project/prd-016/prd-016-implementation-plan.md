@@ -33,7 +33,7 @@ Follow workspace rules: after a major slice, **build all projects**, then **unit
 
 1. **Sample + template YAML** — Update `person-extractor` instructions (and any Host template duplicates) for **P2**: save/persist phrasing must still output `memoryIntents` from **already stated** facts.
 2. **Scenario routing** — In `samples/people-project` (and schema docs), adjust **routing-rules** / Router prompts so **P1**: save-like utterances prefer routing to **person-extractor** when the transcript contains extractable content.
-3. **Flow documentation** — For the sample scenario attached to the people project, document in `.agctor` or scenario metadata which **PersonaCall** is extractor vs curator (**P3**).
+3. **Flow documentation** — For the sample scenario attached to the people project, document in `.agctor` or scenario metadata which **LlmNode** is extractor vs curator (**P3**).
 4. **Playground.cshtml** — Tighten **P5** copy to match actual behavior after routing changes.
 5. **Honesty** — Audit streamed text paths in `ProjectMemoryController` / persona runner for **P4**; add a short system or post-process hint when ingest skipped.
 

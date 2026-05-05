@@ -757,7 +757,7 @@
             edges.sort(function (a, b) { return String(a.id || '').localeCompare(String(b.id || '')); });
             edges.forEach(function (e) {
                 var tn = (doc.nodes || []).filter(function (n) { return n && n.id === e.toNodeId; })[0];
-                if (!tn || tn.type !== 'PersonaCall') return;
+                if (!tn || tn.type !== 'LlmNode') return;
                 var pid = (tn.config && tn.config.personaId) ? tn.config.personaId : '(no personaId)';
                 var li = document.createElement('li');
                 li.textContent = tn.id + ' → ' + (pid === '(no personaId)' ? pid : (getFlowPersonaLabel(pid) + ' (' + pid + ')'));
@@ -777,7 +777,7 @@
                 return;
             }
             var sel = cy.$('node:selected');
-            if (sel.length !== 1 || sel.data('agctorType') !== 'PersonaCall') {
+            if (sel.length !== 1 || sel.data('agctorType') !== 'LlmNode') {
                 personaPanel.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
@@ -847,7 +847,7 @@
             var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
             if (!cy) return;
             var n = cy.$('node:selected');
-            if (n.length !== 1 || n.data('agctorType') !== 'PersonaCall') return;
+            if (n.length !== 1 || n.data('agctorType') !== 'LlmNode') return;
             var cfg = {};
             try {
                 cfg = JSON.parse(n.data('agctorConfig') || '{}');
@@ -945,11 +945,11 @@
             var add = t.getAttribute('data-flow-add');
             if (add && renderer) {
                 var cfg = {};
-                if (add === 'PersonaCall') {
+                if (add === 'LlmNode') {
                     var s2 = currentScenario();
                     var ids = (s2 && s2.personaAgentIds) || [];
                     if (!ids.length) {
-                        setFlowMsg('<span class="text-amber-700 dark:text-amber-300">No YAML personas on this scenario — add persona chips on the form, then assign each PersonaCall node.</span>');
+                        setFlowMsg('<span class="text-amber-700 dark:text-amber-300">No YAML personas on this scenario — add persona chips on the form, then assign each LlmNode node.</span>');
                         cfg.personaId = '';
                     } else {
                         cfg.personaId = normalizeType(ids[0]);

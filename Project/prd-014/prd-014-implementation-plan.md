@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | 2.1 | Normalize flow payload (ids/types/conditions) in catalog load/save path | `AgctorSDK.Host/Services/Scenarios/JsonScenarioCatalog.cs` |
 | 2.2 | Validate graph integrity (entry/output, edges, reachability, merge policy) | `AgctorSDK.Host/Services/Scenarios/JsonScenarioCatalog.cs` |
-| 2.3 | Validate `PersonaCall` ids against project-memory registry and scenario persona roster | `AgctorSDK.Host/Services/Scenarios/JsonScenarioCatalog.cs` |
+| 2.3 | Validate `LlmNode` ids against project-memory registry and scenario persona roster | `AgctorSDK.Host/Services/Scenarios/JsonScenarioCatalog.cs` |
 
 ## Phase 3: API mapping and compatibility
 
@@ -69,7 +69,7 @@
 
 | Step | Action | Location |
 | --- | --- | --- |
-| 7.1 | Implement `ScenarioFlowGraphInterpreter` (sequential edges; Router; PersonaCall; Merge; Output; cycle guard) | `AgctorSDK.Host/Services/Scenarios/` |
+| 7.1 | Implement `ScenarioFlowGraphInterpreter` (sequential edges; Router; LlmNode; Merge; Output; cycle guard) | `AgctorSDK.Host/Services/Scenarios/` |
 | 7.2 | Implement `IScenarioFlowExecutionService` (catalog + validation + project root gate) | `AgctorSDK.Host/Services/Scenarios/` |
 | 7.3 | `POST /api/scenarios/{id}/flow/run` | `AgctorSDK.Host/Controllers/ScenariosController.cs` + `ApiModels` |
 | 7.4 | Register services in DI | `AgctorSDK.Host/Program.cs` |
@@ -79,7 +79,7 @@
 
 | Step | Action | Location |
 | --- | --- | --- |
-| 8.1 | Execute `parallel` fan-out / join with per–PersonaCall timeout and deterministic Merge (no nested parallel fork inside a branch) | `ScenarioFlowGraphInterpreter.cs`, `ScenarioFlowExecutionService.cs`, PRD |
+| 8.1 | Execute `parallel` fan-out / join with per–LlmNode timeout and deterministic Merge (no nested parallel fork inside a branch) | `ScenarioFlowGraphInterpreter.cs`, `ScenarioFlowExecutionService.cs`, PRD |
 | 8.2 | Wire runner into dashboard chat: `session-coordinator-agent` + current scenario with `flow` → `IScenarioFlowExecutionService` before actor dispatch | `MessageDispatcher.cs` |
 
 ## Phase 9: observability
@@ -95,21 +95,21 @@
 | 10.1 | Freeze `Router.config` keys (`routerMode`, `maxTargets`, fallback, thresholds) + migration from deterministic-only | `prd-014-scenario-visual-designer-modal.md`, `scenario-flow.schema.json` |
 | 10.2 | Keep [`scenario-flow-router-response.schema.json`](./scenario-flow-router-response.schema.json) as contract; optional copy under `AgctorSDK.Host/wwwroot/schemas/` | `Project/prd-014/`, Host `wwwroot/schemas/` |
 | 10.3 | `IScenarioFlowRouterLlmService` + Ollama prompt with candidate blurbs → parse JSON → whitelist `personaId` set | `AgctorSDK.Host/Services/Scenarios/`, `OllamaGenerateApi.cs` |
-| 10.4 | `ScenarioFlowGraphInterpreter`: discover Router → PersonaCall edges; on `routerMode: llm`, call routing LLM; run selected PersonaCalls (**default:** parallel + existing `Merge`) | `ScenarioFlowGraphInterpreter.cs` |
-| 10.5 | Catalog validation: LLM Router structure (sequential PersonaCall edges, shared Merge, fallback rules) | `ScenarioFlowValidator.cs`, `JsonScenarioCatalog.cs` |
+| 10.4 | `ScenarioFlowGraphInterpreter`: discover Router → LlmNode edges; on `routerMode: llm`, call routing LLM; run selected LlmNodes (**default:** parallel + existing `Merge`) | `ScenarioFlowGraphInterpreter.cs` |
+| 10.5 | Catalog validation: LLM Router structure (sequential LlmNode edges, shared Merge, fallback rules) | `ScenarioFlowValidator.cs`, `JsonScenarioCatalog.cs` |
 | 10.6 | Modal: Router property panel — mode, read-only candidate list; Simulate note (no live routing LLM) | `Scenarios.cshtml`, `scenarios-page.js` |
 | 10.7 | Tests: mock routing JSON; multi-target + Merge; parser + interpreter coverage | `AgctorSDK.Host.IntegrationTests/` |
 
-## Phase 11: PersonaCall persona picker (modal UX) ✅ (delivered)
+## Phase 11: LlmNode persona picker (modal UX) ✅ (delivered)
 
-**Goal:** When adding or editing a **`PersonaCall`** node, the operator chooses a **known persona** from the scenario roster using **human-readable labels** (e.g. “Memory Curator”, “Person Extractor”), while the graph continues to persist **`config.personaId`** (YAML `id`, e.g. `memory-curator`, `person-extractor`).
+**Goal:** When adding or editing a **`LlmNode`** node, the operator chooses a **known persona** from the scenario roster using **human-readable labels** (e.g. “Memory Curator”, “Person Extractor”), while the graph continues to persist **`config.personaId`** (YAML `id`, e.g. `memory-curator`, `person-extractor`).
 
 | Step | Action | Location |
 | --- | --- | --- |
-| 11.1 | **PersonaCall inspector**: show when exactly one selected node is `PersonaCall` — dropdown of **allowed ids** = current scenario `personaAgentIds` (same roster as server validation) | `Scenarios.cshtml`, `scenarios-page.js` (`agctorConfig` via existing adapter) |
+| 11.1 | **LlmNode inspector**: show when exactly one selected node is `LlmNode` — dropdown of **allowed ids** = current scenario `personaAgentIds` (same roster as server validation) | `Scenarios.cshtml`, `scenarios-page.js` (`agctorConfig` via existing adapter) |
 | 11.2 | **Display names**: map `personaId` → label using **`GET /api/project-memory/agents`** (`name`, fallback `role`); cache per modal open | `ProjectMemoryController` (existing); `scenarios-page.js` |
 | 11.3 | **Add-node default**: pre-select first roster id; empty roster → amber message + empty `personaId` | `scenarios-page.js` |
-| 11.4 | **Client validate**: `validateFlowDocument(doc, { personaAgentIds })` — roster membership + empty roster when any `PersonaCall` | `graph-document.js`, modal Validate button |
+| 11.4 | **Client validate**: `validateFlowDocument(doc, { personaAgentIds })` — roster membership + empty roster when any `LlmNode` | `graph-document.js`, modal Validate button |
 | 11.5 | **Tests**: `GET /api/project-memory/agents` returns YAML names for default sample project | `AgctorSDK.Host.IntegrationTests/ProjectMemoryAgentsListIntegrationTests.cs` |
 
 ## Dependency order
@@ -120,9 +120,9 @@
 
 - Flow **runner** does not let clients spawn actors; it calls **approved services** (persona LLM runner today).
 - Scenario **apply** remains the path for coordinator/session actor bootstrap.
-- **PersonaCall** resolves YAML specs from disk (project memory); execution is server-side only.
-- **Router:** **Shipped** = deterministic (substring + default edge) **and** optional **`routerMode: llm`** (structured JSON, whitelist-only `personaId`s from graph-discovered candidates). **Phase 11** = richer **`PersonaCall`** picker in the modal (roster + YAML display names).
-- **Parallel** edges: one fan-out per hop, single shared `Merge`, no nested parallel inside a branch; per–`PersonaCall` timeout enforced.
+- **LlmNode** resolves YAML specs from disk (project memory); execution is server-side only.
+- **Router:** **Shipped** = deterministic (substring + default edge) **and** optional **`routerMode: llm`** (structured JSON, whitelist-only `personaId`s from graph-discovered candidates). **Phase 11** = richer **`LlmNode`** picker in the modal (roster + YAML display names).
+- **Parallel** edges: one fan-out per hop, single shared `Merge`, no nested parallel inside a branch; per–`LlmNode` timeout enforced.
 
 ## Portability checklist (renderer swap)
 

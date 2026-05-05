@@ -6,11 +6,11 @@ This guide explains how the newly added PRD-018 resolution subsystem should be c
 
 Your current flow:
 
-`Chat input -> Router -> PersonaCall -> PersonaCall -> Output`
+`Chat input -> Router -> LlmNode -> LlmNode -> Output`
 
 is still valid for PRD-018.
 
-You do **not** need to add new Scenario Flow Designer nodes for resolution actors (`ResolutionSupervisorActor`, `ReconcilerActor`, `MentionIndexActor`, per-entity `ResolutionActor`). Those run as background actor services, not as `PersonaCall` graph nodes.
+You do **not** need to add new Scenario Flow Designer nodes for resolution actors (`ResolutionSupervisorActor`, `ReconcilerActor`, `MentionIndexActor`, per-entity `ResolutionActor`). Those run as background actor services, not as `LlmNode` graph nodes.
 
 ## How agents now work together
 
@@ -37,10 +37,10 @@ PRD-018 adds an **actor-owned resolution layer** in parallel to the persona grap
 5. **Human review and explicit state changes**  
    Pending **soft** links can be listed and sorted (e.g. by confidence × recency). Operators call **promote** (soft → hard), **demote** (hard → soft), or **reject** (terminal for that hypothesis until new evidence). Those actions go through the same **`ResolutionActor`** mailbox as automatic work, so races with the reconciler are avoided. The UI and API are optional; the subsystem still runs if you only use files and traces.
 
-So your two `PersonaCall`s can stay:
+So your two `LlmNode`s can stay:
 
-- `PersonaCall #1`: extractor path (`person-extractor`)
-- `PersonaCall #2`: query path (`person-query`)
+- `LlmNode #1`: extractor path (`person-extractor`)
+- `LlmNode #2`: query path (`person-query`)
 
 The resolution subsystem enhances what happens around them, without requiring a new graph shape.
 
@@ -108,7 +108,7 @@ You may optionally adjust flow if you want stricter orchestration:
 - **Optional split behavior:**
   - Add Router conditions to skip extractor for pure read-only questions.
 - **Optional review-oriented flow:**
-  - Keep graph same, but drive resolution review from dashboard/API rather than adding another PersonaCall.
+  - Keep graph same, but drive resolution review from dashboard/API rather than adding another LlmNode.
 
 ## Brief context: why no new node is needed
 

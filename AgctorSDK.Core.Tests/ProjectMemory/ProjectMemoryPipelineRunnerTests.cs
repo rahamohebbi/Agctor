@@ -45,6 +45,39 @@ public sealed class ProjectMemoryPipelineRunnerTests
         }
     }
 
+    private static void EnsureScenarioPeopleWorkspace(string projectRoot, string scenarioId)
+    {
+        var scenariosRoot = Path.Combine(projectRoot, "scenarios");
+        var scenarioRoot = Path.Combine(scenariosRoot, scenarioId);
+        var scenarioPeople = Path.Combine(scenarioRoot, "people");
+        if (Directory.Exists(scenarioPeople))
+            return;
+
+        Directory.CreateDirectory(scenarioRoot);
+
+        var rootPeople = Path.Combine(projectRoot, "people");
+        if (Directory.Exists(rootPeople))
+        {
+            Directory.Move(rootPeople, scenarioPeople);
+            return;
+        }
+
+        if (Directory.Exists(scenariosRoot))
+        {
+            foreach (var existingScenario in Directory.GetDirectories(scenariosRoot))
+            {
+                var existingPeople = Path.Combine(existingScenario, "people");
+                if (!Directory.Exists(existingPeople))
+                    continue;
+                CopyDir(existingPeople, scenarioPeople);
+                return;
+            }
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Could not find a people workspace under '{projectRoot}' for scenario '{scenarioId}'.");
+    }
+
     [TestMethod]
     public async Task IngestOnly_ValidOccupationIntent_UpdatesProfileOnDisk()
     {
@@ -101,10 +134,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
-            var peopleSrc = Path.Combine(temp, "people");
-            var scenRoot = Path.Combine(temp, "scenarios", "demo-scen");
-            Directory.CreateDirectory(scenRoot);
-            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+            EnsureScenarioPeopleWorkspace(temp, "demo-scen");
 
             const string marker = "ScopedScenarioOccupation";
             var llm = new QueueLlm();
@@ -145,7 +175,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         }
     }
 
-    /// <summary>API used after PRD-014 PersonaCall LLM — same scoped paths as full pipeline ingest.</summary>
+    /// <summary>API used after PRD-014 LlmNode LLM — same scoped paths as full pipeline ingest.</summary>
     [TestMethod]
     public async Task IngestFromExtractorOutputAsync_WritesUnderScenarioWorkspace()
     {
@@ -156,10 +186,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
-            var peopleSrc = Path.Combine(temp, "people");
-            var scenRoot = Path.Combine(temp, "scenarios", "api-scen");
-            Directory.CreateDirectory(scenRoot);
-            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+            EnsureScenarioPeopleWorkspace(temp, "api-scen");
 
             const string marker = "IngestFromExtractorOutputAsyncMarker";
             var json =
@@ -204,10 +231,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
-            var peopleSrc = Path.Combine(temp, "people");
-            var scenRoot = Path.Combine(temp, "scenarios", "array-scen");
-            Directory.CreateDirectory(scenRoot);
-            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+            EnsureScenarioPeopleWorkspace(temp, "array-scen");
 
             const string marker = "RootArrayIngestMarker";
             var json =
@@ -255,10 +279,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
-            var peopleSrc = Path.Combine(temp, "people");
-            var scenRoot = Path.Combine(temp, "scenarios", "action-scen");
-            Directory.CreateDirectory(scenRoot);
-            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+            EnsureScenarioPeopleWorkspace(temp, "action-scen");
 
             const string marker = "ActionIntentIngestMarker";
             var json =
@@ -769,10 +790,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
-            var scenRoot = Path.Combine(temp, "scenarios", "people_1");
-            Directory.CreateDirectory(scenRoot);
-            var peopleSrc = Path.Combine(temp, "people");
-            Directory.Move(peopleSrc, Path.Combine(scenRoot, "people"));
+            EnsureScenarioPeopleWorkspace(temp, "people_1");
 
             var services = new ServiceCollection();
             services.AddAgctorProjectMemory();

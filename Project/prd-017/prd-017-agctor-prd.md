@@ -56,7 +56,7 @@ The client resolves `agentId` automatically as:
 3. First id in the scenario's `personaAgentIds`.
 4. Fallback: the first globally available agent.
 
-Options in the Advanced picker are scoped to the scenario's `personaAgentIds` ∪ flow `PersonaCall.config.personaId`, falling back to the full agent list only when the scenario has no roster. Changing or resetting the override re-runs this resolution; changing the project or scenario clears the override.
+Options in the Advanced picker are scoped to the scenario's `personaAgentIds` ∪ flow `LlmNode.config.personaId`, falling back to the full agent list only when the scenario has no roster. Changing or resetting the override re-runs this resolution; changing the project or scenario clears the override.
 
 ## Acceptance criteria
 

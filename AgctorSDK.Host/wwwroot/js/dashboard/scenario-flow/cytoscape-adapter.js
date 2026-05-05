@@ -21,11 +21,11 @@
 
     /**
      * Pick source/target for a new edge between two nodes when both are selected.
-     * Uses pipeline order ChatInput → Router → PersonaCall → Merge → Output so
-     * e.g. PersonaCall–Output is always PersonaCall → Output regardless of click order.
+     * Uses pipeline order ChatInput → Router → LlmNode → Merge → Output so
+     * e.g. LlmNode–Output is always LlmNode → Output regardless of click order.
      */
     function inferConnectEndpoints(nodeA, nodeB) {
-        var rank = { ChatInput: 0, Router: 1, PersonaCall: 2, Merge: 3, Output: 4 };
+        var rank = { ChatInput: 0, Router: 1, LlmNode: 2, Merge: 3, Output: 4 };
         var ta = String(nodeA.data('agctorType') || '').trim();
         var tb = String(nodeB.data('agctorType') || '').trim();
         var ra = Object.prototype.hasOwnProperty.call(rank, ta) ? rank[ta] : null;
@@ -80,7 +80,7 @@
                     style: { 'background-color': '#b45309' }
                 },
                 {
-                    selector: 'node[agctorType = "PersonaCall"]',
+                    selector: 'node[agctorType = "LlmNode"]',
                     style: { 'background-color': '#0284c7' }
                 },
                 {

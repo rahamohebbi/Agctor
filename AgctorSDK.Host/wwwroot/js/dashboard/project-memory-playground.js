@@ -1,6 +1,8 @@
 /**
  * Project memory playground: chat transcript + SSE streaming (PRD-013).
  * PRD-017: project rail + session list + project-scoped scenario; debug panels below transcript.
+ * Session column (transcript + debug) stays hidden until a session is selected — no auto-pick of the first row.
+ * Last selected session per project is restored from localStorage when the URL does not pin a session.
  */
 (function () {
     var agentSel = document.getElementById('pm-play-agent');
@@ -29,6 +31,8 @@
     var advancedEl = document.getElementById('pm-play-advanced');
     var agentAutoLabelEl = document.getElementById('pm-play-agent-auto-label');
     var agentResetBtn = document.getElementById('pm-play-agent-reset');
+    var sessionDetailEl = document.getElementById('pm-play-session-detail');
+    var noSessionEl = document.getElementById('pm-play-no-session');
 
     if (
         !agentSel ||
@@ -43,7 +47,9 @@
         !sendBtn ||
         !input ||
         !messages ||
-        !status
+        !status ||
+        !sessionDetailEl ||
+        !noSessionEl
     ) {
         return;
     }
@@ -68,6 +74,37 @@
     var confirmingDeleteSessionId = null;
     /** Last session list rendered (cached for in-place re-renders after rename). */
     var sessionsCache = [];
+
+    /** Namespace prefix so we do not collide with other app keys. */
+    var LS_LAST_SESSION_PREFIX = 'agctor.pm-play.lastSession.';
+
+    function lastSessionStorageKey(projectId) {
+        return LS_LAST_SESSION_PREFIX + String(projectId || '');
+    }
+
+    /** Returns a session id previously chosen for this project, or null (private mode / missing). */
+    function readStoredLastSessionId(projectId) {
+        if (!projectId) return null;
+        try {
+            var v = localStorage.getItem(lastSessionStorageKey(projectId));
+            var s = v && String(v).trim();
+            return s || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    /** Persists or clears the remembered session for a project (cleared when project has no sessions / none selected). */
+    function persistLastSessionForProject(projectId, sessionId) {
+        if (!projectId) return;
+        try {
+            var k = lastSessionStorageKey(projectId);
+            if (sessionId) localStorage.setItem(k, sessionId);
+            else localStorage.removeItem(k);
+        } catch (_) {
+            /* quota / disabled storage */
+        }
+    }
 
     function syncUrl() {
         var qp = new URLSearchParams(window.location.search);
@@ -120,6 +157,42 @@
         if (!scenarioPanelEl) return;
         if (show) scenarioPanelEl.classList.remove('hidden');
         else scenarioPanelEl.classList.add('hidden');
+    }
+
+    /**
+     * Toggle the right column: full playground chrome only when a session is active.
+     * Avoids showing transcript / scenario / debug for an implicit "first list item" selection.
+     */
+    function syncSessionColumn() {
+        var has = !!activeSessionId;
+        if (has) {
+            noSessionEl.classList.add('hidden');
+            sessionDetailEl.classList.remove('hidden');
+            input.disabled = false;
+            sendBtn.disabled = false;
+            if (agentSel) agentSel.disabled = false;
+        } else {
+            noSessionEl.classList.remove('hidden');
+            sessionDetailEl.classList.add('hidden');
+            messages.innerHTML = '';
+            resetFlowViz();
+            if (flowDetailEl) flowDetailEl.textContent = '';
+            status.textContent = '';
+            input.value = '';
+            input.disabled = true;
+            sendBtn.disabled = true;
+            if (agentSel) agentSel.disabled = true;
+            setScenarioPanelVisible(false);
+            if (window.agctorTraceTimeline) {
+                var traceRoot = document.getElementById('pm-play-trace-timeline');
+                var emptyMsg = traceRoot && traceRoot.dataset ? traceRoot.dataset.emptyMessage : '';
+                window.agctorTraceTimeline.clear(
+                    'pm-play-trace-timeline',
+                    emptyMsg || 'Send a message to see LLM, ingest, and persist spans for this request.',
+                    'No session selected'
+                );
+            }
+        }
     }
 
     function updateProjectHeader() {
@@ -204,8 +277,6 @@
 
     function loadTranscript(sessionId) {
         if (!sessionId) {
-            messages.innerHTML =
-                '<div class="text-gray-500 dark:text-gray-400 text-sm">Select a session from the list.</div>';
             return Promise.resolve();
         }
         return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId))
@@ -260,7 +331,7 @@
 
     /**
      * Collect agent ids available for the active scenario.
-     * Priority: personaAgentIds (scenario roster) → flow PersonaCall config.personaId → empty = global list.
+     * Priority: personaAgentIds (scenario roster) → flow LlmNode config.personaId → empty = global list.
      */
     function scopedAgentIdsForActive() {
         var scen = scenarioFor(activeProjectScenarioId);
@@ -271,7 +342,7 @@
         });
         var nodes = (scen.flow && scen.flow.nodes) || [];
         nodes.forEach(function (n) {
-            if (n && n.type === 'PersonaCall' && n.config && n.config.personaId && ids.indexOf(n.config.personaId) < 0) {
+            if (n && n.type === 'LlmNode' && n.config && n.config.personaId && ids.indexOf(n.config.personaId) < 0) {
                 ids.push(n.config.personaId);
             }
         });
@@ -477,13 +548,23 @@
         return loadSessionsForProject(null);
     }
 
-    function loadProjects(preferredId) {
+    function loadProjects(preferredId, options) {
+        options = options || {};
+        var skipDefaultFirst = !!options.skipDefaultFirst;
         return fetch('/api/chat/projects?limit=100')
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('projects')); })
             .then(function (projects) {
                 projectsCache = projects || [];
                 var inList = preferredId && projectsCache.some(function (x) { return x.projectId === preferredId; });
-                activeProjectId = inList ? preferredId : null;
+                // Default to first project when nothing valid is selected (empty landing / stale projectId in URL).
+                // skipDefaultFirst: deep-linked session is not tied to a project — keep project unselected for orphan flow.
+                if (inList) {
+                    activeProjectId = preferredId;
+                } else if (!skipDefaultFirst && projectsCache.length > 0) {
+                    activeProjectId = projectsCache[0].projectId;
+                } else {
+                    activeProjectId = null;
+                }
                 var p = null;
                 for (var j = 0; j < projectsCache.length; j++) {
                     if (projectsCache[j].projectId === activeProjectId) {
@@ -522,8 +603,6 @@
             confirmingDeleteSessionId = null;
             activeSessionId = s.sessionId;
             renderSessionList(sessionsCache, activeSessionId);
-            syncUrl();
-            loadTranscript(activeSessionId);
         });
         row.appendChild(btn);
 
@@ -661,6 +740,9 @@
                 '<div class="text-xs text-gray-500 dark:text-gray-400">Select a project to list its sessions.</div>';
             if (hint) hint.textContent = '';
             newBtn.disabled = true;
+            activeSessionId = null;
+            syncSessionColumn();
+            syncUrl();
             return Promise.resolve();
         }
         newBtn.disabled = false;
@@ -669,16 +751,29 @@
                 '<div class="text-xs text-gray-500 dark:text-gray-400">No sessions yet. Click New session.</div>';
             if (hint) hint.textContent = 'Sessions belong to this project only.';
             activeSessionId = null;
+            persistLastSessionForProject(activeProjectId, null);
             syncUrl();
-            return loadTranscript(null);
+            syncSessionColumn();
+            return Promise.resolve();
         }
-        var pick =
+        // Prefer URL/explicit pick, then in-memory selection, then localStorage for this project — never auto-select first row.
+        var pick = null;
+        if (
             preferredSessionId &&
             sessionsCache.some(function (s) { return s.sessionId === preferredSessionId; })
-                ? preferredSessionId
-                : activeSessionId && sessionsCache.some(function (s2) { return s2.sessionId === activeSessionId; })
-                  ? activeSessionId
-                  : sessionsCache[0].sessionId;
+        ) {
+            pick = preferredSessionId;
+        } else if (
+            activeSessionId &&
+            sessionsCache.some(function (s2) { return s2.sessionId === activeSessionId; })
+        ) {
+            pick = activeSessionId;
+        } else {
+            var stored = readStoredLastSessionId(activeProjectId);
+            if (stored && sessionsCache.some(function (s3) { return s3.sessionId === stored; })) {
+                pick = stored;
+            }
+        }
         sessionsCache.forEach(function (s) {
             var node;
             if (confirmingDeleteSessionId === s.sessionId) node = renderSessionDeleteConfirm(s);
@@ -687,9 +782,11 @@
             sessionListEl.appendChild(node);
         });
         activeSessionId = pick;
+        persistLastSessionForProject(activeProjectId, activeSessionId);
         syncUrl();
+        syncSessionColumn();
         if (hint) hint.textContent = 'Sessions belong to this project only.';
-        return loadTranscript(activeSessionId);
+        return activeSessionId ? loadTranscript(activeSessionId) : Promise.resolve();
     }
 
     function startSessionRename(sessionId) {
@@ -1239,6 +1336,8 @@
     var qs = new URLSearchParams(window.location.search);
     var qProject = qs.get('projectId');
     var qSession = qs.get('sessionId');
+    /** True when ?sessionId= loaded and that session has no projectId (orphan transcript path). */
+    var sessionNotBoundToProject = false;
 
     loadAgents()
         .then(loadScenarios)
@@ -1248,18 +1347,39 @@
                 return fetch('/api/chat/sessions/' + encodeURIComponent(qSession))
                     .then(function (r) { return r.ok ? r.json() : null; })
                     .then(function (tr) {
-                        if (tr && tr.session && tr.session.projectId) qProject = tr.session.projectId;
+                        sessionNotBoundToProject = false;
+                        if (tr && tr.session) {
+                            if (tr.session.projectId) {
+                                qProject = tr.session.projectId;
+                            } else {
+                                sessionNotBoundToProject = true;
+                                qProject = null;
+                            }
+                        }
                     });
             }
         })
-        .then(function () { return loadProjects(qProject || null); })
         .then(function () {
+            return loadProjects(qProject || null, { skipDefaultFirst: sessionNotBoundToProject });
+        })
+        .then(function () {
+            // Session pointed at a project that no longer exists — same orphan handling as no projectId.
+            if (qSession && qProject && !projectsCache.some(function (x) { return x.projectId === qProject; })) {
+                activeProjectId = null;
+                activeProjectScenarioId = '';
+                agentOverrideId = '';
+                renderProjectList();
+                updateProjectHeader();
+                refreshAgentSelection();
+                syncUrl();
+            }
             if (activeProjectId) {
                 return loadSessionsForProject(qSession || null);
             }
             if (qSession) {
                 activeSessionId = qSession;
                 syncUrl();
+                syncSessionColumn();
                 if (hint) {
                     hint.textContent =
                         'This session is not linked to a project (or no project was resolved). Pick a project to manage sessions.';

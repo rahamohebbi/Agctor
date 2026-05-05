@@ -17,7 +17,7 @@
 - Changing current scenario apply endpoint contracts in this phase.
 - **React, Vue, or server-rendered JS frameworks** for the graph UI; v1 is **vanilla JS** + a small static script surface (see **Rendering and portability**).
 
-**Shipped today:** `Router` supports **deterministic** substring + default edge and optional **`routerMode: llm`** (see **Smart LLM Router (Phase 10)**). **`PersonaCall`** persists **`config.personaId`** with a **Phase 11** modal **roster picker** (YAML **`name`** / **`role`** labels via `GET /api/project-memory/agents`).
+**Shipped today:** `Router` supports **deterministic** substring + default edge and optional **`routerMode: llm`** (see **Smart LLM Router (Phase 10)**). **`LlmNode`** persists **`config.personaId`** with a **Phase 11** modal **roster picker** (YAML **`name`** / **`role`** labels via `GET /api/project-memory/agents`).
 
 ## User stories
 
@@ -30,7 +30,7 @@
 
 1. New button: **Open visual designer** on scenario editor.
 2. Modal contains:
-   - left: node palette (`ChatInput`, `Router`, `PersonaCall`, `Merge`, `Output`),
+   - left: node palette (`ChatInput`, `Router`, `LlmNode`, `Merge`, `Output`),
    - center: flow canvas (Cytoscape.js) with palette-driven add/connect,
    - right: node properties and execution summary.
 3. Footer actions:
@@ -52,11 +52,11 @@ Flow nodes are **executable orchestration steps**, not decorative placeholders. 
 | --- | --- |
 | **GraphDocument** | Canonical `scenario.flow` JSON (nodes, edges, policies). |
 | **Runner** | `IScenarioFlowExecutionService` — loads scenario + flow, validates, walks the graph. |
-| **PersonaCall** | Runner resolves `config.personaId` against `personaAgentIds`, loads YAML spec from project root, builds the same prompt envelope as playground, calls local LLM once. |
+| **LlmNode** | Runner resolves `config.personaId` against `personaAgentIds`, loads YAML spec from project root, builds the same prompt envelope as playground, calls local LLM once. |
 
 ### API (MVP)
 
-- `POST /api/scenarios/{id}/flow/run` — body: `message`, optional `sessionId` (for transcript-aware prompts). Requires configured **project memory root** when the path includes `PersonaCall`.
+- `POST /api/scenarios/{id}/flow/run` — body: `message`, optional `sessionId` (for transcript-aware prompts). Requires configured **project memory root** when the path includes `LlmNode`.
 - Response: final `Output` node text (or structured error: no flow, validation, bad parallel topology, missing project root, persona not found).
 
 ### Execution semantics (v1)
@@ -64,8 +64,8 @@ Flow nodes are **executable orchestration steps**, not decorative placeholders. 
 | Node | Behavior |
 | --- | --- |
 | `ChatInput` | Seeds run context with the user `message`. |
-| `Router` | **Current:** copies upstream text; chooses **one** outgoing **sequential** edge via substring match on user message + default branch (edge id order). **Phase 10:** LLM returns validated `targets[]` of `personaId`s; runner runs **one or more** linked `PersonaCall` nodes (default parallel → `Merge`). |
-| `PersonaCall` | One LLM call per node; input text = upstream node output (single sequential predecessor). `config.personaId` must appear in `personaAgentIds`. |
+| `Router` | **Current:** copies upstream text; chooses **one** outgoing **sequential** edge via substring match on user message + default branch (edge id order). **Phase 10:** LLM returns validated `targets[]` of `personaId`s; runner runs **one or more** linked `LlmNode` nodes (default parallel → `Merge`). |
+| `LlmNode` | One LLM call per node; input text = upstream node output (single sequential predecessor). `config.personaId` must appear in `personaAgentIds`. |
 | `Merge` | Concatenates non-empty outputs from **sequential and parallel** predecessors into this node, ordered by **edge id** (deterministic). |
 | `Output` | Terminal: returns merged text from predecessors (same concat rule as `Merge`). |
 
@@ -89,27 +89,27 @@ Log scenario id, graph id, node id, and persona id per step; expose correlation 
 
 ## Smart LLM Router (Phase 10 — delivered)
 
-**Goal:** Mode-switch the `Router` with an **LLM routing step** that infers **one or more intents** and selects **one or more** downstream **`PersonaCall`** nodes, using **graph-discovered candidates** and **strict structured output**.
+**Goal:** Mode-switch the `Router` with an **LLM routing step** that infers **one or more intents** and selects **one or more** downstream **`LlmNode`** nodes, using **graph-discovered candidates** and **strict structured output**.
 
 ### Problem statement
 
 Operators need a **smart** router that:
 
 - Routes the **same user prompt** to **one or many** persona agents based on **semantic** intent, not substring rules.
-- **Discovers** eligible `PersonaCall` targets **automatically** from the graph (outgoing edges from this `Router` to `PersonaCall` nodes), enriched with YAML metadata (id, name, role, truncated instructions).
+- **Discovers** eligible `LlmNode` targets **automatically** from the graph (outgoing edges from this `Router` to `LlmNode` nodes), enriched with YAML metadata (id, name, role, truncated instructions).
 - Supports **multiple `Router` nodes** in one scenario (each Router = one LLM call + bounded fan-out).
 
 ### Goals
 
 1. **LLM routing** with a **validated JSON contract** (see **Router LLM response schema** and [`scenario-flow-router-response.schema.json`](./scenario-flow-router-response.schema.json)).
-2. **Auto candidate list** from **topology**: sequential outgoing edges from this `Router` whose target node `type` is `PersonaCall` (ids must remain in `personaAgentIds` / catalog rules).
-3. **Multi-target execution**: after parsing + validation, run **selected** `PersonaCall` nodes — **default v1 policy:** **parallel** invocation then **existing `Merge`** (reuse Phase 8 semantics and timeouts); **alternative** sequential ordering = router output order (document if offered as `Router.config.executionMode`).
+2. **Auto candidate list** from **topology**: sequential outgoing edges from this `Router` whose target node `type` is `LlmNode` (ids must remain in `personaAgentIds` / catalog rules).
+3. **Multi-target execution**: after parsing + validation, run **selected** `LlmNode` nodes — **default v1 policy:** **parallel** invocation then **existing `Merge`** (reuse Phase 8 semantics and timeouts); **alternative** sequential ordering = router output order (document if offered as `Router.config.executionMode`).
 4. **Composition:** any number of `Router` nodes; no shared mutable router state beyond flow `store` and session transcript.
 5. **Safe failure:** invalid JSON, unknown `personaId`, empty `targets`, or confidence below threshold → documented behavior (fail with message, or single **fallback** `personaId` from `Router.config`, v1 TBD in implementation).
 
 ### Non-goals (Phase 10 v1)
 
-- Routing to nodes that are **not** `PersonaCall` children of this Router in the graph (no “invented” targets).
+- Routing to nodes that are **not** `LlmNode` children of this Router in the graph (no “invented” targets).
 - Replacing **`parallel` / `Merge`** with a new join primitive (reuse `Merge`).
 - Custom fine-tuned classifier models (LLM-only).
 - Modal **Simulate** executing the real router LLM (client stays structural / last-server-validation only unless a debug API is added).
@@ -118,10 +118,10 @@ Operators need a **smart** router that:
 
 | Step | Behavior |
 | --- | --- |
-| **Discover** | Collect target `PersonaCall` node ids (and `config.personaId`) from **sequential** edges `Router → PersonaCall`. Build prompt appendix: one block per candidate from project-memory YAML (bounded length). |
+| **Discover** | Collect target `LlmNode` node ids (and `config.personaId`) from **sequential** edges `Router → LlmNode`. Build prompt appendix: one block per candidate from project-memory YAML (bounded length). |
 | **LLM call** | Single non-streaming generate returning **JSON only** matching router response schema. |
 | **Validate** | Parse JSON → whitelist `targets[].personaId` against candidate set → dedupe → enforce `maxTargets` / `minConfidence` / `fallbackPersonaId` from `Router.config`. |
-| **Run** | Invoke `PersonaCall` for each selected target; **multiple picks** → **parallel + `Merge`**; **single pick** → linear path to `Output`. |
+| **Run** | Invoke `LlmNode` for each selected target; **multiple picks** → **parallel + `Merge`**; **single pick** → linear path to `Output`. |
 | **Multiple Routers** | Repeat per `Router` node on the path; each invocation independent. |
 
 ### `Router` node `config` (GraphDocument — planned fields)
@@ -131,7 +131,7 @@ Optional JSON on `Router` nodes (extend `scenario-flow.schema.json` when stable)
 | Field | Purpose |
 | --- | --- |
 | `routerMode` | e.g. `deterministic` (legacy substring) \| `llm` (Phase 10); default migration TBD. |
-| `maxTargets` | Cap on number of `PersonaCall` invocations per Router (e.g. 1–5). |
+| `maxTargets` | Cap on number of `LlmNode` invocations per Router (e.g. 1–5). |
 | `fallbackPersonaId` | If LLM output invalid / empty, optional single persona to run. |
 | `minConfidence` | Optional; drop targets below threshold. |
 | `model` / `temperature` | Optional overrides for routing call only. |
@@ -157,12 +157,12 @@ Canonical machine output (versioned). Repo copy: [`scenario-flow-router-response
 
 ### Catalog / designer validation (planned)
 
-- `Router` in `llm` mode: require **≥1** outgoing sequential edge to a `PersonaCall` node.
+- `Router` in `llm` mode: require **≥1** outgoing sequential edge to a `LlmNode` node.
 - Warn if no `Merge` follows multi-target pattern (when `maxTargets` > 1 or LLM can return multiple).
 
 ### UX (modal — delivered for Router)
 
-- Property panel for `Router`: **routerMode**, optional limits/fallback, **read-only list** of sequential `PersonaCall` candidates.
+- Property panel for `Router`: **routerMode**, optional limits/fallback, **read-only list** of sequential `LlmNode` candidates.
 - Help text: **Simulate** does not call the routing LLM.
 
 ### API
@@ -170,18 +170,18 @@ Canonical machine output (versioned). Repo copy: [`scenario-flow-router-response
 - **Phase 10:** reuse `POST /api/scenarios/{id}/flow/run` and coordinator path; no separate router endpoint required.
 - **Optional debug:** `POST /api/scenarios/{id}/flow/router-preview` with body `{ "routerNodeId", "message" }` returning parsed routing JSON only (out of scope unless added in plan).
 
-## PersonaCall property UX (Phase 11 — delivered)
+## LlmNode property UX (Phase 11 — delivered)
 
-**Problem:** Adding a **`PersonaCall`** from the palette currently defaults `config.personaId` (e.g. first entry in `personaAgentIds`). Operators think in **product terms** (“Memory Curator”, “Person Extractor”) while the graph must store canonical **YAML `id`** (`memory-curator`, `person-extractor`).
+**Problem:** Adding a **`LlmNode`** from the palette currently defaults `config.personaId` (e.g. first entry in `personaAgentIds`). Operators think in **product terms** (“Memory Curator”, “Person Extractor”) while the graph must store canonical **YAML `id`** (`memory-curator`, `person-extractor`).
 
-**Goal:** In the flow modal, when a **`PersonaCall`** node is selected, show a **dropdown** (or equivalent) of personas **allowed for this scenario** — i.e. **`personaAgentIds`** — labeled with **human-readable names** from project-memory agent specs (`name`, fallback `role` or `id`). Persist **`config.personaId`** only; no change to interpreter or `flow/run` contract.
+**Goal:** In the flow modal, when a **`LlmNode`** node is selected, show a **dropdown** (or equivalent) of personas **allowed for this scenario** — i.e. **`personaAgentIds`** — labeled with **human-readable names** from project-memory agent specs (`name`, fallback `role` or `id`). Persist **`config.personaId`** only; no change to interpreter or `flow/run` contract.
 
 ### Requirements
 
 1. **Roster source of truth:** options = intersection of scenario `personaAgentIds` and what catalog validation already allows (unknown ids remain invalid on save).
 2. **Labels:** resolve via Host API listing agent specs for the configured **project root** (or extend an existing project-memory endpoint); cache per modal session to avoid spam.
 3. **Empty roster:** block or warn with copy pointing to the main scenario form (“Add personas to this scenario first”).
-4. **New node:** on add `PersonaCall`, either prompt for persona or default to first roster id **after** picker is implemented (avoid silent wrong persona).
+4. **New node:** on add `LlmNode`, either prompt for persona or default to first roster id **after** picker is implemented (avoid silent wrong persona).
 
 ### Non-goals (Phase 11 v1)
 
@@ -193,15 +193,15 @@ Canonical machine output (versioned). Repo copy: [`scenario-flow-router-response
 - Operator can assign **Memory Curator** vs **Person Extractor** (or any rostered agent) without typing raw ids.
 - Saved `GraphDocument` round-trips with correct `personaId`; server validation unchanged.
 
-**Implementation:** modal left panel **PersonaCall (selected)** + `GET /api/project-memory/agents` label cache; `validateFlowDocument` optional roster argument from **Validate** in the modal.
+**Implementation:** modal left panel **LlmNode (selected)** + `GET /api/project-memory/agents` label cache; `validateFlowDocument` optional roster argument from **Validate** in the modal.
 
 ## Orchestration model (v1)
 
 ### Node types
 
 - `ChatInput`: entry point for user request.
-- `Router`: **Shipped:** condition-based branch chooser **and** optional **`routerMode: llm`** with auto-discovered `PersonaCall` targets and structured JSON (see **Smart LLM Router**).
-- `PersonaCall`: resolve persona by **`config.personaId`** and run one **project-memory** LLM turn (playground-equivalent). **Phase 11 (delivered):** modal picker maps display names → `personaId`.
+- `Router`: **Shipped:** condition-based branch chooser **and** optional **`routerMode: llm`** with auto-discovered `LlmNode` targets and structured JSON (see **Smart LLM Router**).
+- `LlmNode`: resolve persona by **`config.personaId`** and run one **project-memory** LLM turn (playground-equivalent). **Phase 11 (delivered):** modal picker maps display names → `personaId`.
 - `Merge`: combine branch outputs (ordered or policy-driven); v1 runner uses deterministic edge-id ordering.
 - `Output`: final response composer (terminal).
 
@@ -215,8 +215,8 @@ Canonical machine output (versioned). Repo copy: [`scenario-flow-router-response
 ```mermaid
 flowchart LR
     chatInput[ChatInput] --> routerNode[Router]
-    routerNode --> extractorCall[PersonaCall_person_extractor]
-    routerNode --> queryCall[PersonaCall_person_query]
+    routerNode --> extractorCall[LlmNode_person_extractor]
+    routerNode --> queryCall[LlmNode_person_query]
     extractorCall --> mergeNode[Merge]
     queryCall --> mergeNode
     mergeNode --> outputNode[Output]
@@ -300,7 +300,7 @@ Validation errors (400) should include:
 - missing entry/output nodes,
 - broken edges,
 - unreachable output,
-- unknown persona id in `PersonaCall`,
+- unknown persona id in `LlmNode`,
 - invalid merge policy or router condition (deterministic mode).
 - (Phase 10) invalid Router LLM JSON or targets outside the candidate set.
 
@@ -314,13 +314,13 @@ Validation errors (400) should include:
 6. Existing non-visual scenario edit/apply remains functional.
 7. Save/reload round-trip: `GraphDocument` written to API matches document read back after modal close/reopen (no loss of `nodes`, `edges`, or `ui` layouts not derived from the library).
 8. Cytoscape is confined to the adapter module; swapping renderer does not require changing the scenario catalog shape.
-9. **`POST /api/scenarios/{id}/flow/run`** executes graphs from `ChatInput` to `Output` with **sequential** paths and **parallel** fan-out to a shared `Merge`, invoking **real** `PersonaCall` steps against project-memory YAML when project root is configured (per-call timeout; nested parallel forks rejected).
-10. Unit-level tests cover graph walking (`Router` branch + `PersonaCall` ordering) with a stub persona invoker (no Ollama required).
-11. **(Phase 10)** LLM `Router` discovers `PersonaCall` candidates only from **graph edges** from that Router; runtime **rejects** any `personaId` not in that set.
-12. **(Phase 10)** One user message can route to **multiple** `PersonaCall` nodes when the routing JSON selects multiple targets, with outputs combined via existing **`Merge`** (parallel policy default).
+9. **`POST /api/scenarios/{id}/flow/run`** executes graphs from `ChatInput` to `Output` with **sequential** paths and **parallel** fan-out to a shared `Merge`, invoking **real** `LlmNode` steps against project-memory YAML when project root is configured (per-call timeout; nested parallel forks rejected).
+10. Unit-level tests cover graph walking (`Router` branch + `LlmNode` ordering) with a stub persona invoker (no Ollama required).
+11. **(Phase 10)** LLM `Router` discovers `LlmNode` candidates only from **graph edges** from that Router; runtime **rejects** any `personaId` not in that set.
+12. **(Phase 10)** One user message can route to **multiple** `LlmNode` nodes when the routing JSON selects multiple targets, with outputs combined via existing **`Merge`** (parallel policy default).
 13. **(Phase 10)** A scenario may contain **multiple** `Router` nodes; each performs an independent routing LLM call.
 14. **(Phase 10)** Malformed routing JSON or empty valid targets yields a **documented** error or fallback behavior (no silent mis-routing).
-15. **(Phase 11)** With a non-empty `personaAgentIds` roster, the operator can set each `PersonaCall`’s persona from a **labeled** list; saved `personaId` matches roster and passes existing catalog validation.
+15. **(Phase 11)** With a non-empty `personaAgentIds` roster, the operator can set each `LlmNode`’s persona from a **labeled** list; saved `personaId` matches roster and passes existing catalog validation.
 
 ## Risks / mitigations
 

@@ -2,7 +2,7 @@ namespace AgctorSDK.Host.Services.ProjectMemory;
 
 /// <summary>
 /// Runs one project-memory YAML agent turn (playground-equivalent: prompt + local Ollama generate).
-/// Shared by <see cref="Controllers.ProjectMemoryController"/> and PRD-014 scenario flow <c>PersonaCall</c> execution.
+/// Shared by <see cref="Controllers.ProjectMemoryController"/> and PRD-014 scenario flow <c>LlmNode</c> execution.
 /// </summary>
 public interface IProjectMemoryPersonaLlmRunner
 {

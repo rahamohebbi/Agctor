@@ -52,11 +52,11 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
 
         var root = _projectMemoryOptions.CurrentValue.ProjectRoot?.Trim();
         if (string.IsNullOrEmpty(root))
-            return ScenarioFlowRunResponse.Fail("NO_PROJECT_ROOT", "Agctor:ProjectMemory:ProjectRoot is not set; PersonaCall execution requires a project root.");
+            return ScenarioFlowRunResponse.Fail("NO_PROJECT_ROOT", "Agctor:ProjectMemory:ProjectRoot is not set; LlmNode execution requires a project root.");
 
-        // Default 180s per PersonaCall; 0 disables (only request cancellation applies).
-        var sec = request.PersonaCallTimeoutSeconds ?? 180;
-        var personaTimeout = sec <= 0
+        // Default 180s per LlmNode; 0 disables (only request cancellation applies).
+        var sec = request.LlmNodeTimeoutSeconds ?? 180;
+        var llmNodeTimeout = sec <= 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(Math.Clamp(sec, 5, 3600));
 
@@ -71,10 +71,10 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
                     var r = await _personaRunner.RunAsync(root, request.SessionId, personaId, prompt, ct, scenarioId: scenarioId.Trim())
                         .ConfigureAwait(false);
                     if (!r.Ok)
-                        throw new ScenarioFlowExecutionException(r.ErrorMessage ?? "Persona call failed.");
+                        throw new ScenarioFlowExecutionException(r.ErrorMessage ?? "LLM node invocation failed.");
                     return r.OutputText ?? "";
                 },
-                personaTimeout,
+                llmNodeTimeout,
                 root,
                 _routerLlm,
                 observer: null,

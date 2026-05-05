@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agctor.local/schemas/scenario-flow-router-response.schema.json",
   "title": "ScenarioFlowRouterLlmResponse",
-  "description": "Structured output from the Phase 10 LLM Router step. targets[].personaId must be subset of graph-discovered PersonaCall candidates for that Router node.",
+  "description": "Structured output from the Phase 10 LLM Router step. targets[].personaId must be subset of graph-discovered LlmNode candidates for that Router node.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "targets", "needsClarification"],
@@ -21,7 +21,7 @@
           "personaId": {
             "type": "string",
             "minLength": 1,
-            "description": "Must match config.personaId of a PersonaCall reachable from this Router."
+            "description": "Must match config.personaId of a LlmNode reachable from this Router."
           },
           "reason": {
             "type": "string",

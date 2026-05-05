@@ -11,8 +11,8 @@ public static class PlaygroundFlowPlanBuilder
 {
     public const string IngestStepId = "ingest";
 
-    /// <summary>Stable id for a Playground-only persona chip when the selected agent is not on the graph path.</summary>
-    public const string SyntheticPersonaStepIdPrefix = "pm-play-persona-";
+    /// <summary>Stable id prefix for a Playground-only <c>LlmNode</c> chip when the selected agent is not on the graph path.</summary>
+    public const string SyntheticLlmNodeStepIdPrefix = "pm-play-llmnode-";
 
     /// <summary>
     /// One chip in <c>flow_plan.steps</c>. <see cref="NodeKind"/> is used server-side for SSE sequencing; not sent to the client.
@@ -39,20 +39,20 @@ public static class PlaygroundFlowPlanBuilder
 
     public sealed class Result
     {
-        public Result(IReadOnlyList<Step> steps, bool fromScenarioGraph, bool usedSyntheticPersonaStep)
+        public Result(IReadOnlyList<Step> steps, bool fromScenarioGraph, bool usedSyntheticLlmNode)
         {
             Steps = steps;
             FromScenarioGraph = fromScenarioGraph;
-            UsedSyntheticPersonaStep = usedSyntheticPersonaStep;
+            UsedSyntheticLlmNode = usedSyntheticLlmNode;
         }
 
         public IReadOnlyList<Step> Steps { get; }
         public bool FromScenarioGraph { get; }
-        public bool UsedSyntheticPersonaStep { get; }
+        public bool UsedSyntheticLlmNode { get; }
     }
 
-    /// <param name="allowSyntheticPersonaStep">False when the scenario flow is executed as-is (no extra PersonaCall chip).</param>
-    public static Result Build(ScenarioDefinition? scenario, string selectedAgentId, bool ingestActive, bool allowSyntheticPersonaStep = true)
+    /// <param name="allowSyntheticLlmNode">False when the scenario flow is executed as-is (no extra synthetic LlmNode chip).</param>
+    public static Result Build(ScenarioDefinition? scenario, string selectedAgentId, bool ingestActive, bool allowSyntheticLlmNode = true)
     {
         var agent = (selectedAgentId ?? string.Empty).Trim();
         if (scenario?.Flow is not { } flow)
@@ -67,25 +67,25 @@ public static class PlaygroundFlowPlanBuilder
             AppendGraphNodeWithOptionalIngest(steps, node, ingestActive);
 
         var personaIdsOnPath = steps
-            .Where(s => string.Equals(s.NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            .Where(s => string.Equals(s.NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
             .Select(s => s.PersonaId)
             .Where(pid => !string.IsNullOrWhiteSpace(pid))
             .Select(pid => pid!.Trim())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var usedSynthetic = false;
-        if (allowSyntheticPersonaStep && !string.IsNullOrEmpty(agent) && !personaIdsOnPath.Contains(agent))
+        if (allowSyntheticLlmNode && !string.IsNullOrEmpty(agent) && !personaIdsOnPath.Contains(agent))
         {
             var outIdx = steps.FindIndex(s => string.Equals(s.NodeKind, "Output", StringComparison.OrdinalIgnoreCase));
             if (outIdx < 0)
-                steps.Add(SyntheticPersonaStep(agent));
+                steps.Add(SyntheticLlmNodeStep(agent));
             else
-                steps.Insert(outIdx, SyntheticPersonaStep(agent));
+                steps.Insert(outIdx, SyntheticLlmNodeStep(agent));
             usedSynthetic = true;
         }
 
-        ApplyPersonaChipHighlighting(steps, agent, usedSynthetic);
-        return new Result(steps, fromScenarioGraph: true, usedSyntheticPersonaStep: usedSynthetic);
+        ApplyLlmNodeChipHighlighting(steps, agent, usedSynthetic);
+        return new Result(steps, fromScenarioGraph: true, usedSyntheticLlmNode: usedSynthetic);
     }
 
     /// <summary>Synthetic ingest chip id per extractor node (parallel flows may need two chips).</summary>
@@ -268,7 +268,7 @@ public static class PlaygroundFlowPlanBuilder
         var agent = (selectedAgentId ?? string.Empty).Trim();
         for (var i = 0; i < steps.Count; i++)
         {
-            if (!string.Equals(steps[i].NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(steps[i].NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 continue;
             if (!string.IsNullOrEmpty(agent) &&
                 string.Equals(steps[i].PersonaId, agent, StringComparison.OrdinalIgnoreCase))
@@ -277,43 +277,43 @@ public static class PlaygroundFlowPlanBuilder
 
         for (var i = 0; i < steps.Count; i++)
         {
-            if (steps[i].Id.StartsWith(SyntheticPersonaStepIdPrefix, StringComparison.OrdinalIgnoreCase))
+            if (steps[i].Id.StartsWith(SyntheticLlmNodeStepIdPrefix, StringComparison.OrdinalIgnoreCase))
                 return i;
         }
 
         for (var i = 0; i < steps.Count; i++)
         {
-            if (string.Equals(steps[i].NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(steps[i].NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 return i;
         }
 
         return -1;
     }
 
-    private static Step SyntheticPersonaStep(string agent) =>
+    private static Step SyntheticLlmNodeStep(string agent) =>
         new(
-            SyntheticPersonaStepIdPrefix + SanitizeStepIdSuffix(agent),
-            $"PersonaCall ({agent})",
+            SyntheticLlmNodeStepIdPrefix + SanitizeStepIdSuffix(agent),
+            $"LlmNode ({agent})",
             optional: false,
             active: true,
-            nodeKind: "PersonaCall",
+            nodeKind: "LlmNode",
             personaId: agent);
 
     private static string SanitizeStepIdSuffix(string agent) =>
         string.Concat(agent.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
 
-    private static void ApplyPersonaChipHighlighting(List<Step> steps, string selectedAgent, bool usedSynthetic)
+    private static void ApplyLlmNodeChipHighlighting(List<Step> steps, string selectedAgent, bool usedSynthetic)
     {
         for (var i = 0; i < steps.Count; i++)
         {
             var s = steps[i];
-            if (!string.Equals(s.NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(s.NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var match = !string.IsNullOrEmpty(selectedAgent)
                         && string.Equals(s.PersonaId, selectedAgent, StringComparison.OrdinalIgnoreCase);
             var optional = usedSynthetic
-                ? !s.Id.StartsWith(SyntheticPersonaStepIdPrefix, StringComparison.OrdinalIgnoreCase)
+                ? !s.Id.StartsWith(SyntheticLlmNodeStepIdPrefix, StringComparison.OrdinalIgnoreCase)
                 : !match;
             var active = !optional;
             steps[i] = new Step(s.Id, s.Label, optional, active, s.NodeKind, s.PersonaId);
@@ -326,12 +326,12 @@ public static class PlaygroundFlowPlanBuilder
             {
                 new Step("chatInput", "Chat input", optional: false, active: true, nodeKind: "ChatInput"),
                 new Step("router", "Router", optional: true, active: false, nodeKind: "Router"),
-                new Step("personaCall", $"PersonaCall ({selectedAgentId})", optional: false, active: true, nodeKind: "PersonaCall", selectedAgentId),
+                new Step("llmNode", $"LlmNode ({selectedAgentId})", optional: false, active: true, nodeKind: "LlmNode", selectedAgentId),
                 new Step(IngestStepId, "Apply extractor JSON → disk", optional: true, active: ingestActive, nodeKind: "Ingest"),
                 new Step("output", "Output", optional: false, active: true, nodeKind: "Output")
             },
             fromScenarioGraph: false,
-            usedSyntheticPersonaStep: false);
+            usedSyntheticLlmNode: false);
 
     private static Step MapGraphNode(ScenarioFlowNode node)
     {
@@ -351,12 +351,12 @@ public static class PlaygroundFlowPlanBuilder
         if (string.Equals(type, "Output", StringComparison.OrdinalIgnoreCase))
             return new Step(id, label, optional: false, active: true, nodeKind: "Output");
 
-        if (string.Equals(type, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(type, "LlmNode", StringComparison.OrdinalIgnoreCase))
         {
             var pid = TryGetPersonaId(node.Config)?.Trim() ?? "";
-            var chip = string.IsNullOrEmpty(pid) ? label : $"PersonaCall ({pid})";
-            // Highlighting is finalized in ApplyPersonaChipHighlighting once synthetic step (if any) is known.
-            return new Step(id, chip, optional: false, active: true, nodeKind: "PersonaCall", string.IsNullOrEmpty(pid) ? null : pid);
+            var chip = string.IsNullOrEmpty(pid) ? label : $"LlmNode ({pid})";
+            // Highlighting is finalized in ApplyLlmNodeChipHighlighting once synthetic step (if any) is known.
+            return new Step(id, chip, optional: false, active: true, nodeKind: "LlmNode", string.IsNullOrEmpty(pid) ? null : pid);
         }
 
         // Unknown node type: still show it so the graph is not silently dropped.
@@ -365,7 +365,7 @@ public static class PlaygroundFlowPlanBuilder
 
     private static bool IsPersonaExtractorNode(ScenarioFlowNode node)
     {
-        if (!string.Equals(node.Type?.Trim(), "PersonaCall", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(node.Type?.Trim(), "LlmNode", StringComparison.OrdinalIgnoreCase))
             return false;
         var pid = TryGetPersonaId(node.Config);
         return string.Equals(pid, "person-extractor", StringComparison.OrdinalIgnoreCase);

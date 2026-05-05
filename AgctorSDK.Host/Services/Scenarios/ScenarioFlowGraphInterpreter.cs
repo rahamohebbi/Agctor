@@ -3,14 +3,14 @@ using System.Text.Json;
 namespace AgctorSDK.Host.Services.Scenarios;
 
 /// <summary>
-/// Executes a <see cref="ScenarioFlowDocument"/> (PRD-014 Phase 7–10): sequential paths, <see cref="Router"/> (deterministic or LLM),
-/// <see cref="PersonaCall"/>, <c>parallel</c> fan-out to branches that meet at one <see cref="Merge"/>, then <see cref="Output"/>.
+/// Executes a <see cref="ScenarioFlowDocument"/> (PRD-014 Phase 7–10): sequential paths, <c>Router</c> (deterministic or LLM),
+/// <c>LlmNode</c>, <c>parallel</c> fan-out to branches that meet at one <c>Merge</c>, then <c>Output</c>.
 /// Nested parallel forks from inside a branch are rejected. Persona invocation is injected for tests.
 /// </summary>
 public sealed class ScenarioFlowGraphInterpreter
 {
     /// <summary>Invokes one persona/YAML agent id with the upstream text; returns assistant text.</summary>
-    /// <param name="flowNodeId">Graph <see cref="ScenarioFlowNode.Id"/> for this PersonaCall (null in tests that ignore it).</param>
+    /// <param name="flowNodeId">Graph <see cref="ScenarioFlowNode.Id"/> for this LlmNode (null in tests that ignore it).</param>
     public delegate Task<string> PersonaInvoker(
         string personaAgentId,
         string promptText,
@@ -22,9 +22,9 @@ public sealed class ScenarioFlowGraphInterpreter
         ScenarioFlowDocument flow,
         string userMessage,
         PersonaInvoker invokePersona,
-        TimeSpan personaCallTimeout,
+        TimeSpan llmNodeTimeout,
         CancellationToken cancellationToken = default) =>
-        await ExecuteAsync(flow, userMessage, invokePersona, personaCallTimeout, "", null, null, cancellationToken)
+        await ExecuteAsync(flow, userMessage, invokePersona, llmNodeTimeout, "", null, null, cancellationToken)
             .ConfigureAwait(false);
 
     /// <summary>Full execution: pass <paramref name="projectRoot"/> and <paramref name="routerLlm"/> when any Router uses <c>routerMode: llm</c>.</summary>
@@ -32,7 +32,7 @@ public sealed class ScenarioFlowGraphInterpreter
         ScenarioFlowDocument flow,
         string userMessage,
         PersonaInvoker invokePersona,
-        TimeSpan personaCallTimeout,
+        TimeSpan llmNodeTimeout,
         string projectRoot,
         IScenarioFlowRouterLlmService? routerLlm,
         IScenarioFlowExecutionObserver? observer = null,
@@ -60,12 +60,12 @@ public sealed class ScenarioFlowGraphInterpreter
 
             if (string.Equals(node.Type, "Output", StringComparison.OrdinalIgnoreCase))
             {
-                await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, personaCallTimeout, cancellationToken, observer)
+                await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                     .ConfigureAwait(false);
                 return CombineIncoming(flow, store, current);
             }
 
-            await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, personaCallTimeout, cancellationToken, observer)
+            await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                 .ConfigureAwait(false);
 
             var parallelOut = OutgoingParallelEdges(flow, current);
@@ -83,10 +83,10 @@ public sealed class ScenarioFlowGraphInterpreter
                                   "Parallel branches must converge at exactly one shared Merge node (reachable from each branch start).");
 
                 var branchTasks = targets.Select(t =>
-                    RunBranchToMergeAsync(flow, map, store, completed, t, mergeId, userMessage, invokePersona, personaCallTimeout, cancellationToken, observer)).ToArray();
+                    RunBranchToMergeAsync(flow, map, store, completed, t, mergeId, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)).ToArray();
                 await Task.WhenAll(branchTasks).ConfigureAwait(false);
 
-                await EnsureProcessedAsync(flow, map, store, completed, mergeId, userMessage, invokePersona, personaCallTimeout, cancellationToken, observer)
+                await EnsureProcessedAsync(flow, map, store, completed, mergeId, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                     .ConfigureAwait(false);
 
                 current = UniqueOutgoingSequentialOrThrow(flow, mergeId);
@@ -114,7 +114,7 @@ public sealed class ScenarioFlowGraphInterpreter
                     var candidates = ListRouterPersonaCandidates(flow, map, current);
                     if (candidates.Count == 0)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' (llm) has no sequential edges to PersonaCall nodes.");
+                            $"Router '{current}' (llm) has no sequential edges to LlmNode nodes.");
 
                     var routingText = RouterInputText(flow, store, current, userMessage);
                     var llmResult = await routerLlm
@@ -166,7 +166,7 @@ public sealed class ScenarioFlowGraphInterpreter
                                 targetNodes[0],
                                 userMessage,
                                 invokePersona,
-                                personaCallTimeout,
+                                llmNodeTimeout,
                                 cancellationToken,
                                 observer)
                             .ConfigureAwait(false);
@@ -175,7 +175,7 @@ public sealed class ScenarioFlowGraphInterpreter
 
                     var mergeId = FindCommonMergeId(flow, map, targetNodes)
                                   ?? throw new ScenarioFlowExecutionException(
-                                      "LLM Router: selected PersonaCalls must reach exactly one shared Merge node.");
+                                      "LLM Router: selected LlmNodes must reach exactly one shared Merge node.");
 
                     if (observer != null)
                     {
@@ -194,7 +194,7 @@ public sealed class ScenarioFlowGraphInterpreter
                                 mergeId,
                                 userMessage,
                                 invokePersona,
-                                personaCallTimeout,
+                                llmNodeTimeout,
                                 cancellationToken,
                                 observer))
                         .ToArray();
@@ -208,7 +208,7 @@ public sealed class ScenarioFlowGraphInterpreter
                             mergeId,
                             userMessage,
                             invokePersona,
-                            personaCallTimeout,
+                            llmNodeTimeout,
                             cancellationToken,
                             observer)
                         .ConfigureAwait(false);
@@ -279,7 +279,7 @@ public sealed class ScenarioFlowGraphInterpreter
         string nodeId,
         string userMessage,
         PersonaInvoker invokePersona,
-        TimeSpan personaTimeout,
+        TimeSpan llmNodeTimeout,
         CancellationToken cancellationToken,
         IScenarioFlowExecutionObserver? observer = null)
     {
@@ -306,22 +306,22 @@ public sealed class ScenarioFlowGraphInterpreter
                 store[nodeId] = GetIncomingText(flow, store, nodeId, userMessage);
                 deferRouterComplete = true;
                 break;
-            case var t when string.Equals(t, "PersonaCall", StringComparison.OrdinalIgnoreCase):
+            case var t when string.Equals(t, "LlmNode", StringComparison.OrdinalIgnoreCase):
             {
                 var prompt = GetIncomingText(flow, store, nodeId, userMessage);
                 var pid = TryGetPersonaId(node.Config);
                 if (string.IsNullOrWhiteSpace(pid))
-                    throw new ScenarioFlowExecutionException($"PersonaCall '{nodeId}' is missing config.personaId.");
+                    throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' is missing config.personaId.");
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                if (personaTimeout > TimeSpan.Zero && personaTimeout != Timeout.InfiniteTimeSpan)
-                    linked.CancelAfter(personaTimeout);
+                if (llmNodeTimeout > TimeSpan.Zero && llmNodeTimeout != Timeout.InfiniteTimeSpan)
+                    linked.CancelAfter(llmNodeTimeout);
                 try
                 {
                     store[nodeId] = await invokePersona(pid.Trim(), prompt, linked.Token, nodeId).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    throw new ScenarioFlowExecutionException($"PersonaCall '{nodeId}' timed out after {personaTimeout.TotalSeconds}s.");
+                    throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' timed out after {llmNodeTimeout.TotalSeconds}s.");
                 }
 
                 completeDetail = $"{pid.Trim()}; {store[nodeId].Length} char(s)";
@@ -356,14 +356,14 @@ public sealed class ScenarioFlowGraphInterpreter
         string mergeId,
         string userMessage,
         PersonaInvoker invokePersona,
-        TimeSpan personaTimeout,
+        TimeSpan llmNodeTimeout,
         CancellationToken cancellationToken,
         IScenarioFlowExecutionObserver? observer = null)
     {
         var cur = branchStart;
         while (!string.Equals(cur, mergeId, StringComparison.OrdinalIgnoreCase))
         {
-            await EnsureProcessedAsync(flow, map, store, completed, cur, userMessage, invokePersona, personaTimeout, cancellationToken, observer)
+            await EnsureProcessedAsync(flow, map, store, completed, cur, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                 .ConfigureAwait(false);
 
             if (OutgoingParallelEdges(flow, cur).Count >= 2)
@@ -381,7 +381,7 @@ public sealed class ScenarioFlowGraphInterpreter
         }
     }
 
-    /// <summary>Sequential Router→PersonaCall edges in stable edge-id order (LLM candidate list).</summary>
+    /// <summary>Sequential Router→LlmNode edges in stable edge-id order (LLM candidate list).</summary>
     private static IReadOnlyList<ScenarioFlowRouterPersonaCandidate> ListRouterPersonaCandidates(
         ScenarioFlowDocument flow,
         IReadOnlyDictionary<string, ScenarioFlowNode> map,
@@ -393,7 +393,7 @@ public sealed class ScenarioFlowGraphInterpreter
             var tid = e.ToNodeId.Trim();
             if (!map.TryGetValue(tid, out var n))
                 continue;
-            if (!string.Equals(n.Type, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(n.Type, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 continue;
             var pid = TryGetPersonaId(n.Config);
             if (string.IsNullOrWhiteSpace(pid))
@@ -443,7 +443,7 @@ public sealed class ScenarioFlowGraphInterpreter
         string branchStart,
         string userMessage,
         PersonaInvoker invokePersona,
-        TimeSpan personaTimeout,
+        TimeSpan llmNodeTimeout,
         CancellationToken cancellationToken,
         IScenarioFlowExecutionObserver? observer = null)
     {
@@ -451,7 +451,7 @@ public sealed class ScenarioFlowGraphInterpreter
         var cap = (flow.Nodes?.Count ?? 0) * 4 + 32;
         for (var i = 0; i < cap; i++)
         {
-            await EnsureProcessedAsync(flow, map, store, completed, cur, userMessage, invokePersona, personaTimeout, cancellationToken, observer)
+            await EnsureProcessedAsync(flow, map, store, completed, cur, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                 .ConfigureAwait(false);
             if (!map.TryGetValue(cur, out var n))
                 throw new ScenarioFlowExecutionException($"Unknown node '{cur}'.");

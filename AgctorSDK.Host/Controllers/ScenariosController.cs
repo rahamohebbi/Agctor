@@ -53,7 +53,7 @@ public sealed class ScenariosController : ControllerBase
     }
 
     /// <summary>
-    /// Executes the scenario's PRD-014 <c>flow</c> (sequential edges, real <c>PersonaCall</c> via project-memory LLM). Requires project root.
+    /// Executes the scenario's PRD-014 <c>flow</c> (sequential edges, real <c>LlmNode</c> via project-memory LLM). Requires project root.
     /// </summary>
     [HttpPost("{id}/flow/run")]
     [ProducesResponseType(typeof(ScenarioFlowRunResponse), StatusCodes.Status200OK)]

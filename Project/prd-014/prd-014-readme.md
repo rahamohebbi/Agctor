@@ -18,20 +18,20 @@
 
 ## Implemented summary (target v1)
 
-- **Runtime:** `POST /api/scenarios/{id}/flow/run` executes **sequential** and **parallel fan-out → Merge** graphs; `PersonaCall` invokes project-memory YAML + Ollama (default 180s timeout per call, overridable). Dashboard messages to `session-coordinator-agent` use the flow when the applied scenario defines `flow`.
+- **Runtime:** `POST /api/scenarios/{id}/flow/run` executes **sequential** and **parallel fan-out → Merge** graphs; `LlmNode` invokes project-memory YAML + Ollama (default 180s timeout per call, overridable). Dashboard messages to `session-coordinator-agent` use the flow when the applied scenario defines `flow`.
 - Modal launched from `/Dashboard/Scenarios` for visual flow design.
 - Simple node-based orchestration for scenario request handling:
   - `ChatInput`
   - `Router`
-  - `PersonaCall`
+  - `LlmNode`
   - `Merge`
   - `Output`
 - Saved visual flow remains canonical and compatible with current scenario model (`agentTypes`, `personaAgentIds`, `personaBindings`).
 - **Portable graph format:** domain-owned **GraphDocument** JSON (not a renderer dump); optional **JSON Schema** for validation only.
 - **Rendering:** [Cytoscape.js](https://js.cytoscape.org/) in **vanilla JS** (no React/Vue); thin **adapter** behind a `GraphRenderer`-style interface so the library can be swapped later.
 - **Versioning / lifecycle:** revisions or Git-backed files; soft-delete (`archived` / `deleted`) before hard remove where appropriate.
-- **Delivered (Phase 10):** **Smart LLM Router** — optional `routerMode: llm`; auto-discovers downstream `PersonaCall` candidates from graph edges; structured JSON ([`scenario-flow-router-response.schema.json`](./scenario-flow-router-response.schema.json)); multi-target default → parallel `PersonaCall` + `Merge`. See PRD section *Smart LLM Router*.
-- **Delivered (Phase 11):** **PersonaCall persona picker** — flow modal: roster dropdown with **YAML display names** from `GET /api/project-memory/agents`, client validation vs `personaAgentIds`. See implementation plan Phase 11 and PRD section *PersonaCall property UX*.
+- **Delivered (Phase 10):** **Smart LLM Router** — optional `routerMode: llm`; auto-discovers downstream `LlmNode` candidates from graph edges; structured JSON ([`scenario-flow-router-response.schema.json`](./scenario-flow-router-response.schema.json)); multi-target default → parallel `LlmNode` + `Merge`. See PRD section *Smart LLM Router*.
+- **Delivered (Phase 11):** **LlmNode persona picker** — flow modal: roster dropdown with **YAML display names** from `GET /api/project-memory/agents`, client validation vs `personaAgentIds`. See implementation plan Phase 11 and PRD section *LlmNode property UX*.
 
 ## Key code locations (planned)
 

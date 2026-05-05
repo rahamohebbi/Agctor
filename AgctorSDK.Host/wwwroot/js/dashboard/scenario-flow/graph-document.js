@@ -2,7 +2,7 @@
  * PRD-014: portable GraphDocument helpers (no Cytoscape). Server still validates on save.
  */
 (function (global) {
-    var nodeTypes = ['ChatInput', 'Router', 'PersonaCall', 'Merge', 'Output'];
+    var nodeTypes = ['ChatInput', 'Router', 'LlmNode', 'Merge', 'Output'];
     var edgeModes = ['sequential', 'parallel'];
     var outputPolicies = ['first_non_empty', 'merge_sections', 'ranked'];
 
@@ -31,7 +31,7 @@
     }
 
     /** Client-side structural checks; API returns authoritative errors.
-     * @param {object} [opts] — optional `personaAgentIds` (string[]) for PersonaCall roster check (PRD-014 Phase 11). */
+     * @param {object} [opts] — optional `personaAgentIds` (string[]) for LlmNode roster check (PRD-014 Phase 11). */
     function validateFlowDocument(doc, opts) {
         opts = opts || {};
         var roster = Array.isArray(opts.personaAgentIds) ? opts.personaAgentIds : null;
@@ -48,7 +48,7 @@
         var ids = {};
         var inputs = 0;
         var outputs = 0;
-        var personaCallCount = 0;
+        var llmNodeCount = 0;
         nodes.forEach(function (n) {
             if (!n || !n.id) {
                 errors.push('Each node needs an id.');
@@ -59,17 +59,17 @@
             if (nodeTypes.indexOf(n.type) < 0) errors.push('Unknown node type for ' + n.id + ': ' + n.type);
             if (n.type === 'ChatInput') inputs++;
             if (n.type === 'Output') outputs++;
-            if (n.type === 'PersonaCall') {
-                personaCallCount++;
+            if (n.type === 'LlmNode') {
+                llmNodeCount++;
                 var cfg = n.config || {};
-                if (!cfg.personaId) errors.push('PersonaCall ' + n.id + ' needs config.personaId.');
+                if (!cfg.personaId) errors.push('LlmNode ' + n.id + ' needs config.personaId.');
                 else if (roster && roster.length > 0 && !rosterHasId(roster, cfg.personaId)) {
-                    errors.push('PersonaCall ' + n.id + ': personaId "' + cfg.personaId + '" is not in this scenario\'s persona roster.');
+                    errors.push('LlmNode ' + n.id + ': personaId "' + cfg.personaId + '" is not in this scenario\'s persona roster.');
                 }
             }
         });
-        if (personaCallCount > 0 && roster && roster.length === 0) {
-            errors.push('Flow has PersonaCall nodes but this scenario has no YAML personas on the roster — add personas on the scenario form.');
+        if (llmNodeCount > 0 && roster && roster.length === 0) {
+            errors.push('Flow has LlmNode nodes but this scenario has no YAML personas on the roster — add personas on the scenario form.');
         }
         if (inputs < 1) errors.push('Need at least one ChatInput node.');
         if (outputs < 1) errors.push('Need at least one Output node.');

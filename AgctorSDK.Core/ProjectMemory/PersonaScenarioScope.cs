@@ -7,7 +7,7 @@ namespace AgctorSDK.Core.ProjectMemory;
 
 /// <summary>
 /// Maps a dashboard scenario id to <c>{ProjectRoot}/scenarios/&lt;segment&gt;/</c> so persona pipeline I/O
-/// and PersonaCall prompts stay aligned per scenario without duplicating a top-level <c>people/</c> name.
+/// and LlmNode prompts stay aligned per scenario without duplicating a top-level <c>people/</c> name.
 /// </summary>
 public static class PersonaScenarioScope
 {

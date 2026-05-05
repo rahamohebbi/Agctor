@@ -11,7 +11,7 @@
 
 ## Relationship to other PRDs
 
-- **PRD-013 / PRD-014**: Scenario catalog, flow graphs, and designer; this PRD assumes flows can include Router → PersonaCall → Output and that routing rules steer which agent runs.
+- **PRD-013 / PRD-014**: Scenario catalog, flow graphs, and designer; this PRD assumes flows can include Router → LlmNode → Output and that routing rules steer which agent runs.
 - **PRD-009**: Broader trace-timeline UX backlog; PRD-016 scopes a **narrow, high-signal** improvement: **structured Input / Outcome sections** for existing playground span payloads and any small DTO extensions needed.
 - **PRD-008**: Historical trace linking; unchanged here.
 

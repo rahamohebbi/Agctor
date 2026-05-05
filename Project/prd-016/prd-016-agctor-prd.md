@@ -5,7 +5,7 @@
 Operators testing **people** scenarios in **Project memory → Playground** need two things:
 
 1. **Persistence:** When the user asks in natural language to **persist, save, or write** what the chat already knows about a person **into markdown (and related persona files)** on disk, the system should do so **reliably**, not only when the model happens to emit the right JSON in the right step.
-2. **Trace debugging:** The **Trace timeline** on the same page should make each span’s **inputs** and **outputs or outcomes** easy to scan, with **visually separated sections**, so debugging Router → PersonaCall chains does not require mentally parsing one long block of text.
+2. **Trace debugging:** The **Trace timeline** on the same page should make each span’s **inputs** and **outputs or outcomes** easy to scan, with **visually separated sections**, so debugging Router → LlmNode chains does not require mentally parsing one long block of text.
 
 This PRD describes product intent, constraints of the current architecture, and acceptance criteria. Implementation sequencing lives in [prd-016-implementation-plan.md](./prd-016-implementation-plan.md).
 
@@ -47,7 +47,7 @@ The following is the **intended** architecture today; PRD-016 closes gaps betwee
 | --- | --- |
 | P1 | **Routing:** For scenarios whose goal includes maintaining markdown persona files, **routing rules** (or Router LLM instructions) must treat utterances that express **commit / save / persist** intent as **high priority** for the **person-extractor** step when prior turns contain factual content to extract. |
 | P2 | **Agent instructions:** **person-extractor** (and shared templates) should explicitly describe that **user ask to save** still requires emitting **`memoryIntents`** for facts already stated in the thread (no new invention). |
-| P3 | **Flow design:** Default or sample flows that include **two PersonaCall** steps should document which step is responsible for **structured extraction** vs **narration/curation**, so “save” prompts are not answered only by the curator. |
+| P3 | **Flow design:** Default or sample flows that include **two LlmNode** steps should document which step is responsible for **structured extraction** vs **narration/curation**, so “save” prompts are not answered only by the curator. |
 | P4 | **Honest assistant text:** If ingest is skipped or fails, streamed assistant copy (from any persona) must not **imply** successful disk writes; optional server-side **footer** or trace-linked summary may clarify actual write status (align with existing ingest footer patterns if present). |
 | P5 | **Playground UX:** The **Request pipeline** card copy should briefly state that **natural-language save** only affects disk when **extractor JSON ingest** runs successfully, with a link or tooltip to **Trace timeline** spans `ingest-disk` / `persist-assistant`. |
 

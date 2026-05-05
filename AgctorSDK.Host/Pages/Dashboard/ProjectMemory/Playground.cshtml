@@ -36,8 +36,12 @@
             <p id="pm-play-hint" class="mt-2 text-[11px] text-gray-500 dark:text-gray-400"></p>
         </aside>
 
-        @* Chat + debug (flow + trace below transcript per PRD-017). *@
-        <div class="flex-1 min-w-0 p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 xl:rounded-none xl:border-0 xl:shadow-none space-y-4">
+        @* Chat + debug (flow + trace below transcript per PRD-017). Hidden until a session is chosen. *@
+        <div class="flex-1 min-w-0 flex flex-col min-h-0 p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 xl:rounded-none xl:border-0 xl:shadow-none">
+            <div id="pm-play-no-session" class="hidden flex flex-1 min-h-[280px] items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-900/30">
+                <p class="text-sm text-gray-500 dark:text-gray-400 text-center px-4">Select or create a new session.</p>
+            </div>
+            <div id="pm-play-session-detail" class="space-y-4 flex-1 flex flex-col min-h-0">
             <div id="pm-play-project-header" class="hidden rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-900/40">
                 <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">Selected project</div>
                 <div id="pm-play-project-title" class="text-sm font-semibold text-gray-900 dark:text-white truncate"></div>
@@ -102,6 +106,7 @@
                 emptyMessage = "Send a message to see LLM, ingest, and persist spans for this request.",
                 heightPx = 320
             })
+            </div>
         </div>
     </div>
 </div>

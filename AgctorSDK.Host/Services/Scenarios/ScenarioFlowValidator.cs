@@ -9,7 +9,7 @@ public static class ScenarioFlowValidator
 {
     private static readonly HashSet<string> NodeTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ChatInput", "Router", "PersonaCall", "Merge", "Output"
+        "ChatInput", "Router", "LlmNode", "Merge", "Output"
     };
 
     private static readonly HashSet<string> EdgeModes = new(StringComparer.OrdinalIgnoreCase)
@@ -62,13 +62,13 @@ public static class ScenarioFlowValidator
             if (string.IsNullOrWhiteSpace(n.Type) || !NodeTypes.Contains(n.Type))
                 errors.Add($"Scenario '{scenario.Id}' flow: node '{n.Id}' has invalid type '{n.Type}'.");
 
-            if (string.Equals(n.Type, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(n.Type, "LlmNode", StringComparison.OrdinalIgnoreCase))
             {
                 var pid = TryGetPersonaId(n.Config);
                 if (string.IsNullOrWhiteSpace(pid))
-                    errors.Add($"Scenario '{scenario.Id}' flow: PersonaCall node '{n.Id}' requires config.personaId.");
+                    errors.Add($"Scenario '{scenario.Id}' flow: LlmNode node '{n.Id}' requires config.personaId.");
                 else if (!personaRoster.Contains(pid, StringComparer.OrdinalIgnoreCase))
-                    errors.Add($"Scenario '{scenario.Id}' flow: PersonaCall '{n.Id}' references personaId '{pid}' not listed in personaAgentIds.");
+                    errors.Add($"Scenario '{scenario.Id}' flow: LlmNode '{n.Id}' references personaId '{pid}' not listed in personaAgentIds.");
             }
         }
 
@@ -91,7 +91,7 @@ public static class ScenarioFlowValidator
                 errors.Add($"Scenario '{scenario.Id}' flow: edge '{e.Id}' has invalid mode '{e.Mode}'.");
         }
 
-        // Phase 10: LLM Router — sequential edges only to PersonaCall; shared Merge when multiple branches.
+        // Phase 10: LLM Router — sequential edges only to LlmNode; shared Merge when multiple branches.
         foreach (var n in flow.Nodes)
         {
             if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
@@ -115,7 +115,7 @@ public static class ScenarioFlowValidator
                 .ToList();
             if (seqEdges.Count == 0)
             {
-                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) needs sequential edges to PersonaCall nodes.");
+                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) needs sequential edges to LlmNode nodes.");
                 continue;
             }
 
@@ -125,16 +125,16 @@ public static class ScenarioFlowValidator
                 var targetId = e.ToNodeId.Trim();
                 var tn = flow.Nodes.FirstOrDefault(x =>
                     string.Equals(x.Id.Trim(), targetId, StringComparison.OrdinalIgnoreCase));
-                if (tn == null || !string.Equals(tn.Type, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+                if (tn == null || !string.Equals(tn.Type, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 {
                     errors.Add(
-                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) sequential edge '{e.Id}' must target a PersonaCall node.");
+                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) sequential edge '{e.Id}' must target a LlmNode node.");
                     continue;
                 }
 
                 var pid = TryGetPersonaId(tn.Config);
                 if (string.IsNullOrWhiteSpace(pid))
-                    errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' target PersonaCall '{tn.Id}' requires config.personaId.");
+                    errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' target LlmNode '{tn.Id}' requires config.personaId.");
 
                 personaBranchIds.Add(targetId);
             }
@@ -145,12 +145,12 @@ public static class ScenarioFlowValidator
                 if (merge == null)
                 {
                     errors.Add(
-                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) PersonaCall branches must reach exactly one shared Merge.");
+                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) LlmNode branches must reach exactly one shared Merge.");
                 }
             }
             else if (personaBranchIds.Count == 1 && !NodeCanReachOutput(flow, edgeList, personaBranchIds[0]))
             {
-                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) PersonaCall branch must reach an Output node.");
+                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) LlmNode branch must reach an Output node.");
             }
 
             if (!string.IsNullOrWhiteSpace(rcfg.FallbackPersonaId))
@@ -174,7 +174,7 @@ public static class ScenarioFlowValidator
                 if (!cand.Contains(rcfg.FallbackPersonaId))
                 {
                     errors.Add(
-                        $"Scenario '{scenario.Id}' flow: Router '{rId}' fallbackPersonaId must match a PersonaCall candidate personaId.");
+                        $"Scenario '{scenario.Id}' flow: Router '{rId}' fallbackPersonaId must match a LlmNode candidate personaId.");
                 }
             }
 

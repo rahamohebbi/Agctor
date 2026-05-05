@@ -709,7 +709,7 @@ public sealed class ProjectMemoryController : ControllerBase
                                     ingestFlow.Summary ?? "",
                                     ProjectMemoryPersonaLlmRunner.TruncateForIngestLog(rawFlow));
 
-                            // Keep chain purity: downstream PersonaCall receives extractor raw output,
+                            // Keep chain purity: downstream LlmNode receives extractor raw output,
                             // while ingest remains a side-effect tracked by flow_step + trace.
                             return rawFlow;
                         }
@@ -805,7 +805,7 @@ public sealed class ProjectMemoryController : ControllerBase
             return;
         }
 
-        var flowPlan = PlaygroundFlowPlanBuilder.Build(scenarioDef, spec.Id, ingestActive, allowSyntheticPersonaStep: true);
+        var flowPlan = PlaygroundFlowPlanBuilder.Build(scenarioDef, spec.Id, ingestActive, allowSyntheticLlmNode: true);
         var planPayload = new
         {
             steps = flowPlan.Steps
@@ -822,10 +822,10 @@ public sealed class ProjectMemoryController : ControllerBase
         var runIdx = PlaygroundFlowPlanBuilder.ResolveRunnerStepIndex(flowPlan.Steps, spec.Id);
         if (runIdx < 0)
         {
-            _logger.LogWarning("Playground: no PersonaCall step in flow plan for agent {AgentId}", spec.Id);
+            _logger.LogWarning("Playground: no LlmNode step in flow plan for agent {AgentId}", spec.Id);
             for (var j = 0; j < flowPlan.Steps.Count; j++)
             {
-                if (!string.Equals(flowPlan.Steps[j].NodeKind, "PersonaCall", StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(flowPlan.Steps[j].NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
                     continue;
                 runIdx = j;
                 break;
@@ -834,14 +834,14 @@ public sealed class ProjectMemoryController : ControllerBase
 
         if (runIdx < 0 || runIdx >= flowPlan.Steps.Count)
         {
-            _logger.LogError("Playground: invalid flow plan (no PersonaCall) for agent {AgentId}", spec.Id);
+            _logger.LogError("Playground: invalid flow plan (no LlmNode) for agent {AgentId}", spec.Id);
             SetStreamRootDetail(
                 status: "error",
-                errorMessage: "Invalid playground flow plan (no PersonaCall step).");
+                errorMessage: "Invalid playground flow plan (no LlmNode step).");
             await WriteSseAsync(new AgentStreamEvent
             {
                 Type = "error",
-                Payload = "Invalid playground flow plan (no PersonaCall step).",
+                Payload = "Invalid playground flow plan (no LlmNode step).",
                 AgentId = spec.Id
             }).ConfigureAwait(false);
             return;
@@ -867,7 +867,7 @@ public sealed class ProjectMemoryController : ControllerBase
                             "Single HTTP request — graph router edges are not evaluated here.")
                         .ConfigureAwait(false);
                     return;
-                case "PersonaCall":
+                case "LlmNode":
                     await PulseFlowStepAsync(
                             st.Id,
                             $"{st.Label}…",
@@ -897,7 +897,7 @@ public sealed class ProjectMemoryController : ControllerBase
                                 st.Id,
                                 "Apply extractor JSON → disk…",
                                 "skipped",
-                                "This ingest chip appears before the streamed persona in the graph — disk ingest only runs when Ingest is after the active PersonaCall.")
+                                "This ingest chip appears before the streamed persona in the graph — disk ingest only runs when Ingest is after the active LlmNode.")
                             .ConfigureAwait(false);
                     }
 
@@ -916,8 +916,8 @@ public sealed class ProjectMemoryController : ControllerBase
         var personaDetail =
             $"{spec.Id} @ {rootFull}; {prior.Count} prior turn(s); prompt {prompt.Length} chars"
             + (string.IsNullOrWhiteSpace(scenarioResolved) ? "" : $"; scenarioId={scenarioResolved}")
-            + (flowPlan.UsedSyntheticPersonaStep
-                ? "; selected agent is not a PersonaCall on this scenario's sequential path — LLM still uses this YAML."
+            + (flowPlan.UsedSyntheticLlmNode
+                ? "; selected agent is not a LlmNode on this scenario's sequential path — LLM still uses this YAML."
                 : "");
         var runnerStep = flowPlan.Steps[runIdx];
         await WriteFlowStepAsync(runnerStep.Id, "running", personaDetail).ConfigureAwait(false);
@@ -1000,7 +1000,7 @@ public sealed class ProjectMemoryController : ControllerBase
             var st = flowPlan.Steps[i];
             switch (st.NodeKind)
             {
-                case "PersonaCall":
+                case "LlmNode":
                     await PulseFlowStepAsync(
                             st.Id,
                             $"{st.Label}…",
