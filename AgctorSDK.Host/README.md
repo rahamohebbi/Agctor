@@ -137,6 +137,59 @@ Connect to `localhost:8080` via TCP and send JSON messages:
 
 Configure via `appsettings.json` (and optional `appsettings.User.json`, which the Host loads when present). Nested keys use `:` in JSON; on the command line you can pass the same keys after `dotnet run --`, or use environment variables with `__` instead of `:`.
 
+### Actor runtime (`InMemory`, `Proto.Actor`, `Orleans`)
+
+The Host picks the **actor runtime adapter** at startup from **`Agctor:DefaultRuntime`** (see `Program.cs`). Supported values match the DI factory: **`InMemory`** (default), **`Proto.Actor`** (you may also pass **`Proto`**; it is normalized to `Proto.Actor`), and **`Orleans`**. Startup logs `Configured actor runtime: …`.
+
+For **Proto.Actor** remoting, the runtime is initialized with **`Agctor:ProtoHost`** (default `127.0.0.1`) and **`Agctor:ProtoPort`** (default `12000`).
+
+**Bash / Git Bash**
+
+```bash
+cd AgctorSDK.Host
+dotnet run -- --Agctor:DefaultRuntime=InMemory
+```
+
+From the repository root:
+
+```bash
+dotnet run --project AgctorSDK.Host/AgctorSDK.Host.csproj -- --Agctor:DefaultRuntime=InMemory
+```
+
+**Proto.Actor** with explicit remoting host/port:
+
+```bash
+dotnet run -- --Agctor:DefaultRuntime=Proto.Actor --Agctor:ProtoHost=127.0.0.1 --Agctor:ProtoPort=12000
+```
+
+**Windows PowerShell** (quote tokens that contain `:` if your shell requires it):
+
+```powershell
+Set-Location AgctorSDK.Host
+dotnet run -- --Agctor:DefaultRuntime=Proto.Actor --Agctor:ProtoHost=127.0.0.1 --Agctor:ProtoPort=12000
+```
+
+**Environment variables**
+
+```powershell
+$env:Agctor__DefaultRuntime = 'InMemory'
+dotnet run
+```
+
+```powershell
+$env:Agctor__DefaultRuntime = 'Proto.Actor'
+$env:Agctor__ProtoHost = '127.0.0.1'
+$env:Agctor__ProtoPort = '12000'
+dotnet run
+```
+
+```bash
+export Agctor__DefaultRuntime=Orleans
+dotnet run
+```
+
+Command-line and environment overrides take precedence over JSON. To persist the choice for the next process start, write **`appsettings.User.json`** or call **`PUT /api/runtime`** with a JSON body `{ "defaultRuntime": "InMemory" | "Proto.Actor" | "Orleans", "protoHost": "...", "protoPort": 12000 }` (camelCase matches the API); **restart the Host** to load a different adapter. **`GET /api/runtime`** returns the live adapter, configured values, and the **available** runtime catalog.
+
 ### Default Ollama model (`dotnet run`)
 
 The default LLM model for `LLMAgent` and related flows is **`Agctor:LLM:DefaultModel`**. The Ollama base URL is **`Agctor:LLM:OllamaApiUrl`** (default `http://localhost:11434`). At startup the Host prints the effective values (see `Program.cs`).
@@ -184,7 +237,7 @@ export Agctor__LLM__OllamaApiUrl=http://localhost:11434
 dotnet run
 ```
 
-Command-line and environment overrides take precedence over `appsettings.json`. To persist a default across restarts without flags, use `appsettings.User.json` or the Host API `PUT /api/Llm/default-model` (dashboard).
+Command-line and environment overrides take precedence over `appsettings.json`. To persist the LLM default across restarts without flags, use `appsettings.User.json` or the Host API **`PUT /api/Llm/default-model`** (dashboard).
 
 Configure via `appsettings.json`:
 
@@ -195,6 +248,9 @@ Configure via `appsettings.json`:
     "Port": 8080
   },
   "Agctor": {
+    "DefaultRuntime": "InMemory",
+    "ProtoHost": "127.0.0.1",
+    "ProtoPort": 12000,
     "LLM": {
       "OllamaApiUrl": "http://localhost:11434",
       "DefaultModel": "gemma4:31b"

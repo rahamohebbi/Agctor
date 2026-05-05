@@ -22,6 +22,23 @@ It validates scenario orchestration and tool API availability so regressions are
 - `jq` available (recommended for assertions)
 - Repository root as current working directory
 
+## Actor runtime (InMemory vs Proto.Actor vs Orleans)
+
+The Host selects the **actor runtime** from configuration key **`Agctor:DefaultRuntime`** before HTTP comes up. Typical values: **`InMemory`** (default, single process), **`Proto.Actor`** (optional remoting via **`Agctor:ProtoHost`** / **`Agctor:ProtoPort`**), **`Orleans`**.
+
+Override per run (same `--` / env-var patterns as LLM settings):
+
+```bash
+dotnet run --project AgctorSDK.Host/AgctorSDK.Host.csproj -- --Agctor:DefaultRuntime=InMemory
+```
+
+```bash
+export Agctor__DefaultRuntime=InMemory
+dotnet run --project AgctorSDK.Host/AgctorSDK.Host.csproj
+```
+
+Persist for the next restart with **`appsettings.User.json`** or **`PUT /api/runtime`**, then restart the Host. Full examples and API shapes: **`AgctorSDK.Host/README.md`** → *Configuration* → *Actor runtime*.
+
 ## Ollama Setup and Model Targeting
 
 `CodeGenerationChainScenario` creates an `LLMAgent`, and `LLMAgent` talks to Ollama on:
