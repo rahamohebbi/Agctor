@@ -313,7 +313,8 @@ public sealed class ScenarioFlowGraphInterpreter
                 if (string.IsNullOrWhiteSpace(pid))
                     throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' is missing config.personaId.");
                 using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                if (llmNodeTimeout > TimeSpan.Zero && llmNodeTimeout != Timeout.InfiniteTimeSpan)
+                var hasTimeout = llmNodeTimeout > TimeSpan.Zero && llmNodeTimeout != Timeout.InfiniteTimeSpan;
+                if (hasTimeout)
                     linked.CancelAfter(llmNodeTimeout);
                 try
                 {
@@ -321,7 +322,13 @@ public sealed class ScenarioFlowGraphInterpreter
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' timed out after {llmNodeTimeout.TotalSeconds}s.");
+                    // When the caller passed Timeout.InfiniteTimeSpan (TotalSeconds == -0.001) we must not
+                    // surface "-0.001s" — the cancellation came from the persona's own HTTP/LLM deadline,
+                    // not this interpreter. Report the actual budget when one was set, otherwise say so.
+                    var detail = hasTimeout
+                        ? $"timed out after {llmNodeTimeout.TotalSeconds:F1}s"
+                        : "was cancelled by the LLM client (no scenario-flow timeout was set)";
+                    throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' {detail}.");
                 }
 
                 completeDetail = $"{pid.Trim()}; {store[nodeId].Length} char(s)";

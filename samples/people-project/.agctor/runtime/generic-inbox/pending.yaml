@@ -20,13 +20,3 @@ items:
   scenarioSegment: person_1
   queuedAtUtc: 2026-04-24T21:11:59.5432080+00:00
   userPromptLine: 'I found information that is not covered by current memory routing rules: **raha** — `profile_fact (education)` → "Computer Science degree from the university of Salford in the UK". Do you want me to store it under **Other information** (generic inbox) for later organization? (yes/no)'
-- proposalId: 5bed721d0ed6cb1ba2e492f1f543a481e8371ddbecdb77f19c6da06dfbf3aebd
-  entityKey: raha
-  knowledgeType: profile_fact
-  attribute: location
-  value: California, Irvine city
-  confidence: 0.9
-  disposition: immediate
-  scenarioSegment: person_1
-  queuedAtUtc: 2026-05-04T23:28:02.0019123+00:00
-  userPromptLine: 'I found information that is not covered by current memory routing rules: **raha** — `profile_fact (location)` → "California, Irvine city". Do you want me to store it under **Other information** (generic inbox) for later organization? (yes/no)'

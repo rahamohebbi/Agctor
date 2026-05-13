@@ -192,9 +192,11 @@
                     const rel = decodeURIComponent(raw);
                     updateSelection(rel);
                     loadPreview(rel);
+                    syncPathQueryToUrl(rel);
                 } catch {
                     updateSelection(raw);
                     loadPreview(raw);
+                    syncPathQueryToUrl(raw);
                 }
             });
         });
@@ -203,7 +205,18 @@
     function getQueryPath() {
         const p = new URLSearchParams(window.location.search).get('path');
         if (!p) return null;
-        return p.replace(/^\/+/, '');
+        return normalizePath(p);
+    }
+
+    /** Keeps the address bar in sync when a file is selected (shareable deep link, matches ?path=). */
+    function syncPathQueryToUrl(relPath) {
+        try {
+            const u = new URL(window.location.href);
+            u.searchParams.set('path', normalizePath(relPath));
+            window.history.replaceState({}, '', u.pathname + u.search);
+        } catch {
+            // History API can throw in rare embed contexts; browsing should still work.
+        }
     }
 
     function loadTree() {
@@ -380,6 +393,7 @@
                         }
                         updateSelection(rel);
                         loadPreview(rel);
+                        syncPathQueryToUrl(rel);
                     });
                 });
             })

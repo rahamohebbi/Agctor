@@ -23,6 +23,7 @@ public sealed class ProjectMemoryIngestService
     private readonly IMemoryIntentProcessor _processor;
     private readonly IDocumentProjectionService _projection;
     private readonly IGenericInboxStore _genericInbox;
+    private readonly IGenericInboxReplayService? _replay;
     private readonly MentionObservationPublisher? _mentions;
 
     /// <summary>Same dependencies as the pipeline runner’s ingest path (optional mentions for resolution bridge).</summary>
@@ -31,12 +32,14 @@ public sealed class ProjectMemoryIngestService
         IMemoryIntentProcessor processor,
         IDocumentProjectionService projection,
         IGenericInboxStore genericInbox,
+        IGenericInboxReplayService? replay = null,
         MentionObservationPublisher? mentions = null)
     {
         _entities = entities;
         _processor = processor;
         _projection = projection;
         _genericInbox = genericInbox;
+        _replay = replay;
         _mentions = mentions;
     }
 
@@ -197,15 +200,35 @@ public sealed class ProjectMemoryIngestService
         var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromMinutes(10);
 
         var candidates = new List<GenericInboxPendingRow>();
+        var scenarioRows = new List<(GenericInboxPendingRow Row, DateTimeOffset QueuedAt)>();
         foreach (var row in pending)
         {
             if (!string.Equals(row.ScenarioSegment ?? "", scenSeg, StringComparison.OrdinalIgnoreCase)) continue;
             if (!DateTimeOffset.TryParse(row.QueuedAtUtc, out var queuedAt)) continue;
+            scenarioRows.Add((row, queuedAt));
             if (queuedAt < cutoff) continue;
             candidates.Add(row);
         }
 
-        if (candidates.Count == 0) return new ConfirmationHandling(false, false, "");
+        if (candidates.Count == 0)
+        {
+            if (scenarioRows.Count == 0) return new ConfirmationHandling(false, false, "");
+
+            // If a visible prompt is backed by an older duplicate row (for example after a Host restart
+            // or before duplicate pending rows were refreshed), confirm only the latest pending batch for
+            // this scenario instead of falling through to extractor/curator and reporting "no files".
+            var latest = scenarioRows.Max(x => x.QueuedAt);
+            candidates = scenarioRows
+                .Where(x => x.QueuedAt == latest)
+                .Select(x => x.Row)
+                .ToList();
+            steps.Add(new ProjectMemoryPipelineStep
+            {
+                Name = "confirm-window",
+                Ok = true,
+                Detail = "No recent pending rows matched; using latest pending generic-inbox row(s) for this scenario."
+            });
+        }
 
         if (signal == ConfirmationInputDetector.ConfirmationSignal.Negative)
         {
@@ -226,6 +249,25 @@ public sealed class ProjectMemoryIngestService
 
         var result = await _genericInbox.PersistApprovedAsync(ctx.ProjectRoot, string.IsNullOrEmpty(scenSeg) ? null : scenSeg, approvals, cancellationToken).ConfigureAwait(false);
 
+        var learnLines = ApprovedFactRoutingLearner.TryLearnAfterPersist(ctx, result, approvals);
+
+        // After we may have just learned new routing rules, back-fill the entity files from confirmed.yaml.
+        // This lets the user immediately see the approved fact land on profile.md (or wherever the new rule routes).
+        GenericInboxReplayReport? replayReport = null;
+        if (_replay != null && result.Appended > 0)
+        {
+            try
+            {
+                replayReport = await _replay
+                    .ReplayAsync(ctx.ProjectRoot, scenarioId: string.IsNullOrEmpty(scenSeg) ? null : scenSeg, options: null, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                steps.Add(new ProjectMemoryPipelineStep { Name = "confirm-replay", Ok = false, Detail = "replay failed: " + ex.Message });
+            }
+        }
+
         var msg = new StringBuilder();
         msg.Append("Stored ").Append(result.Appended).Append(" fact(s) in the generic inbox (.agctor/runtime/generic-inbox/confirmed.yaml). ");
         if (result.Appended > 0)
@@ -241,12 +283,47 @@ public sealed class ProjectMemoryIngestService
 
         if (result.RejectedMismatch > 0) msg.Append(" (").Append(result.RejectedMismatch).Append(" hash mismatches skipped)");
 
+        if (learnLines.Count > 0)
+        {
+            msg.AppendLine();
+            foreach (var line in learnLines)
+                msg.AppendLine(line);
+        }
+
+        if (replayReport is { Routed: > 0 } && replayReport.UpdatedFiles.Count > 0)
+        {
+            msg.AppendLine();
+            msg.Append("Back-filled ").Append(replayReport.Routed).Append(" approved fact(s) into entity files:");
+            msg.AppendLine();
+            foreach (var f in replayReport.UpdatedFiles.Take(10))
+                msg.Append("- ").AppendLine(ToProjectRelative(ctx.ProjectRoot, f));
+            if (replayReport.UpdatedFiles.Count > 10)
+                msg.Append("(+").Append(replayReport.UpdatedFiles.Count - 10).AppendLine(" more)");
+        }
+
+        var confirmDetail = "persisted " + result.Appended + " generic-inbox row(s); rejected " + result.RejectedMismatch + ".";
+        if (learnLines.Count > 0)
+            confirmDetail += " Auto-appended " + learnLines.Count + " routing-rule line(s) to schemas.";
+        if (replayReport != null)
+            confirmDetail += " Replay routed " + replayReport.Routed + " row(s); skipped " + replayReport.SkippedRouteMiss + " unrouted; updated " + replayReport.UpdatedFiles.Count + " file(s).";
+
         steps.Add(new ProjectMemoryPipelineStep
         {
             Name = "confirm",
             Ok = result.Appended > 0,
-            Detail = "persisted " + result.Appended + " generic-inbox row(s); rejected " + result.RejectedMismatch + "."
+            Detail = confirmDetail
         });
+
+        if (replayReport != null)
+        {
+            steps.Add(new ProjectMemoryPipelineStep
+            {
+                Name = "confirm-replay",
+                Ok = true,
+                UpdatedFiles = replayReport.UpdatedFiles,
+                Detail = $"considered={replayReport.Considered}; routed={replayReport.Routed}; routeMiss={replayReport.SkippedRouteMiss}; alreadyReplayed={replayReport.SkippedAlreadyReplayed}; unresolved={replayReport.SkippedUnresolvedEntity}"
+            });
+        }
 
         return new ConfirmationHandling(true, result.Appended > 0 || approvals.Count == 0, msg.ToString().TrimEnd());
     }
@@ -374,6 +451,24 @@ public sealed class ProjectMemoryIngestService
             if (char.IsLetterOrDigit(c)) sb.Append(c);
         }
         return sb.ToString();
+    }
+
+    /// <summary>Make user-facing file paths project-relative so logs and assertions stay machine-stable.</summary>
+    private static string ToProjectRelative(string projectRoot, string absolutePath)
+    {
+        try
+        {
+            var pr = Path.GetFullPath(projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var p = Path.GetFullPath(absolutePath);
+            if (p.StartsWith(pr + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(p, pr, StringComparison.OrdinalIgnoreCase))
+                return Path.GetRelativePath(pr, p).Replace('\\', '/');
+        }
+        catch
+        {
+        }
+
+        return absolutePath;
     }
 }
 

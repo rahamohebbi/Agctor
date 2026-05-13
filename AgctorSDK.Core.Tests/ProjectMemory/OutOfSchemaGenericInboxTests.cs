@@ -238,10 +238,179 @@ public sealed class OutOfSchemaGenericInboxTests
             ConfirmationInputDetector.Classify("store it"));
         Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
             ConfirmationInputDetector.Classify("store this fact."));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("I want to save"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("yes I consent"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("I consent"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("I consent to save it"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("I agree to store this"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("yes I wish to save it"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+            ConfirmationInputDetector.Classify("please store this fact"));
         Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Negative,
             ConfirmationInputDetector.Classify("no thanks"));
         Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.None,
+            ConfirmationInputDetector.Classify("I do not consent to save it"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.None,
+            ConfirmationInputDetector.Classify("please do not save it"));
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.None,
             ConfirmationInputDetector.Classify("yes and also add his dog named Fido and also his car"));
+    }
+
+    [TestMethod]
+    public async Task LlmConfirmationIntentClassifier_AlwaysAsksLlm_WhenPriorPromptExists()
+    {
+        var fakeLlm = new InlineLlm(label: "AFFIRMATIVE");
+        var classifier = new LlmConfirmationIntentClassifier(fakeLlm);
+
+        var phrases = new[]
+        {
+            "yes",
+            "yes I consent",
+            "please store this fact",
+            "sounds great, please go ahead and write that down for me"
+        };
+        foreach (var phrase in phrases)
+        {
+            var signal = await classifier
+                .ClassifyAsync(userMessage: phrase, lastAssistantPromptText: "Do you want me to store it?")
+                .ConfigureAwait(false);
+            Assert.AreEqual(
+                ConfirmationInputDetector.ConfirmationSignal.Affirmative,
+                signal,
+                $"phrase: '{phrase}'");
+        }
+
+        Assert.AreEqual(phrases.Length, fakeLlm.CallCount,
+            "LLM should classify every phrase when prior prompt context exists; heuristic is fallback only.");
+        StringAssert.Contains(fakeLlm.LastPrompt ?? "", "AFFIRMATIVE: yes I consent",
+            "Few-shot examples should ground the LLM with canonical AFFIRMATIVE phrases.");
+        StringAssert.Contains(fakeLlm.LastPrompt ?? "", "NEGATIVE: please do not save it",
+            "Few-shot examples should also include canonical NEGATIVE phrases for symmetry.");
+    }
+
+    [TestMethod]
+    public async Task LlmConfirmationIntentClassifier_FallsBackToHeuristic_WhenLlmThrows()
+    {
+        var classifier = new LlmConfirmationIntentClassifier(new ThrowingLlm());
+        var signal = await classifier
+            .ClassifyAsync(userMessage: "yes", lastAssistantPromptText: "Do you want me to store it?")
+            .ConfigureAwait(false);
+
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.Affirmative, signal,
+            "Heuristic must keep working when the LLM call fails (Ollama down, network issue, etc.).");
+    }
+
+    [TestMethod]
+    public async Task LlmConfirmationIntentClassifier_ReturnsNone_WhenNoPriorAssistantPrompt()
+    {
+        var fakeLlm = new InlineLlm(label: "AFFIRMATIVE");
+        var classifier = new LlmConfirmationIntentClassifier(fakeLlm);
+        // Phrase deliberately ambiguous: without prior prompt we should not invent consent.
+        var signal = await classifier
+            .ClassifyAsync(userMessage: "sounds good to me, you decide", lastAssistantPromptText: null)
+            .ConfigureAwait(false);
+
+        Assert.AreEqual(ConfirmationInputDetector.ConfirmationSignal.None, signal);
+        Assert.AreEqual(0, fakeLlm.CallCount, "Without prior prompt context, classifier must not invent consent.");
+    }
+
+    private sealed class InlineLlm : IProjectMemoryLlmClient
+    {
+        private readonly string _label;
+        public int CallCount { get; private set; }
+        public string? LastPrompt { get; private set; }
+
+        public InlineLlm(string label) { _label = label; }
+
+        public Task<string> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            LastPrompt = prompt;
+            return Task.FromResult(_label);
+        }
+    }
+
+    private sealed class ThrowingLlm : IProjectMemoryLlmClient
+    {
+        public Task<string> GenerateAsync(string prompt, CancellationToken cancellationToken = default) =>
+            Task.FromException<string>(new InvalidOperationException("LLM unavailable"));
+    }
+
+    [TestMethod]
+    public async Task GenericInboxStore_AppendPending_DuplicateRefreshesConfirmationWindow()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "pm-generic-inbox-refresh-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(temp, ".agctor", "runtime"));
+            var store = new GenericInboxStore();
+            var intent = new MemoryIntent
+            {
+                EntityKey = "raha",
+                KnowledgeType = "profile_fact",
+                Attribute = "location",
+                Value = "California, Irvine city",
+                Confidence = 0.9
+            };
+            var pid = OutOfSchemaProposalFactory.ComputeProposalId(intent);
+            var first = new OutOfSchemaFactProposal
+            {
+                ProposalId = pid,
+                EntityKey = intent.EntityKey,
+                KnowledgeType = intent.KnowledgeType,
+                Attribute = intent.Attribute,
+                Value = intent.Value,
+                Confidence = intent.Confidence,
+                Disposition = OutOfSchemaDisposition.ImmediateConfirmation,
+                UserPromptLine = "old prompt"
+            };
+            await store.AppendPendingAsync(temp, scenarioSegment: "old_scenario", new[] { first }).ConfigureAwait(false);
+
+            var pendingPath = GenericInboxPaths.PendingFile(temp);
+            var oldYaml = await File.ReadAllTextAsync(pendingPath).ConfigureAwait(false);
+            oldYaml = System.Text.RegularExpressions.Regex.Replace(
+                oldYaml,
+                "queuedAtUtc: .*",
+                "queuedAtUtc: 2000-01-01T00:00:00.0000000+00:00");
+            await File.WriteAllTextAsync(pendingPath, oldYaml).ConfigureAwait(false);
+
+            var refreshed = new OutOfSchemaFactProposal
+            {
+                ProposalId = pid,
+                EntityKey = intent.EntityKey,
+                KnowledgeType = intent.KnowledgeType,
+                Attribute = intent.Attribute,
+                Value = intent.Value,
+                Confidence = intent.Confidence,
+                Disposition = OutOfSchemaDisposition.ImmediateConfirmation,
+                UserPromptLine = "new prompt"
+            };
+            await store.AppendPendingAsync(temp, scenarioSegment: "person_1", new[] { refreshed }).ConfigureAwait(false);
+
+            var pending = await store.LoadPendingAsync(temp).ConfigureAwait(false);
+            Assert.AreEqual(1, pending.Count, "Duplicate proposal IDs should refresh in place, not append another row.");
+            Assert.AreEqual("person_1", pending[0].ScenarioSegment);
+            Assert.AreEqual("new prompt", pending[0].UserPromptLine);
+            Assert.IsTrue(DateTimeOffset.TryParse(pending[0].QueuedAtUtc, out var queuedAt));
+            Assert.IsTrue(queuedAt > DateTimeOffset.UtcNow - TimeSpan.FromMinutes(2),
+                "Repeated out-of-schema prompts should reopen the short confirmation window.");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(temp, recursive: true);
+            }
+            catch
+            {
+            }
+        }
     }
 
     [TestMethod]
@@ -285,6 +454,14 @@ public sealed class OutOfSchemaGenericInboxTests
             }).ConfigureAwait(false);
             Assert.IsTrue(second.Success, second.FinalText);
             StringAssert.Contains(second.FinalText, "Stored");
+            Assert.IsTrue(second.FinalText.Contains("routing", StringComparison.OrdinalIgnoreCase),
+                "User should see that routing rules were auto-updated.");
+            StringAssert.Contains(second.FinalText, "Workspace: /Dashboard/ProjectMemory/Workspace?path=");
+
+            var routingRules = Path.Combine(temp, ".agctor", "schemas", "people", "routing-rules.yaml");
+            var routingText = await File.ReadAllTextAsync(routingRules).ConfigureAwait(false);
+            StringAssert.Contains(routingText, "pets");
+            StringAssert.Contains(routingText, "dogs");
 
             var confirmedPath = Path.Combine(temp, ".agctor", "runtime", "generic-inbox", "confirmed.yaml");
             Assert.IsTrue(File.Exists(confirmedPath));
@@ -296,6 +473,74 @@ public sealed class OutOfSchemaGenericInboxTests
             var pendingText = await File.ReadAllTextAsync(pending).ConfigureAwait(false);
             Assert.IsFalse(pendingText.Contains("two dogs"),
                 "Promoted row should be removed from pending.yaml.");
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [TestMethod]
+    public async Task RunAsync_Confirmation_UsesLatestScenarioPending_WhenWindowExpired()
+    {
+        var src = Path.Combine(RepoRoot(), "samples", "people-project");
+        var temp = Path.Combine(Path.GetTempPath(), "pm-confirm-stale-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CopyDir(src, temp);
+            var inboxDir = Path.Combine(temp, ".agctor", "runtime", "generic-inbox");
+            if (Directory.Exists(inboxDir))
+                Directory.Delete(inboxDir, recursive: true);
+
+            var store = new GenericInboxStore();
+            var intent = new MemoryIntent
+            {
+                EntityKey = "raha",
+                KnowledgeType = "profile_fact",
+                Attribute = "location",
+                Value = "California, Irvine city",
+                Confidence = 0.9
+            };
+            var proposal = new OutOfSchemaFactProposal
+            {
+                ProposalId = OutOfSchemaProposalFactory.ComputeProposalId(intent),
+                EntityKey = intent.EntityKey,
+                KnowledgeType = intent.KnowledgeType,
+                Attribute = intent.Attribute,
+                Value = intent.Value,
+                Confidence = intent.Confidence,
+                Disposition = OutOfSchemaDisposition.ImmediateConfirmation,
+                UserPromptLine = "test"
+            };
+            await store.AppendPendingAsync(temp, scenarioSegment: "person_1", new[] { proposal }).ConfigureAwait(false);
+
+            var pendingPath = GenericInboxPaths.PendingFile(temp);
+            var pendingText = await File.ReadAllTextAsync(pendingPath).ConfigureAwait(false);
+            pendingText = System.Text.RegularExpressions.Regex.Replace(
+                pendingText,
+                "queuedAtUtc: .*",
+                "queuedAtUtc: 2000-01-01T00:00:00.0000000+00:00");
+            await File.WriteAllTextAsync(pendingPath, pendingText).ConfigureAwait(false);
+
+            var services = new ServiceCollection();
+            services.AddAgctorProjectMemory();
+            services.AddSingleton<IProjectMemoryLlmClient>(_ => new FakeLlm());
+            services.AddSingleton<IProjectMemoryPipelineRunner, ProjectMemoryPipelineRunner>();
+            var runner = services.BuildServiceProvider().GetRequiredService<IProjectMemoryPipelineRunner>();
+
+            var result = await runner.RunAsync(new ProjectMemoryPipelineRequest
+            {
+                ProjectRoot = temp,
+                ScenarioId = "person_1",
+                UserMessage = "yes I consent",
+                Mode = ProjectMemoryPipelineMode.IngestOnly
+            }).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success, result.FinalText);
+            StringAssert.Contains(result.FinalText, "Stored 1 fact");
+            StringAssert.Contains(result.FinalText, "profile_fact/location");
+            Assert.IsTrue(result.Steps.Any(s => s.Name == "confirm-window"));
+            Assert.IsTrue(File.Exists(GenericInboxPaths.ConfirmedFile(temp)));
         }
         finally
         {
@@ -425,5 +670,13 @@ public sealed class OutOfSchemaGenericInboxTests
             {
             }
         }
+    }
+
+    [TestMethod]
+    public void ProjectMemoryDashboardPaths_WorkspaceFileHref_EncodesRelativePath()
+    {
+        var href = ProjectMemoryDashboardPaths.WorkspaceFileHref(".agctor/schemas/people/routing-rules.yaml");
+        StringAssert.StartsWith(href, "/Dashboard/ProjectMemory/Workspace?path=");
+        Assert.IsTrue(href.Contains("%2F", StringComparison.Ordinal), "slashes must be encoded in the query string");
     }
 }

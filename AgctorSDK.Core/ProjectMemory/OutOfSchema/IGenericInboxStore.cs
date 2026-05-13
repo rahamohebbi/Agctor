@@ -31,4 +31,16 @@ public interface IGenericInboxStore
         string projectRoot,
         IReadOnlyList<string> proposalIds,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Reads confirmed rows (used by the back-fill replay service to project rows into entity files).</summary>
+    Task<IReadOnlyList<GenericInboxConfirmedRow>> LoadConfirmedAsync(
+        string projectRoot,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Stamps <see cref="GenericInboxConfirmedRow.ReplayedAtUtc"/> on rows that were successfully back-projected.</summary>
+    Task<int> MarkReplayedAsync(
+        string projectRoot,
+        IReadOnlyList<string> proposalIds,
+        string replayedAtUtc,
+        CancellationToken cancellationToken = default);
 }

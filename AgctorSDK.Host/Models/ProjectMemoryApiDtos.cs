@@ -225,3 +225,37 @@ public sealed class ProjectMemoryOrchestratorStepDto
     public string? Detail { get; set; }
     public IReadOnlyList<string>? UpdatedFiles { get; set; }
 }
+
+/// <summary>Caller knobs for <c>POST /api/project-memory/generic-inbox/replay</c> (PRD-019 back-fill).</summary>
+public sealed class ProjectMemoryGenericInboxReplayRequestDto
+{
+    /// <summary>When set, only confirmed rows tagged with this sanitized scenario segment are replayed.</summary>
+    public string? ScenarioId { get; set; }
+
+    /// <summary>When true, includes rows that were already replayed previously.</summary>
+    public bool IncludeAlreadyReplayed { get; set; }
+
+    /// <summary>Optional whitelist of entity keys (e.g. <c>raha</c>).</summary>
+    public IReadOnlyList<string>? OnlyEntityKeys { get; set; }
+
+    /// <summary>Optional whitelist of knowledge types.</summary>
+    public IReadOnlyList<string>? OnlyKnowledgeTypes { get; set; }
+}
+
+public sealed class ProjectMemoryGenericInboxReplayResponseDto
+{
+    public int Considered { get; set; }
+    public int Routed { get; set; }
+    public int SkippedAlreadyReplayed { get; set; }
+    public int SkippedRouteMiss { get; set; }
+    public int SkippedUnresolvedEntity { get; set; }
+    public IReadOnlyList<string> UpdatedFiles { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<ProjectMemoryGenericInboxReplayIssueDto> Issues { get; set; } = Array.Empty<ProjectMemoryGenericInboxReplayIssueDto>();
+}
+
+public sealed class ProjectMemoryGenericInboxReplayIssueDto
+{
+    public string Code { get; set; } = "";
+    public string Message { get; set; } = "";
+    public bool IsError { get; set; }
+}

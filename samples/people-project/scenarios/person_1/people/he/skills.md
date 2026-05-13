@@ -1,10 +1,8 @@
-# person_1 Skills
+# He Skills
 
 ## Technical Skills
 
-
-- basketball
-- ride his motorcycle
+- play badminton
 
 ## Professional Skills
 

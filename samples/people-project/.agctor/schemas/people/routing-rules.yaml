@@ -1,183 +1,169 @@
 routingRules:
-  # Demographics / identity (LLMs often emit knowledgeType "person"; map to profile Basic Info)
-  - when:
-      knowledgeType: person
-      attribute: name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: person
-      attribute: age
-    target:
-      document: profile
-      section: Basic Info
-
-  # Preferred stable names (same targets; use when the model follows the schema)
-  - when:
-      knowledgeType: profile_fact
-      attribute: name
-    target:
-      document: profile
-      section: Basic Info
-
-  # Name sub-attributes people commonly mention ("My last name is Mohebbi").
-  # Routed to the same Basic Info section so the surface form reads like a profile header.
-  - when:
-      knowledgeType: profile_fact
-      attribute: first_name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: last_name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: family_name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: full_name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: middle_name
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: age
-    target:
-      document: profile
-      section: Basic Info
-
-  # Birth-date style facts. Extractors often emit one of these three spellings; all land next to
-  # name/age in Basic Info so the profile header stays together on disk.
-  - when:
-      knowledgeType: profile_fact
-      attribute: date_of_birth
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: birth_date
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: birthday
-    target:
-      document: profile
-      section: Basic Info
-
-  # Education is stable profile context, so degree/university facts should land on the
-  # person profile instead of being queued as generic out-of-schema information.
-  - when:
-      knowledgeType: profile_fact
-      attribute: education
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: education
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: ownership
-    target:
-      document: profile
-      section: Notes
-
-  - when:
-      knowledgeType: occupation
-    target:
-      document: profile
-      section: Basic Info
-
-  - when:
-      knowledgeType: physical_attribute
-      attribute: eye_color
-    target:
-      document: profile
-      section: Physical Attributes
-
-  - when:
-      knowledgeType: physical_attribute
-      attribute: hair
-    target:
-      document: profile
-      section: Physical Attributes
-
-  - when:
-      knowledgeType: physical_attribute
-      attribute: hair_color
-    target:
-      document: profile
-      section: Physical Attributes
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: hair
-    target:
-      document: profile
-      section: Physical Attributes
-
-  - when:
-      knowledgeType: profile_fact
-      attribute: hair_color
-    target:
-      document: profile
-      section: Physical Attributes
-
-  - when:
-      knowledgeType: skill
-    target:
-      document: skills
-      section: Technical Skills
-
-  - when:
-      knowledgeType: preference
-    target:
-      document: skills
-      section: Technical Skills
-
-  - when:
-      knowledgeType: family_role
-    target:
-      document: relationships
-      section: Family
-
-  - when:
-      knowledgeType: event
-    target:
-      document: timeline
-      section: Events
-
-  - when:
-      knowledgeType: observation
-    target:
-      document: timeline
-      section: Observations
+- when:
+    knowledgeType: person
+    attribute: name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: person
+    attribute: age
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: first_name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: last_name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: family_name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: full_name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: middle_name
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: age
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: date_of_birth
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: birth_date
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: birthday
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: education
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: education
+    attribute: 
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: ownership
+  target:
+    document: profile
+    section: Notes
+- when:
+    knowledgeType: occupation
+    attribute: 
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: physical_attribute
+    attribute: eye_color
+  target:
+    document: profile
+    section: Physical Attributes
+- when:
+    knowledgeType: physical_attribute
+    attribute: hair
+  target:
+    document: profile
+    section: Physical Attributes
+- when:
+    knowledgeType: physical_attribute
+    attribute: hair_color
+  target:
+    document: profile
+    section: Physical Attributes
+- when:
+    knowledgeType: profile_fact
+    attribute: hair
+  target:
+    document: profile
+    section: Physical Attributes
+- when:
+    knowledgeType: profile_fact
+    attribute: hair_color
+  target:
+    document: profile
+    section: Physical Attributes
+- when:
+    knowledgeType: skill
+    attribute: 
+  target:
+    document: skills
+    section: Technical Skills
+- when:
+    knowledgeType: preference
+    attribute: 
+  target:
+    document: skills
+    section: Technical Skills
+- when:
+    knowledgeType: family_role
+    attribute: 
+  target:
+    document: relationships
+    section: Family
+- when:
+    knowledgeType: event
+    attribute: 
+  target:
+    document: timeline
+    section: Events
+- when:
+    knowledgeType: observation
+    attribute: 
+  target:
+    document: timeline
+    section: Observations
+- when:
+    knowledgeType: profile_fact
+    attribute: location
+  target:
+    document: profile
+    section: Basic Info
+- when:
+    knowledgeType: profile_fact
+    attribute: residence
+  target:
+    document: profile
+    section: Basic Info

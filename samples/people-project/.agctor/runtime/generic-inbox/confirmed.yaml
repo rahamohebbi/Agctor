@@ -1,0 +1,20 @@
+schemaVersion: 1
+items:
+- proposalId: 5bed721d0ed6cb1ba2e492f1f543a481e8371ddbecdb77f19c6da06dfbf3aebd
+  entityKey: raha
+  knowledgeType: profile_fact
+  attribute: location
+  value: California, Irvine city
+  confidence: 0.95
+  scenarioSegment: person_1
+  source: user_approved
+  capturedAtUtc: 2026-05-06T03:31:44.7352018+00:00
+- proposalId: 9da7f7a24d5c831cf7d82b1483d6f5676dfee55b728b0de3160be529cd8f6165
+  entityKey: raha
+  knowledgeType: profile_fact
+  attribute: residence
+  value: California, Irvine city
+  confidence: 1
+  scenarioSegment: person_1
+  source: user_approved
+  capturedAtUtc: 2026-05-06T04:18:08.3020595+00:00

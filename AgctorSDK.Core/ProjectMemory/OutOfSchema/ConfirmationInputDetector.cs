@@ -16,7 +16,10 @@ public static class ConfirmationInputDetector
         "confirm", "confirmed", "store", "save", "do", "do it", "go", "proceed",
         "please", "please do", "yes please", "store it", "save it", "store this fact", "save this fact",
         "store the fact", "save the fact", "store that fact", "save that fact", "sounds good",
-        "correct", "right", "affirmative", "absolutely", "of course"
+        "correct", "right", "affirmative", "absolutely", "of course",
+        "i want to save", "i want to store", "want to save", "want to store",
+        "yes i want to save", "yes i want to store", "yes save",
+        "consent", "i consent", "yes i consent", "yes consent", "i agree", "yes i agree"
     };
 
     private static readonly HashSet<string> NegativeTokens = new(StringComparer.OrdinalIgnoreCase)
@@ -50,7 +53,44 @@ public static class ConfirmationInputDetector
         if (NegativeTokens.Contains(normalized))
             return ConfirmationSignal.Negative;
 
+        // Natural consent variants from the dashboard ("I consent to save it", "I agree to store this").
+        // Keep this after exact negative matching so "do not save" / "no thanks" never become affirmative.
+        if (LooksLikeAffirmativeConsent(normalized))
+            return ConfirmationSignal.Affirmative;
+
         return ConfirmationSignal.None;
+    }
+
+    private static bool LooksLikeAffirmativeConsent(string normalized)
+    {
+        var padded = " " + normalized + " ";
+        if (ContainsAny(padded, " not ", " don't ", " dont ", " no ", " never "))
+            return false;
+
+        var hasConsent = ContainsAny(padded, " consent ", " agree ", " approve ", " approved ", " confirm ", " confirmed ");
+        var hasSaveAction = ContainsAny(padded, " save ", " store ", " keep ");
+        if (hasConsent && (hasSaveAction || ContainsAny(padded, " it ", " this ", " fact ")))
+            return true;
+
+        // Also treat short "yes ... save/store/keep" or "please save/store/keep this" as affirmative,
+        // covering natural replies like "yes I wish to save it" or "yes please store this fact".
+        var startsWithYes = normalized.StartsWith("yes", StringComparison.OrdinalIgnoreCase);
+        var hasIntentVerb = ContainsAny(padded, " wish ", " want ", " like ", " love ", " choose ", " decide ", " please ", " go ahead ", " do it ");
+        if ((startsWithYes || hasIntentVerb) && hasSaveAction)
+            return true;
+
+        return false;
+    }
+
+    private static bool ContainsAny(string value, params string[] needles)
+    {
+        foreach (var needle in needles)
+        {
+            if (value.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
     }
 
     private static string Normalize(string raw)

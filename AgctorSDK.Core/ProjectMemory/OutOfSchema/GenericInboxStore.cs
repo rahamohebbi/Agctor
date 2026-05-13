@@ -124,14 +124,31 @@ public sealed class GenericInboxStore : IGenericInboxStore
             }
 
             file.Items ??= new List<GenericInboxPendingRow>();
-            var existing = file.Items.Select(i => i.ProposalId).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var confirmed = LoadConfirmedIds(root);
 
             var now = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture);
             foreach (var p in proposals)
             {
-                if (existing.Contains(p.ProposalId) || confirmed.Contains(p.ProposalId))
+                if (confirmed.Contains(p.ProposalId))
                     continue;
+
+                var existing = file.Items.FirstOrDefault(i =>
+                    string.Equals(i.ProposalId, p.ProposalId, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                {
+                    // A repeated prompt should reopen the short confirmation window instead of leaving
+                    // an old duplicate expired forever.
+                    existing.EntityKey = p.EntityKey;
+                    existing.KnowledgeType = p.KnowledgeType;
+                    existing.Attribute = p.Attribute;
+                    existing.Value = p.Value;
+                    existing.Confidence = p.Confidence;
+                    existing.Disposition = p.Disposition == OutOfSchemaDisposition.ImmediateConfirmation ? "immediate" : "review";
+                    existing.ScenarioSegment = seg;
+                    existing.QueuedAtUtc = now;
+                    existing.UserPromptLine = p.UserPromptLine;
+                    continue;
+                }
 
                 file.Items.Add(new GenericInboxPendingRow
                 {
@@ -146,7 +163,6 @@ public sealed class GenericInboxStore : IGenericInboxStore
                     QueuedAtUtc = now,
                     UserPromptLine = p.UserPromptLine
                 });
-                existing.Add(p.ProposalId);
             }
 
             File.WriteAllText(path, ProjectYamlSerializer.Serialize(file));
@@ -180,6 +196,7 @@ public sealed class GenericInboxStore : IGenericInboxStore
 
         var appended = 0;
         var rejected = 0;
+        var appendedProposalIds = new List<string>();
 
         lock (LockFor(confirmedPath))
         {
@@ -234,6 +251,7 @@ public sealed class GenericInboxStore : IGenericInboxStore
                 });
                 confirmedIds.Add(a.ProposalId);
                 appended++;
+                appendedProposalIds.Add(a.ProposalId);
             }
 
             File.WriteAllText(confirmedPath, ProjectYamlSerializer.Serialize(confirmedFile));
@@ -243,7 +261,13 @@ public sealed class GenericInboxStore : IGenericInboxStore
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!File.Exists(pendingPath))
-                return Task.FromResult(new GenericInboxPersistResult { Appended = appended, RejectedMismatch = rejected, Errors = errors });
+                return Task.FromResult(new GenericInboxPersistResult
+                {
+                    Appended = appended,
+                    RejectedMismatch = rejected,
+                    Errors = errors,
+                    AppendedProposalIds = appendedProposalIds
+                });
 
             var pText = File.ReadAllText(pendingPath);
             GenericInboxPendingFile pendingFile;
@@ -264,7 +288,89 @@ public sealed class GenericInboxStore : IGenericInboxStore
             File.WriteAllText(pendingPath, ProjectYamlSerializer.Serialize(pendingFile));
         }
 
-        return Task.FromResult(new GenericInboxPersistResult { Appended = appended, RejectedMismatch = rejected, Errors = errors });
+        return Task.FromResult(new GenericInboxPersistResult
+        {
+            Appended = appended,
+            RejectedMismatch = rejected,
+            Errors = errors,
+            AppendedProposalIds = appendedProposalIds
+        });
+    }
+
+    public Task<IReadOnlyList<GenericInboxConfirmedRow>> LoadConfirmedAsync(
+        string projectRoot,
+        CancellationToken cancellationToken = default)
+    {
+        var root = Path.GetFullPath(projectRoot.Trim());
+        var path = GenericInboxPaths.ConfirmedFile(root);
+        if (!File.Exists(path))
+            return Task.FromResult<IReadOnlyList<GenericInboxConfirmedRow>>(Array.Empty<GenericInboxConfirmedRow>());
+
+        lock (LockFor(path))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(text))
+                return Task.FromResult<IReadOnlyList<GenericInboxConfirmedRow>>(Array.Empty<GenericInboxConfirmedRow>());
+
+            GenericInboxConfirmedFile file;
+            try
+            {
+                file = ProjectYamlSerializer.Deserialize<GenericInboxConfirmedFile>(text);
+            }
+            catch
+            {
+                return Task.FromResult<IReadOnlyList<GenericInboxConfirmedRow>>(Array.Empty<GenericInboxConfirmedRow>());
+            }
+
+            return Task.FromResult<IReadOnlyList<GenericInboxConfirmedRow>>(file.Items ?? new List<GenericInboxConfirmedRow>());
+        }
+    }
+
+    public Task<int> MarkReplayedAsync(
+        string projectRoot,
+        IReadOnlyList<string> proposalIds,
+        string replayedAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (proposalIds.Count == 0)
+            return Task.FromResult(0);
+
+        var root = Path.GetFullPath(projectRoot.Trim());
+        var path = GenericInboxPaths.ConfirmedFile(root);
+        if (!File.Exists(path))
+            return Task.FromResult(0);
+
+        var ids = proposalIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var stamped = 0;
+        lock (LockFor(path))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = File.ReadAllText(path);
+            GenericInboxConfirmedFile file;
+            try
+            {
+                file = string.IsNullOrWhiteSpace(text)
+                    ? new GenericInboxConfirmedFile()
+                    : ProjectYamlSerializer.Deserialize<GenericInboxConfirmedFile>(text);
+            }
+            catch
+            {
+                return Task.FromResult(0);
+            }
+
+            file.Items ??= new List<GenericInboxConfirmedRow>();
+            foreach (var item in file.Items)
+            {
+                if (!ids.Contains(item.ProposalId)) continue;
+                item.ReplayedAtUtc = replayedAtUtc;
+                stamped++;
+            }
+
+            File.WriteAllText(path, ProjectYamlSerializer.Serialize(file));
+        }
+
+        return Task.FromResult(stamped);
     }
 
     private static HashSet<string> LoadConfirmedIds(string projectRoot)

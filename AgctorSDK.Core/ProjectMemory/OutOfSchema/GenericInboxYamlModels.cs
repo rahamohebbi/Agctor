@@ -61,4 +61,7 @@ public sealed class GenericInboxConfirmedRow
     public string Source { get; set; } = "user_approved";
 
     public string CapturedAtUtc { get; set; } = "";
+
+    /// <summary>UTC instant the row was successfully back-projected to entity files; null when never replayed (or still out-of-schema).</summary>
+    public string? ReplayedAtUtc { get; set; }
 }

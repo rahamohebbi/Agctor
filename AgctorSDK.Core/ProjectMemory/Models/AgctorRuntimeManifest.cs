@@ -31,6 +31,12 @@ public sealed class OutOfSchemaCaptureOptions
 
     /// <summary>Below this confidence, proposals are dropped (noise control).</summary>
     public double DiscardBelowConfidence { get; set; } = 0.0;
+
+    /// <summary>
+    /// When true (default when omitted), each newly confirmed generic-inbox fact appends a matching
+    /// <c>routing-rules.yaml</c> entry so the next ingest routes the same <c>knowledgeType</c>/<c>attribute</c> without asking again.
+    /// </summary>
+    public bool? LearnRoutingOnApprove { get; set; }
 }
 
 public sealed class SqliteRuntimeOptions

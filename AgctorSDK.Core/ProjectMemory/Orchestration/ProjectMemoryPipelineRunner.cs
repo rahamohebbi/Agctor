@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Processing;
@@ -34,6 +35,8 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
     private readonly ProjectMemoryIngestService _ingestService;
     private readonly MentionObservationPublisher? _mentions;
     private readonly IGenericInboxStore _genericInbox;
+    private readonly IConfirmationIntentClassifier _confirmClassifier;
+    private readonly IProjectMemoryCoreferenceCoordinator _coordinator;
 
     public ProjectMemoryPipelineRunner(
         IProjectLoader loader,
@@ -43,6 +46,11 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         ProjectMemoryOperations ops,
         IProjectMemoryLlmClient llm,
         IGenericInboxStore genericInbox,
+        IConfirmationIntentClassifier? confirmClassifier = null,
+        IGenericInboxReplayService? replay = null,
+        IConversationCoreferenceResolver? coref = null,
+        IConversationFocusStore? focusStore = null,
+        IProjectMemoryCoreferenceCoordinator? coordinator = null,
         MentionObservationPublisher? mentions = null)
     {
         _loader = loader;
@@ -54,11 +62,22 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         _queryService = new ProjectMemoryQueryService(_ops, _llm);
         _genericInbox = genericInbox;
         _mentions = mentions;
-        _ingestService = new ProjectMemoryIngestService(_entities, _processor, _projection, _genericInbox, _mentions);
+        _confirmClassifier = confirmClassifier ?? new HeuristicConfirmationIntentClassifier();
+        // LLM resolver is the canonical default; heuristic only kicks in when no LLM client is wired.
+        // The coordinator wraps resolver + focus store + loader/entities so both the pipeline runner
+        // and the dashboard playground SSE flow can share one coref code path. Callers may inject a
+        // ready-made coordinator (preferred under DI) or pass individual primitives for tests.
+        var resolver = coref ?? (_llm != null
+            ? new LlmConversationCoreferenceResolver(_llm)
+            : (IConversationCoreferenceResolver)new HeuristicConversationCoreferenceResolver());
+        var focus = focusStore ?? new ConversationFocusStore();
+        _coordinator = coordinator
+            ?? new ProjectMemoryCoreferenceCoordinator(_loader, _entities, resolver, focus);
+        _ingestService = new ProjectMemoryIngestService(_entities, _processor, _projection, _genericInbox, replay, _mentions);
     }
 
     /// <inheritdoc />
-    public Task<GenericInboxPersistResult> PersistApprovedGenericFactsAsync(
+    public async Task<GenericInboxPersistResult> PersistApprovedGenericFactsAsync(
         string projectRoot,
         string? scenarioId,
         IReadOnlyList<ApprovedGenericFact> approvals,
@@ -67,14 +86,21 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         var root = Path.GetFullPath(projectRoot.Trim());
         if (!Directory.Exists(Path.Combine(root, ".agctor")))
         {
-            return Task.FromResult(new GenericInboxPersistResult
+            return new GenericInboxPersistResult
             {
                 Errors = new[] { "Project root must contain a .agctor directory." }
-            });
+            };
         }
 
         var seg = string.IsNullOrWhiteSpace(scenarioId) ? null : PersonaScenarioScope.SanitizeFolderSegment(scenarioId);
-        return _genericInbox.PersistApprovedAsync(root, seg, approvals, cancellationToken);
+        var result = await _genericInbox.PersistApprovedAsync(root, seg, approvals, cancellationToken).ConfigureAwait(false);
+        if (result.Appended > 0 && result.AppendedProposalIds.Count > 0)
+        {
+            var ctx = await _loader.LoadAsync(root, cancellationToken).ConfigureAwait(false);
+            ApprovedFactRoutingLearner.TryLearnAfterPersist(ctx, result, approvals);
+        }
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -193,7 +219,11 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
 
         // PRD-019: if this user turn is a pure "yes/no" to the previous out-of-schema prompt,
         // short-circuit the extractor and act on the pending generic-inbox rows directly.
-        var confirmSignal = ConfirmationInputDetector.Classify(request.UserMessage);
+        // Classifier may use the prior assistant prompt + LLM to handle natural phrasing.
+        var lastAssistantPrompt = ExtractLastAssistantPrompt(request.ConversationPrefix);
+        var confirmSignal = await _confirmClassifier
+            .ClassifyAsync(request.UserMessage, lastAssistantPrompt, cancellationToken)
+            .ConfigureAwait(false);
         if (confirmSignal != ConfirmationInputDetector.ConfirmationSignal.None)
         {
             var handled = await _ingestService.TryHandleConfirmationAsync(ctx, request, confirmSignal, steps, cancellationToken).ConfigureAwait(false);
@@ -201,11 +231,35 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                 return Finish(correlationId, handled.Success, handled.FinalText, steps);
         }
 
+        // PRD-019 Option B + F: persistent coreference focus per scenario. Loaded fresh on every turn so a
+        // brand-new browser session in the same scenario inherits the active subject from disk.
+        var coref = await _coordinator.PreprocessAsync(
+            ctx.ProjectRoot,
+            request.ScenarioId,
+            request.UserMessage,
+            request.ConversationPrefix,
+            cancellationToken).ConfigureAwait(false);
+        var resolvedUserMessage = coref.ResolvedUserMessage;
+        var activeSubjectKey = coref.ActiveSubjectKey;
+        var activeSubjectDisplay = coref.ActiveSubjectDisplay;
+        var knownEntities = coref.KnownEntities;
+        steps.Add(new ProjectMemoryPipelineStep
+        {
+            Name = "coref",
+            Ok = true,
+            Detail = $"reason={coref.Reason}; changed={coref.Changed}; activeSubject={activeSubjectKey ?? "<none>"}"
+        });
+
         if (mode != ProjectMemoryPipelineMode.QueryOnly)
         {
             try
             {
-                var extractPrompt = BuildExtractPrompt(extractorSpec!, request.UserMessage, request.ConversationPrefix);
+                var extractPrompt = ProjectMemoryPromptBuilder.BuildExtractPrompt(
+                    extractorSpec!,
+                    resolvedUserMessage,
+                    request.ConversationPrefix,
+                    activeSubjectKey,
+                    activeSubjectDisplay);
                 rawExtract = await _llm.GenerateAsync(extractPrompt, cancellationToken).ConfigureAwait(false);
                 steps.Add(new ProjectMemoryPipelineStep
                 {
@@ -236,6 +290,16 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
                     return Finish(correlationId, false, msg, steps);
                 }
             }
+
+            // After ingest, persist the active subject for future turns/sessions.
+            await _coordinator.PersistFocusFromExtractAsync(
+                ctx.ProjectRoot,
+                request.ScenarioId,
+                rawExtract,
+                activeSubjectKey,
+                knownEntities,
+                request.SessionId,
+                cancellationToken).ConfigureAwait(false);
         }
 
         if (mode == ProjectMemoryPipelineMode.IngestOnly)
@@ -519,108 +583,26 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         string? WriteDetail,
         IReadOnlyList<OutOfSchemaFactProposal> OutOfSchemaProposals);
 
-    private sealed record ConfirmationHandling(bool Handled, bool Success, string FinalText);
-
     /// <summary>
-    /// Matches pending generic-inbox rows for the same scenario and (on "yes") persists them or (on "no") drops them.
-    /// Keeps the window short (10 minutes) so unrelated later affirmatives don't promote stale proposals.
+    /// Pulls the most recent <c>Assistant: …</c> line out of <see cref="ProjectMemoryPipelineRequest.ConversationPrefix"/>.
+    /// Used by <see cref="IConfirmationIntentClassifier"/> to ground intent ("did this user reply consent to the prior prompt?").
     /// </summary>
-    private async Task<ConfirmationHandling> TryHandleConfirmationAsync(
-        LoadedProjectContext ctx,
-        ProjectMemoryPipelineRequest request,
-        ConfirmationInputDetector.ConfirmationSignal signal,
-        List<ProjectMemoryPipelineStep> steps,
-        CancellationToken cancellationToken)
+    private static string? ExtractLastAssistantPrompt(string? conversationPrefix)
     {
-        var pending = await _genericInbox.LoadPendingAsync(ctx.ProjectRoot, cancellationToken).ConfigureAwait(false);
-        if (pending.Count == 0)
-            return new ConfirmationHandling(false, false, "");
+        if (string.IsNullOrWhiteSpace(conversationPrefix))
+            return null;
 
-        var scenSeg = string.IsNullOrWhiteSpace(request.ScenarioId)
-            ? ""
-            : PersonaScenarioScope.SanitizeFolderSegment(request.ScenarioId);
-        var cutoff = DateTimeOffset.UtcNow - TimeSpan.FromMinutes(10);
-
-        var candidates = new List<GenericInboxPendingRow>();
-        foreach (var row in pending)
+        var lines = conversationPrefix.Split('\n');
+        for (var i = lines.Length - 1; i >= 0; i--)
         {
-            if (!string.Equals(row.ScenarioSegment ?? "", scenSeg, StringComparison.OrdinalIgnoreCase))
-                continue;
-            if (!DateTimeOffset.TryParse(row.QueuedAtUtc, out var queuedAt))
-                continue;
-            if (queuedAt < cutoff)
-                continue;
-            candidates.Add(row);
+            var line = lines[i].Trim();
+            if (line.StartsWith("Assistant:", StringComparison.OrdinalIgnoreCase))
+                return line["Assistant:".Length..].Trim();
         }
 
-        if (candidates.Count == 0)
-            return new ConfirmationHandling(false, false, "");
-
-        if (signal == ConfirmationInputDetector.ConfirmationSignal.Negative)
-        {
-            var dropped = await _genericInbox
-                .DropPendingAsync(ctx.ProjectRoot, candidates.Select(c => c.ProposalId).ToList(), cancellationToken)
-                .ConfigureAwait(false);
-            steps.Add(new ProjectMemoryPipelineStep
-            {
-                Name = "confirm",
-                Ok = true,
-                Detail = "rejected " + dropped + " pending generic-inbox row(s)."
-            });
-            return new ConfirmationHandling(
-                true,
-                true,
-                "Got it — I will not store " + dropped + " out-of-schema fact(s). You can always re-enter them later.");
-        }
-
-        var approvals = candidates.Select(r => new ApprovedGenericFact
-        {
-            ProposalId = r.ProposalId,
-            EntityKey = r.EntityKey,
-            KnowledgeType = r.KnowledgeType,
-            Attribute = r.Attribute,
-            Value = r.Value,
-            Confidence = r.Confidence
-        }).ToList();
-
-        var result = await _genericInbox.PersistApprovedAsync(
-                ctx.ProjectRoot,
-                string.IsNullOrEmpty(scenSeg) ? null : scenSeg,
-                approvals,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        var msg = new StringBuilder();
-        msg.Append("Stored ").Append(result.Appended)
-            .Append(" fact(s) in the generic inbox (.agctor/runtime/generic-inbox/confirmed.yaml). ");
-        if (result.Appended > 0)
-        {
-            msg.AppendLine();
-            foreach (var a in approvals.Take(10))
-            {
-                var attr = string.IsNullOrWhiteSpace(a.Attribute) ? "" : "/" + a.Attribute;
-                msg.Append("- ").Append(a.EntityKey).Append(" · ").Append(a.KnowledgeType)
-                    .Append(attr).Append(" = ").AppendLine(a.Value);
-            }
-            if (approvals.Count > 10)
-                msg.Append("(+").Append(approvals.Count - 10).AppendLine(" more)");
-        }
-
-        if (result.RejectedMismatch > 0)
-            msg.Append(" (").Append(result.RejectedMismatch).Append(" hash mismatches skipped)");
-
-        steps.Add(new ProjectMemoryPipelineStep
-        {
-            Name = "confirm",
-            Ok = result.Appended > 0,
-            Detail = "persisted " + result.Appended + " generic-inbox row(s); rejected " + result.RejectedMismatch + "."
-        });
-
-        return new ConfirmationHandling(true, result.Appended > 0 || approvals.Count == 0, msg.ToString().TrimEnd());
+        return null;
     }
 
-    private static string BuildExtractPrompt(AgentDefinitionSpec spec, string userMessage, string? conversationPrefix) =>
-        ProjectMemoryPromptBuilder.BuildExtractPrompt(spec, userMessage, conversationPrefix);
 
     /// <summary>
     /// Pulls referenced people out of <c>family_role</c> intents (both the <c>entityKey</c> side and

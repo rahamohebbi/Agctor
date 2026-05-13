@@ -99,6 +99,13 @@ builder.Services.AddAgctorResolution();
 builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.Resolution.Trace.IResolveSpanSink>(sp =>
     new AgctorSDK.Host.Services.ProjectMemory.ResolveSpanTraceSink(sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
 builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaProjectMemoryLlmClient>();
+// PRD-019 Host classifier: heuristic fast path + LLM fallback so natural consent phrasing
+// (e.g. "yes I wish to save it") is recognized without code edits.
+builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.OutOfSchema.IConfirmationIntentClassifier,
+    AgctorSDK.Core.ProjectMemory.OutOfSchema.LlmConfirmationIntentClassifier>();
+// PRD-019 Option B: LLM-driven multilingual coreference resolver is wired automatically by
+// AddAgctorProjectMemory whenever an IProjectMemoryLlmClient is registered (always true here),
+// so no explicit Host registration is required.
 builder.Services.AddSingleton<ProjectMemoryPipelineRunner>();
 builder.Services.AddSingleton<IProjectMemoryPipelineRunner>(sp =>
 {

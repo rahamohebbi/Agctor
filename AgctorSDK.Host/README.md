@@ -147,7 +147,7 @@ For **Proto.Actor** remoting, the runtime is initialized with **`Agctor:ProtoHos
 
 ```bash
 cd AgctorSDK.Host
-dotnet run -- --Agctor:DefaultRuntime=InMemory
+con
 ```
 
 From the repository root:

@@ -37,4 +37,14 @@ public static class ProjectMemoryAccessGuard
         return p.StartsWith(allowed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
                || string.Equals(p, allowed, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>True when <paramref name="absolutePath"/> stays inside <c>{projectRoot}/.agctor/</c> (schemas, agents, runtime).</summary>
+    public static bool IsUnderProjectAgctor(string projectRoot, string absolutePath)
+    {
+        var pr = Path.GetFullPath(projectRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var allowed = Path.GetFullPath(Path.Combine(pr, ".agctor"));
+        var p = Path.GetFullPath(absolutePath);
+        return p.StartsWith(allowed + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(p, allowed, StringComparison.OrdinalIgnoreCase);
+    }
 }

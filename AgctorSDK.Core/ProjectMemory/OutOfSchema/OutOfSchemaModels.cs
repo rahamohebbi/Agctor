@@ -58,4 +58,7 @@ public sealed class GenericInboxPersistResult
     public int RejectedMismatch { get; init; }
 
     public IReadOnlyList<string> Errors { get; init; } = Array.Empty<string>();
+
+    /// <summary>Proposal ids actually written to <c>confirmed.yaml</c> this call (hash-valid and not duplicates).</summary>
+    public IReadOnlyList<string> AppendedProposalIds { get; init; } = Array.Empty<string>();
 }

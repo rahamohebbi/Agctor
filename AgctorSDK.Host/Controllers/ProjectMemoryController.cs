@@ -6,11 +6,13 @@ using System.Net.Http.Json;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Core.Streaming;
 using AgctorSDK.Core.ProjectMemory.Indexing;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
@@ -51,6 +53,10 @@ public sealed class ProjectMemoryController : ControllerBase
     private static readonly JsonSerializerOptions JsonRead = new() { PropertyNameCaseInsensitive = true };
     private static readonly JsonSerializerOptions JsonSse = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+    private readonly IConfirmationIntentClassifier _confirmClassifier;
+    private readonly IGenericInboxReplayService _genericInboxReplay;
+    private readonly IProjectMemoryCoreferenceCoordinator _corefCoordinator;
+
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
         IProjectLoader loader,
@@ -65,6 +71,9 @@ public sealed class ProjectMemoryController : ControllerBase
         IProjectMemoryPersonaLlmRunner personaLlmRunner,
         IScenarioCatalog scenarioCatalog,
         IScenarioFlowRouterLlmService scenarioFlowRouterLlm,
+        IConfirmationIntentClassifier confirmClassifier,
+        IGenericInboxReplayService genericInboxReplay,
+        IProjectMemoryCoreferenceCoordinator corefCoordinator,
         ILogger<ProjectMemoryController> logger,
         IActivityTracker? activityTracker = null)
     {
@@ -81,6 +90,9 @@ public sealed class ProjectMemoryController : ControllerBase
         _personaLlmRunner = personaLlmRunner;
         _scenarioCatalog = scenarioCatalog;
         _scenarioFlowRouterLlm = scenarioFlowRouterLlm;
+        _confirmClassifier = confirmClassifier;
+        _genericInboxReplay = genericInboxReplay;
+        _corefCoordinator = corefCoordinator;
         _activityTracker = activityTracker;
         _logger = logger;
     }
@@ -304,7 +316,7 @@ public sealed class ProjectMemoryController : ControllerBase
         {
             CorrelationId = result.CorrelationId,
             Success = result.Success,
-            FinalText = result.FinalText,
+            FinalText = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(result.FinalText, Request),
             Steps = result.Steps.Select(s => new ProjectMemoryOrchestratorStepDto
             {
                 Name = s.Name,
@@ -313,6 +325,63 @@ public sealed class ProjectMemoryController : ControllerBase
                 UpdatedFiles = s.UpdatedFiles
             }).ToList()
         });
+    }
+
+    /// <summary>
+    /// PRD-019 back-fill: replay <c>confirmed.yaml</c> through current <c>routing-rules.yaml</c> and project routed
+    /// rows into entity files. Idempotent unless <c>includeAlreadyReplayed = true</c>.
+    /// </summary>
+    [HttpPost("generic-inbox/replay")]
+    [ProducesResponseType(typeof(ProjectMemoryGenericInboxReplayResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ProjectMemoryGenericInboxReplayResponseDto>> ReplayGenericInbox(
+        [FromBody] ProjectMemoryGenericInboxReplayRequestDto? body,
+        CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var options = new GenericInboxReplayOptions
+        {
+            IncludeAlreadyReplayed = body?.IncludeAlreadyReplayed ?? false,
+            OnlyEntityKeys = body?.OnlyEntityKeys,
+            OnlyKnowledgeTypes = body?.OnlyKnowledgeTypes
+        };
+
+        var report = await _genericInboxReplay
+            .ReplayAsync(root, body?.ScenarioId, options, cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(new ProjectMemoryGenericInboxReplayResponseDto
+        {
+            Considered = report.Considered,
+            Routed = report.Routed,
+            SkippedAlreadyReplayed = report.SkippedAlreadyReplayed,
+            SkippedRouteMiss = report.SkippedRouteMiss,
+            SkippedUnresolvedEntity = report.SkippedUnresolvedEntity,
+            UpdatedFiles = report.UpdatedFiles,
+            Issues = report.Issues.Select(i => new ProjectMemoryGenericInboxReplayIssueDto
+            {
+                Code = i.Code,
+                Message = i.Message,
+                IsError = i.IsError
+            }).ToList()
+        });
+    }
+
+    /// <summary>Returns the most recent <c>Assistant</c> turn content (used to ground confirmation classification).</summary>
+    private static string? LastAssistantContent(IReadOnlyList<SessionTurn>? turns)
+    {
+        if (turns == null || turns.Count == 0)
+            return null;
+        for (var i = turns.Count - 1; i >= 0; i--)
+        {
+            var t = turns[i];
+            if (t.Role == SessionRole.Assistant && !string.IsNullOrWhiteSpace(t.Content))
+                return t.Content;
+        }
+
+        return null;
     }
 
     private static string? BuildOrchestratorTranscriptPrefix(IReadOnlyList<SessionTurn>? turns)
@@ -548,6 +617,142 @@ public sealed class ProjectMemoryController : ControllerBase
                 })
                 .ConfigureAwait(false);
 
+            // PRD-019: pure yes/no must hit the pipeline generic-inbox confirm path. Otherwise "yes" is fed to
+            // person-extractor (no memoryIntents JSON), ingest reports empty intents, and memory-curator narrates incorrectly.
+            // Classifier mixes heuristic with LLM intent so natural consent (e.g. "yes I wish to save it") still routes here.
+            var lastAssistantPriorPrompt = LastAssistantContent(prior);
+            var inboxConfirmSignal = await _confirmClassifier
+                .ClassifyAsync(body.Payload, lastAssistantPriorPrompt, ct)
+                .ConfigureAwait(false);
+            if (inboxConfirmSignal != ConfirmationInputDetector.ConfirmationSignal.None)
+            {
+                await WriteFlowStepAsync("pm-generic-inbox-confirm", "running", "generic inbox confirm/reject…").ConfigureAwait(false);
+                var confirmPipelineReq = new ProjectMemoryPipelineRequest
+                {
+                    ProjectRoot = rootFull,
+                    UserMessage = body.Payload.Trim(),
+                    CorrelationId = messageId,
+                    Mode = ProjectMemoryPipelineMode.IngestOnly,
+                    ConversationPrefix = BuildOrchestratorTranscriptPrefix(prior),
+                    ScenarioId = scenarioResolved,
+                    SessionId = sessionId,
+                    TurnId = turnGroupId
+                };
+                var confirmPipelineResult = await _pipeline.RunAsync(confirmPipelineReq, ct).ConfigureAwait(false);
+                var ranConfirmStep = confirmPipelineResult.Steps.Any(s =>
+                    string.Equals(s.Name, "confirm", StringComparison.OrdinalIgnoreCase));
+                if (ranConfirmStep)
+                {
+                    var confirmDetail = confirmPipelineResult.Steps
+                        .LastOrDefault(st => string.Equals(st.Name, "confirm", StringComparison.OrdinalIgnoreCase))
+                        ?.Detail;
+                    await WriteFlowStepAsync("pm-generic-inbox-confirm", "done", confirmDetail ?? "confirm").ConfigureAwait(false);
+                    var confirmFinalText =
+                        ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(confirmPipelineResult.FinalText, Request);
+                    await WriteSseAsync(new AgentStreamEvent
+                        {
+                            Type = "phase",
+                            Payload = "Generic inbox confirmation applied.",
+                            AgentId = spec.Id
+                        })
+                        .ConfigureAwait(false);
+
+                    using (var persistScopeConfirm = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
+                    {
+                        try
+                        {
+                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, confirmFinalText, spec.Id, turnGroupId, ct)
+                                .ConfigureAwait(false);
+                            try
+                            {
+                                persistScopeConfirm?.SetTimelineDetailJson(
+                                    PlaygroundTraceTimelineDetail.BuildPersistJson(
+                                        sessionId, messageId, confirmFinalText.Length, ingest: null, rootFull));
+                            }
+                            catch (Exception exDetail)
+                            {
+                                _logger.LogDebug(exDetail, "Playground: persist trace detail JSON skipped");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Playground: append assistant turn failed");
+                        }
+                    }
+
+                    var donePayloadConfirm = new
+                    {
+                        type = "done",
+                        status = confirmPipelineResult.Success ? "Success" : "Failed",
+                        responseData = confirmFinalText,
+                        traceId = streamTraceId,
+                        errorMessage = confirmPipelineResult.Success ? (string?)null : confirmFinalText,
+                        messageId,
+                        sessionId
+                    };
+                    await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadConfirm, JsonSse) + "\n\n", ct)
+                        .ConfigureAwait(false);
+                    await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+                    SetStreamRootDetail(
+                        status: confirmPipelineResult.Success ? "success" : "error",
+                        errorMessage: confirmPipelineResult.Success ? null : confirmFinalText,
+                        personaChain: new[] { spec.Id },
+                        responseChars: confirmFinalText.Length,
+                        ingestAttempted: true);
+                    return;
+                }
+
+                await WriteFlowStepAsync(
+                        "pm-generic-inbox-confirm",
+                        "skipped",
+                        "No pending generic-inbox rows matched this scenario (or confirmation window expired).")
+                    .ConfigureAwait(false);
+
+                var noPendingText = "No pending out-of-schema fact matched this scenario, or the confirmation window expired. Please re-enter the fact so I can ask for confirmation again.";
+                using (var persistScopeConfirmMiss = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
+                {
+                    try
+                    {
+                        await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, noPendingText, spec.Id, turnGroupId, ct)
+                            .ConfigureAwait(false);
+                        try
+                        {
+                            persistScopeConfirmMiss?.SetTimelineDetailJson(
+                                PlaygroundTraceTimelineDetail.BuildPersistJson(
+                                    sessionId, messageId, noPendingText.Length, ingest: null, rootFull));
+                        }
+                        catch (Exception exDetail)
+                        {
+                            _logger.LogDebug(exDetail, "Playground: persist trace detail JSON skipped");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Playground: append assistant turn failed");
+                    }
+                }
+
+                var donePayloadNoPending = new
+                {
+                    type = "done",
+                    status = "Success",
+                    responseData = noPendingText,
+                    traceId = streamTraceId,
+                    errorMessage = (string?)null,
+                    messageId,
+                    sessionId
+                };
+                await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadNoPending, JsonSse) + "\n\n", ct)
+                    .ConfigureAwait(false);
+                await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+                SetStreamRootDetail(
+                    status: "success",
+                    personaChain: new[] { spec.Id },
+                    responseChars: noPendingText.Length,
+                    ingestAttempted: false);
+                return;
+            }
+
             var sseGate = new SemaphoreSlim(1, 1);
             async Task GatedWriteSseAsync(AgentStreamEvent evt)
             {
@@ -585,6 +790,28 @@ public sealed class ProjectMemoryController : ControllerBase
                 spec.Id,
                 JsonSse);
 
+            // PRD-019 Option B + F: resolve pronouns once before the flow graph executes so the rewritten
+            // text reaches every persona via ChatInput → person-extractor. Without this, the playground
+            // bypasses ProjectMemoryPipelineRunner and follow-ups like "He likes basketball" extract under
+            // the wrong entity (e.g. person_1 instead of raha).
+            CoreferencePreprocessResult? corefForFlow = null;
+            try
+            {
+                corefForFlow = await _corefCoordinator
+                    .PreprocessAsync(
+                        rootFull,
+                        scenarioResolved,
+                        body.Payload,
+                        BuildOrchestratorTranscriptPrefix(prior),
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exCoref)
+            {
+                _logger.LogDebug(exCoref, "Playground: coref preprocessing skipped");
+            }
+            var flowUserMessage = corefForFlow?.ResolvedUserMessage ?? body.Payload;
+
             // memory-curator must see whether ingest actually wrote files (tools are not executed in playground).
             ProjectMemoryIngestResult? lastExtractorIngest = null;
 
@@ -596,6 +823,50 @@ public sealed class ProjectMemoryController : ControllerBase
                     string.Equals(a.Id, personaId.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (pSpec == null)
                     throw new ScenarioFlowExecutionException($"Playground flow: agent spec '{personaId}' was not found.");
+
+                // Defense-in-depth for PRD-019 confirmations in scenario flow. If a short "yes/no" reaches
+                // the curator after person-extractor emitted empty JSON, do not let the LLM summarize that
+                // empty ingest. Confirm/reject the pending generic-inbox rows with the original user message.
+                ConfirmationInputDetector.ConfirmationSignal curatorConfirmSignal =
+                    ConfirmationInputDetector.ConfirmationSignal.None;
+                if (string.Equals(personaId.Trim(), "memory-curator", StringComparison.OrdinalIgnoreCase))
+                {
+                    curatorConfirmSignal = await _confirmClassifier
+                        .ClassifyAsync(body.Payload, LastAssistantContent(prior), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                if (curatorConfirmSignal != ConfirmationInputDetector.ConfirmationSignal.None)
+                {
+                    await GatedWriteFlowStepAsync("pm-generic-inbox-confirm", "running", "generic inbox confirm/reject…")
+                        .ConfigureAwait(false);
+                    var confirmPipelineReq = new ProjectMemoryPipelineRequest
+                    {
+                        ProjectRoot = rootFull,
+                        UserMessage = body.Payload.Trim(),
+                        CorrelationId = messageId,
+                        Mode = ProjectMemoryPipelineMode.IngestOnly,
+                        ConversationPrefix = BuildOrchestratorTranscriptPrefix(prior),
+                        ScenarioId = scenarioResolved,
+                        SessionId = sessionId,
+                        TurnId = turnGroupId
+                    };
+                    var confirmPipelineResult = await _pipeline.RunAsync(confirmPipelineReq, cancellationToken).ConfigureAwait(false);
+                    var confirmStep = confirmPipelineResult.Steps
+                        .LastOrDefault(st => string.Equals(st.Name, "confirm", StringComparison.OrdinalIgnoreCase));
+                    if (confirmStep != null)
+                    {
+                        await GatedWriteFlowStepAsync("pm-generic-inbox-confirm", "done", confirmStep.Detail ?? "confirm")
+                            .ConfigureAwait(false);
+                        return ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(confirmPipelineResult.FinalText, Request);
+                    }
+
+                    await GatedWriteFlowStepAsync(
+                            "pm-generic-inbox-confirm",
+                            "skipped",
+                            "No pending generic-inbox rows matched this scenario (or confirmation window expired).")
+                        .ConfigureAwait(false);
+                    return "No pending out-of-schema fact matched this scenario, or the confirmation window expired. Please re-enter the fact so I can ask for confirmation again.";
+                }
 
                 string? flowAppendix = null;
                 if (string.Equals(personaId.Trim(), "memory-curator", StringComparison.OrdinalIgnoreCase))
@@ -709,6 +980,27 @@ public sealed class ProjectMemoryController : ControllerBase
                                     ingestFlow.Summary ?? "",
                                     ProjectMemoryPersonaLlmRunner.TruncateForIngestLog(rawFlow));
 
+                            // PRD-019 Option B + F: persist active subject after the playground extractor turn
+                            // so a brand-new browser session in the same scenario can still resolve "He/She"
+                            // back to the right entity. Best-effort: never break the playground SSE flow here.
+                            try
+                            {
+                                await _corefCoordinator
+                                    .PersistFocusFromExtractAsync(
+                                        rootFull,
+                                        scenarioResolved,
+                                        rawFlow,
+                                        corefForFlow?.ActiveSubjectKey,
+                                        corefForFlow?.KnownEntities ?? System.Array.Empty<KnownEntity>(),
+                                        sessionId,
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                            }
+                            catch (Exception exFocus)
+                            {
+                                _logger.LogDebug(exFocus, "Playground: persist coreference focus skipped");
+                            }
+
                             // Keep chain purity: downstream LlmNode receives extractor raw output,
                             // while ingest remains a side-effect tracked by flow_step + trace.
                             return rawFlow;
@@ -731,7 +1023,7 @@ public sealed class ProjectMemoryController : ControllerBase
                 fullTextFlow = await interpreter
                     .ExecuteAsync(
                         scenarioDef.Flow!,
-                        body.Payload,
+                        flowUserMessage,
                         invokeFlow,
                         Timeout.InfiniteTimeSpan,
                         rootFull,
