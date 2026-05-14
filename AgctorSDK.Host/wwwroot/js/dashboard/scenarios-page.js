@@ -599,6 +599,8 @@
         var edgeLlmHintEl = document.getElementById('sc-flow-edge-llm-hint');
         var personaPanel = document.getElementById('sc-flow-persona-panel');
         var personaSelect = document.getElementById('sc-flow-persona-select');
+        var pqContextWrap = document.getElementById('sc-flow-pq-context-wrap');
+        var pqContextStrategyEl = document.getElementById('sc-flow-pq-context-strategy');
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
         var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
         var personaCapEl = document.getElementById('sc-flow-persona-cap');
@@ -727,6 +729,7 @@
             if (esel.length === 1) {
                 if (routerPanel) routerPanel.classList.add('hidden');
                 if (personaPanel) personaPanel.classList.add('hidden');
+                if (pqContextWrap) pqContextWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -931,6 +934,7 @@
             var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
             if (!cy) {
                 personaPanel.classList.add('hidden');
+                if (pqContextWrap) pqContextWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -940,6 +944,7 @@
             var sel = cy.$('node:selected');
             if (sel.length !== 1 || sel.data('agctorType') !== 'LlmNode') {
                 personaPanel.classList.add('hidden');
+                if (pqContextWrap) pqContextWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -1001,6 +1006,16 @@
             }
             var effectivePid = normalizeType(personaSelect.value || cur);
             renderFlowPersonaCapabilityPanel(effectivePid);
+            if (pqContextWrap && pqContextStrategyEl) {
+                var showPq = effectivePid.toLowerCase() === 'person-query';
+                pqContextWrap.classList.toggle('hidden', !showPq);
+                if (showPq) {
+                    var strat = (cfg.contextStrategy && String(cfg.contextStrategy).trim()) || 'markdown_all';
+                    pqContextStrategyEl.value = ['markdown_all', 'markdown_focus', 'rag', 'graph_rag'].indexOf(strat) >= 0
+                        ? strat
+                        : 'markdown_all';
+                }
+            }
         }
 
         function persistFlowPersonaInspector() {
@@ -1016,6 +1031,12 @@
                 cfg = {};
             }
             cfg.personaId = normalizeType(personaSelect.value);
+            var pid = cfg.personaId;
+            if (pid && pid.toLowerCase() === 'person-query' && pqContextStrategyEl) {
+                cfg.contextStrategy = pqContextStrategyEl.value || 'markdown_all';
+            } else {
+                delete cfg.contextStrategy;
+            }
             n.data('agctorConfig', JSON.stringify(cfg));
             setFlowMsg('');
             refreshFlowPersonaInspector();
@@ -1104,6 +1125,7 @@
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('change', persistFlowRouterInspector);
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('blur', persistFlowRouterInspector);
         if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
+        if (pqContextStrategyEl) pqContextStrategyEl.addEventListener('change', persistFlowPersonaInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('change', persistFlowEdgeInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('blur', persistFlowEdgeInspector);
         if (edgeMatchEl) edgeMatchEl.addEventListener('change', persistFlowEdgeInspector);
@@ -1130,6 +1152,8 @@
                     } else {
                         cfg.personaId = normalizeType(ids[0]);
                     }
+                    // Server-side playground person-query loads markdown; default matches designer dropdown.
+                    cfg.contextStrategy = 'markdown_all';
                 }
                 renderer.addNode(add, add, cfg);
                 refreshFlowInspectors();

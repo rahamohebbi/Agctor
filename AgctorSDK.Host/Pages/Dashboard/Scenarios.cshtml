@@ -225,6 +225,16 @@
                             <p class="text-[10px] font-semibold text-sky-900 dark:text-sky-200">LlmNode (selected)</p>
                             <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400">Persona (scenario roster)</label>
                             <select id="sc-flow-persona-select" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900"></select>
+                            <div id="sc-flow-pq-context-wrap" class="mt-2 hidden rounded border border-sky-300/60 bg-white/80 p-2 dark:border-sky-700/50 dark:bg-gray-950/40">
+                                <label class="block text-[10px] font-medium text-gray-700 dark:text-gray-300" for="sc-flow-pq-context-strategy">person-query: how to load context (playground)</label>
+                                <p class="mt-0.5 text-[9px] leading-snug text-gray-600 dark:text-gray-400">The HTTP flow does not run tools; the server injects markdown before the LLM call. <strong class="font-medium text-gray-800 dark:text-gray-200">Match from question</strong> guesses a name from the user message (e.g. “Who is Raha?”).</p>
+                                <select id="sc-flow-pq-context-strategy" class="mt-1 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="markdown_all">Read all scenario entity markdown (default)</option>
+                                    <option value="markdown_focus">Match entity from user question, then read that folder’s markdown</option>
+                                    <option value="rag">Vector RAG (not wired — uses all markdown for now)</option>
+                                    <option value="graph_rag">Graph / knowledge RAG (not wired — uses all markdown for now)</option>
+                                </select>
+                            </div>
                             <p id="sc-flow-persona-roster-hint" class="mt-1 hidden text-[10px] text-amber-700 dark:text-amber-300">Add YAML personas to this scenario on the main form (persona chips), then pick one here.</p>
                             <p id="sc-flow-persona-invalid-hint" class="mt-1 hidden text-[10px] text-red-600 dark:text-red-400"></p>
                             <p class="mt-1.5 text-[9px] leading-snug text-sky-900/90 dark:text-sky-200/90"><strong>Flow run:</strong> each LlmNode is one local LLM turn shaped by this YAML. Declared tools/paths are what the <em>full</em> project-memory stack may use; <code class="text-[9px]">person-extractor</code> can also apply JSON intents to disk when the scenario is scoped.</p>

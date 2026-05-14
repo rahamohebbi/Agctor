@@ -14,6 +14,7 @@ using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
+using AgctorSDK.Core.ProjectMemory.Tools;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
@@ -878,6 +879,25 @@ public sealed class ProjectMemoryController : ControllerBase
                           Playground runtime: no person-extractor ingest ran before this step (or ingest was skipped).
                           write_document is not executed here. Do not claim markdown files were written to disk.
                           """;
+                }
+                else if (string.Equals(personaId.Trim(), "person-query", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Single-prompt Ollama path has no tool loop; inject scenario markdown like ProjectMemoryQueryService does.
+                    var flowNode = scenarioDef.Flow?.Nodes?.FirstOrDefault(n =>
+                        !string.IsNullOrWhiteSpace(flowNodeId)
+                        && string.Equals(n.Id, flowNodeId, StringComparison.OrdinalIgnoreCase));
+                    var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
+                    var pmOps = new ProjectMemoryOperations(_loader, _entities);
+                    flowAppendix = await PlaygroundPersonQueryContextBuilder
+                        .BuildAppendixAsync(
+                            pmOps,
+                            pSpec,
+                            rootFull,
+                            scenarioResolved,
+                            strat,
+                            flowUserMessage,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
 
                 // Flow mode is strict node-to-node chaining: each persona gets upstream payload as latest input.

@@ -274,7 +274,8 @@
             "type": "LlmNode",
             "label": "LlmNode",
             "config": {
-              "personaId": "person-query"
+              "personaId": "person-query",
+              "contextStrategy": "markdown_all"
             }
           },
           {

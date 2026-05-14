@@ -93,7 +93,7 @@
         },
         "config": {
           "type": "object",
-          "description": "Type-specific payload (e.g. personaId for LlmNode).",
+          "description": "Type-specific payload. LlmNode: personaId (string), optional contextStrategy for person-query playground: markdown_all | markdown_focus | rag | graph_rag (rag/graph_rag fall back to markdown until wired).",
           "additionalProperties": true
         }
       }
