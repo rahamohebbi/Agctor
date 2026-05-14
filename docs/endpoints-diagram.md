@@ -6,49 +6,22 @@
 
 ## Overview
 
-All external-facing interfaces of the Agctor system.
+External surfaces are the **AgctorSDK.Host** HTTP API (plus Swagger), the **MCP TCP listener**, and the **AgctorCLI** executable. The Mermaid source above lists route prefixes at a glance; the **authoritative** contract is **Swagger** (`/swagger`) generated from controllers.
 
-## HTTP REST API (AgctorSDK.Host)
+## HTTP
 
-### Agents (`/api/agents`)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/agents` | Create new agent |
-| GET | `/api/agents` | List all agents |
-| GET | `/api/agents/{id}` | Get agent info |
-| POST | `/api/agents/{id}/message` | Send message to agent |
-| GET | `/api/agents/health` | Health check |
+- **Default base URL**: `http://localhost:5274` when `ASPNETCORE_URLS` is not set (`AgctorSDK.Host/Program.cs`).
+- **Route families**: `/api/agents`, `/api/agents/definitions`, `/api/goals`, `/api/tools`, `/api/scenarios`, `/api/test`, `/api/CodeGraph`, `/api/chat/projects`, `/api/chat/sessions`, `/api/Visualization`, `/api/project-memory`, `/api/project-memory/resolution`, `/api/Config`, `/api/Llm`, `/api/runtime`, plus Razor pages and static files.
+- **Per-controller detail**: see `AgctorSDK.Host/docs/endpoints-diagram.mmd` / `.md`.
 
-### Goals (`/api/goals`)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/goals` | Create goal |
-| GET | `/api/goals` | List goals |
-| GET | `/api/goals/{id}` | Get goal |
-| PUT | `/api/goals/{id}` | Update goal |
-| DELETE | `/api/goals/{id}` | Delete goal |
+## MCP
 
-### Tools (`/api/tools`)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/tools/{id}/invoke` | Invoke tool |
-| GET | `/api/tools` | List tools |
-| GET | `/api/tools/{id}` | Get tool info |
-| POST | `/api/tools/batch` | Batch invoke |
-| GET | `/api/tools/health` | Health check |
-
-### Test Scenarios (`/api/test`)
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/test/setup-scenario` | Setup scenario |
-| GET | `/api/test/scenarios` | List scenarios |
-
-## MCP Protocol
-- TCP port 8080, newline-delimited JSON messages
+- **TCP** server (`McpListener`): host/port from `Mcp:Host` / `Mcp:Port` (default port **8080**). Routes inbound JSON through `MessageDispatcher` to agents.
 
 ## CLI
-- `AgctorCLI.exe "prompt" [runtime]`
 
-## Background Services
-- TaskScoperHostedService (goal → tasks, every 30s)
-- TaskFlowHostedService (task execution, every 10s)
+- **AgctorCLI**: `dotnet run --project AgctorCLI` — single prompt in-process; no HTTP listener.
+
+## Background processing
+
+- **TaskScoperHostedService** / **TaskFlowHostedService**: intervals from `TaskScoper:ScanInterval` and `TaskFlow:Interval` (defaults 30s / 10s). Started from Host `ApplicationStarted` after HTTP is listening.

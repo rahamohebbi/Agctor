@@ -11,15 +11,13 @@ This diagram illustrates the high-level architecture of the AgctorSDK.Agents pro
 ## Key Components
 
 ### Agents Layer
-- **BaseActor**: Abstract base class providing core actor functionality
-- **Agent**: Base agent implementation with recursive task decomposition capabilities
-- **LLMAgent**: Agent that communicates with Ollama LLM service for natural language processing
-- **CoderAgent**: Orchestrates code editing, compilation, and testing workflows
-- **EchoAgent**: Simple agent that echoes responses (for testing)
-- **TracedAgent**: Decorator pattern agent that adds activity tracking
-- **HumanAgentAdapter**: Agent that facilitates human interaction in workflows
-- **PullRequestAgent**: Specialized agent for managing pull request workflows
-- **TaskScoperAgent**: Agent that scopes and breaks down tasks
+- **BaseActor**: Minimal `IActor` primitive used by some non-agent actors (for example `FileSystemTool` in Tools)
+- **Agent**: Default `IAgent` implementation with recursive task decomposition
+- **LLMAgent**, **CoderAgent**, **HumanAgentAdapter**, **PullRequestAgent**, **TaskScoperAgent**: Workflow agents extending `Agent`
+- **SessionCoordinatorAgent**, **SessionMemoryAgent**: Chat/session orchestration
+- **PersonExtractorProjectAgent**, **MemoryCuratorProjectAgent**, **PersonQueryProjectAgent**: Project-memory YAML agents
+- **EchoAgent**: Implements `IAgent` directly for demos (does not inherit `Agent`)
+- **TracedAgent**: Decorator implementing `IAgent` with activity tracking
 
 ### Factory & Registry
 - **AgentFactory**: Default implementation for creating and managing agent instances

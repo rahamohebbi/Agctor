@@ -6,35 +6,16 @@
 
 ## Overview
 
-API surface of AgctorSDK.Core organized by interface group. These are not HTTP endpoints but programmatic interfaces that all other projects consume.
+`AgctorSDK.Core` is a **class library** — it does not expose HTTP. Integration happens through **dependency injection extension methods** and the public contracts (`IActor`, `IAgent`, `IActorRuntimeAdapter`, project memory services, goals/tasks, observability).
 
-## API Groups
+## Registration helpers (typical entry points)
 
-### Actor Lifecycle
-- `InitializeAsync` / `ReceiveAsync` / `ShutdownAsync`
+| Extension | Purpose |
+|-----------|---------|
+| `AddAgctorProjectMemory` | Project loader, rebuild, pipeline, YAML, indexing |
+| `AddAgctorResolution` | Entity-resolution subsystem (PRD-018) |
+| `AddInMemoryGoalStore` / `AddInMemoryTaskStore` | Goal and task persistence |
+| `AddAgctorMetrics` / `AddAgctorVisualization` | Metrics and visualization wiring |
+| `AddSimpleCodeGeneration` | Optional codegen helpers |
 
-### Agent Operations
-- `ProcessPromptAsync` / `AssignSubtaskAsync` / `HandleSubtaskCompletionAsync` / `HandleSubtaskFailureAsync`
-
-### Factory
-- `SpawnAgentAsync` / `StopAgentAsync` / `GetAgentAsync` / `GenerateAgentId`
-
-### Runtime Adapter
-- `InitializeAsync` / `SpawnActorAsync` / `SendMessageAsync` / `StopActorAsync` / `GetStatisticsAsync` / `RequestHumanInputAsync`
-
-### Registry
-- `RegisterAgentAsync` / `UnregisterAgentAsync` / `GetAgentByIdAsync` / `GetAllAgentIdsAsync` / `GetRootAgentIdsAsync`
-
-### Task Management
-- `ITaskStore` CRUD + `ITaskExecutor.ExecuteAsync` + `TaskFlowEngine.RunAsync`
-
-### Goal Management
-- `IGoalStore` CRUD operations
-
-### Timeout Supervision
-- `RegisterTimeoutAsync` / `CancelTimeoutAsync` / `UpdateProgressAsync` / `CheckTimeoutAsync`
-
-### Observability
-- Metrics: `IncrementCounter` / `RecordGauge` / `RecordHistogram`
-- Tracing: `StartActivity` / `PropagateContext` / `ExtractContext`
-- Visualization: `GenerateAgentHierarchyMermaidDiagramAsync` / `GenerateMessageFlowMermaidDiagramAsync`
+For **interface-level** method lists (`IAgent`, `ITaskStore`, …), see `class-diagram.mmd` and IntelliSense on the Core assembly.

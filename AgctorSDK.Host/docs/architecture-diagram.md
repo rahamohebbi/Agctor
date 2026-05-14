@@ -11,35 +11,29 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 ## Key Components
 
 ### HTTP API Controllers
-- **AgentsController** (`/api/agents`): Agent CRUD and messaging
-- **GoalsController** (`/api/goals`): Goal CRUD
-- **ToolsController** (`/api/tools`): Tool invocation and discovery
-- **TestController** (`/api/test`): Test scenario setup
-- **CodeGraphController** (`/api/CodeGraph`): CodeGraph status, embeddings, and file preview
+- **AgentsController** (`/api/agents`): Agent CRUD, messaging, streaming, health, type enablement
+- **AgentsDefinitionsController** (`/api/agents/definitions`): Unified catalog and project-memory YAML CRUD
+- **GoalsController**, **ToolsController**, **RuntimeController**, **ConfigController**, **LlmController**
+- **ScenariosController** (`/api/scenarios`), **TestController** (`/api/test`)
+- **CodeGraphController**, **VisualizationController**
+- **ChatProjectsController**, **ChatSessionsController**
+- **ProjectMemoryController** (`/api/project-memory`), **ResolutionReviewController** (`/api/project-memory/resolution`)
 
 ### MCP Protocol
-- **McpListener**: TCP server (port 8080) accepting JSON-delimited messages
+- **McpListener**: TCP server on `Mcp:Port` (default **8080**, configurable including `0` for ephemeral) routing JSON messages through **MessageDispatcher**
 
 ### Services
-- **MessageDispatcher**: Routes messages to agents via actor runtime
-- **ToolInvoker**: Direct tool execution without agent wrapper
-- **ScenarioFactory**: Creates predefined test scenarios
-- **CurrentScenarioStore**: Tracks the active scenario for the dashboard
+- **MessageDispatcher**: Routes envelopes to agents via `IActorRuntimeAdapter`
+- **SqliteSessionStore** / **SqliteTraceTimelineStore**: Durable chat and trace timelines
+- **ToolInvoker**: Direct tool execution path used by HTTP/MCP
+- **Scenario** types: catalog, factory, application service, and current-scenario store for demos and dashboard
 
-### Background Services (provided by AgctorSDK.Extensions)
+### Background services
 
-The background hosted services are defined in `AgctorSDK.Extensions/Services/` and registered via the `AddAgctorBackgroundServices()` extension method. This keeps the Host focused on HTTP/MCP gateway concerns while making the services reusable by any host application.
+`TaskScoperHostedService` and `TaskFlowHostedService` are **defined in `AgctorSDK.Extensions`** (`IHostedService` implementations). The Host registers them as **singletons** and starts them from **`Program.cs` `ApplicationStarted`** (rather than `AddHostedService`) so HTTP and Swagger come up before the loops bind ports.
 
-- **TaskScoperHostedService**: Converts goals to task DAGs (every 30s)
-- **TaskFlowHostedService**: Executes task workflows (every 10s)
-
-#### TaskScoperHostedService
-
-`TaskScoperHostedService` is a background service (`IHostedService`) that periodically polls for new goals and converts them into task DAGs (Directed Acyclic Graphs). It delegates the actual decomposition logic to `TaskScoperAgent.ProcessGoalsAsync()`, which reads from `IGoalStore` and writes the resulting task graphs to `ITaskStore`. The default scan interval is **30 seconds**, configurable via `TaskScoperOptions.ScanInterval`. The service runs in a continuous loop with graceful cancellation support.
-
-#### TaskFlowHostedService
-
-`TaskFlowHostedService` is a background service (`IHostedService`) that periodically walks the task DAGs produced by the scoper and executes tasks whose dependencies have been satisfied. It delegates execution to `TaskFlowEngine.RunOnceAsync()`, which reads pending tasks from `ITaskStore` and dispatches them through `ITaskExecutor`. The default execution interval is **10 seconds**, configurable via `TaskFlowOptions.Interval`. Like the scoper, it runs in a continuous loop with graceful cancellation support.
+- **TaskScoperHostedService**: Converts goals to task DAGs (default scan interval **30s**, `TaskScoper:ScanInterval`)
+- **TaskFlowHostedService**: Executes ready tasks (default interval **10s**, `TaskFlow:Interval`)
 
 ### Scenarios
 - **CodeGenerationChainScenario**: LLM + CodeExecutor demo

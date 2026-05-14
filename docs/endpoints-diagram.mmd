@@ -1,55 +1,61 @@
 graph LR
-    subgraph "HTTP REST API - AgctorSDK.Host"
-        subgraph "Agents"
-            A1["POST /api/agents<br/>Create agent"]
-            A2["GET /api/agents<br/>List agents"]
-            A3["GET /api/agents/id<br/>Get agent"]
-            A4["POST /api/agents/id/message<br/>Send message"]
-            A5["GET /api/agents/health<br/>Health"]
+    subgraph http [AgctorSDK.Host HTTP]
+        subgraph agents [Agents]
+            A1["POST GET /api/agents"]
+            A2["GET PUT /api/agents/types/{type}/enabled"]
+            A3["GET /api/agents/{id} GET /api/agents/{id}/detail"]
+            A4["POST /api/agents/{id}/message POST …/message/stream"]
+            A5["GET /api/agents/health"]
         end
-
-        subgraph "Goals"
-            G1["POST /api/goals<br/>Create goal"]
-            G2["GET /api/goals<br/>List goals"]
-            G3["GET /api/goals/id<br/>Get goal"]
-            G4["PUT /api/goals/id<br/>Update goal"]
-            G5["DELETE /api/goals/id<br/>Delete goal"]
+        subgraph defs [Agent definitions PRD-013]
+            D1["GET /api/agents/definitions GET …/{id}"]
+            D2["POST PUT DELETE /api/agents/definitions/project-memory …"]
         end
-
-        subgraph "Tools"
-            T1["POST /api/tools/id/invoke<br/>Invoke tool"]
-            T2["GET /api/tools<br/>List tools"]
-            T3["GET /api/tools/id<br/>Get tool"]
-            T4["POST /api/tools/batch<br/>Batch invoke"]
-            T5["GET /api/tools/health<br/>Health"]
+        subgraph goals [Goals]
+            G["CRUD /api/goals and /api/goals/{id}"]
         end
-
-        subgraph "Test Scenarios"
-            S1["POST /api/test/setup-scenario<br/>Setup"]
-            S2["GET /api/test/scenarios<br/>List"]
+        subgraph tools [Tools]
+            T["GET /api/tools GET …/{id} POST …/{id}/invoke POST …/batch GET …/health"]
         end
-
-        subgraph "Docs"
-            SW["GET /swagger<br/>OpenAPI UI"]
+        subgraph scenarios [Scenarios]
+            S["GET PUT /api/scenarios GET …/{id} POST …/reload POST …/{id}/apply POST …/{id}/flow/run"]
+        end
+        subgraph test [Test helpers]
+            X["POST /api/test/setup-scenario GET …/scenarios GET …/scenarios/{name} GET …/current-scenario"]
+        end
+        subgraph cg [CodeGraph]
+            C["GET /api/CodeGraph/current embeddings file-content"]
+        end
+        subgraph chat [Chat]
+            P["/api/chat/projects CRUD and …/{id}/sessions"]
+            H["/api/chat/sessions CRUD and …/{id}/project"]
+        end
+        subgraph viz [Visualization]
+            V["GET /api/Visualization/trace/… timeline message-flow sessions/… timeline"]
+        end
+        subgraph pm [Project memory]
+            M["GET …/status agents templates schema segment PUT validate rebuild project-root tree file workspace/git-changes"]
+            M2["POST playground/run playground/message/stream orchestrator/run generic-inbox/replay"]
+        end
+        subgraph res [Entity resolution PRD-018]
+            R["GET POST /api/project-memory/resolution pending promote demote reject metrics"]
+        end
+        subgraph ops [Host ops]
+            O["GET /api/Config GET PUT /api/Llm/models default-model GET PUT /api/runtime"]
+        end
+        subgraph docs [Docs redirect]
+            W["GET / and /swagger redirect to Swagger UI"]
         end
     end
 
-    subgraph "MCP Protocol"
-        MCP["TCP port 8080<br/>JSON-delimited messages"]
+    subgraph mcp [MCP TCP]
+        MC["McpListener configurable Mcp:Host Mcp:Port JSON to MessageDispatcher"]
     end
 
-    subgraph "CLI"
-        CLICmd["AgctorCLI.exe prompt runtime<br/>Single prompt processing"]
+    subgraph cli [CLI]
+        CL["AgctorCLI.exe prompt no HTTP"]
     end
 
-    subgraph "Background Processing"
-        BG1["TaskScoperHostedService<br/>Goal to tasks every 30s"]
-        BG2["TaskFlowHostedService<br/>Task execution every 10s"]
-    end
-
-    style A1 fill:#e1f5ff
-    style A4 fill:#b3e5fc
-    style G1 fill:#fff9c4
-    style T1 fill:#f3e5f5
-    style MCP fill:#e8f5e9
-    style CLICmd fill:#ffe0b2
+    style http fill:#e3f2fd
+    style mcp fill:#fff3e0
+    style cli fill:#e8f5e9

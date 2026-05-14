@@ -40,10 +40,9 @@ graph TB
     end
     
     subgraph "External Dependencies"
-        NetStandard[.NET Standard 2.0<br/>via Core]
-        SystemConsole[System.Console<br/>Standard I/O]
-        SystemCollections[System.Collections.Generic<br/>Dictionary, List, etc.]
-        SystemThreading[System.Threading.Tasks<br/>Task, async/await]
+        SystemConsole[System.Console]
+        SystemCollections[System.Collections.Generic]
+        SystemThreading[System.Threading.Tasks]
     end
     
     subgraph "Runtime Dependencies"
@@ -98,7 +97,6 @@ graph TB
     AgentsAdapters -.->|provides| OrleansRuntime
     
     %% External dependencies
-    CLIProject -->|uses| NetStandard
     CLIProject -->|uses| SystemConsole
     CLIProject -->|uses| SystemCollections
     CLIProject -->|uses| SystemThreading

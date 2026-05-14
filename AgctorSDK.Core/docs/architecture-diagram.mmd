@@ -1,21 +1,57 @@
 flowchart TB
-  subgraph files [CanonicalFiles]
-    PY[project.yaml]
-    SCH[schemas/people]
-    AG[agents]
-    ENT[people entities]
+  subgraph contracts [Interfaces and messaging]
+    IActor[IActor]
+    IAgent[IAgent extends IActor]
+    IFactory[IAgentFactory and IActorRuntimeAdapter]
+    Envelope[MessageEnvelope and typed agent messages]
   end
-  PL[ProjectLoader]
-  ER[EntityRegistry]
-  DP[DocumentParser]
-  MIP[MemoryIntentProcessor]
-  DPS[DocumentProjectionService]
-  IDX[IRuntimeIndexStore]
-  RC[RebuildCoordinator]
-  files --> PL
-  PL --> ER
-  ER --> DP
-  MIP --> DPS
-  DPS --> ENT
-  ER --> RC
-  RC --> IDX
+
+  subgraph work [Goals tasks and automation]
+    Goals[Goal model and IGoalStore]
+    Tasks[ProjectTask ITaskStore TaskFlowEngine]
+    CodeGen[AddSimpleCodeGeneration optional pipeline]
+  end
+
+  subgraph pm [Project memory]
+    Loader[ProjectLoader and EntityRegistry]
+    Parse[DocumentParser and MemoryIntentProcessor]
+    Proj[DocumentProjectionService]
+    Idx[IRuntimeIndexStore and RebuildCoordinator]
+    Orch[ProjectMemory pipeline runners]
+    Coref[Coreference and out-of-schema handling]
+    Res[Resolution subsystem registration]
+  end
+
+  subgraph sessions [Sessions]
+    Sess[Session models and trace link types]
+  end
+
+  subgraph obs [Observability]
+    Log[IAgctorLogger]
+    Act[IActivityTracker]
+    Viz[Visualization options and services]
+    Met[Metrics registration helpers]
+  end
+
+  subgraph di [Registration helpers]
+    PMExt[AddAgctorProjectMemory]
+    ResExt[AddAgctorResolution]
+    GoalExt[AddInMemoryGoalStore]
+    TaskExt[AddInMemoryTaskStore]
+    ObsExt[AddAgctorMetrics AddAgctorVisualization]
+  end
+
+  IFactory -.-> IActor
+  IAgent -.-> IActor
+  Loader --> Parse
+  Parse --> Proj
+  Loader --> Idx
+  Orch --> Loader
+  Orch --> Coref
+  Res --> Idx
+  PMExt --> pm
+  ResExt --> Res
+  GoalExt --> Goals
+  TaskExt --> Tasks
+  ObsExt --> obs
+  CodeGen -.-> work

@@ -53,10 +53,10 @@ graph TB
         end
     end
 
-    subgraph "AgctorSDK.Core"
-        CoreAgent["Agent base class"]
-        CoreInterfaces["IActor, IAgent"]
-        ToolModels["ToolRequest, ToolResult"]
+    subgraph Core_contracts [AgctorSDK.Core.Agents and interfaces]
+        CoreAgent[Agent class]
+        CoreInterfaces[IActor IAgent]
+        ToolModels[ToolRequest ToolResult in Core.Tools.Models]
     end
 
     subgraph "External"
@@ -82,9 +82,9 @@ graph TB
     PythonFormatter -->|uses| BlackTool
 
     %% Core
-    IToolActor -.->|extends| CoreAgent
+    IToolActor -.->|implementations inherit| CoreAgent
     TracedToolActor -->|wraps| IToolActor
-    MetricsEnabledActor -->|wraps| CoreInterfaces
+    MetricsEnabledActor -->|wraps| IActor
 
     style IToolActor fill:#e1f5ff
     style CodeEditorTool fill:#b3e5fc

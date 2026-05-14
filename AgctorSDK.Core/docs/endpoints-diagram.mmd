@@ -1,7 +1,22 @@
 flowchart LR
-  subgraph lib [AgctorSDK.Core]
-    RC[RebuildCoordinator.RebuildAsync]
-    LO[ProjectLoader.LoadAsync]
+  subgraph note [This library has no HTTP surface]
+    N[Hosts register services via extension methods]
   end
-  Host[AgctorSDK.Host] -. optional DI .-> lib
-  CLI[AgctorCLI] -. optional DI .-> lib
+
+  subgraph reg [DependencyInjection extension methods]
+    A[AddAgctorProjectMemory]
+    B[AddAgctorResolution]
+    C[AddInMemoryGoalStore]
+    D[AddInMemoryTaskStore]
+    E[AddAgctorMetrics]
+    F[AddAgctorVisualization]
+    G[AddSimpleCodeGeneration]
+  end
+
+  subgraph usedBy [Typical callers]
+    Host[AgctorSDK.Host]
+    CLI[AgctorCLI or tests]
+  end
+
+  usedBy --> reg
+  reg --> note

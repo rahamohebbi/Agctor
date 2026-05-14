@@ -1,5 +1,6 @@
 #!/bin/bash
 # Script to generate JPEG images from Mermaid diagram files
+# Windows: use scripts/generate-images.ps1 (mmdc outputs PNG; script converts to JPEG).
 # Requires: @mermaid-js/mermaid-cli (install via: npm install -g @mermaid-js/mermaid-cli)
 # Also requires: sips (macOS) or ImageMagick convert (Linux)
 #

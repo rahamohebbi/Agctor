@@ -25,9 +25,13 @@ Each project also maintains its own `docs/` folder with detailed diagrams:
 
 ## Generating Images
 
+From a Unix shell (Linux, macOS, or **Git Bash / WSL on Windows**), after installing `@mermaid-js/mermaid-cli` globally or using `npx`:
+
 ```bash
 ./scripts/generate-images.sh docs
 ```
+
+On **Windows**, you can run `powershell -File scripts/generate-images.ps1 -DocsDir docs` (or another `*/docs` path) to render `.mmd` files to `.jpg` using `npx` plus built-in `System.Drawing` conversion.
 
 ## Generating All Project Images
 

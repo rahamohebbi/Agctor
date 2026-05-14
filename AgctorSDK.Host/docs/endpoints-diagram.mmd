@@ -23,8 +23,8 @@ graph LR
             SendMsg["POST /api/agents/id/message<br/>Send message"]
             SendMsgStream["POST /api/agents/id/message/stream<br/>SSE stream PRD011"]
             AgentHealth["GET /api/agents/health<br/>Health check"]
-            AgentDefsCatalog["GET /api/agents/definitions<br/>GET …/definitions/id<br/>PRD013 unified catalog + detail"]
-            PmYamlViaAgents["POST/PUT/DELETE …/definitions/project-memory<br/>PRD013 YAML CRUD"]
+            AgentDefsCatalog["GET /api/agents/definitions<br/>GET /api/agents/definitions/{id}"]
+            PmYamlViaAgents["POST/PUT/DELETE /api/agents/definitions/project-memory/{id}<br/>POST …/project-memory create"]
         end
 
         subgraph "Goals /api/goals"
@@ -90,10 +90,10 @@ graph LR
 
         subgraph "Project memory PRD013 /api/project-memory"
             PmStatus["GET /api/project-memory/status"]
-            PmAgents["GET/PUT/DELETE /api/project-memory/agents"]
+            PmAgents["GET/PUT/DELETE /api/project-memory/agents<br/>GET /api/project-memory/agents/{id}"]
             PmTemplates["GET /api/project-memory/templates"]
             PmFromTpl["POST /api/project-memory/agents/from-template"]
-            PmSchema["GET/PUT /api/project-memory/schema"]
+            PmSchema["GET /api/project-memory/schema<br/>PUT /api/project-memory/schema/{segment}"]
             PmValidate["POST /api/project-memory/validate"]
             PmRebuild["POST /api/project-memory/rebuild"]
             PmRoot["POST /api/project-memory/project-root"]
@@ -102,5 +102,19 @@ graph LR
             PmPlayRun["POST /api/project-memory/playground/run"]
             PmPlayStream["POST /api/project-memory/playground/message/stream<br/>SSE"]
             PmOrch["POST /api/project-memory/orchestrator/run<br/>pipeline"]
+            PmReplay["POST /api/project-memory/generic-inbox/replay"]
+            PmGit["GET /api/project-memory/workspace/git-changes"]
         end
+
+        subgraph "Resolution PRD018 /api/project-memory/resolution"
+            ResPending["GET …/pending"]
+            ResPromote["POST …/promote"]
+            ResDemote["POST …/demote"]
+            ResReject["POST …/reject"]
+            ResMetrics["GET …/metrics"]
+        end
+    end
+
+    subgraph "MCP TCP McpListener"
+        McpNote["Separate port from HTTP Mcp:Port default 8080<br/>Routes via MessageDispatcher"]
     end

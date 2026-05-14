@@ -1,8 +1,39 @@
-flowchart LR
+flowchart TB
   Core[AgctorSDK.Core]
-  Yaml[YamlDotNet]
-  Sql[Microsoft.Data.Sqlite]
-  Pg[Npgsql]
+
+  subgraph ms [Microsoft.Extensions]
+    DI[DependencyInjection Hosting Logging Http Options]
+    Diag[Diagnostics]
+  end
+
+  subgraph roslyn [Roslyn and scripting]
+    Ca[Microsoft.CodeAnalysis.CSharp]
+    Ip[IronPython]
+  end
+
+  subgraph data [Data and serialization]
+    Yaml[YamlDotNet]
+    Sql[Microsoft.Data.Sqlite]
+    Pg[Npgsql]
+  end
+
+  subgraph otel [OpenTelemetry]
+    Otel[OpenTelemetry Api and Hosting]
+    Exp[Console OTLP Zipkin Jaeger exporters]
+  end
+
+  subgraph other [Other]
+    Chan[System.Threading.Channels]
+    Scr[Scrutor]
+  end
+
+  ms --> Core
+  Ca --> Core
+  Ip --> Core
   Yaml --> Core
   Sql --> Core
   Pg --> Core
+  Otel --> Core
+  Exp --> Core
+  Chan --> Core
+  Scr --> Core

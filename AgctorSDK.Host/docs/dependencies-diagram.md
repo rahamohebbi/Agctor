@@ -23,3 +23,4 @@ AgctorSDK.Host references all other Agctor projects and serves as the main appli
 | Microsoft.Extensions.Hosting | 8.0.0 | Background services |
 | System.Net.WebSockets | 4.3.0 | WebSocket support |
 | Newtonsoft.Json | 13.0.3 | JSON serialization |
+| Microsoft.Data.Sqlite | 10.0.5 | SQLite session and trace stores |

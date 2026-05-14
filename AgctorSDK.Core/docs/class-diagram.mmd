@@ -1,12 +1,48 @@
 classDiagram
+  class IActor {
+    <<interface>>
+    +InitializeAsync()
+    +ReceiveAsync(MessageEnvelope)
+    +ShutdownAsync()
+  }
+
+  class IAgent {
+    <<interface>>
+    +ProcessPromptAsync(string)
+    +AssignSubtaskAsync(string)
+  }
+
+  class IActorRuntimeAdapter {
+    <<interface>>
+    +SpawnActorAsync()
+    +SendMessageAsync()
+  }
+
+  class IAgentFactory {
+    <<interface>>
+    +SpawnAgentAsync()
+  }
+
+  class MessageEnvelope {
+    +Payload
+    +Metadata
+    +Headers
+  }
+
+  class Goal
+  class ProjectTask
+  class TaskFlowEngine
+
   class IProjectLoader
   class IEntityRegistry
-  class IDocumentParser
-  class IMemoryIntentProcessor
-  class IDocumentProjectionService
-  class IRuntimeIndexStore
   class RebuildCoordinator
+  class IProjectMemoryPipelineRunner
+
+  IActor <|-- IAgent
+  IAgentFactory ..> IAgent : creates
+  IActorRuntimeAdapter ..> IActor : hosts
   RebuildCoordinator --> IProjectLoader
   RebuildCoordinator --> IEntityRegistry
-  RebuildCoordinator --> IRuntimeIndexStore
-  IMemoryIntentProcessor --> IDocumentProjectionService
+  IProjectMemoryPipelineRunner ..> RebuildCoordinator : may trigger rebuild
+  TaskFlowEngine --> ProjectTask
+  Goal --> ProjectTask

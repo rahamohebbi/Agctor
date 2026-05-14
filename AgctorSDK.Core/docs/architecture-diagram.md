@@ -15,7 +15,7 @@ AgctorSDK.Core is the foundational library defining all core interfaces, message
 - **IAgent**: Extended with prompt processing, subtask assignment, parent-child hierarchy
 - **IAgentFactory**: Agent creation and lifecycle management
 - **IAgentRegistry**: Agent tracking and discovery
-- **IActorRuntimeAdapter**: Abstraction over runtime backends (InMemory, Proto.Actor, Orleans)
+- **IActorRuntimeAdapter**: Abstraction over runtime backends; concrete adapters ship in **AgctorSDK.Agents** (InMemory, Proto.Actor, Orleans)
 - **IMessageEnvelope**: MCP-compliant message wrapper with payload, metadata, and headers
 - **ITimeoutSupervisor / ITimeoutPolicy**: Timeout monitoring and policy enforcement
 
@@ -29,10 +29,13 @@ AgctorSDK.Core is the foundational library defining all core interfaces, message
 - **IActivityTracker**: Distributed tracing with OpenTelemetry integration
 - **IVisualizationService**: Generates Mermaid diagrams and HTML visualizations
 
+### Entity resolution (PRD-018)
+- **Resolution** namespace: signal producers, metrics, bootstrapper, span sinks — optional subsystem wired when the Host registers `AddAgctorResolution` and a project `.agctor` root exists.
+
 ### Utils
 - **Logging**: IAgctorLogger, FileLogger, LoggerFactory
 - **ErrorHandling**: ErrorHandlingMiddleware
-- **GitCliHelper**: Git CLI utilities
+- **Git**: GitCliService, GitEventStore
 
 ## External Dependencies
 - OpenTelemetry (tracing, metrics, exporters)

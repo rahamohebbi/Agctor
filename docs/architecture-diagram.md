@@ -14,19 +14,14 @@ Agctor is a .NET actor model framework for building **agentic systems**. It comb
 
 Users interact with Agctor through three channels:
 
-- **HTTP REST API** — Full RESTful API for agents, goals, tools with Swagger/OpenAPI UI
-- **MCP TCP Server** — Model Context Protocol server (port 8080) for IDE integrations
+- **HTTP REST API** — Default base URL `http://localhost:5274` unless `ASPNETCORE_URLS` overrides it; Swagger at `/swagger`
+- **MCP TCP server** — Separate listener (`Mcp:Port`, default 8080) with JSON message routing to agents
 - **CLI** — Command-line interface for single-prompt processing
 
 ### 2. Application Layer
 
-#### AgctorSDK.Host (Web API + MCP Server)
-The main application host exposing:
-- `POST /api/agents` — Create agents, send messages, query status
-- `POST /api/goals` — Define high-level goals that decompose into tasks
-- `POST /api/tools/{id}/invoke` — Invoke tools directly
-- `POST /api/test/setup-scenario` — Set up predefined test scenarios
-- Background services: **TaskScoperHostedService** (goal → task DAG decomposition every 30s) and **TaskFlowHostedService** (task execution every 10s)
+#### AgctorSDK.Host (Web API + MCP)
+The ASP.NET Core host exposes REST controllers (agents, definitions, goals, tools, scenarios, test helpers, CodeGraph, chat, visualization, project memory, resolution review, LLM, config, runtime) plus Razor pages, Swagger, static files, and the TCP MCP listener. SQLite-backed session and trace stores are configured in `Program.cs`.
 
 #### AgctorCLI (Command-Line Interface)
 Simple CLI that accepts a prompt, creates a root agent, processes it through the actor system, and prints the result.
@@ -34,10 +29,7 @@ Simple CLI that accepts a prompt, creates a root agent, processes it through the
 ### 3. Extension Layer
 
 #### AgctorSDK.Extensions
-Provides dependency injection extension methods (`AddAgctor`, `AddAgctorInMemory`, `AddAgctorProtoActor`, `AddAgctorOrleans`) that wire up the entire framework. Includes:
-- **ActorRuntimeAdapterFactory** — Creates runtime adapters by name
-- **OpenTelemetry configuration** — Tracing with Jaeger, Zipkin, OTLP, Console exporters
-- Feature-specific registration: CodeGraph generation, PR automation
+Provides dependency injection extension methods in namespace `AgctorSDK.Core.DependencyInjection` (implemented in this assembly), including `AddAgctor` / `AddAgctor<TAdapter>`, `ActorRuntimeAdapterFactory`, OpenTelemetry wiring helpers, code-graph generation registration, pull-request automation, and activity tracking.
 
 ### 4. Intelligence Layer
 
@@ -47,8 +39,10 @@ The core agent framework implementing the actor model for intelligent agents:
 - **LLMAgent** — Communicates with Ollama for natural language processing
 - **CoderAgent** — Orchestrates Edit → Compile → Test workflows
 - **HumanAgentAdapter** — Facilitates human-in-the-loop interactions
+- **InMemoryActorRuntime**, **ProtoActorAdapter**, **OrleansAdapter** — `IActorRuntimeAdapter` implementations selected at startup
 - **AgentFactory** — Creates agents via runtime adapters with unique IDs
-- **AgentRegistry** — Tracks all agent instances for discovery
+- **AgentRegistry** — In-memory registry used by the Host (`IAgentRegistry` implementations may also be supplied by the host)
+- **SessionCoordinatorAgent**, **SessionMemoryAgent**, **PersonExtractorProjectAgent**, **MemoryCuratorProjectAgent**, **PersonQueryProjectAgent** — Session and project-memory orchestration
 
 #### AgctorSDK.CodeGraph (Code Intelligence)
 Models an entire codebase as an actor hierarchy and provides intelligent agents:
@@ -75,17 +69,14 @@ Tool actors that perform concrete operations:
 ### 6. Core Layer
 
 #### AgctorSDK.Core (Foundation)
-The foundation library with zero project dependencies, defining all core abstractions:
+The foundation library with **no project references**, defining shared abstractions and subsystems (messages, goals/tasks, project memory, resolution contracts, observability hooks, Git helpers, and more):
 
-**Actor Model:**
+**Actor and messaging:**
 - `IActor` — Lifecycle (Initialize, Receive, Shutdown) + state management
-- `IAgent` — Extends IActor with prompt processing, subtask assignment, parent-child hierarchy
-- `MessageEnvelope` — MCP-compliant message wrapper (payload, metadata, headers)
+- `IAgent` — Extends `IActor` with prompt processing, subtask assignment, parent-child hierarchy
+- `MessageEnvelope` — Typed payloads with metadata and headers for host and runtime routing
 
-**Runtime Adapters:**
-- `InMemoryActorRuntime` — In-process, fully implemented
-- `ProtoActorAdapter` — Distributed via Proto.Actor (gRPC), production-ready
-- `OrleansAdapter` — Microsoft Orleans (placeholder)
+**Runtime contracts:** `IActorRuntimeAdapter` and related types — **implementations live in AgctorSDK.Agents** (see Intelligence Layer).
 
 **Task & Goal Management:**
 - `Goal` → `ProjectTask` decomposition

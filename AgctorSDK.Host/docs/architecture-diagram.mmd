@@ -1,115 +1,71 @@
 graph TB
-    subgraph "AgctorSDK.Host"
-        subgraph "HTTP API"
-            AgentsCtrl["AgentsController<br/>Agent CRUD + messaging"]
-            ChatSessionsCtrl["ChatSessionsController<br/>Session transcript + history"]
-            VisualizationCtrl["VisualizationController<br/>Trace timeline + message flow"]
-            GoalsCtrl["GoalsController<br/>Goal CRUD"]
-            ToolsCtrl["ToolsController<br/>Tool invocation + discovery"]
-            TestCtrl["TestController<br/>Scenario setup"]
-            CodeGraphCtrl["CodeGraphController<br/>CodeGraph status + file preview"]
-            Swagger["Swagger UI<br/>OpenAPI docs"]
+    subgraph AgctorSDK_Host [AgctorSDK.Host]
+        subgraph HTTP_API [HTTP API]
+            AgentsCtrl[AgentsController /api/agents]
+            DefsCtrl[AgentsDefinitionsController /api/agents/definitions]
+            GoalsCtrl[GoalsController]
+            ToolsCtrl[ToolsController]
+            RuntimeCtrl[RuntimeController]
+            ConfigCtrl[ConfigController]
+            LlmCtrl[LlmController]
+            ScenariosCtrl[ScenariosController /api/scenarios]
+            TestCtrl[TestController]
+            CodeGraphCtrl[CodeGraphController]
+            ChatProjCtrl[ChatProjectsController]
+            ChatSessCtrl[ChatSessionsController]
+            VizCtrl[VisualizationController]
+            PmCtrl[ProjectMemoryController /api/project-memory]
+            ResCtrl[ResolutionReviewController /api/project-memory/resolution]
+            Swagger[Swagger OpenAPI]
         end
 
-        subgraph "MCP Protocol"
-            McpListener["McpListener<br/>TCP server port 8080<br/>JSON-delimited messages"]
+        subgraph MCP [MCP]
+            McpListener[McpListener TCP JSON to MessageDispatcher]
         end
 
-        subgraph "Services"
-            MessageDispatcher["MessageDispatcher<br/>Message routing to agents"]
-            SessionStore["SqliteSessionStore<br/>Session turns + trace links"]
-            TraceStore["SqliteTraceTimelineStore<br/>Durable timeline snapshots"]
-            ToolInvoker["ToolInvoker<br/>Direct tool execution"]
-            ScenarioFactory["ScenarioFactory<br/>Test scenario creation"]
-            CurrentScenarioStore["CurrentScenarioStore<br/>Active scenario state"]
+        subgraph Host_Services [Host services]
+            MessageDispatcher[MessageDispatcher]
+            SessionStore[SqliteSessionStore]
+            TraceStore[SqliteTraceTimelineStore]
+            ToolInvoker[ToolInvoker]
+            ScenarioServices[Scenario catalog factory application]
+            PmServices[Project memory file YAML Ollama helpers]
         end
 
-        subgraph "Background Services"
-            TaskScoper["TaskScoperHostedService<br/>Goal to task decomposition<br/>Every 30s"]
-            TaskFlow["TaskFlowHostedService<br/>Task DAG execution<br/>Every 10s"]
+        subgraph Background [Background work]
+            TaskScoper[TaskScoperHostedService]
+            TaskFlow[TaskFlowHostedService]
         end
 
-        subgraph "Scenarios"
-            CodeGenScenario["CodeGenerationChainScenario<br/>LLM + CodeExecutor"]
-            CodeGraphScenario["CodeGraphDemoScenario<br/>CodeGraph + embedding lifecycle"]
-        end
-
-        subgraph "Program"
-            ProgramCS["Program.cs<br/>DI setup + pipeline"]
-        end
+        ProgramCS[Program.cs DI and pipeline]
     end
 
-    subgraph "AgctorSDK.Core"
-        CoreInterfaces["Core Interfaces"]
-        GoalStore["IGoalStore"]
-        TaskStore["ITaskStore"]
-        TaskFlowEngine["TaskFlowEngine"]
+    subgraph Framework [Referenced SDK projects]
+        Core[AgctorSDK.Core]
+        Agents[AgctorSDK.Agents]
+        Tools[AgctorSDK.Tools]
+        Ext[AgctorSDK.Extensions]
+        Cg[AgctorSDK.CodeGraph]
     end
 
-    subgraph "AgctorSDK.Agents"
-        AgentFactory["AgentFactory"]
-        RuntimeAdapter["IActorRuntimeAdapter"]
+    subgraph External [Callers and systems]
+        Browser[Browser or API clients]
+        McpClient[MCP clients]
     end
 
-    subgraph "AgctorSDK.Tools"
-        ToolActors["Tool Actors"]
-    end
-
-    subgraph "AgctorSDK.Extensions"
-        AddAgctor["AddAgctor DI Extensions"]
-    end
-
-    subgraph "AgctorSDK.CodeGraph"
-        CodeGraphAgents["CodeGraph Agents"]
-    end
-
-    subgraph "External"
-        HTTPClient["HTTP Clients"]
-        MCPClient["MCP Clients"]
-    end
-
-    %% HTTP flow
-    HTTPClient -->|REST API| AgentsCtrl
-    HTTPClient -->|REST API| ChatSessionsCtrl
-    HTTPClient -->|REST API| VisualizationCtrl
-    HTTPClient -->|REST API| GoalsCtrl
-    HTTPClient -->|REST API| ToolsCtrl
-    HTTPClient -->|REST API| TestCtrl
-    HTTPClient -->|REST API| CodeGraphCtrl
-
-    %% MCP flow
-    MCPClient -->|TCP JSON| McpListener
-
-    %% Internal routing
+    Browser --> HTTP_API
+    McpClient --> MCP
     AgentsCtrl --> MessageDispatcher
-    ChatSessionsCtrl --> SessionStore
-    VisualizationCtrl --> SessionStore
-    VisualizationCtrl --> TraceStore
-    MessageDispatcher --> SessionStore
-    MessageDispatcher --> TraceStore
+    PmCtrl --> PmServices
+    ResCtrl --> Core
     ToolsCtrl --> ToolInvoker
-    McpListener --> MessageDispatcher
-    TestCtrl --> CurrentScenarioStore
+    ChatSessCtrl --> SessionStore
+    VizCtrl --> TraceStore
+    MessageDispatcher --> Agents
+    ToolInvoker --> Tools
+    TaskScoper --> Core
+    TaskFlow --> Core
+    ProgramCS --> Ext
 
-    MessageDispatcher --> RuntimeAdapter
-    ToolInvoker --> ToolActors
-
-    %% Background services
-    TaskScoper --> GoalStore
-    TaskScoper --> TaskStore
-    TaskFlow --> TaskFlowEngine
-
-    %% DI
-    ProgramCS --> AddAgctor
-
-    %% Scenarios
-    TestCtrl --> ScenarioFactory
-    ScenarioFactory --> CodeGenScenario
-    ScenarioFactory --> CodeGraphScenario
-
-    style AgentsCtrl fill:#e1f5ff
-    style GoalsCtrl fill:#b3e5fc
-    style ToolsCtrl fill:#81d4fa
-    style McpListener fill:#fff9c4
-    style TaskScoper fill:#e8f5e9
-    style TaskFlow fill:#e8f5e9
+    style AgctorSDK_Host fill:#e1f5ff
+    style MCP fill:#fff9c4

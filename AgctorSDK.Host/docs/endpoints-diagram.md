@@ -39,6 +39,15 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | POST | `/api/agents/{id}/message/stream` | SSE: stream LLM deltas + final `done` (PRD-011) |
 | GET | `/api/agents/health` | Health check |
 
+### Agent definitions (`/api/agents/definitions`) — PRD-013
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/agents/definitions` | Unified catalog: registered C# agent types + project-memory YAML specs |
+| GET | `/api/agents/definitions/{id}` | Detail for a type name or YAML spec id |
+| POST | `/api/agents/definitions/project-memory` | Create new `*.agent.yaml` (body `SaveAgentRequestDto`) |
+| PUT | `/api/agents/definitions/project-memory/{id}` | Update YAML on disk |
+| DELETE | `/api/agents/definitions/project-memory/{id}` | Delete backing YAML |
+
 ### Goals (`/api/goals`)
 | Method | Path | Description |
 |--------|------|-------------|
@@ -121,6 +130,17 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | POST | `/api/project-memory/playground/run` | One-shot LLM test (optional `sessionId` for transcript context) |
 | POST | `/api/project-memory/playground/message/stream` | SSE chat turn; persists user/assistant to chat session store |
 | POST | `/api/project-memory/orchestrator/run` | Pipeline: extract → route/write → optional query (`mode`: auto, ingestOnly, queryOnly) |
+| POST | `/api/project-memory/generic-inbox/replay` | Replay generic inbox / routing (debug and recovery) |
+| GET | `/api/project-memory/workspace/git-changes` | Git working-tree summary for the configured project root |
+
+### Entity resolution review (`/api/project-memory/resolution`) — PRD-018
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/project-memory/resolution/pending` | Pending merge candidates for human review |
+| POST | `/api/project-memory/resolution/promote` | Accept / promote a candidate |
+| POST | `/api/project-memory/resolution/demote` | Demote a candidate |
+| POST | `/api/project-memory/resolution/reject` | Reject a candidate |
+| GET | `/api/project-memory/resolution/metrics` | Lightweight resolution metrics snapshot |
 
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview
@@ -138,8 +158,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 - **GET /Dashboard/ProjectMemory/Maintenance** – Project root, validate, rebuild
 
 ## MCP Protocol
-- **TCP port 8080**: Accepts newline-delimited JSON messages
-- Routes messages to agents via actor runtime
+- **TCP** (`McpListener`): bind address `Mcp:Host` (default `0.0.0.0`) and port `Mcp:Port` (default **8080**; `0` picks an ephemeral port). Newline-delimited JSON messages route through **MessageDispatcher** to agents.
 
 ## Swagger
 - **GET /swagger**: OpenAPI UI for API exploration

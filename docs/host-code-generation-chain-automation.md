@@ -15,9 +15,7 @@ It covers:
 Use this document as a contract test for host behavior.  
 It validates scenario orchestration and tool API availability so regressions are detected early.
 
-## Prerequisites
-
-- .NET 8 SDK installed
+The default HTTP URL is `http://localhost:5274` when `ASPNETCORE_URLS` is unset (see `AgctorSDK.Host/Program.cs`). Examples below pin `127.0.0.1:5055` via `ASPNETCORE_URLS` for deterministic automation; substitute your own base URL when running locally.
 - `curl` available
 - `jq` available (recommended for assertions)
 - Repository root as current working directory
