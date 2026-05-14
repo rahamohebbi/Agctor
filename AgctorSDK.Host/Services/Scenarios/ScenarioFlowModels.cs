@@ -64,6 +64,15 @@ public sealed class ScenarioFlowEdge
     public string Mode { get; set; } = "sequential";
 
     public string? Condition { get; set; }
+
+    /// <summary>
+    /// For deterministic Router: how <see cref="Condition"/> is matched — <c>contains</c> (default), <c>equals</c>,
+    /// <c>startsWith</c>, <c>endsWith</c>, <c>regex</c>.
+    /// </summary>
+    public string? ConditionMatch { get; set; }
+
+    /// <summary>Per-edge routing hint for <c>routerMode: llm</c> (included in router LLM prompt).</summary>
+    public string? LlmRoutingHint { get; set; }
 }
 
 public sealed class ScenarioFlowUi

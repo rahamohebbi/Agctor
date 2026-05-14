@@ -148,46 +148,92 @@
                 </div>
                 <button type="button" class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" data-sc-flow-close aria-label="Close">✕</button>
             </div>
-            <div class="flex min-h-0 flex-1 flex-col gap-3 p-4 md:flex-row">
-                <div class="flex w-full shrink-0 flex-col space-y-2 md:w-60">
-                    <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Add node</p>
-                    <div class="flex flex-col gap-1.5">
-                        <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Router">Router</button>
-                        <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">LlmNode</button>
-                        <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Merge">Merge</button>
-                    </div>
-                    <button type="button" id="sc-flow-connect" title="Direction follows node types (ChatInput → Router → LlmNode → Merge → Output) when both are known; otherwise first selected → second." class="mt-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800">Connect 2 selected</button>
-                    <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
-                    <p class="text-[10px] text-gray-500 dark:text-gray-400">Click a node or shift+drag to box-select. Selected nodes show a <strong class="text-amber-600">yellow ring</strong>. <strong class="text-gray-700 dark:text-gray-300">Connect 2 selected</strong> picks arrow direction from node types (flow goes toward Output). Click an <strong class="text-gray-700 dark:text-gray-300">edge</strong> to select it (gold highlight). <strong class="text-gray-700 dark:text-gray-300">Delete</strong> / <strong class="text-gray-700 dark:text-gray-300">Backspace</strong> removes selected edges. <strong class="text-gray-700 dark:text-gray-300">Alt+drag</strong> from a selected edge onto another node moves the nearest end (source or target) to that node.</p>
-                    <div id="sc-flow-router-panel" class="hidden mt-3 rounded border border-violet-200 bg-violet-50/80 p-2 dark:border-violet-800 dark:bg-violet-950/40">
-                        <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Router (selected)</p>
-                        <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400">routerMode</label>
-                        <select id="sc-flow-router-mode" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
-                            <option value="deterministic">deterministic (edge conditions)</option>
-                            <option value="llm">llm (Ollama routing)</option>
-                        </select>
-                        <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400">maxTargets (optional)</label>
-                        <input type="number" id="sc-flow-router-max" min="1" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="empty = no cap" />
-                        <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400">minConfidence 0–1 (optional)</label>
-                        <input type="text" id="sc-flow-router-minconf" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. 0.5" />
-                        <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400">fallbackPersonaId (optional)</label>
-                        <input type="text" id="sc-flow-router-fallback" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" />
-                        <p class="mt-2 text-[10px] font-medium text-gray-700 dark:text-gray-300">LLM candidates (sequential → LlmNode)</p>
-                        <ul id="sc-flow-router-candidates" class="mt-0.5 max-h-24 list-inside list-disc overflow-y-auto text-[10px] text-gray-600 dark:text-gray-400"></ul>
-                        <p class="mt-1 text-[9px] text-gray-500 dark:text-gray-500">Simulate order ignores LLM routing — server runs the real router at flow execution.</p>
-                    </div>
-                    <div id="sc-flow-persona-panel" class="hidden mt-3 rounded border border-sky-200 bg-sky-50/80 p-2 dark:border-sky-800 dark:bg-sky-950/40">
-                        <p class="text-[10px] font-semibold text-sky-900 dark:text-sky-200">LlmNode (selected)</p>
-                        <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400">Persona (scenario roster)</label>
-                        <select id="sc-flow-persona-select" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900"></select>
-                        <p id="sc-flow-persona-roster-hint" class="mt-1 hidden text-[10px] text-amber-700 dark:text-amber-300">Add YAML personas to this scenario on the main form (persona chips), then pick one here.</p>
-                        <p id="sc-flow-persona-invalid-hint" class="mt-1 hidden text-[10px] text-red-600 dark:text-red-400"></p>
-                        <p class="mt-1.5 text-[9px] leading-snug text-sky-900/90 dark:text-sky-200/90"><strong>Flow run:</strong> each LlmNode is one local LLM turn shaped by this YAML. Declared tools/paths are what the <em>full</em> project-memory stack may use; <code class="text-[9px]">person-extractor</code> can also apply JSON intents to disk when the scenario is scoped.</p>
-                        <div id="sc-flow-persona-cap" class="mt-2 hidden max-h-52 overflow-y-auto rounded border border-sky-300/70 bg-white/95 p-2 text-[10px] text-gray-800 dark:border-sky-700 dark:bg-gray-950/60 dark:text-gray-100"></div>
-                        <p class="mt-1 text-[9px] text-gray-500 dark:text-gray-500">Capabilities below come from <code class="text-[9px]">GET /api/project-memory/agents</code> (bulk YAML fields).</p>
+            <div class="flex min-h-0 flex-1 flex-col gap-3 p-4 md:flex-row md:items-stretch">
+                <div class="flex w-full shrink-0 flex-col md:w-72 min-h-0 md:max-w-[min(22rem,42vw)]">
+                    <div class="flex min-h-0 max-h-[min(58vh,720px)] flex-1 flex-col overflow-y-auto rounded-lg border border-gray-200 bg-white/70 p-2 shadow-sm dark:border-gray-600 dark:bg-gray-900/50">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Add node</p>
+                        <div class="flex flex-col gap-1.5">
+                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Router">Router</button>
+                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">LlmNode</button>
+                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Merge">Merge</button>
+                        </div>
+                        <button type="button" id="sc-flow-connect" title="Direction follows node types (ChatInput → Router → LlmNode → Merge → Output) when both are known; otherwise first selected → second." class="mt-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800">Connect 2 selected</button>
+                        <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
+                        <details class="mt-2 rounded border border-gray-200 bg-gray-50/90 p-1.5 dark:border-gray-600 dark:bg-gray-800/60">
+                            <summary class="cursor-pointer select-none text-[10px] font-medium text-gray-700 dark:text-gray-300">Canvas shortcuts</summary>
+                            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">Nodes: click or shift+drag box-select; selected nodes show a <strong class="text-amber-600">yellow ring</strong>. <strong class="text-gray-800 dark:text-gray-200">Connect 2 selected</strong> picks arrow direction from types. Edges: click to select (gold). <strong class="text-gray-800 dark:text-gray-200">Delete</strong> / <strong class="text-gray-800 dark:text-gray-200">Backspace</strong> removes selected edges. <strong class="text-gray-800 dark:text-gray-200">Alt+drag</strong> from a selected edge onto a node rewires the nearest end.</p>
+                        </details>
+                        <div id="sc-flow-edge-panel" class="hidden mt-3 rounded border border-amber-200 bg-amber-50/80 p-2 dark:border-amber-800 dark:bg-amber-950/40">
+                            <p class="text-[10px] font-semibold text-amber-900 dark:text-amber-200">Selected edge</p>
+                            <p id="sc-flow-edge-meta" class="mt-1 font-mono text-[9px] text-gray-600 dark:text-gray-400"></p>
+                            <p id="sc-flow-edge-router-context" class="mt-1 hidden text-[9px] leading-snug text-amber-900/90 dark:text-amber-200/90"></p>
+                            <div id="sc-flow-edge-det-block" class="mt-2">
+                                <p class="text-[10px] font-medium text-gray-800 dark:text-gray-200">Deterministic branch (when source Router uses rule-based mode)</p>
+                                <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-edge-condition">Match this outgoing arrow when the user message…</label>
+                                <input type="text" id="sc-flow-edge-condition" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. Raha, error:, ticket (empty = default / catch-all branch)" />
+                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-edge-match">…matches using</label>
+                                <select id="sc-flow-edge-match" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="contains">Contains this text (case-insensitive substring)</option>
+                                    <option value="equals">Equals entire message (trimmed, case-insensitive)</option>
+                                    <option value="startsWith">Starts with this text</option>
+                                    <option value="endsWith">Ends with this text</option>
+                                    <option value="regex">Matches this .NET-style regular expression</option>
+                                </select>
+                                <p class="mt-1 text-[9px] text-gray-600 dark:text-gray-400">Leave condition empty on <strong>one</strong> arrow only — that is the fallback if no other branch matches.</p>
+                            </div>
+                            <div id="sc-flow-edge-llm-block" class="mt-2 hidden border-t border-amber-200/80 pt-2 dark:border-amber-800/60">
+                                <p class="text-[10px] font-medium text-gray-800 dark:text-gray-200">LLM branch hint (when source Router uses LLM mode)</p>
+                                <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-edge-llm-hint">Tell the router model when to choose this persona branch</label>
+                                <textarea id="sc-flow-edge-llm-hint" rows="3" class="mt-0.5 w-full resize-y rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="Example: Use when the user asks who someone is, biographical questions, or &quot;what do we know about X&quot; people queries."></textarea>
+                            </div>
+                        </div>
+                        <div id="sc-flow-router-panel" class="hidden mt-3 rounded border border-violet-200 bg-violet-50/80 p-2 dark:border-violet-800 dark:bg-violet-950/40">
+                            <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Router (selected)</p>
+                            <label class="mt-1 block text-[10px] font-medium text-gray-700 dark:text-gray-300" for="sc-flow-router-mode">How this router picks the next step</label>
+                            <p class="mt-0.5 text-[9px] leading-snug text-gray-600 dark:text-gray-400"><strong>Deterministic</strong> = no extra LLM call; the server matches your message against each outgoing arrow’s condition. <strong>LLM</strong> = one Ollama call reads branch hints + persona summaries and returns target persona(s).</p>
+                            <select id="sc-flow-router-mode" class="mt-1 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
+                                <option value="deterministic">Deterministic — keyword / pattern on each edge</option>
+                                <option value="llm">LLM (Ollama) — natural-language hints on each edge</option>
+                            </select>
+                            <div id="sc-flow-router-deterministic" class="mt-2 rounded border border-violet-200/70 bg-white/60 p-2 dark:border-violet-800/50 dark:bg-gray-950/30">
+                                <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Rule-based setup</p>
+                                <p class="mt-1 text-[9px] leading-relaxed text-gray-700 dark:text-gray-300">Select each <strong>arrow leaving this router</strong> on the canvas. In the edge panel, set a condition and match style, or leave one arrow as the default (empty condition).</p>
+                                <p class="mt-1.5 text-[9px] font-medium text-gray-700 dark:text-gray-300">Outgoing sequential edges (preview)</p>
+                                <ul id="sc-flow-router-det-edge-preview" class="mt-0.5 max-h-28 list-inside list-disc overflow-y-auto text-[9px] text-gray-600 dark:text-gray-400"></ul>
+                            </div>
+                            <div id="sc-flow-router-llm-options" class="mt-2 hidden space-y-2 rounded border border-violet-200/70 bg-white/60 p-2 dark:border-violet-800/50 dark:bg-gray-950/30">
+                                <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">LLM router setup</p>
+                                <label class="mt-0.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-llm-instr">Global policy for this router (optional)</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Appended to the routing prompt after per-branch hints — use for priorities, exclusions, or tone.</p>
+                                <textarea id="sc-flow-router-llm-instr" rows="3" class="mt-0.5 w-full resize-y rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. Prefer person-query for any who-is question; never route billing text to extraction."></textarea>
+                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-max">Max persona branches per message (optional)</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Set to <strong class="font-medium text-gray-700 dark:text-gray-300">1</strong> if you have several LlmNode arrows from this router but <strong class="font-medium text-gray-700 dark:text-gray-300">no Merge</strong> — only one branch runs, so a join node is not required. Leave empty or higher when branches meet at one Merge before Output.</p>
+                                <input type="number" id="sc-flow-router-max" min="1" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="empty = no cap" />
+                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-minconf">Minimum confidence (0–1, optional)</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Targets below this threshold are dropped before execution.</p>
+                                <input type="text" id="sc-flow-router-minconf" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. 0.5" />
+                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-fallback">Fallback persona id (optional)</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Must match one of the LlmNode <code class="text-[9px]">personaId</code> values on arrows below; used when the model returns no targets.</p>
+                                <input type="text" id="sc-flow-router-fallback" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" />
+                                <p class="mt-2 text-[10px] font-medium text-gray-800 dark:text-gray-200">Branches the LLM may choose (sequential → LlmNode)</p>
+                                <p class="text-[9px] text-gray-600 dark:text-gray-400">Each row is one candidate. Add per-arrow guidance in the edge panel (LLM branch hint) after selecting that arrow.</p>
+                                <ul id="sc-flow-router-candidates" class="mt-0.5 max-h-24 list-inside list-disc overflow-y-auto text-[10px] text-gray-600 dark:text-gray-400"></ul>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">“Simulate order” does not run Ollama; only a real flow run calls the LLM router.</p>
+                            </div>
+                        </div>
+                        <div id="sc-flow-persona-panel" class="hidden mt-3 rounded border border-sky-200 bg-sky-50/80 p-2 dark:border-sky-800 dark:bg-sky-950/40">
+                            <p class="text-[10px] font-semibold text-sky-900 dark:text-sky-200">LlmNode (selected)</p>
+                            <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400">Persona (scenario roster)</label>
+                            <select id="sc-flow-persona-select" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900"></select>
+                            <p id="sc-flow-persona-roster-hint" class="mt-1 hidden text-[10px] text-amber-700 dark:text-amber-300">Add YAML personas to this scenario on the main form (persona chips), then pick one here.</p>
+                            <p id="sc-flow-persona-invalid-hint" class="mt-1 hidden text-[10px] text-red-600 dark:text-red-400"></p>
+                            <p class="mt-1.5 text-[9px] leading-snug text-sky-900/90 dark:text-sky-200/90"><strong>Flow run:</strong> each LlmNode is one local LLM turn shaped by this YAML. Declared tools/paths are what the <em>full</em> project-memory stack may use; <code class="text-[9px]">person-extractor</code> can also apply JSON intents to disk when the scenario is scoped.</p>
+                            <div id="sc-flow-persona-cap" class="mt-2 max-h-40 overflow-y-auto rounded border border-sky-300/70 bg-white/95 p-2 text-[10px] text-gray-800 dark:border-sky-700 dark:bg-gray-950/60 dark:text-gray-100"></div>
+                            <p class="mt-1 text-[9px] text-gray-500 dark:text-gray-500">Capabilities from <code class="text-[9px]">GET /api/project-memory/agents</code>.</p>
+                        </div>
                     </div>
                 </div>
-                <div class="flex min-h-0 min-w-0 flex-1 rounded-lg border border-gray-200 bg-gray-50 outline-none dark:border-gray-600 dark:bg-gray-800" id="sc-flow-cy" tabindex="0" title="Flow canvas — click to focus for keyboard shortcuts"></div>
+                <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-gray-200 bg-gray-50 outline-none dark:border-gray-600 dark:bg-gray-800" id="sc-flow-cy" tabindex="0" title="Flow canvas — click to focus for keyboard shortcuts"></div>
             </div>
             <div id="sc-flow-message" class="min-h-[1.25rem] shrink-0 px-4 text-xs text-gray-600 dark:text-gray-300"></div>
             <div class="flex shrink-0 flex-wrap items-center gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-700">

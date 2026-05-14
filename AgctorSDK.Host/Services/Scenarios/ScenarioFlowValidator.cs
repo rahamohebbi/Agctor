@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace AgctorSDK.Host.Services.Scenarios;
 
@@ -91,7 +92,48 @@ public static class ScenarioFlowValidator
                 errors.Add($"Scenario '{scenario.Id}' flow: edge '{e.Id}' has invalid mode '{e.Mode}'.");
         }
 
-        // Phase 10: LLM Router — sequential edges only to LlmNode; shared Merge when multiple branches.
+        // Deterministic Router: at most one default sequential edge; validate regex conditions.
+        foreach (var n in flow.Nodes)
+        {
+            if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
+                continue;
+            var rcfg = ScenarioFlowRouterConfig.Parse(n.Config);
+            if (rcfg.Mode == ScenarioFlowRouterMode.Llm)
+                continue;
+
+            var rId = n.Id.Trim();
+            var seqEdges = edgeList
+                .Where(e => string.Equals(e.FromNodeId, rId, StringComparison.OrdinalIgnoreCase)
+                            && (string.IsNullOrWhiteSpace(e.Mode)
+                                || string.Equals(e.Mode, "sequential", StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(e => e.Id, StringComparer.Ordinal)
+                .ToList();
+            var defaultCount = seqEdges.Count(e => string.IsNullOrWhiteSpace(e.Condition));
+            if (defaultCount > 1)
+            {
+                errors.Add(
+                    $"Scenario '{scenario.Id}' flow: Router '{rId}' (deterministic) has {defaultCount} default (empty condition) sequential edges; keep at most one.");
+            }
+
+            foreach (var e in seqEdges)
+            {
+                if (string.IsNullOrWhiteSpace(e.Condition))
+                    continue;
+                if (!string.Equals(e.ConditionMatch?.Trim(), "regex", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                try
+                {
+                    _ = new Regex(e.Condition.Trim(), RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                }
+                catch (ArgumentException)
+                {
+                    errors.Add(
+                        $"Scenario '{scenario.Id}' flow: edge '{e.Id}' from Router '{rId}' has invalid regex in condition.");
+                }
+            }
+        }
+
+        // Phase 10: LLM Router — sequential edges only to LlmNode; shared Merge when multiple branches may run in parallel (see maxTargets==1 exception below).
         foreach (var n in flow.Nodes)
         {
             if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
@@ -141,11 +183,18 @@ public static class ScenarioFlowValidator
 
             if (personaBranchIds.Count >= 2)
             {
-                var merge = ScenarioFlowGraphInterpreter.FindCommonMergeForBranchStarts(flow, personaBranchIds);
-                if (merge == null)
+                // Multiple LlmNode candidates can only run in parallel when the LLM returns >1 target.
+                // maxTargets == 1 caps the parser to one persona, so each message uses a single linear branch
+                // (no shared Merge required — same as one candidate at design time).
+                var singleTargetCap = rcfg.MaxTargets is { } mtMax && mtMax == 1;
+                if (!singleTargetCap)
                 {
-                    errors.Add(
-                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) LlmNode branches must reach exactly one shared Merge.");
+                    var merge = ScenarioFlowGraphInterpreter.FindCommonMergeForBranchStarts(flow, personaBranchIds);
+                    if (merge == null)
+                    {
+                        errors.Add(
+                            $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) has multiple LlmNode branches but no shared Merge before Output. Add one Merge where every branch meets, or set maxTargets to 1 so at most one branch runs per message.");
+                    }
                 }
             }
             else if (personaBranchIds.Count == 1 && !NodeCanReachOutput(flow, edgeList, personaBranchIds[0]))

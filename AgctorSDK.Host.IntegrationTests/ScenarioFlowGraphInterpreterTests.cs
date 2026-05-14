@@ -88,6 +88,56 @@ public sealed class ScenarioFlowGraphInterpreterTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_Router_PicksBranchByRegex()
+    {
+        var flow = new ScenarioFlowDocument
+        {
+            SchemaVersion = "1.0",
+            GraphId = "t2b",
+            OutputPolicy = "merge_sections",
+            Nodes =
+            [
+                new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
+                new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R" },
+                new ScenarioFlowNode { Id = "pA", Type = "LlmNode", Label = "A", Config = JsonPersona("a") },
+                new ScenarioFlowNode { Id = "pB", Type = "LlmNode", Label = "B", Config = JsonPersona("b") },
+                new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
+            ],
+            Edges =
+            [
+                new ScenarioFlowEdge { Id = "e0", FromNodeId = "in1", ToNodeId = "r1", Mode = "sequential" },
+                new ScenarioFlowEdge
+                {
+                    Id = "e1",
+                    FromNodeId = "r1",
+                    ToNodeId = "pA",
+                    Mode = "sequential",
+                    Condition = @"Who\s+is",
+                    ConditionMatch = "regex"
+                },
+                new ScenarioFlowEdge { Id = "e2", FromNodeId = "r1", ToNodeId = "pB", Mode = "sequential", Condition = "" },
+                new ScenarioFlowEdge { Id = "e3", FromNodeId = "pA", ToNodeId = "out1", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e4", FromNodeId = "pB", ToNodeId = "out1", Mode = "sequential" }
+            ]
+        };
+
+        var interpreter = new ScenarioFlowGraphInterpreter();
+        var chosen = new List<string>();
+        var r = await interpreter.ExecuteAsync(
+            flow,
+            "Who is Raha?",
+            async (personaId, prompt, _, _) =>
+            {
+                chosen.Add(personaId);
+                return await Task.FromResult(personaId);
+            },
+            CancellationToken.None);
+
+        r.Should().Be("a");
+        chosen.Should().Equal("a");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_ParallelFanOut_MergesAtSharedMerge()
     {
         var flow = new ScenarioFlowDocument

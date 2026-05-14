@@ -7,10 +7,12 @@ public sealed record ScenarioFlowRouterConfig(
     ScenarioFlowRouterMode Mode,
     int? MaxTargets,
     double? MinConfidence,
-    string? FallbackPersonaId)
+    string? FallbackPersonaId,
+    string? LlmRoutingInstructions)
 {
     /// <summary>Default when <c>config</c> is empty or <c>routerMode</c> is not <c>llm</c>.</summary>
-    public static ScenarioFlowRouterConfig Default { get; } = new(ScenarioFlowRouterMode.Deterministic, null, null, null);
+    public static ScenarioFlowRouterConfig Default { get; } =
+        new(ScenarioFlowRouterMode.Deterministic, null, null, null, null);
 
     public static ScenarioFlowRouterConfig Parse(JsonElement? config)
     {
@@ -39,6 +41,12 @@ public sealed record ScenarioFlowRouterConfig(
         if (string.IsNullOrWhiteSpace(fallback))
             fallback = null;
 
-        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback);
+        string? llmInstr = el.TryGetProperty("llmRoutingInstructions", out var li) && li.ValueKind == JsonValueKind.String
+            ? li.GetString()?.Trim()
+            : null;
+        if (string.IsNullOrWhiteSpace(llmInstr))
+            llmInstr = null;
+
+        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr);
     }
 }

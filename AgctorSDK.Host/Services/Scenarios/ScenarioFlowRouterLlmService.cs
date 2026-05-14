@@ -52,13 +52,16 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
             var blurb = BuildBlurb(spec);
             yamlLines.Append("- personaId: ").Append(c.PersonaId).Append('\n');
             yamlLines.Append("  graphNodeId: ").Append(c.NodeId).Append('\n');
+            yamlLines.Append("  graphEdgeId: ").Append(c.EdgeId).Append('\n');
             if (!string.IsNullOrWhiteSpace(c.Label))
                 yamlLines.Append("  label: ").Append(EscapeYamlScalar(c.Label!)).Append('\n');
             yamlLines.Append("  summary: ").Append(EscapeYamlScalar(blurb)).Append('\n');
+            if (!string.IsNullOrWhiteSpace(c.LlmRoutingHint))
+                yamlLines.Append("  routingHint: ").Append(EscapeYamlScalar(c.LlmRoutingHint!)).Append('\n');
         }
 
         var routerText = string.IsNullOrEmpty(routingContext) ? userMessage : routingContext;
-        var prompt = BuildRoutingPrompt(routerText, yamlLines.ToString(), allowed);
+        var prompt = BuildRoutingPrompt(routerText, yamlLines.ToString(), allowed, config.LlmRoutingInstructions);
         string raw;
         try
         {
@@ -96,7 +99,7 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         return JsonSerializer.Serialize(t);
     }
 
-    private static string BuildRoutingPrompt(string routingText, string candidatesYaml, HashSet<string> allowed)
+    private static string BuildRoutingPrompt(string routingText, string candidatesYaml, HashSet<string> allowed, string? globalInstructions)
     {
         var allowList = string.Join(", ", allowed.OrderBy(x => x, StringComparer.Ordinal));
         var sb = new StringBuilder();
@@ -115,12 +118,21 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         sb.Append("- targets[].personaId must be from this set only: ").AppendLine(allowList);
         sb.AppendLine("- You may return multiple targets if the user needs combined expertise; keep the list short.");
         sb.AppendLine("- If the message is ambiguous, set needsClarification true and put a short question in clarificationPrompt.");
+        sb.AppendLine("- Each candidate may include routingHint — treat it as authoritative routing guidance for that branch.");
         sb.AppendLine();
         sb.AppendLine("Candidates (YAML):");
         sb.AppendLine(candidatesYaml);
         sb.AppendLine();
         sb.AppendLine("Routing context (user message or upstream pipeline text):");
         sb.Append(routingText);
+        if (!string.IsNullOrWhiteSpace(globalInstructions))
+        {
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine("Global routing policy (from flow designer; apply together with routingHint lines):");
+            sb.Append(globalInstructions.Trim());
+        }
+
         return sb.ToString();
     }
 

@@ -5,6 +5,21 @@
     var nodeTypes = ['ChatInput', 'Router', 'LlmNode', 'Merge', 'Output'];
     var edgeModes = ['sequential', 'parallel'];
     var outputPolicies = ['first_non_empty', 'merge_sections', 'ranked'];
+    var conditionMatchKinds = ['contains', 'equals', 'startsWith', 'endsWith', 'regex'];
+
+    /** Short label for canvas edges; mirrors server routing fields. */
+    function edgeRouteCaption(e) {
+        e = e || {};
+        var mode = String(e.mode || 'sequ').slice(0, 4);
+        var cond = String(e.condition || '').trim();
+        var cm = String(e.conditionMatch || 'contains').slice(0, 4);
+        if (cond) {
+            var t = cond.length > 16 ? cond.slice(0, 16) + '\u2026' : cond;
+            return mode + ':' + cm + '\u00b7' + t;
+        }
+        if (e.llmRoutingHint && String(e.llmRoutingHint).trim()) return mode + ':llm';
+        return mode + ':def';
+    }
 
     function emptyFlow(scenarioId) {
         var sid = String(scenarioId || 'scenario').trim() || 'scenario';
@@ -81,6 +96,33 @@
             if (!e.fromNodeId || !ids[e.fromNodeId]) errors.push('Edge ' + e.id + ' has invalid fromNodeId.');
             if (!e.toNodeId || !ids[e.toNodeId]) errors.push('Edge ' + e.id + ' has invalid toNodeId.');
             if (edgeModes.indexOf(e.mode) < 0) errors.push('Edge ' + e.id + ' has invalid mode.');
+            if (e.conditionMatch && conditionMatchKinds.indexOf(String(e.conditionMatch).toLowerCase()) < 0) {
+                errors.push('Edge ' + e.id + ': unknown conditionMatch (use contains, equals, startsWith, endsWith, regex).');
+            }
+            var fromN = nodes.filter(function (n) { return n && n.id === e.fromNodeId; })[0];
+            if (fromN && fromN.type === 'Router') {
+                var rc = fromN.config || {};
+                if (String(rc.routerMode || '').toLowerCase() !== 'llm' && String(e.conditionMatch || '').toLowerCase() === 'regex' && String(e.condition || '').trim()) {
+                    try {
+                        new RegExp(String(e.condition).trim(), 'i');
+                    } catch (err) {
+                        errors.push('Edge ' + e.id + ': invalid regex condition.');
+                    }
+                }
+            }
+        });
+        nodes.forEach(function (n) {
+            if (!n || n.type !== 'Router') return;
+            var cfg = n.config || {};
+            if (String(cfg.routerMode || '').toLowerCase() === 'llm') return;
+            var rid = n.id;
+            var seqOut = edges.filter(function (e) {
+                return e && e.fromNodeId === rid && (!e.mode || e.mode === 'sequential');
+            });
+            var defc = seqOut.filter(function (e) { return !String(e.condition || '').trim(); }).length;
+            if (defc > 1) {
+                errors.push('Router "' + rid + '" (deterministic): at most one default (empty condition) edge; found ' + defc + '.');
+            }
         });
         return { ok: errors.length === 0, errors: errors };
     }
@@ -119,4 +161,5 @@
     global.AgctorScenarioFlow.emptyFlow = emptyFlow;
     global.AgctorScenarioFlow.validateFlowDocument = validateFlowDocument;
     global.AgctorScenarioFlow.simulateOrder = simulateOrder;
+    global.AgctorScenarioFlow.edgeRouteCaption = edgeRouteCaption;
 })(typeof window !== 'undefined' ? window : globalThis);

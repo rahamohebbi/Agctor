@@ -66,7 +66,9 @@
             "fromNodeId": "in1",
             "toNodeId": "out1",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           }
         ],
         "ui": null
@@ -142,28 +144,36 @@
             "fromNodeId": "in1",
             "toNodeId": "n_a01zmd6u",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_hw83b71m",
             "fromNodeId": "n_a01zmd6u",
             "toNodeId": "n_ll596ej4",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_apmbxktp",
             "fromNodeId": "n_ll596ej4",
             "toNodeId": "n_gpa3rkrz",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_jobxjn1q",
             "fromNodeId": "n_gpa3rkrz",
             "toNodeId": "out1",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           }
         ],
         "ui": {
@@ -239,7 +249,9 @@
             "id": "n_lyrpqc0m",
             "type": "Router",
             "label": "Router",
-            "config": {}
+            "config": {
+              "routerMode": "llm"
+            }
           },
           {
             "id": "n_3g8zdmai",
@@ -256,6 +268,20 @@
             "config": {
               "personaId": "memory-curator"
             }
+          },
+          {
+            "id": "n_r5v0z426",
+            "type": "LlmNode",
+            "label": "LlmNode",
+            "config": {
+              "personaId": "person-query"
+            }
+          },
+          {
+            "id": "n_i02xj4ob",
+            "type": "Merge",
+            "label": "Merge",
+            "config": {}
           }
         ],
         "edges": [
@@ -264,51 +290,94 @@
             "fromNodeId": "in1",
             "toNodeId": "n_lyrpqc0m",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_72kl12n8",
             "fromNodeId": "n_3g8zdmai",
             "toNodeId": "n_2g5asdod",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_wc2kvd1u",
             "fromNodeId": "n_lyrpqc0m",
             "toNodeId": "n_3g8zdmai",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "use when we are providing information about certain person. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog"
           },
           {
-            "id": "e_7w2fqpgp",
+            "id": "e_36mzpt86",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_r5v0z426",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use where user ask questions. for example:\n1. Who is X? \n2. What does X do? \n3. what is X\u0027s favorite color?"
+          },
+          {
+            "id": "e_bgq3dgrz",
+            "fromNodeId": "n_r5v0z426",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_wl6noi95",
             "fromNodeId": "n_2g5asdod",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_414znssh",
+            "fromNodeId": "n_i02xj4ob",
             "toNodeId": "out1",
             "mode": "sequential",
-            "condition": null
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           }
         ],
         "ui": {
           "nodeLayouts": {
             "in1": {
-              "x": -62.961739130434765,
-              "y": 94.33391304347826
+              "x": -416.0398264309505,
+              "y": 150.98350450178785
             },
             "out1": {
-              "x": 546.0483138476936,
-              "y": 96.58671012862847
+              "x": 340.854110642452,
+              "y": 200.5118406707958
             },
             "n_lyrpqc0m": {
-              "x": 41.577075669891975,
-              "y": 96.18574668275485
+              "x": -213.06778316361158,
+              "y": 164.51752970728333
             },
             "n_3g8zdmai": {
-              "x": 194.69694576388684,
-              "y": 98.43699612089245
+              "x": -67.98839648896447,
+              "y": 118.23332635523252
             },
             "n_2g5asdod": {
-              "x": 361.60388317798424,
-              "y": 96.14694410263262
+              "x": 133.08411926328856,
+              "y": 116.88070318568845
+            },
+            "n_r5v0z426": {
+              "x": -11.251630241107634,
+              "y": 238.60889065328544
+            },
+            "n_i02xj4ob": {
+              "x": 222.87782733985364,
+              "y": 199.94861878141356
             }
           }
         }

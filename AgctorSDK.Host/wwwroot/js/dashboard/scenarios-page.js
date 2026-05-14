@@ -591,6 +591,12 @@
         var routerMinConfEl = document.getElementById('sc-flow-router-minconf');
         var routerFallbackEl = document.getElementById('sc-flow-router-fallback');
         var routerCandUl = document.getElementById('sc-flow-router-candidates');
+        var routerLlmInstrEl = document.getElementById('sc-flow-router-llm-instr');
+        var edgePanel = document.getElementById('sc-flow-edge-panel');
+        var edgeMetaEl = document.getElementById('sc-flow-edge-meta');
+        var edgeConditionEl = document.getElementById('sc-flow-edge-condition');
+        var edgeMatchEl = document.getElementById('sc-flow-edge-match');
+        var edgeLlmHintEl = document.getElementById('sc-flow-edge-llm-hint');
         var personaPanel = document.getElementById('sc-flow-persona-panel');
         var personaSelect = document.getElementById('sc-flow-persona-select');
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
@@ -616,6 +622,7 @@
             draftBase = null;
             if (routerPanel) routerPanel.classList.add('hidden');
             if (personaPanel) personaPanel.classList.add('hidden');
+            if (edgePanel) edgePanel.classList.add('hidden');
             if (personaCapEl) {
                 personaCapEl.innerHTML = '';
                 personaCapEl.classList.add('hidden');
@@ -713,8 +720,106 @@
         }
 
         function refreshFlowInspectors() {
+            if (!renderer) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var esel = cy.$('edge:selected');
+            if (esel.length === 1) {
+                if (routerPanel) routerPanel.classList.add('hidden');
+                if (personaPanel) personaPanel.classList.add('hidden');
+                if (personaCapEl) {
+                    personaCapEl.innerHTML = '';
+                    personaCapEl.classList.add('hidden');
+                }
+                refreshFlowEdgeInspector();
+                return;
+            }
+            if (edgePanel) edgePanel.classList.add('hidden');
             refreshFlowRouterInspector();
             refreshFlowPersonaInspector();
+        }
+
+        function refreshFlowEdgeInspector() {
+            if (!renderer || !edgePanel || !edgeMetaEl || !edgeConditionEl || !edgeMatchEl || !edgeLlmHintEl) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) {
+                edgePanel.classList.add('hidden');
+                return;
+            }
+            var esel = cy.$('edge:selected');
+            if (esel.length !== 1) {
+                edgePanel.classList.add('hidden');
+                return;
+            }
+            edgePanel.classList.remove('hidden');
+            var e = esel[0];
+            edgeMetaEl.textContent = e.data('source') + ' → ' + e.data('target') + '   id:' + e.id();
+            edgeConditionEl.value = String(e.data('condition') || '');
+            edgeMatchEl.value = String(e.data('conditionMatch') || 'contains').toLowerCase();
+            edgeLlmHintEl.value = String(e.data('llmRoutingHint') || '');
+
+            var edgeCtx = document.getElementById('sc-flow-edge-router-context');
+            var detBlock = document.getElementById('sc-flow-edge-det-block');
+            var llmBlock = document.getElementById('sc-flow-edge-llm-block');
+            var sid = String(e.data('source'));
+            var src = cy.getElementById(sid);
+            var fromRouter = src && src.length > 0 && String(src.data('agctorType') || '') === 'Router';
+            var routerUsesLlm = false;
+            if (fromRouter) {
+                try {
+                    var rc = JSON.parse(src.data('agctorConfig') || '{}');
+                    routerUsesLlm = String(rc.routerMode || '').toLowerCase() === 'llm';
+                } catch (err) {
+                    routerUsesLlm = false;
+                }
+            }
+            if (edgeCtx) {
+                if (fromRouter) {
+                    edgeCtx.classList.remove('hidden');
+                    edgeCtx.textContent = routerUsesLlm
+                        ? 'This arrow leaves an LLM-mode router: describe when to take this branch (hint below). Conditions are hidden because they are not used in LLM mode.'
+                        : 'This arrow leaves a deterministic router: set condition + match mode below. The LLM hint is hidden because it is only used when the router is in LLM mode.';
+                } else {
+                    edgeCtx.classList.add('hidden');
+                    edgeCtx.textContent = '';
+                }
+            }
+            if (detBlock && llmBlock) {
+                if (!fromRouter) {
+                    detBlock.classList.remove('hidden');
+                    llmBlock.classList.remove('hidden');
+                } else if (routerUsesLlm) {
+                    detBlock.classList.add('hidden');
+                    llmBlock.classList.remove('hidden');
+                } else {
+                    detBlock.classList.remove('hidden');
+                    llmBlock.classList.add('hidden');
+                }
+            }
+        }
+
+        function persistFlowEdgeInspector() {
+            if (!renderer || !edgeConditionEl || !edgeMatchEl || !edgeLlmHintEl) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var esel = cy.$('edge:selected');
+            if (esel.length !== 1) return;
+            var e = esel[0];
+            e.data('condition', edgeConditionEl.value);
+            e.data('conditionMatch', edgeMatchEl.value || 'contains');
+            e.data('llmRoutingHint', edgeLlmHintEl.value);
+            if (window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.edgeRouteCaption === 'function') {
+                e.data(
+                    'routeCaption',
+                    window.AgctorScenarioFlow.edgeRouteCaption({
+                        mode: e.data('mode') || 'sequential',
+                        condition: e.data('condition') || '',
+                        conditionMatch: e.data('conditionMatch') || 'contains',
+                        llmRoutingHint: e.data('llmRoutingHint') || ''
+                    })
+                );
+            }
+            setFlowMsg('');
         }
 
         function flowDocHasLlmRouter(doc) {
@@ -723,6 +828,16 @@
                 if (!n || n.type !== 'Router' || !n.config) return false;
                 return String(n.config.routerMode || '').toLowerCase() === 'llm';
             });
+        }
+
+        /** Toggles Router panel sections so LLM-only fields appear only in LLM mode. */
+        function updateRouterModeDependentUi() {
+            var det = document.getElementById('sc-flow-router-deterministic');
+            var llm = document.getElementById('sc-flow-router-llm-options');
+            if (!routerModeEl || !det || !llm) return;
+            var isLlm = routerModeEl.value === 'llm';
+            det.classList.toggle('hidden', isLlm);
+            llm.classList.toggle('hidden', !isLlm);
         }
 
         function refreshFlowRouterInspector() {
@@ -748,6 +863,9 @@
             routerMaxEl.value = cfg.maxTargets != null && cfg.maxTargets !== '' ? String(cfg.maxTargets) : '';
             routerMinConfEl.value = cfg.minConfidence != null && cfg.minConfidence !== '' ? String(cfg.minConfidence) : '';
             routerFallbackEl.value = cfg.fallbackPersonaId ? String(cfg.fallbackPersonaId) : '';
+            if (routerLlmInstrEl) {
+                routerLlmInstrEl.value = cfg.llmRoutingInstructions ? String(cfg.llmRoutingInstructions) : '';
+            }
             var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
             var rid = sel.id();
             routerCandUl.innerHTML = '';
@@ -760,9 +878,52 @@
                 if (!tn || tn.type !== 'LlmNode') return;
                 var pid = (tn.config && tn.config.personaId) ? tn.config.personaId : '(no personaId)';
                 var li = document.createElement('li');
-                li.textContent = tn.id + ' → ' + (pid === '(no personaId)' ? pid : (getFlowPersonaLabel(pid) + ' (' + pid + ')'));
+                var main =
+                    tn.id +
+                    ' → ' +
+                    (pid === '(no personaId)' ? pid : getFlowPersonaLabel(pid) + ' (' + pid + ')');
+                var bits = [main];
+                if (e.condition && String(e.condition).trim()) {
+                    bits.push('cond: ' + String(e.condition).trim().slice(0, 48));
+                }
+                if (e.llmRoutingHint && String(e.llmRoutingHint).trim()) {
+                    bits.push('hint: ' + String(e.llmRoutingHint).trim().slice(0, 48));
+                }
+                li.textContent = bits.join(' — ');
                 routerCandUl.appendChild(li);
             });
+            var detPrev = document.getElementById('sc-flow-router-det-edge-preview');
+            if (detPrev) {
+                detPrev.innerHTML = '';
+                var edgesSeq = (doc.edges || []).filter(function (edge) {
+                    return edge && edge.fromNodeId === rid && (!edge.mode || edge.mode === 'sequential');
+                });
+                edgesSeq.sort(function (a, b) {
+                    return String(a.id || '').localeCompare(String(b.id || ''));
+                });
+                if (edgesSeq.length === 0) {
+                    var li0 = document.createElement('li');
+                    li0.textContent = '(no sequential edges yet — connect this router to the next node)';
+                    detPrev.appendChild(li0);
+                } else {
+                    edgesSeq.forEach(function (edge) {
+                        var tn = (doc.nodes || []).filter(function (n) {
+                            return n && n.id === edge.toNodeId;
+                        })[0];
+                        var tlabel = tn ? tn.type + ' "' + tn.id + '"' : '"' + edge.toNodeId + '"';
+                        var c = String(edge.condition || '').trim();
+                        var cm = String(edge.conditionMatch || 'contains');
+                        var line = '→ ' + tlabel + ': ';
+                        line += c
+                            ? '"' + c.slice(0, 44) + (c.length > 44 ? '...' : '') + '" [' + cm + ']'
+                            : '(default branch)';
+                        var liE = document.createElement('li');
+                        liE.textContent = line;
+                        detPrev.appendChild(liE);
+                    });
+                }
+            }
+            updateRouterModeDependentUi();
         }
 
         function refreshFlowPersonaInspector() {
@@ -889,14 +1050,22 @@
                 var fb = routerFallbackEl.value.trim();
                 if (fb) cfg.fallbackPersonaId = fb;
                 else delete cfg.fallbackPersonaId;
+                if (routerLlmInstrEl) {
+                    var lix = routerLlmInstrEl.value.trim();
+                    if (lix) cfg.llmRoutingInstructions = lix;
+                    else delete cfg.llmRoutingInstructions;
+                }
             } else {
                 delete cfg.routerMode;
                 delete cfg.maxTargets;
                 delete cfg.minConfidence;
                 delete cfg.fallbackPersonaId;
+                if (routerLlmInstrEl) delete cfg.llmRoutingInstructions;
             }
             n.data('agctorConfig', JSON.stringify(cfg));
             setFlowMsg('');
+            refreshFlowRouterInspector();
+            refreshFlowEdgeInspector();
         }
 
         function openModal() {
@@ -923,7 +1092,7 @@
                         refreshFlowInspectors();
                     });
                     if (typeof renderer.fitViewport === 'function') renderer.fitViewport();
-                    setFlowMsg('<span class="text-gray-500">Edit the graph, then Validate or Save flow to scenario. Selected nodes show a <strong>yellow ring</strong>.</span>');
+                    setFlowMsg('<span class="text-gray-500">Validate or save when done. Select an <strong>edge</strong> to edit routing rules.</span>');
                 });
             });
         }
@@ -932,7 +1101,14 @@
         if (routerMaxEl) routerMaxEl.addEventListener('change', persistFlowRouterInspector);
         if (routerMinConfEl) routerMinConfEl.addEventListener('change', persistFlowRouterInspector);
         if (routerFallbackEl) routerFallbackEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('blur', persistFlowRouterInspector);
         if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
+        if (edgeConditionEl) edgeConditionEl.addEventListener('change', persistFlowEdgeInspector);
+        if (edgeConditionEl) edgeConditionEl.addEventListener('blur', persistFlowEdgeInspector);
+        if (edgeMatchEl) edgeMatchEl.addEventListener('change', persistFlowEdgeInspector);
+        if (edgeLlmHintEl) edgeLlmHintEl.addEventListener('change', persistFlowEdgeInspector);
+        if (edgeLlmHintEl) edgeLlmHintEl.addEventListener('blur', persistFlowEdgeInspector);
 
         openBtn.addEventListener('click', openModal);
         modal.addEventListener('click', function (e) {
@@ -1023,6 +1199,7 @@
             }
             persistFlowRouterInspector();
             persistFlowPersonaInspector();
+            persistFlowEdgeInspector();
             var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
             setFlowMsg('<span class="text-gray-600 dark:text-gray-400">Saving to disk…</span>');
             btnSaveFlow.disabled = true;

@@ -19,6 +19,21 @@
         }
     }
 
+    /** Model-space point at the center of the current canvas (stays on-screen after pan/zoom). */
+    function modelAtViewportCenter(cy) {
+        var w = cy.width();
+        var h = cy.height();
+        if (!w || !h) return { x: 80, y: 120 };
+        var pan = cy.pan();
+        var zoom = cy.zoom();
+        if (!isFinite(zoom) || zoom === 0) zoom = 1;
+        // Inverse of model→rendered: rendered = model * zoom + pan (container-local pixels).
+        return {
+            x: (w * 0.5 - pan.x) / zoom,
+            y: (h * 0.5 - pan.y) / zoom
+        };
+    }
+
     /**
      * Pick source/target for a new edge between two nodes when both are selected.
      * Uses pipeline order ChatInput → Router → LlmNode → Merge → Output so
@@ -99,8 +114,7 @@
                         'target-arrow-color': '#94a3b8',
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
-                        label: 'data(mode)',
-                        // Edge mode labels (e.g. "sequential") — keep much smaller than node labels to avoid crowding ovals.
+                        label: 'data(routeCaption)',
                         'font-size': '8px',
                         'font-weight': '500',
                         color: '#64748b',
@@ -293,14 +307,30 @@
             });
         });
         (doc.edges || []).forEach(function (e) {
+            var mode = e.mode || 'sequential';
+            var condition = e.condition || '';
+            var conditionMatch = e.conditionMatch || 'contains';
+            var llmRoutingHint = e.llmRoutingHint || '';
+            var cap =
+                global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.edgeRouteCaption === 'function'
+                    ? global.AgctorScenarioFlow.edgeRouteCaption({
+                          mode: mode,
+                          condition: condition,
+                          conditionMatch: conditionMatch,
+                          llmRoutingHint: llmRoutingHint
+                      })
+                    : mode;
             out.push({
                 group: 'edges',
                 data: {
                     id: e.id,
                     source: e.fromNodeId,
                     target: e.toNodeId,
-                    mode: e.mode || 'sequential',
-                    condition: e.condition || ''
+                    mode: mode,
+                    condition: condition,
+                    conditionMatch: conditionMatch,
+                    llmRoutingHint: llmRoutingHint,
+                    routeCaption: cap
                 }
             });
         });
@@ -332,13 +362,18 @@
             doc.ui.nodeLayouts[n.id()] = { x: pos.x, y: pos.y };
         });
         this._cy.edges().forEach(function (e) {
-            doc.edges.push({
+            var row = {
                 id: e.id(),
                 fromNodeId: e.data('source'),
                 toNodeId: e.data('target'),
                 mode: e.data('mode') || 'sequential',
                 condition: e.data('condition') || undefined
-            });
+            };
+            var cm = e.data('conditionMatch');
+            if (cm && String(cm).trim() && String(cm).toLowerCase() !== 'contains') row.conditionMatch = String(cm).trim();
+            var hint = e.data('llmRoutingHint');
+            if (hint && String(hint).trim()) row.llmRoutingHint = String(hint).trim();
+            doc.edges.push(row);
         });
         return doc;
     };
@@ -351,6 +386,12 @@
         if (!this._cy) return null;
         var id = 'n_' + Math.random().toString(36).slice(2, 10);
         var cfg = config && typeof config === 'object' ? config : {};
+        // Avoid graph-wide layout (would move every node). Place in the *visible* viewport — model coords at
+        // bbox.x2 were often off-screen after pan/zoom.
+        var pos = modelAtViewportCenter(this._cy);
+        // Tiny jitter so rapid adds do not stack in one pixel.
+        pos.x += (Math.random() - 0.5) * 24;
+        pos.y += (Math.random() - 0.5) * 24;
         this._cy.add({
             group: 'nodes',
             data: {
@@ -358,14 +399,9 @@
                 label: label || type,
                 agctorType: type,
                 agctorConfig: configToString(cfg)
-            }
+            },
+            position: pos
         });
-        var self = this;
-        var layout = this._cy.layout({ name: 'cose', animate: false, randomize: false, componentSpacing: 40 });
-        layout.one('layoutstop', function () {
-            self.fitViewport();
-        });
-        layout.run();
         if (typeof this._changeCb === 'function') this._changeCb();
         return id;
     };
@@ -373,11 +409,30 @@
     CytoscapeRenderer.prototype.connect = function (fromId, toId, mode) {
         if (!this._cy || !fromId || !toId) return;
         var eid = 'e_' + Math.random().toString(36).slice(2, 10);
+        var edgeMode = mode || 'sequential';
+        var cap =
+            global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.edgeRouteCaption === 'function'
+                ? global.AgctorScenarioFlow.edgeRouteCaption({
+                      mode: edgeMode,
+                      condition: '',
+                      conditionMatch: 'contains',
+                      llmRoutingHint: ''
+                  })
+                : edgeMode;
         this._cy.add({
             group: 'edges',
-            data: { id: eid, source: fromId, target: toId, mode: mode || 'sequential', condition: '' }
+            data: {
+                id: eid,
+                source: fromId,
+                target: toId,
+                mode: edgeMode,
+                condition: '',
+                conditionMatch: 'contains',
+                llmRoutingHint: '',
+                routeCaption: cap
+            }
         });
-        this.fitViewport();
+        // Do not fitViewport here — keeps pan/zoom stable when wiring edges (same rationale as addNode).
         if (typeof this._changeCb === 'function') this._changeCb();
         return eid;
     };

@@ -127,6 +127,14 @@
         "condition": {
           "type": "string",
           "description": "Optional router/rule label or expression key (app-defined)."
+        },
+        "conditionMatch": {
+          "type": "string",
+          "description": "Deterministic Router: how condition is matched — contains (default), equals, startsWith, endsWith, regex."
+        },
+        "llmRoutingHint": {
+          "type": "string",
+          "description": "Optional per-edge routing guidance when Router uses routerMode llm (included in router LLM prompt)."
         }
       }
     }

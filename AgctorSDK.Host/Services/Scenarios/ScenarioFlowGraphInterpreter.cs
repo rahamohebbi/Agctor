@@ -405,7 +405,12 @@ public sealed class ScenarioFlowGraphInterpreter
             var pid = TryGetPersonaId(n.Config);
             if (string.IsNullOrWhiteSpace(pid))
                 continue;
-            list.Add(new ScenarioFlowRouterPersonaCandidate(tid, pid.Trim(), n.Label));
+            list.Add(new ScenarioFlowRouterPersonaCandidate(
+                tid,
+                pid.Trim(),
+                n.Label,
+                e.Id.Trim(),
+                string.IsNullOrWhiteSpace(e.LlmRoutingHint) ? null : e.LlmRoutingHint.Trim()));
         }
 
         return list;
@@ -611,8 +616,9 @@ public sealed class ScenarioFlowGraphInterpreter
         foreach (var e in outs)
         {
             var c = e.Condition?.Trim();
-            if (string.IsNullOrEmpty(c)) continue;
-            if (userMessage.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (string.IsNullOrEmpty(c))
+                continue;
+            if (ScenarioFlowDeterministicRouting.Matches(userMessage, e))
                 return e.ToNodeId.Trim();
         }
 
