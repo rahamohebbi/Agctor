@@ -2,13 +2,13 @@ using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
 using System.Threading;
-using System.Net.Http.Json;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Core.Streaming;
+using AgctorSDK.Core.Ollama;
 using AgctorSDK.Core.ProjectMemory.Indexing;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
@@ -916,43 +916,42 @@ public sealed class ProjectMemoryController : ControllerBase
                     })
                     .ConfigureAwait(false);
 
-                var accFlow = new StringBuilder();
+                OllamaStreamAccumulation flowStream;
                 using (var personaScopeFlow = _activityTracker?.StartActivity("pm.playground.persona-llm"))
                 {
-                    using var reqFlow = new HttpRequestMessage(HttpMethod.Post, ollamaBaseFlow + "api/generate");
-                    reqFlow.Content = JsonContent.Create(new { model = modelFlow, prompt = built, stream = true });
-                    using var respFlow = await LlmHttp.SendAsync(reqFlow, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
-                        .ConfigureAwait(false);
-                    respFlow.EnsureSuccessStatusCode();
-                    await using var streamBody = await respFlow.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                    using var readerFlow = new StreamReader(streamBody);
-                    while (!cancellationToken.IsCancellationRequested)
+                    try
                     {
-                        var line = await readerFlow.ReadLineAsync(cancellationToken).ConfigureAwait(false);
-                        if (line == null)
-                            break;
-                        if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
-                            continue;
-                        if (!string.IsNullOrEmpty(token))
-                        {
-                            accFlow.Append(token);
-                            await GatedWriteSseAsync(new AgentStreamEvent
+                        flowStream = await OllamaGenerateHttp.StreamGenerateAsync(
+                                LlmHttp,
+                                ollamaBaseFlow,
+                                modelFlow,
+                                built,
+                                async (token, _) =>
                                 {
-                                    Type = "llm_delta",
-                                    Payload = token,
-                                    AgentId = spec.Id
-                                })
-                                .ConfigureAwait(false);
-                        }
-
-                        if (done)
-                            break;
+                                    await GatedWriteSseAsync(new AgentStreamEvent
+                                        {
+                                            Type = "llm_delta",
+                                            Payload = token,
+                                            AgentId = spec.Id
+                                        })
+                                        .ConfigureAwait(false);
+                                },
+                                cancellationToken)
+                            .ConfigureAwait(false);
                     }
+                    catch (Exception exStream)
+                    {
+                        _logger.LogWarning(exStream, "Playground flow persona stream failed");
+                        flowStream = new OllamaStreamAccumulation($"Error: {exStream.Message}", exStream.Message);
+                    }
+
+                    if (flowStream.Error != null)
+                        _logger.LogWarning("Playground flow stream ended with issue: {Err}", flowStream.Error);
 
                     try
                     {
                         personaScopeFlow?.SetTimelineDetailJson(
-                            PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(built, accFlow.ToString(), modelFlow, ollamaBaseFlow));
+                            PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(built, flowStream.Text, modelFlow, ollamaBaseFlow));
                     }
                     catch (Exception exDetail)
                     {
@@ -960,7 +959,7 @@ public sealed class ProjectMemoryController : ControllerBase
                     }
                 }
 
-                var rawFlow = accFlow.ToString();
+                var rawFlow = flowStream.Text;
                 if (string.Equals(personaId, "person-extractor", StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrWhiteSpace(scenarioResolved))
                 {
@@ -1242,38 +1241,27 @@ public sealed class ProjectMemoryController : ControllerBase
         }).ConfigureAwait(false);
 
         var sw = Stopwatch.StartNew();
-        var acc = new StringBuilder();
+        var accText = "";
         var personaFailed = false;
         using (var personaScope = _activityTracker?.StartActivity("pm.playground.persona-llm"))
         {
             try
             {
-                using var req = new HttpRequestMessage(HttpMethod.Post, ollamaBase + "api/generate");
-                req.Content = JsonContent.Create(new { model, prompt, stream = true });
-
-                using var resp = await LlmHttp.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-                resp.EnsureSuccessStatusCode();
-
-                await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                using var reader = new StreamReader(stream);
-
-                while (!ct.IsCancellationRequested)
-                {
-                    var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
-                    if (line == null)
-                        break;
-                    if (!OllamaStreamLineParser.TryParseLine(line, out var token, out var done))
-                        continue;
-                    if (!string.IsNullOrEmpty(token))
-                    {
-                        acc.Append(token);
-                        await WriteSseAsync(new AgentStreamEvent { Type = "llm_delta", Payload = token, AgentId = spec.Id })
-                            .ConfigureAwait(false);
-                    }
-
-                    if (done)
-                        break;
-                }
+                var streamed = await OllamaGenerateHttp.StreamGenerateAsync(
+                        LlmHttp,
+                        ollamaBase,
+                        model,
+                        prompt,
+                        async (token, _) =>
+                        {
+                            await WriteSseAsync(new AgentStreamEvent { Type = "llm_delta", Payload = token, AgentId = spec.Id })
+                                .ConfigureAwait(false);
+                        },
+                        ct)
+                    .ConfigureAwait(false);
+                accText = streamed.Text;
+                if (streamed.Error != null)
+                    _logger.LogWarning("Playground stream incomplete: {Err}", streamed.Error);
             }
             catch (Exception ex)
             {
@@ -1281,8 +1269,7 @@ public sealed class ProjectMemoryController : ControllerBase
                 _logger.LogWarning(ex, "Playground stream failed");
                 await WriteFlowStepAsync(runnerStep.Id, "error", ex.Message).ConfigureAwait(false);
                 await WriteSseAsync(new AgentStreamEvent { Type = "error", Payload = ex.Message, AgentId = spec.Id }).ConfigureAwait(false);
-                if (acc.Length == 0)
-                    acc.Append("Error: ").Append(ex.Message);
+                accText = string.IsNullOrEmpty(accText) ? "Error: " + ex.Message : accText;
             }
             finally
             {
@@ -1292,7 +1279,7 @@ public sealed class ProjectMemoryController : ControllerBase
             try
             {
                 personaScope?.SetTimelineDetailJson(
-                    PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(prompt, acc.ToString(), model, ollamaBase));
+                    PlaygroundTraceTimelineDetail.BuildPersonaLlmJson(prompt, accText, model, ollamaBase));
             }
             catch (Exception exDetail)
             {
@@ -1300,7 +1287,7 @@ public sealed class ProjectMemoryController : ControllerBase
             }
         }
 
-        var rawLlm = acc.ToString();
+        var rawLlm = accText;
         if (!personaFailed)
             await WriteFlowStepAsync(runnerStep.Id, "done", $"Ollama {rawLlm.Length} char(s)").ConfigureAwait(false);
 

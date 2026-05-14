@@ -7,6 +7,7 @@ using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Ollama;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Adapters;
 using AgctorSDK.Core.Messages;

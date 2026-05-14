@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
-using AgctorSDK.Host.Services;
+using AgctorSDK.Core.ProjectMemory.Orchestration;
 
 namespace AgctorSDK.Host.Services.Scenarios;
 
@@ -10,11 +10,16 @@ namespace AgctorSDK.Host.Services.Scenarios;
 public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
 {
     private readonly IProjectLoader _loader;
+    private readonly IProjectMemoryLlmClient _llm;
     private readonly ILogger<ScenarioFlowRouterLlmService> _logger;
 
-    public ScenarioFlowRouterLlmService(IProjectLoader loader, ILogger<ScenarioFlowRouterLlmService> logger)
+    public ScenarioFlowRouterLlmService(
+        IProjectLoader loader,
+        IProjectMemoryLlmClient llm,
+        ILogger<ScenarioFlowRouterLlmService> logger)
     {
         _loader = loader;
+        _llm = llm;
         _logger = logger;
     }
 
@@ -65,7 +70,7 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         string raw;
         try
         {
-            raw = await OllamaGenerateApi.GenerateNonStreamingAsync(prompt, cancellationToken).ConfigureAwait(false);
+            raw = await _llm.GenerateAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

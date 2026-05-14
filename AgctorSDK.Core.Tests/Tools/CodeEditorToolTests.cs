@@ -58,7 +58,9 @@ namespace AgctorSDK.Core.Tests.Tools
             var result = await _codeEditorTool.Handle(request);
 
             Assert.IsTrue(result.IsSuccess);
-            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", "line 1\nline 2\nline 3"), Times.Once);
+            // CodeEditorTool joins with Environment.NewLine; mock Verify must match OS line endings.
+            var expectedWritten = string.Join(Environment.NewLine, "line 1", "line 2", "line 3");
+            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", expectedWritten), Times.Once);
         }
 
         [TestMethod]
@@ -138,7 +140,8 @@ namespace AgctorSDK.Core.Tests.Tools
             var result = await _codeEditorTool.Handle(request);
 
             Assert.IsTrue(result.IsSuccess);
-            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", "line 1\nnew line\nline 3"), Times.Once);
+            var expectedWritten = string.Join(Environment.NewLine, "line 1", "new line", "line 3");
+            _mockFileSystem.Verify(fs => fs.WriteAllTextAsync("a.txt", expectedWritten), Times.Once);
         }
         
         [TestMethod]

@@ -11,6 +11,7 @@ using AgctorSDK.CodeGraph.Snippets;
 using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.Ollama;
 using AgctorSDK.Agents.ProjectMemory;
 using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Services;
@@ -98,7 +99,7 @@ builder.Services.AddAgctorProjectMemory();
 builder.Services.AddAgctorResolution();
 builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.Resolution.Trace.IResolveSpanSink>(sp =>
     new AgctorSDK.Host.Services.ProjectMemory.ResolveSpanTraceSink(sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
-builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaProjectMemoryLlmClient>();
+builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaConfiguredCompletionClient>();
 // PRD-019 Host classifier: heuristic fast path + LLM fallback so natural consent phrasing
 // (e.g. "yes I wish to save it") is recognized without code edits.
 builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.OutOfSchema.IConfirmationIntentClassifier,

@@ -5,7 +5,6 @@ using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Core.Sessions.Models;
-using AgctorSDK.Host.Services;
 
 namespace AgctorSDK.Host.Services.ProjectMemory;
 
@@ -15,17 +14,20 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
     private readonly IProjectLoader _loader;
     private readonly ISessionStore _sessions;
     private readonly IProjectMemoryPipelineRunner _pipeline;
+    private readonly IProjectMemoryLlmClient _llm;
     private readonly ILogger<ProjectMemoryPersonaLlmRunner> _logger;
 
     public ProjectMemoryPersonaLlmRunner(
         IProjectLoader loader,
         ISessionStore sessions,
         IProjectMemoryPipelineRunner pipeline,
+        IProjectMemoryLlmClient llm,
         ILogger<ProjectMemoryPersonaLlmRunner> logger)
     {
         _loader = loader;
         _sessions = sessions;
         _pipeline = pipeline;
+        _llm = llm;
         _logger = logger;
     }
 
@@ -77,7 +79,7 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         var prompt = BuildPlaygroundPrompt(spec, prior, inputText, scenarioId);
         try
         {
-            var output = await OllamaGenerateApi.GenerateNonStreamingAsync(prompt, cancellationToken).ConfigureAwait(false);
+            var output = await _llm.GenerateAsync(prompt, cancellationToken).ConfigureAwait(false);
 
             // PRD-014 LlmNode + playground: person-extractor emits JSON; when a scenario id is present, apply the same ingest as the deterministic pipeline.
             var scoped = !string.IsNullOrWhiteSpace(scenarioId)

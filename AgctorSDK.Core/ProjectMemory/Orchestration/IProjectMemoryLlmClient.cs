@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 namespace AgctorSDK.Core.ProjectMemory.Orchestration;
 
 /// <summary>
-/// Non-streaming text generation for project-memory pipelines (extract/query).
-/// Host registers an Ollama-backed implementation; tests use fakes.
+/// Non-streaming text generation for project-memory pipelines (extract/query), persona playground, and scenario flow router.
+/// Host registers <see cref="Ollama.OllamaConfiguredCompletionClient"/> (shared Ollama <c>/api/generate</c> stack with LLMAgent); tests use fakes.
 /// </summary>
 public interface IProjectMemoryLlmClient
 {
