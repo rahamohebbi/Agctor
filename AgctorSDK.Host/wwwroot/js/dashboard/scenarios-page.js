@@ -52,6 +52,17 @@
     var knownAgentTypes = [];
     var typeEnablement = {};
     var knownPersonaIds = [];
+    /** From GET /api/Config → tools (id, name, description) for LlmNode extra tool picker. */
+    var hostCatalogTools = [];
+
+    /** Drops tool ids that do not apply to this LlmNode persona (avoids stale checks after persona change). */
+    function sanitizeLlmNodeToolIdsForPersona(personaId, toolIds) {
+        var p = String(personaId || '').toLowerCase();
+        var arr = Array.isArray(toolIds) ? toolIds.map(function (x) { return String(x).toLowerCase(); }) : [];
+        if (p === 'person-query') return arr.filter(function (x) { return x === 'person-memory-context'; });
+        if (p === 'memory-curator') return arr.filter(function (x) { return x === 'apply-memory-intents'; });
+        return [];
+    }
 
     function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 
@@ -363,6 +374,7 @@
                 .filter(function (d) { return d && d.kind === 'project-memory-yaml' && d.id; })
                 .map(function (d) { return d.id; })
                 .sort();
+            hostCatalogTools = Array.isArray(cfg.tools) ? cfg.tools.slice() : [];
             personaSuggestionEl.innerHTML = knownPersonaIds.map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
             renderHeaderChips(cur && cur.scenarioName ? cur.scenarioName : '');
         });
@@ -604,6 +616,8 @@
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
         var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
         var personaCapEl = document.getElementById('sc-flow-persona-cap');
+        var flowLlmToolsWrap = document.getElementById('sc-flow-llm-tools-wrap');
+        var flowLlmToolsEl = document.getElementById('sc-flow-llm-tools');
         if (!openBtn || !modal || !cyHost || !msgEl || !btnValidate || !btnSimulate || !btnSaveFlow || !btnConnect) return;
         if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.createGraphRenderer !== 'function') return;
 
@@ -629,6 +643,8 @@
                 personaCapEl.innerHTML = '';
                 personaCapEl.classList.add('hidden');
             }
+            if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
+            if (flowLlmToolsEl) flowLlmToolsEl.innerHTML = '';
             modal.classList.add('hidden');
             cyHost.innerHTML = '';
         }
@@ -730,6 +746,7 @@
                 if (routerPanel) routerPanel.classList.add('hidden');
                 if (personaPanel) personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
+                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -929,12 +946,65 @@
             updateRouterModeDependentUi();
         }
 
+        /** PRD-014: optional LlmNode.config.toolIds — fixed project-memory pair; catalog fills descriptions when available. */
+        function renderFlowLlmExtraTools(cfg, effectivePid) {
+            if (!flowLlmToolsWrap || !flowLlmToolsEl) return;
+            flowLlmToolsEl.innerHTML = '';
+            var known = ['person-memory-context', 'apply-memory-intents'];
+            var byId = {};
+            (hostCatalogTools || []).forEach(function (t) {
+                if (t && t.id) byId[String(t.id).toLowerCase()] = t;
+            });
+            flowLlmToolsWrap.classList.remove('hidden');
+            var pid = String(effectivePid || '').toLowerCase();
+            var selected = sanitizeLlmNodeToolIdsForPersona(effectivePid, cfg.toolIds);
+            known.forEach(function (tid) {
+                var row = byId[tid];
+                var lab = document.createElement('label');
+                lab.className = 'flex cursor-pointer items-start gap-1.5 text-[10px] text-gray-800 dark:text-gray-100';
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.setAttribute('data-flow-tool-id', tid);
+                cb.checked = selected.indexOf(tid) >= 0;
+                if (tid === 'person-memory-context') {
+                    cb.disabled = pid !== 'person-query';
+                    cb.title = pid === 'person-query'
+                        ? 'Playground person-query may load context via this host tool (same path as HTTP API).'
+                        : 'Only enabled when this node uses the person-query persona.';
+                } else if (tid === 'apply-memory-intents') {
+                    cb.disabled = pid !== 'memory-curator';
+                    cb.title = pid === 'memory-curator'
+                        ? 'Lets the curator persona apply MemoryIntent JSON batches through the host tool pipeline.'
+                        : 'Only enabled when this node uses the memory-curator persona.';
+                }
+                if (cb.disabled) {
+                    lab.classList.add('opacity-60');
+                    lab.classList.remove('cursor-pointer');
+                    lab.classList.add('cursor-not-allowed');
+                }
+                var span = document.createElement('span');
+                var desc = (row && (row.description || row.name)) || tid;
+                if (!row) {
+                    desc += ' (not listed in GET /api/Config.tools — upgrade host or check tool registration)';
+                }
+                span.innerHTML =
+                    '<span class="font-mono text-[9px]">' +
+                    esc(tid) +
+                    '</span> — ' +
+                    esc(desc);
+                lab.appendChild(cb);
+                lab.appendChild(span);
+                flowLlmToolsEl.appendChild(lab);
+            });
+        }
+
         function refreshFlowPersonaInspector() {
             if (!renderer || !personaPanel || !personaSelect || !personaRosterHint || !personaInvalidHint) return;
             var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
             if (!cy) {
                 personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
+                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -945,6 +1015,7 @@
             if (sel.length !== 1 || sel.data('agctorType') !== 'LlmNode') {
                 personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
+                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -1016,6 +1087,7 @@
                         : 'markdown_all';
                 }
             }
+            renderFlowLlmExtraTools(cfg, effectivePid);
         }
 
         function persistFlowPersonaInspector() {
@@ -1037,6 +1109,15 @@
             } else {
                 delete cfg.contextStrategy;
             }
+            var nextToolIds = [];
+            if (flowLlmToolsEl) {
+                flowLlmToolsEl.querySelectorAll('input[type="checkbox"][data-flow-tool-id]').forEach(function (cb) {
+                    if (!cb.disabled && cb.checked) nextToolIds.push(cb.getAttribute('data-flow-tool-id') || '');
+                });
+            }
+            nextToolIds = sanitizeLlmNodeToolIdsForPersona(pid, nextToolIds);
+            if (nextToolIds.length) cfg.toolIds = nextToolIds;
+            else delete cfg.toolIds;
             n.data('agctorConfig', JSON.stringify(cfg));
             setFlowMsg('');
             refreshFlowPersonaInspector();
@@ -1097,25 +1178,32 @@
             renderer = window.AgctorScenarioFlow.createGraphRenderer();
             cyHost.innerHTML = '';
             modal.classList.remove('hidden');
-            requestAnimationFrame(function () {
-                requestAnimationFrame(function () {
-                    renderer.mount(cyHost, draftBase);
-                    renderer.onChange(function () {
-                        setFlowMsg('');
-                        refreshFlowInspectors();
+            api('/api/Config')
+                .then(function (cfg) {
+                    hostCatalogTools = Array.isArray(cfg && cfg.tools) ? cfg.tools.slice() : [];
+                })
+                .catch(function () { /* keep prior hostCatalogTools */ })
+                .finally(function () {
+                    requestAnimationFrame(function () {
+                        requestAnimationFrame(function () {
+                            renderer.mount(cyHost, draftBase);
+                            renderer.onChange(function () {
+                                setFlowMsg('');
+                                refreshFlowInspectors();
+                            });
+                            var cy0 = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+                            if (cy0) {
+                                cy0.on('select unselect', refreshFlowInspectors);
+                            }
+                            refreshFlowInspectors();
+                            loadFlowModalAgentLabels().finally(function () {
+                                refreshFlowInspectors();
+                            });
+                            if (typeof renderer.fitViewport === 'function') renderer.fitViewport();
+                            setFlowMsg('<span class="text-gray-500">Validate or save when done. Select an <strong>edge</strong> to edit routing rules.</span>');
+                        });
                     });
-                    var cy0 = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
-                    if (cy0) {
-                        cy0.on('select unselect', refreshFlowInspectors);
-                    }
-                    refreshFlowInspectors();
-                    loadFlowModalAgentLabels().finally(function () {
-                        refreshFlowInspectors();
-                    });
-                    if (typeof renderer.fitViewport === 'function') renderer.fitViewport();
-                    setFlowMsg('<span class="text-gray-500">Validate or save when done. Select an <strong>edge</strong> to edit routing rules.</span>');
                 });
-            });
         }
 
         if (routerModeEl) routerModeEl.addEventListener('change', persistFlowRouterInspector);
@@ -1126,6 +1214,7 @@
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('blur', persistFlowRouterInspector);
         if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
         if (pqContextStrategyEl) pqContextStrategyEl.addEventListener('change', persistFlowPersonaInspector);
+        if (flowLlmToolsEl) flowLlmToolsEl.addEventListener('change', persistFlowPersonaInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('change', persistFlowEdgeInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('blur', persistFlowEdgeInspector);
         if (edgeMatchEl) edgeMatchEl.addEventListener('change', persistFlowEdgeInspector);
@@ -1154,6 +1243,9 @@
                     }
                     // Server-side playground person-query loads markdown; default matches designer dropdown.
                     cfg.contextStrategy = 'markdown_all';
+                    var pid0 = cfg.personaId ? normalizeType(cfg.personaId).toLowerCase() : '';
+                    if (pid0 === 'person-query') cfg.toolIds = ['person-memory-context'];
+                    else if (pid0 === 'memory-curator') cfg.toolIds = ['apply-memory-intents'];
                 }
                 renderer.addNode(add, add, cfg);
                 refreshFlowInspectors();

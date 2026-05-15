@@ -1,14 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory;
-using AgctorSDK.Core.ProjectMemory.Models;
 
 namespace AgctorSDK.Agents.ProjectMemory;
 
@@ -36,36 +34,11 @@ public sealed class MemoryCuratorProjectAgent : Agent
                 return TextEnvelope("Configure Agctor:ProjectMemory:ProjectRoot.");
 
             var ctx = await _services.LoadProjectAsync(root, cancellationToken).ConfigureAwait(false);
-            var spec = ctx.AgentSpecs.FirstOrDefault(a => a.Id == "memory-curator")
-                       ?? throw new InvalidOperationException("memory-curator agent spec missing.");
+            _ = ctx.AgentSpecs.FirstOrDefault(a => a.Id == "memory-curator")
+                ?? throw new InvalidOperationException("memory-curator agent spec missing.");
 
-            var batch = JsonSerializer.Deserialize<MemoryIntentBatch>(json);
-            if (batch?.MemoryIntents == null || batch.MemoryIntents.Count == 0)
-                return TextEnvelope("{}");
-
-            var routed = _services.Route(ctx, batch.MemoryIntents, out var routeIssues);
-            if (routeIssues.Any(i => i.IsError))
-                return TextEnvelope(JsonSerializer.Serialize(new { errors = routeIssues }));
-
-            // Align with pipeline: optional scenario scopes entities under scenarios/<id>/people/.
-            var scenarioId = string.IsNullOrWhiteSpace(batch.ScenarioId) ? null : batch.ScenarioId.Trim();
-            var entityWorkspace = PersonaScenarioScope.GetEntityWorkspaceRoot(root, scenarioId);
-            if (!PersonaScenarioScope.IsUnderProjectRoot(root, entityWorkspace))
-                return TextEnvelope("Invalid scenario scope.");
-
-            var discovered = await _services.DiscoverAsync(ctx, entityWorkspace, cancellationToken).ConfigureAwait(false);
-            var byEntity = routed.GroupBy(r => r.Original.EntityKey, StringComparer.OrdinalIgnoreCase);
-            var updated = new List<string>();
-            foreach (var g in byEntity)
-            {
-                var rec = discovered.FirstOrDefault(e => e.EntityKey.Equals(g.Key, StringComparison.OrdinalIgnoreCase));
-                if (rec == null)
-                    continue;
-                var res = await _services.ApplyProjectionAsync(rec, g.ToList(), cancellationToken).ConfigureAwait(false);
-                updated.AddRange(res.UpdatedFiles);
-            }
-
-            return TextEnvelope(JsonSerializer.Serialize(new { updatedFiles = updated, routeWarnings = routeIssues }));
+            var body = await ProjectMemoryIntentApplier.ApplyFromJsonAsync(json, _services, cancellationToken).ConfigureAwait(false);
+            return TextEnvelope(body);
         }
         catch (Exception ex)
         {

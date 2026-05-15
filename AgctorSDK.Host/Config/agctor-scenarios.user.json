@@ -265,7 +265,10 @@
             "type": "LlmNode",
             "label": "LlmNode",
             "config": {
-              "personaId": "memory-curator"
+              "personaId": "memory-curator",
+              "toolIds": [
+                "apply-memory-intents"
+              ]
             }
           },
           {
@@ -274,7 +277,10 @@
             "label": "LlmNode",
             "config": {
               "personaId": "person-query",
-              "contextStrategy": "markdown_all"
+              "contextStrategy": "markdown_all",
+              "toolIds": [
+                "person-memory-context"
+              ]
             }
           },
           {

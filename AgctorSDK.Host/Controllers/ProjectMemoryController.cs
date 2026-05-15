@@ -8,12 +8,15 @@ using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Core.Streaming;
+using AgctorSDK.Core.Tools.Implementations;
+using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Ollama;
 using AgctorSDK.Core.ProjectMemory.Indexing;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
+using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Core.ProjectMemory.Tools;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
@@ -57,6 +60,7 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly IConfirmationIntentClassifier _confirmClassifier;
     private readonly IGenericInboxReplayService _genericInboxReplay;
     private readonly IProjectMemoryCoreferenceCoordinator _corefCoordinator;
+    private readonly IAgentFactory _agentFactory;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -75,6 +79,7 @@ public sealed class ProjectMemoryController : ControllerBase
         IConfirmationIntentClassifier confirmClassifier,
         IGenericInboxReplayService genericInboxReplay,
         IProjectMemoryCoreferenceCoordinator corefCoordinator,
+        IAgentFactory agentFactory,
         ILogger<ProjectMemoryController> logger,
         IActivityTracker? activityTracker = null)
     {
@@ -94,6 +99,7 @@ public sealed class ProjectMemoryController : ControllerBase
         _confirmClassifier = confirmClassifier;
         _genericInboxReplay = genericInboxReplay;
         _corefCoordinator = corefCoordinator;
+        _agentFactory = agentFactory;
         _activityTracker = activityTracker;
         _logger = logger;
     }
@@ -882,22 +888,73 @@ public sealed class ProjectMemoryController : ControllerBase
                 }
                 else if (string.Equals(personaId.Trim(), "person-query", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Single-prompt Ollama path has no tool loop; inject scenario markdown like ProjectMemoryQueryService does.
                     var flowNode = scenarioDef.Flow?.Nodes?.FirstOrDefault(n =>
                         !string.IsNullOrWhiteSpace(flowNodeId)
                         && string.Equals(n.Id, flowNodeId, StringComparison.OrdinalIgnoreCase));
                     var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
-                    var pmOps = new ProjectMemoryOperations(_loader, _entities);
-                    flowAppendix = await PlaygroundPersonQueryContextBuilder
-                        .BuildAppendixAsync(
-                            pmOps,
-                            pSpec,
-                            rootFull,
-                            scenarioResolved,
-                            strat,
-                            flowUserMessage,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    var flowToolIds = ScenarioFlowLlmNodeToolIds.ParseFlowDeclaredToolIds(flowNode?.Config);
+                    var yamlAllow = pSpec.Tools?.Allow ?? new List<string>();
+                    var useContextTool = ScenarioFlowLlmNodeToolIds.UnionAllows(
+                        yamlAllow,
+                        flowToolIds,
+                        ScenarioFlowLlmNodeToolIds.PersonMemoryContext);
+                    if (useContextTool)
+                    {
+                        var toolReq = new ToolRequest
+                        {
+                            Operation = "BuildContext",
+                            Parameters = new Dictionary<string, object>
+                            {
+                                ["projectRoot"] = rootFull,
+                                ["scenarioId"] = scenarioResolved ?? "",
+                                ["contextStrategy"] = strat,
+                                ["userMessage"] = flowUserMessage
+                            }
+                        };
+                        try
+                        {
+                            var tr = await _agentFactory
+                                .InvokeToolRequestAsync(nameof(PersonMemoryContextTool), toolReq, null, cancellationToken)
+                                .ConfigureAwait(false);
+                            flowAppendix = tr is { IsSuccess: true, Output: not null }
+                                ? Convert.ToString(tr.Output) ?? ""
+                                : await PlaygroundFallbackAppendixAsync().ConfigureAwait(false);
+                        }
+                        catch (Exception exTool)
+                        {
+                            _logger.LogWarning(exTool, "Playground: PersonMemoryContextTool failed; falling back to direct markdown load.");
+                            flowAppendix = await PlaygroundFallbackAppendixAsync().ConfigureAwait(false);
+                        }
+
+                        async Task<string> PlaygroundFallbackAppendixAsync()
+                        {
+                            var pmOps = new ProjectMemoryOperations(_loader, _entities);
+                            return await PlaygroundPersonQueryContextBuilder
+                                .BuildAppendixAsync(
+                                    pmOps,
+                                    pSpec,
+                                    rootFull,
+                                    scenarioResolved,
+                                    strat,
+                                    flowUserMessage,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                    }
+                    else
+                    {
+                        var pmOps = new ProjectMemoryOperations(_loader, _entities);
+                        flowAppendix = await PlaygroundPersonQueryContextBuilder
+                            .BuildAppendixAsync(
+                                pmOps,
+                                pSpec,
+                                rootFull,
+                                scenarioResolved,
+                                strat,
+                                flowUserMessage,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
                 }
 
                 // Flow mode is strict node-to-node chaining: each persona gets upstream payload as latest input.

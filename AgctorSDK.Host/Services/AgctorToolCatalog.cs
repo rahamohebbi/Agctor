@@ -119,7 +119,45 @@ public sealed class AgctorToolCatalog
                     Description = "Formats source files",
                     Parameters = new Dictionary<string, object>()
                 },
-                ExposeOnHttpApi: false)
+                ExposeOnHttpApi: false),
+            new(
+                "person-memory-context",
+                nameof(PersonMemoryContextTool),
+                typeof(PersonMemoryContextTool),
+                new ToolInfo
+                {
+                    Id = "person-memory-context",
+                    Name = "Person memory context",
+                    Description =
+                        "Read-only: loads scenario-scoped people markdown for person-query (BuildContext operation).",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["operation"] = "BuildContext",
+                        ["projectRoot"] = "string optional — defaults to Agctor:ProjectMemory:ProjectRoot",
+                        ["scenarioId"] = "string optional",
+                        ["contextStrategy"] = "markdown_all | markdown_focus | …",
+                        ["userMessage"] = "string — used for markdown_focus inference",
+                        ["agentSpecId"] = "string optional — defaults to person-query (for tools.allow paths)"
+                    }
+                },
+                ExposeOnHttpApi: true),
+            new(
+                "apply-memory-intents",
+                nameof(ApplyMemoryIntentsTool),
+                typeof(ApplyMemoryIntentsTool),
+                new ToolInfo
+                {
+                    Id = "apply-memory-intents",
+                    Name = "Apply memory intents",
+                    Description =
+                        "Applies MemoryIntentBatch JSON to markdown files under scenario scope (Apply operation).",
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["operation"] = "Apply",
+                        ["batchJson"] = "string — full MemoryIntentBatch JSON"
+                    }
+                },
+                ExposeOnHttpApi: true)
         };
 
         return new AgctorToolCatalog(list);

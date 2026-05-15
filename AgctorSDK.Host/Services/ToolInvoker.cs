@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Configuration;
@@ -252,6 +253,18 @@ namespace AgctorSDK.Host.Services
                 "file-system" => BuildFileSystemRequest(parameters),
                 "code-executor" => BuildCodeExecutorRequest(parameters),
                 "code-editor" => BuildCodeEditorRequest(parameters),
+                "person-memory-context" => new ToolRequest
+                {
+                    ToolName = nameof(PersonMemoryContextTool),
+                    Operation = GetString(parameters, "operation") ?? "BuildContext",
+                    Parameters = new Dictionary<string, object>(parameters)
+                },
+                "apply-memory-intents" => new ToolRequest
+                {
+                    ToolName = nameof(ApplyMemoryIntentsTool),
+                    Operation = GetString(parameters, "operation") ?? "Apply",
+                    Parameters = new Dictionary<string, object>(parameters)
+                },
                 _ => null
             };
         }
