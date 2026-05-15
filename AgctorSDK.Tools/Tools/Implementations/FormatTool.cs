@@ -3,47 +3,25 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Tools.Implementations.Format;
-using AgctorSDK.Core.Interfaces;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
     /// <summary>
     /// Generic tool actor that formats source code in multiple languages using concrete <see cref="ICodeFormatter"/> implementations.
     /// </summary>
-    public sealed class FormatTool : Agent, IToolActor
+    public sealed class FormatTool : ToolActorBase
     {
-        public FormatTool(string id) : base(id) { }
-
-        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+        public FormatTool(string id) : base(id, "FormatTool")
         {
-            if (envelope.Payload is ProcessPromptMessage ppm)
-            {
-                await ProcessPromptAsync(ppm.Prompt, cancellationToken);
-                return new MessageEnvelope(new ToolResult { IsSuccess = true });
-            }
-            else if (envelope.Payload is ToolRequest tr)
-            {
-                var result = await HandleAsync(tr, cancellationToken);
-                return new MessageEnvelope(result);
-            }
-
-            return await base.ReceiveAsync(envelope, cancellationToken);
         }
 
-        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        protected override async Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken)
         {
             var request = ParsePrompt(prompt);
-            var result = await HandleAsync(request, cancellationToken);
-
-            if (result.IsSuccess)
-                await FinalizeTask(result, cancellationToken);
-            else
-                await FinalizeTaskAsFailed(new Exception(result.Error ?? "format failed"), cancellationToken);
+            return await HandleAsync(request, cancellationToken);
         }
 
         private static ToolRequest ParsePrompt(string prompt)
@@ -100,7 +78,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             return new ToolResult { IsSuccess = ok, Output = formatted, Error = error };
         }
 
-        public async Task<ToolResult> Handle(ToolRequest request)
+        public override async Task<ToolResult> Handle(ToolRequest request)
         {
             return await HandleAsync(request, CancellationToken.None);
         }

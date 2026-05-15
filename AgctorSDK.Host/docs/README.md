@@ -7,7 +7,8 @@ ASP.NET Core Web API + MCP server for the AGCTOR framework.
 A read-only configuration dashboard is available at **/Dashboard** (Razor Pages + JavaScript). It shows:
 
 - **Overview** – Runtime, LLM, MCP, paths, background services, registered agent types, tools, scenarios (from `GET /api/Config`).
-- **Agents** – Live list of active agents and registered types; surfaces backend setup errors.
+- **Agents** – Live agents, type toggles, scenario apply, YAML definitions, and **dynamic tool access per agent** (`GET /api/agents/definitions/tool-usage`; UI in `wwwroot/js/dashboard/agents-page.js`).
+- **Tools** – **Dashboard / Tools** (`/Dashboard/Tools`): host tools, descriptions from `AgctorToolCatalog`, and **which agents use each tool** (`GET /api/tools/agent-associations`; `wwwroot/js/dashboard/tools-page.js`).
 - **Agent detail** – Per-agent type-specific view (e.g. LLM URL/model for LLMAgent, tools pipeline for CoderAgent) via `GET /api/agents/{id}/detail`.
 - **CodeGraph** – Actor tree, embedding lifecycle summary, and file preview when the `code-graph-demo` scenario is active (`GET /api/CodeGraph/current`).
 

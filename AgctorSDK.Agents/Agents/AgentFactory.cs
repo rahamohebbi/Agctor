@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Messages;
+using AgctorSDK.Core.Tools;
+using AgctorSDK.Core.Tools.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -23,6 +26,8 @@ namespace AgctorSDK.Core.Agents
         private readonly IServiceProvider _serviceProvider;
         private readonly IAgctorLogger _logger;
         private readonly IAgentRegistry _agentRegistry;
+        /// <summary>CLR types for <see cref="IToolActor"/> implementations — not <see cref="IAgent"/>.</summary>
+        private readonly Dictionary<string, Type> _toolActorTypes = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Initializes a new instance of the AgentFactory class.
@@ -335,13 +340,116 @@ namespace AgctorSDK.Core.Agents
             return await _runtimeAdapter.GetActorAsync<IAgent>(agentId, cancellationToken);
         }
 
+        /// <inheritdoc />
+        public void RegisterToolActorType<T>(string? typeName = null) where T : class, IActor, IToolActor
+        {
+            typeName ??= typeof(T).Name;
+            _toolActorTypes[typeName] = typeof(T);
+            _logger.Info($"Registered tool actor type '{typeName}' -> {typeof(T).Name}");
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyCollection<string> GetRegisteredToolActorTypeNames() => _toolActorTypes.Keys.ToList();
+
+        /// <inheritdoc />
+        public bool IsToolActorType(string typeName) =>
+            !string.IsNullOrWhiteSpace(typeName) && _toolActorTypes.ContainsKey(typeName);
+
+        /// <inheritdoc />
+        public async Task<ToolResult> InvokeToolByPromptAsync(
+            string toolTypeName,
+            string prompt,
+            string? invokingAgentId = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(toolTypeName))
+                throw new ArgumentException("Tool type name is required.", nameof(toolTypeName));
+            if (!_toolActorTypes.TryGetValue(toolTypeName, out var toolClrType))
+                throw new InvalidOperationException(
+                    $"Tool type '{toolTypeName}' is not registered. Register with {nameof(RegisterToolActorType)} on startup.");
+
+            var toolId = GenerateAgentId(toolTypeName, invokingAgentId);
+            try
+            {
+                await SpawnActorInstanceAsync(toolClrType, toolId, cancellationToken).ConfigureAwait(false);
+                await WaitForActorReadyAsync(toolId, cancellationToken).ConfigureAwait(false);
+
+                return await _runtimeAdapter
+                    .SendMessageAsync<ToolResult>(
+                        toolId,
+                        new ProcessPromptMessage(prompt),
+                        TimeSpan.FromMinutes(10),
+                        invokingAgentId,
+                        headers: null,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    await _runtimeAdapter.StopActorAsync(toolId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning($"StopActorAsync failed for ephemeral tool '{toolId}': {ex.Message}");
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<ToolResult> InvokeToolRequestAsync(
+            string toolTypeName,
+            ToolRequest request,
+            string? invokingAgentId = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(toolTypeName))
+                throw new ArgumentException("Tool type name is required.", nameof(toolTypeName));
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+            if (!_toolActorTypes.TryGetValue(toolTypeName, out var toolClrType))
+                throw new InvalidOperationException(
+                    $"Tool type '{toolTypeName}' is not registered. Register with {nameof(RegisterToolActorType)} on startup.");
+
+            request.ToolName = string.IsNullOrWhiteSpace(request.ToolName) ? toolTypeName : request.ToolName;
+
+            var toolId = GenerateAgentId(toolTypeName, invokingAgentId);
+            try
+            {
+                await SpawnActorInstanceAsync(toolClrType, toolId, cancellationToken).ConfigureAwait(false);
+                await WaitForActorReadyAsync(toolId, cancellationToken).ConfigureAwait(false);
+
+                return await _runtimeAdapter
+                    .SendMessageAsync<ToolResult>(
+                        toolId,
+                        request,
+                        TimeSpan.FromMinutes(10),
+                        invokingAgentId,
+                        headers: null,
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                try
+                {
+                    await _runtimeAdapter.StopActorAsync(toolId, CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning($"StopActorAsync failed for ephemeral tool '{toolId}': {ex.Message}");
+                }
+            }
+        }
+
         // Waits until the runtime reports the actor instance is in its table (max 1s)
         private async Task WaitForActorReadyAsync(string id, CancellationToken ct)
         {
             const int maxAttempts = 20; // 20 * 50ms = 1s
             for (var i = 0; i < maxAttempts; i++)
             {
-                var actor = await _runtimeAdapter.GetActorAsync<IAgent>(id, ct);
+                var actor = await _runtimeAdapter.GetActorAsync<IActor>(id, ct);
                 if (actor != null)
                 {
                     return;
@@ -350,6 +458,28 @@ namespace AgctorSDK.Core.Agents
             }
 
             _logger.Warning($"AgentFactory: actor '{id}' was not visible in runtime after waiting. Initial prompt may still race.");
+        }
+
+        private async Task SpawnActorInstanceAsync(Type actorType, string actorId, CancellationToken cancellationToken)
+        {
+            var method = _runtimeAdapter.GetType().GetMethod(
+                nameof(IActorRuntimeAdapter.SpawnActorAsync),
+                new[] { typeof(string), typeof(object), typeof(CancellationToken) });
+
+            if (method == null)
+            {
+                throw new InvalidOperationException("Runtime adapter does not expose SpawnActorAsync(string, object, CancellationToken).");
+            }
+
+            var genericMethod = method.MakeGenericMethod(actorType);
+            var task = (Task)genericMethod.Invoke(_runtimeAdapter, new object?[] { actorId, null, cancellationToken })!;
+            await task.ConfigureAwait(false);
+
+            var resultProperty = task.GetType().GetProperty("Result");
+            if (resultProperty?.GetValue(task) is not IActor)
+            {
+                throw new InvalidOperationException($"Runtime spawn for actor type '{actorType.Name}' did not return an IActor instance.");
+            }
         }
 
         private async Task<IAgent> SpawnViaRuntimeAsync(Type actorType, string actorId, AgentInitializationData initData, CancellationToken cancellationToken)

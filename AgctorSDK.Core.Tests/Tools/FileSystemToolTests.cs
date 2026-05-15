@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
@@ -64,6 +66,60 @@ namespace AgctorSDK.Core.Tests.Tools
             // Assert
             Assert.IsTrue(result.IsSuccess);
             _mockFileSystem.Verify(fs => fs.WriteAllTextAsync(path, content), Times.Once);
+        }
+
+        [TestMethod]
+        public async Task Handle_ListDirectory_ReturnsEntriesJson()
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "fs-tool-list-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            try
+            {
+                await File.WriteAllTextAsync(Path.Combine(dir, "listed.txt"), "x");
+                var tool = new FileSystemTool("fs-list", fileSystem: null);
+                var request = new ToolRequest
+                {
+                    Operation = "ListDirectory",
+                    Parameters = new Dictionary<string, object> { { "path", dir } }
+                };
+
+                var result = await tool.Handle(request);
+
+                Assert.IsTrue(result.IsSuccess);
+                var s = result.Output?.ToString() ?? string.Empty;
+                StringAssert.Contains(s, "listed.txt");
+            }
+            finally
+            {
+                if (Directory.Exists(dir))
+                {
+                    Directory.Delete(dir, recursive: true);
+                }
+            }
+        }
+
+        [TestMethod]
+        public async Task Handle_DeletePath_DeletesFile()
+        {
+            var dir = Path.Combine(Path.GetTempPath(), "fs-tool-del-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+            var file = Path.Combine(dir, "gone.txt");
+            await File.WriteAllTextAsync(file, "bye");
+            var tool = new FileSystemTool("fs-del", fileSystem: null);
+            var request = new ToolRequest
+            {
+                Operation = "DeletePath",
+                Parameters = new Dictionary<string, object> { { "path", file } }
+            };
+
+            var result = await tool.Handle(request);
+
+            Assert.IsTrue(result.IsSuccess);
+            Assert.IsFalse(File.Exists(file));
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
         }
         
         [TestMethod]
@@ -135,7 +191,7 @@ namespace AgctorSDK.Core.Tests.Tools
             // Assert
             Assert.IsNotNull(toolResult);
             Assert.IsFalse(toolResult.IsSuccess);
-            Assert.AreEqual("Invalid payload. Expected ToolRequest.", toolResult.Error);
+            Assert.IsTrue(toolResult.Error?.Contains("Unsupported payload", StringComparison.Ordinal) == true);
         }
     }
 } 

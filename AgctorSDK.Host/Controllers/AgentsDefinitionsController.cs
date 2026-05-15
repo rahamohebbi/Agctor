@@ -20,6 +20,7 @@ public sealed class AgentsDefinitionsController : ControllerBase
     private readonly AgentTypeOptions _agentTypeOptions;
     private readonly IProjectAgentSpecRegistry _projectAgentSpecRegistry;
     private readonly IProjectMemoryAgentYamlPersistence _projectMemoryAgentYaml;
+    private readonly IToolAgentsInsightService _toolAgentsInsight;
     private readonly ILogger<AgentsDefinitionsController> _logger;
 
     public AgentsDefinitionsController(
@@ -27,12 +28,14 @@ public sealed class AgentsDefinitionsController : ControllerBase
         IOptions<AgentTypeOptions> agentTypeOptions,
         IProjectAgentSpecRegistry projectAgentSpecRegistry,
         IProjectMemoryAgentYamlPersistence projectMemoryAgentYaml,
+        IToolAgentsInsightService toolAgentsInsight,
         ILogger<AgentsDefinitionsController> logger)
     {
         _agentTypeEnablement = agentTypeEnablement ?? throw new ArgumentNullException(nameof(agentTypeEnablement));
         _agentTypeOptions = agentTypeOptions?.Value ?? throw new ArgumentNullException(nameof(agentTypeOptions));
         _projectAgentSpecRegistry = projectAgentSpecRegistry ?? throw new ArgumentNullException(nameof(projectAgentSpecRegistry));
         _projectMemoryAgentYaml = projectMemoryAgentYaml ?? throw new ArgumentNullException(nameof(projectMemoryAgentYaml));
+        _toolAgentsInsight = toolAgentsInsight ?? throw new ArgumentNullException(nameof(toolAgentsInsight));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -87,6 +90,31 @@ public sealed class AgentsDefinitionsController : ControllerBase
             {
                 Code = "INTERNAL_ERROR",
                 Message = "An internal error occurred while retrieving agent definitions."
+            });
+        }
+    }
+
+    /// <summary>
+    /// Dashboard: each agent (YAML spec or C# type) with host <see cref="AgctorSDK.Core.Tools.IToolActor"/> tools it may use.
+    /// Declared before <c>{id}</c> so <c>tool-usage</c> is not captured as an agent id.
+    /// </summary>
+    [HttpGet("tool-usage")]
+    [ProducesResponseType(typeof(AgentToolsInsightResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<AgentToolsInsightResponse>> GetAgentToolUsageAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var dto = await _toolAgentsInsight.GetAgentsToolInsightAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error building agent tool usage");
+            return StatusCode(500, new ErrorResponse
+            {
+                Code = "INTERNAL_ERROR",
+                Message = "An internal error occurred while building agent tool usage."
             });
         }
     }

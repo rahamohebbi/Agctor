@@ -12,8 +12,8 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 
 ### HTTP API Controllers
 - **AgentsController** (`/api/agents`): Agent CRUD, messaging, streaming, health, type enablement
-- **AgentsDefinitionsController** (`/api/agents/definitions`): Unified catalog and project-memory YAML CRUD
-- **GoalsController**, **ToolsController**, **RuntimeController**, **ConfigController**, **LlmController**
+- **AgentsDefinitionsController** (`/api/agents/definitions`): Unified catalog, project-memory YAML CRUD, and **`GET …/tool-usage`** for dashboard agent→tool insight
+- **GoalsController**, **ToolsController** (`/api/tools` including **`GET …/agent-associations`**), **RuntimeController**, **ConfigController**, **LlmController**
 - **ScenariosController** (`/api/scenarios`), **TestController** (`/api/test`)
 - **CodeGraphController**, **VisualizationController**
 - **ChatProjectsController**, **ChatSessionsController**
@@ -25,7 +25,9 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 ### Services
 - **MessageDispatcher**: Routes envelopes to agents via `IActorRuntimeAdapter`
 - **SqliteSessionStore** / **SqliteTraceTimelineStore**: Durable chat and trace timelines
-- **ToolInvoker**: Direct tool execution path used by HTTP/MCP
+- **AgctorToolCatalog**: Single registry of `IToolActor` types, HTTP tool ids, and **`ToolInfo`** discovery (name, description, parameters) used by **ToolInvoker** and insight APIs
+- **ToolInvoker**: Direct tool execution path used by HTTP/MCP (resolves tools via the catalog)
+- **ToolAgentsInsightService** (`IToolAgentsInsightService`): Builds merged **tool↔agent** and **agent↔tool** views from the catalog, `IAgentFactory` tool registration, project-memory YAML `tools.allow`, and C# affinity hints for dashboards
 - **Scenario** types: catalog, factory, application service, and current-scenario store for demos and dashboard
 
 ### Background services

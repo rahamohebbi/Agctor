@@ -29,8 +29,7 @@
       "handler": "CodeGenerationChainScenario",
       "agentTypes": [
         "Agent",
-        "LLMAgent",
-        "CodeExecutorTool"
+        "LLMAgent"
       ]
     },
     {

@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Tools;
@@ -18,24 +15,16 @@ namespace AgctorSDK.Core.Tools.Implementations;
 /// <summary>
 /// Schema-scoped file operations for portable projects (PRD §19); uses <see cref="ProjectMemoryServiceAccessor"/>.
 /// </summary>
-public sealed class ProjectMemoryTool : BaseActor, IToolActor
+public sealed class ProjectMemoryTool : ToolActorBase
 {
     public ProjectMemoryTool(string id) : base(id, "ProjectMemoryTool")
     {
     }
 
-    public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
-    {
-        if (envelope.Payload is ToolRequest request)
-        {
-            var r = await Handle(request).ConfigureAwait(false);
-            return new MessageEnvelope(r);
-        }
+    protected override Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken) =>
+        Task.FromResult(new ToolResult { IsSuccess = false, Error = "ProjectMemoryTool expects a ToolRequest payload." });
 
-        return new MessageEnvelope(new ToolResult { IsSuccess = false, Error = "Expected ToolRequest." });
-    }
-
-    public async Task<ToolResult> Handle(ToolRequest request)
+    public override async Task<ToolResult> Handle(ToolRequest request)
     {
         try
         {

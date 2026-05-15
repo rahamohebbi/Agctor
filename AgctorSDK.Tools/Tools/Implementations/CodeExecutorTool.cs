@@ -1,6 +1,3 @@
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using System;
@@ -13,7 +10,7 @@ using AgctorSDK.Core.Tools.LanguageExecutors;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
-    public class CodeExecutorTool : Agent, IToolActor
+    public class CodeExecutorTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;
         private readonly ILanguageExecutorFactory _executorFactory;
@@ -22,29 +19,13 @@ namespace AgctorSDK.Core.Tools.Implementations
         {
         }
 
-        public CodeExecutorTool(string id, IFileSystem? fileSystem = null, ILanguageExecutorFactory? executorFactory = null) : base(id)
+        public CodeExecutorTool(string id, IFileSystem? fileSystem = null, ILanguageExecutorFactory? executorFactory = null) : base(id, "CodeExecutorTool")
         {
             _fileSystem = fileSystem ?? new DefaultFileSystem();
             _executorFactory = executorFactory ?? new LanguageExecutorFactory();
         }
 
-        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
-        {
-            if (envelope.Payload is ProcessPromptMessage promptMsg)
-            {
-                await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                return new MessageEnvelope(new ToolResult { IsSuccess = true });
-            }
-            else if (envelope.Payload is ToolRequest request)
-            {
-                var result = await Handle(request);
-                return new MessageEnvelope(result);
-            }
-
-            return await base.ReceiveAsync(envelope, cancellationToken);
-        }
-
-        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        protected override async Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken)
         {
             LogInfo($"CodeExecutorTool processing prompt: {prompt}");
 
@@ -52,37 +33,21 @@ namespace AgctorSDK.Core.Tools.Implementations
             {
                 var toolRequest = ParsePrompt(prompt);
                 LogInfo($"Parsed request: Operation={toolRequest.Operation}, Parameters={string.Join(", ", toolRequest.Parameters.Select(p => $"{p.Key}={p.Value}"))}");
-                
+
                 if (toolRequest.Operation == "Error")
                 {
-                    // LLM output often omits the legacy CLI shape; warn instead of error-level noise.
                     LogWarning($"Tool request parse skipped: {toolRequest.Parameters["Error"]}. Expected a line like: CodeExecutorTool RunCode --language python --code \"...\"");
-                    var ex = new Exception($"Failed to parse tool request: {toolRequest.Parameters["Error"]}");
-                    // Avoid FinalizeTaskAsFailed when nothing listens (prevents ERROR + "no parent to notify" spam).
-                    if (ParentAgentId != null && AgentFactory?.RuntimeAdapter != null)
-                        await FinalizeTaskAsFailed(ex, cancellationToken);
-                    else
-                        LogWarning("Parse failed with no parent runtime wiring; failure not propagated.");
-                    return;
+                    return new ToolResult { IsSuccess = false, Error = toolRequest.Parameters["Error"]?.ToString() ?? "Parse error" };
                 }
-                
+
                 var result = await Handle(toolRequest);
                 LogInfo($"Tool execution result: IsSuccess={result.IsSuccess}, Output={result.Output}, Error={result.Error}");
-
-                if (!result.IsSuccess)
-                {
-                    LogError($"Tool execution failed: {result.Error}");
-                    await FinalizeTaskAsFailed(new Exception($"Tool execution failed: {result.Error}"), cancellationToken);
-                    return;
-                }
-
-                LogInfo("Tool execution succeeded, notifying parent agent");
-                await FinalizeTask(result, cancellationToken);
+                return result;
             }
             catch (Exception ex)
             {
                 LogError($"Error processing prompt: {ex.Message}");
-                await FinalizeTaskAsFailed(new Exception($"Failed to process tool request: {ex.Message}"), cancellationToken);
+                return new ToolResult { IsSuccess = false, Error = $"Failed to process tool request: {ex.Message}" };
             }
         }
 
@@ -172,7 +137,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             return parameters;
         }
 
-        public async Task<ToolResult> Handle(ToolRequest request)
+        public override async Task<ToolResult> Handle(ToolRequest request)
         {
             return request.Operation switch
             {

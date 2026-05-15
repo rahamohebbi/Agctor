@@ -295,8 +295,24 @@ namespace AgctorSDK.Core.Agents
                     // Check if the response is a tool call
                     if (resultPayload.Contains("CodeEditorTool"))
                     {
-                        await AssignSubtaskAsync(resultPayload, "CodeEditorTool", cancellationToken);
-                        ChangeAgentStatus(AgentStatus.WaitingForSubtasks, "Waiting for CodeEditorTool to complete.");
+                        if (AgentFactory == null)
+                        {
+                            ChangeAgentStatus(AgentStatus.Failed, "AgentFactory is not configured; cannot invoke CodeEditorTool.");
+                            await FinalizeTaskAsFailed(new InvalidOperationException("AgentFactory missing"), cancellationToken);
+                            return;
+                        }
+
+                        var toolResult = await AgentFactory.InvokeToolByPromptAsync("CodeEditorTool", resultPayload, Id, cancellationToken).ConfigureAwait(false);
+                        if (toolResult.IsSuccess)
+                        {
+                            ChangeAgentStatus(AgentStatus.Completed, "Prompt processed with CodeEditorTool.");
+                            await FinalizeTask(toolResult.Output ?? toolResult, cancellationToken);
+                        }
+                        else
+                        {
+                            ChangeAgentStatus(AgentStatus.Failed, toolResult.Error ?? "CodeEditorTool failed");
+                            await FinalizeTaskAsFailed(new Exception(toolResult.Error ?? "CodeEditorTool failed"), cancellationToken);
+                        }
                     }
                     else
                     {

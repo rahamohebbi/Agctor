@@ -12,6 +12,7 @@ External surfaces are the **AgctorSDK.Host** HTTP API (plus Swagger), the **MCP 
 
 - **Default base URL**: `http://localhost:5274` when `ASPNETCORE_URLS` is not set (`AgctorSDK.Host/Program.cs`).
 - **Route families**: `/api/agents`, `/api/agents/definitions`, `/api/goals`, `/api/tools`, `/api/scenarios`, `/api/test`, `/api/CodeGraph`, `/api/chat/projects`, `/api/chat/sessions`, `/api/Visualization`, `/api/project-memory`, `/api/project-memory/resolution`, `/api/Config`, `/api/Llm`, `/api/runtime`, plus Razor pages and static files.
+- **Dashboard tool insight (Host)**: `GET /api/tools/agent-associations` (Tools page) and `GET /api/agents/definitions/tool-usage` (Agents page) expose merged agent↔tool metadata for the UI; see `AgctorSDK.Host/docs/endpoints-diagram.md`.
 - **Per-controller detail**: see `AgctorSDK.Host/docs/endpoints-diagram.mmd` / `.md`.
 
 ## MCP

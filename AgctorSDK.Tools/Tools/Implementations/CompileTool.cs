@@ -1,6 +1,3 @@
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Build;
 using AgctorSDK.Core.Tools.LanguageCompilers;
@@ -17,7 +14,7 @@ namespace AgctorSDK.Core.Tools.Implementations
     /// <summary>
     /// Tool actor that can compile code or source files for multiple languages using the <see cref="ILanguageCompilerFactory"/> abstraction.
     /// </summary>
-    public class CompileTool : Agent, IToolActor
+    public class CompileTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;
         private readonly ILanguageCompilerFactory _compilerFactory;
@@ -26,31 +23,13 @@ namespace AgctorSDK.Core.Tools.Implementations
         {
         }
 
-        public CompileTool(string id, IFileSystem? fileSystem = null, ILanguageCompilerFactory? compilerFactory = null) : base(id)
+        public CompileTool(string id, IFileSystem? fileSystem = null, ILanguageCompilerFactory? compilerFactory = null) : base(id, "CompileTool")
         {
             _fileSystem = fileSystem ?? new DefaultFileSystem();
             _compilerFactory = compilerFactory ?? new LanguageCompilerFactory();
         }
 
-        #region IMessage handling
-
-        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
-        {
-            if (envelope.Payload is ProcessPromptMessage promptMsg)
-            {
-                await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                return new MessageEnvelope(new ToolResult { IsSuccess = true });
-            }
-            else if (envelope.Payload is ToolRequest request)
-            {
-                var result = await Handle(request);
-                return new MessageEnvelope(result);
-            }
-
-            return await base.ReceiveAsync(envelope, cancellationToken);
-        }
-
-        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        protected override async Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken)
         {
             LogInfo($"CompileTool processing prompt: {prompt}");
 
@@ -59,28 +38,17 @@ namespace AgctorSDK.Core.Tools.Implementations
                 var toolRequest = ParsePrompt(prompt);
                 if (toolRequest.Operation == "Error")
                 {
-                    var error = toolRequest.Parameters.TryGetValue("Error", out var e) ? e : "Unknown parse error";
-                    await FinalizeTaskAsFailed(new Exception(error?.ToString()), cancellationToken);
-                    return;
+                    var error = toolRequest.Parameters.TryGetValue("Error", out var e) ? e?.ToString() : "Unknown parse error";
+                    return new ToolResult { IsSuccess = false, Error = error };
                 }
 
-                var result = await Handle(toolRequest);
-                if (result.IsSuccess)
-                {
-                    await FinalizeTask(result, cancellationToken);
-                }
-                else
-                {
-                    await FinalizeTaskAsFailed(new Exception(result.Error ?? "Compilation failed"), cancellationToken);
-                }
+                return await Handle(toolRequest);
             }
             catch (Exception ex)
             {
-                await FinalizeTaskAsFailed(ex, cancellationToken);
+                return new ToolResult { IsSuccess = false, Error = ex.Message };
             }
         }
-
-        #endregion
 
         #region Request parsing helpers
 
@@ -144,7 +112,7 @@ namespace AgctorSDK.Core.Tools.Implementations
 
         #region Core handler
 
-        public async Task<ToolResult> Handle(ToolRequest request)
+        public override async Task<ToolResult> Handle(ToolRequest request)
         {
             return request.Operation switch
             {

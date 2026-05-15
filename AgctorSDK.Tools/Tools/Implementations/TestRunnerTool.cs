@@ -1,6 +1,3 @@
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Tools.LanguageTestRunners;
@@ -15,7 +12,7 @@ namespace AgctorSDK.Core.Tools.Implementations
     /// <summary>
     /// Tool actor that triggers language-specific test execution.
     /// </summary>
-    public class TestRunnerTool : Agent, IToolActor
+    public class TestRunnerTool : ToolActorBase
     {
         private readonly ILanguageTestRunnerFactory _runnerFactory;
 
@@ -23,42 +20,21 @@ namespace AgctorSDK.Core.Tools.Implementations
         {
         }
 
-        public TestRunnerTool(string id, ILanguageTestRunnerFactory? runnerFactory = null) : base(id)
+        public TestRunnerTool(string id, ILanguageTestRunnerFactory? runnerFactory = null) : base(id, "TestRunnerTool")
         {
             _runnerFactory = runnerFactory ?? new LanguageTestRunnerFactory();
         }
 
-        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
-        {
-            if (envelope.Payload is ProcessPromptMessage promptMsg)
-            {
-                await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                return new MessageEnvelope(new ToolResult { IsSuccess = true });
-            }
-            else if (envelope.Payload is ToolRequest req)
-            {
-                var res = await Handle(req);
-                return new MessageEnvelope(res);
-            }
-
-            return await base.ReceiveAsync(envelope, cancellationToken);
-        }
-
-        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        protected override async Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken)
         {
             var req = ParsePrompt(prompt);
             if (req.Operation == "Error")
             {
                 var err = req.Parameters.TryGetValue("Error", out var e) ? e?.ToString() : "Parse error";
-                await FinalizeTaskAsFailed(new Exception(err), cancellationToken);
-                return;
+                return new ToolResult { IsSuccess = false, Error = err };
             }
 
-            var result = await Handle(req);
-            if (result.IsSuccess)
-                await FinalizeTask(result, cancellationToken);
-            else
-                await FinalizeTaskAsFailed(new Exception(result.Error ?? "Test run failed"), cancellationToken);
+            return await Handle(req);
         }
 
         public ToolRequest ParsePrompt(string prompt)
@@ -97,7 +73,7 @@ namespace AgctorSDK.Core.Tools.Implementations
             return dict;
         }
 
-        public async Task<ToolResult> Handle(ToolRequest request)
+        public override async Task<ToolResult> Handle(ToolRequest request)
         {
             return request.Operation switch
             {

@@ -727,6 +727,14 @@ namespace AgctorSDK.Core.Agents
 
             try
             {
+                if (_agentFactory != null && _agentFactory.IsToolActorType(agentType))
+                {
+                    LogInfo($"Invoking registered tool '{agentType}' via factory (not spawning an IAgent child).");
+                    var toolResult = await _agentFactory.InvokeToolByPromptAsync(agentType, finalPrompt, Id, cancellationToken).ConfigureAwait(false);
+                    await ProcessSubtaskResultAsync($"tool:{agentType}", toolResult, cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 LogInfo($"Spawning agent of type '{agentType}' for subtask");
                 var childAgentId = await AssignSubtaskAsync(finalPrompt, agentType, cancellationToken);
                 LogInfo($"Spawned child agent '{childAgentId}' for subtask");

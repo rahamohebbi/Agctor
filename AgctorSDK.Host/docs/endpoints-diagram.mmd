@@ -24,6 +24,7 @@ graph LR
             SendMsgStream["POST /api/agents/id/message/stream<br/>SSE stream PRD011"]
             AgentHealth["GET /api/agents/health<br/>Health check"]
             AgentDefsCatalog["GET /api/agents/definitions<br/>GET /api/agents/definitions/{id}"]
+            AgentToolUsage["GET /api/agents/definitions/tool-usage<br/>Dashboard Agents: tools per agent"]
             PmYamlViaAgents["POST/PUT/DELETE /api/agents/definitions/project-memory/{id}<br/>POST …/project-memory create"]
         end
 
@@ -38,6 +39,7 @@ graph LR
         subgraph "Tools /api/tools"
             ListTools["GET /api/tools<br/>List available tools"]
             GetTool["GET /api/tools/id<br/>Get tool info"]
+            ToolAgentAssoc["GET /api/tools/agent-associations<br/>Dashboard Tools: agents per tool"]
             InvokeTool["POST /api/tools/id/invoke<br/>Invoke tool"]
             BatchInvoke["POST /api/tools/batch<br/>Batch invoke"]
             ToolHealth["GET /api/tools/health<br/>Health check"]

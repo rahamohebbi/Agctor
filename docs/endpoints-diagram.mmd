@@ -8,14 +8,14 @@ graph LR
             A5["GET /api/agents/health"]
         end
         subgraph defs [Agent definitions PRD-013]
-            D1["GET /api/agents/definitions GET …/{id}"]
+            D1["GET /api/agents/definitions GET …/{id} GET …/tool-usage"]
             D2["POST PUT DELETE /api/agents/definitions/project-memory …"]
         end
         subgraph goals [Goals]
             G["CRUD /api/goals and /api/goals/{id}"]
         end
         subgraph tools [Tools]
-            T["GET /api/tools GET …/{id} POST …/{id}/invoke POST …/batch GET …/health"]
+            T["GET /api/tools …/{id} GET …/agent-associations POST …/invoke …/batch GET …/health"]
         end
         subgraph scenarios [Scenarios]
             S["GET PUT /api/scenarios GET …/{id} POST …/reload POST …/{id}/apply POST …/{id}/flow/run"]

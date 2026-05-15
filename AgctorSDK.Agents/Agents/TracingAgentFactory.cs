@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Tools;
+using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Utils.ActivityTracking;
 
 namespace AgctorSDK.Core.Agents
@@ -196,29 +199,56 @@ namespace AgctorSDK.Core.Agents
                 throw;
             }
         }
-        
+
+        /// <inheritdoc/>
+        public void RegisterToolActorType<T>(string? typeName = null) where T : class, IActor, IToolActor =>
+            _innerFactory.RegisterToolActorType<T>(typeName);
+
+        /// <inheritdoc/>
+        public IReadOnlyCollection<string> GetRegisteredToolActorTypeNames() =>
+            _innerFactory.GetRegisteredToolActorTypeNames();
+
+        /// <inheritdoc/>
+        public bool IsToolActorType(string typeName) => _innerFactory.IsToolActorType(typeName);
+
+        /// <inheritdoc/>
+        public Task<ToolResult> InvokeToolByPromptAsync(
+            string toolTypeName,
+            string prompt,
+            string? invokingAgentId = null,
+            CancellationToken cancellationToken = default) =>
+            _innerFactory.InvokeToolByPromptAsync(toolTypeName, prompt, invokingAgentId, cancellationToken);
+
+        /// <inheritdoc/>
+        public Task<ToolResult> InvokeToolRequestAsync(
+            string toolTypeName,
+            ToolRequest request,
+            string? invokingAgentId = null,
+            CancellationToken cancellationToken = default) =>
+            _innerFactory.InvokeToolRequestAsync(toolTypeName, request, invokingAgentId, cancellationToken);
+
         /// <inheritdoc/>
         public IAgent CreateAgent(string agentType, string id, AgentOptions options)
         {
             using var activity = _activityTracker.StartActivity("AgentFactory.CreateAgent");
             activity.SetAttribute("agent.type", agentType);
             activity.SetAttribute("agent.id", id);
-            
+
             try
             {
                 // This is a legacy method that isn't in the IAgentFactory interface
                 // We're implementing it for compatibility with demo code
-                if (_innerFactory is IDynamicObject dynamicFactory && 
-                    dynamicFactory.TryInvokeMember("CreateAgent", new object[] { agentType, id, options }, out var result) && 
+                if (_innerFactory is IDynamicObject dynamicFactory &&
+                    dynamicFactory.TryInvokeMember("CreateAgent", new object[] { agentType, id, options }, out var result) &&
                     result is IAgent agent)
                 {
                     // Decorate the agent with tracing
                     var tracedAgent = new TracedAgent(agent, _activityTracker);
-                    
+
                     activity.SetStatus(ActivityStatus.Ok);
                     return tracedAgent;
                 }
-                
+
                 throw new NotImplementedException($"The inner factory does not support the CreateAgent method");
             }
             catch (Exception ex)

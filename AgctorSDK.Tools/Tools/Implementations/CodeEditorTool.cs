@@ -3,9 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using System.Text.RegularExpressions;
@@ -17,7 +14,7 @@ using AgctorSDK.Core.Tools.Implementations.LanguageAdapters;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
-    public class CodeEditorTool : Agent, IToolActor
+    public class CodeEditorTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;
 
@@ -25,7 +22,7 @@ namespace AgctorSDK.Core.Tools.Implementations
         {
         }
 
-        public CodeEditorTool(string id, IFileSystem? fileSystem = null) : base(id)
+        public CodeEditorTool(string id, IFileSystem? fileSystem = null) : base(id, "CodeEditorTool")
         {
             _fileSystem = fileSystem ?? new DefaultFileSystem();
         }
@@ -105,76 +102,30 @@ namespace AgctorSDK.Core.Tools.Implementations
             }
         }
 
-        // Fallback: if runtime failed to set ParentAgentId, derive it from the hierarchical ID (parent.child)
-        private void EnsureParentId()
-        {
-            if (ParentAgentId == null)
-            {
-                var idx = Id.IndexOf('.');
-                if (idx > 0)
-                {
-                    var pid = Id.Substring(0, idx);
-                    SetParentAgentId(pid);
-                    LogWarning($"ParentAgentId was missing – inferred '{pid}' from hierarchical ID.");
-                }
-            }
-        }
-
-        public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
-        {
-            if (envelope.Payload is ProcessPromptMessage promptMsg)
-            {
-                await ProcessPromptAsync(promptMsg.Prompt, cancellationToken);
-                return new MessageEnvelope(new ToolResult { IsSuccess = true });
-            }
-            else if (envelope.Payload is ToolRequest request)
-            {
-                var result = await Handle(request);
-                return new MessageEnvelope(result);
-            }
-
-            return await base.ReceiveAsync(envelope, cancellationToken);
-        }
-
-        public override async Task ProcessPromptAsync(string prompt, CancellationToken cancellationToken = default)
+        protected override async Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken)
         {
             LogInfo($"CodeEditorTool processing prompt: {prompt}");
-            LogInfo($"ParentAgentId = {ParentAgentId ?? "<null>"}");
-            LogInfo($"HasFactory={(AgentFactory!=null)} RuntimeAdapterNull={(AgentFactory?.RuntimeAdapter==null)}");
-
-            EnsureParentId();
 
             try
             {
                 var toolRequest = ParsePrompt(prompt);
                 LogInfo($"Parsed request: Operation={toolRequest.Operation}, Parameters={string.Join(", ", toolRequest.Parameters.Select(p => $"{p.Key}={p.Value}"))}");
-                
+
                 if (toolRequest.Operation == "Error")
                 {
                     LogError($"Error parsing tool request: {toolRequest.Parameters["Error"]}");
-                    await FinalizeTaskAsFailed(new Exception($"Failed to parse tool request: {toolRequest.Parameters["Error"]}"), cancellationToken);
-                    return;
-                }
-                
-                var result = await Handle(toolRequest);
-                LogInfo($"Tool execution result: IsSuccess={result.IsSuccess}, Output={result.Output}, Error={result.Error}");
-
-                if (!result.IsSuccess)
-                {
-                    LogError($"Tool execution failed: {result.Error}");
-                    await FinalizeTaskAsFailed(new Exception($"Tool execution failed: {result.Error}"), cancellationToken);
-                    return;
+                    return new ToolResult { IsSuccess = false, Error = $"Failed to parse tool request: {toolRequest.Parameters["Error"]}" };
                 }
 
-                LogInfo("Tool execution succeeded, notifying parent agent");
-                await FinalizeTask(result, cancellationToken);
+                return await Handle(toolRequest);
             }
             catch (Exception ex)
             {
                 LogError($"Error processing prompt: {ex.Message}");
-                await FinalizeTaskAsFailed(new Exception($"Failed to process tool request: {ex.Message}"), cancellationToken);
+                return new ToolResult { IsSuccess = false, Error = $"Failed to process tool request: {ex.Message}" };
             }
         }
+
 
         public ToolRequest ParsePrompt(string prompt)
         {
@@ -335,28 +286,14 @@ namespace AgctorSDK.Core.Tools.Implementations
             return parameters;
         }
 
-        public override Task<string> AssignSubtaskAsync(string subtaskPrompt, string? agentType = null, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException("CodeEditorTool cannot assign subtasks.");
-        }
-
-        public override async Task HandleSubtaskCompletionAsync(string childAgentId, object result, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException("CodeEditorTool does not handle subtask completions.");
-        }
-
-        public override async Task HandleSubtaskFailureAsync(string childAgentId, Exception error, CancellationToken cancellationToken = default)
-        {
-            throw new NotSupportedException("CodeEditorTool does not handle subtask failures.");
-        }
-
-        public virtual async Task<ToolResult> Handle(ToolRequest request)
+        public override async Task<ToolResult> Handle(ToolRequest request)
         {
             try
             {
                 return request.Operation switch
                 {
                     "WriteFile" => await ExecuteWriteFileOperation(request.Parameters),
+                    "FormatFile" => await FormatFileAsync(request.Parameters),
                     "InsertIntoFile" => await InsertIntoFile(request.Parameters),
                     "ReplaceInFile" => await ReplaceInFile(request.Parameters),
                     "ApplyPatch" => await ReplaceInFile(request.Parameters),
@@ -367,6 +304,78 @@ namespace AgctorSDK.Core.Tools.Implementations
             {
                 return new ToolResult { IsSuccess = false, Error = ex.Message };
             }
+        }
+
+        /// <summary>
+        /// Normalizes line endings and trailing whitespace (legacy HTTP <c>format</c> behavior for integration tests).
+        /// Accepts <c>path</c> or <c>file</c> like the host HTTP bridge.
+        /// </summary>
+        private async Task<ToolResult> FormatFileAsync(IDictionary<string, object> parameters)
+        {
+            if (!TryGetPathOrFile(parameters, out var filePath))
+            {
+                return new ToolResult { IsSuccess = false, Error = "Path (or file) parameter is missing or invalid" };
+            }
+
+            if (!Path.IsPathRooted(filePath))
+            {
+                var cwd = Directory.GetCurrentDirectory();
+                var matches = SafeEnumerateFiles(cwd, filePath, SearchOption.AllDirectories);
+                if (matches.Length == 1)
+                {
+                    LogInfo($"Resolved relative path '{filePath}' to '{matches[0]}'");
+                    filePath = matches[0];
+                }
+                else if (matches.Length == 0)
+                {
+                    LogInfo($"No existing file named '{filePath}' found – will create new file at workspace root.");
+                    filePath = Path.Combine(cwd, filePath);
+                }
+                else
+                {
+                    return new ToolResult
+                    {
+                        IsSuccess = false,
+                        Error = $"Ambiguous relative path '{filePath}'. Found {matches.Length} matches. Please specify full path."
+                    };
+                }
+            }
+
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            if (!File.Exists(filePath))
+            {
+                await _fileSystem.WriteAllTextAsync(filePath, string.Empty);
+            }
+
+            var content = await _fileSystem.ReadAllTextAsync(filePath);
+            var normalized = string.Join(
+                Environment.NewLine,
+                content.Replace("\r\n", "\n").Split('\n').Select(line => line.TrimEnd()));
+            await _fileSystem.WriteAllTextAsync(filePath, normalized);
+            return new ToolResult { IsSuccess = true, Output = $"Formatted {filePath}" };
+        }
+
+        private static bool TryGetPathOrFile(IDictionary<string, object> parameters, out string path)
+        {
+            path = string.Empty;
+            if (parameters.TryGetValue("path", out var pObj) && pObj is string ps && !string.IsNullOrWhiteSpace(ps))
+            {
+                path = ps;
+                return true;
+            }
+
+            if (parameters.TryGetValue("file", out var fObj) && fObj is string fs && !string.IsNullOrWhiteSpace(fs))
+            {
+                path = fs;
+                return true;
+            }
+
+            return false;
         }
 
         private async Task<ToolResult> ExecuteWriteFileOperation(IDictionary<string, object> parameters)

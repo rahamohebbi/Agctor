@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Tools;
+using AgctorSDK.Core.Tools.Models;
 
 namespace AgctorSDK.Core.Interfaces
 {
@@ -78,5 +81,31 @@ namespace AgctorSDK.Core.Interfaces
         /// Provides access to low-level runtime operations when needed.
         /// </summary>
         IActorRuntimeAdapter RuntimeAdapter { get; }
+
+        /// <summary>
+        /// Registers a concrete <see cref="IToolActor"/> type under its CLR name (or <paramref name="typeName"/>).
+        /// Tools are not agents: they are invoked via <see cref="InvokeToolByPromptAsync"/>, not <see cref="SpawnAgentAsync(string, string, string?, string?, CancellationToken)"/>.
+        /// </summary>
+        void RegisterToolActorType<T>(string? typeName = null) where T : class, IActor, IToolActor;
+
+        /// <summary>Registered tool type keys (for dashboards / validation).</summary>
+        IReadOnlyCollection<string> GetRegisteredToolActorTypeNames();
+
+        /// <summary>Returns true if <paramref name="typeName"/> refers to a registered tool actor, not an <see cref="IAgent"/>.</summary>
+        bool IsToolActorType(string typeName);
+
+        /// <summary>
+        /// Spawns an ephemeral tool actor, runs <see cref="ProcessPromptMessage"/>, awaits <see cref="ToolResult"/>, then stops the tool actor.
+        /// </summary>
+        Task<ToolResult> InvokeToolByPromptAsync(string toolTypeName, string prompt, string? invokingAgentId = null, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Spawns an ephemeral tool actor, sends a <see cref="ToolRequest"/> (same mailbox path as in-process tools), awaits <see cref="ToolResult"/>, then stops the tool actor.
+        /// </summary>
+        Task<ToolResult> InvokeToolRequestAsync(
+            string toolTypeName,
+            ToolRequest request,
+            string? invokingAgentId = null,
+            CancellationToken cancellationToken = default);
     }
 } 

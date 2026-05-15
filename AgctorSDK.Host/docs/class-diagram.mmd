@@ -53,12 +53,37 @@ classDiagram
     }
 
     class ToolsController {
-        -ToolInvoker _invoker
+        -IToolInvoker _invoker
+        -IToolAgentsInsightService _toolAgentsInsight
         +InvokeTool(toolId, request) ActionResult
         +ListTools() ActionResult
         +GetTool(toolId) ActionResult
+        +GetToolAgentAssociations() ActionResult
         +BatchInvoke(request) ActionResult
         +HealthCheck() ActionResult
+    }
+
+    class AgentsDefinitionsController {
+        -IToolAgentsInsightService _toolAgentsInsight
+        +GetDefinitions() ActionResult
+        +GetAgentToolUsage() ActionResult
+        +GetDefinitionById(id) ActionResult
+    }
+
+    class IToolAgentsInsightService {
+        <<interface>>
+        +GetInsightAsync() Task
+        +GetAgentsToolInsightAsync() Task
+    }
+
+    class ToolAgentsInsightService {
+        +GetInsightAsync() Task
+        +GetAgentsToolInsightAsync() Task
+    }
+
+    class AgctorToolCatalog {
+        +CreateDefault()
+        +GetAllEntries()
     }
 
     class TestController {
@@ -152,7 +177,7 @@ classDiagram
     }
 
     class ToolInvoker {
-        -IServiceProvider _provider
+        -AgctorToolCatalog _catalog
         +InvokeAsync(toolId, request) ToolResult
     }
 
@@ -195,6 +220,7 @@ classDiagram
     }
 
     IScenarioFactory <|.. ScenarioFactory
+    IToolAgentsInsightService <|.. ToolAgentsInsightService
     AgentsController --> MessageDispatcher : uses
     AgentsController --> AgentOutputStreamRegistry : uses
     MessageDispatcher --> AgentOutputStreamRegistry : publishes phases
@@ -203,6 +229,10 @@ classDiagram
     RuntimeController --> UserRuntimeSettingsService : uses
     RuntimeController --> IActorRuntimeAdapterFactory : uses
     ToolsController --> ToolInvoker : uses
+    ToolsController --> IToolAgentsInsightService : uses
+    AgentsDefinitionsController --> IToolAgentsInsightService : uses
+    ToolAgentsInsightService --> AgctorToolCatalog : reads
+    ToolInvoker --> AgctorToolCatalog : reads
     TestController --> IScenarioFactory : uses
     TestController --> CurrentScenarioStore : uses
     CodeGraphController --> ICodeGraphContextAccessor : uses

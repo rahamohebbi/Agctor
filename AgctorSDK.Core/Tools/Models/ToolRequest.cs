@@ -15,4 +15,4 @@ namespace AgctorSDK.Core.Tools.Models
             Parameters = new Dictionary<string, object>();
         }
     }
-} 
+}

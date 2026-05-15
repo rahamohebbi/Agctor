@@ -13,6 +13,8 @@
     let agentsData = [];
     let definitionsData = [];
     let scenariosData = [];
+    /** GET /api/agents/definitions/tool-usage — host tools per YAML / C# agent (dynamic). */
+    let agentToolsInsight = null;
     let currentScenario = null;
     let lastLoadedAt = null;
     const backendErrors = new Map();
@@ -61,13 +63,14 @@
             });
     }
 
-    function buildRenderSignature(config, agents, current, definitions, scenarios) {
+    function buildRenderSignature(config, agents, current, definitions, scenarios, agentTools) {
         return JSON.stringify({
             config: config || {},
             agents: Array.isArray(agents) ? agents : [],
             current: current || null,
             definitions: Array.isArray(definitions) ? definitions : [],
             scenarios: Array.isArray(scenarios) ? scenarios : [],
+            agentTools: agentTools && Array.isArray(agentTools.agents) ? agentTools.agents : [],
             errors: stableErrorsSnapshot()
         });
     }
@@ -303,6 +306,28 @@
         if (data.kind === 'csharp-type') {
             pmDrawerMode = 'view-csharp';
             const det = data.detail || {};
+            const cTools = toolsForDefinitionId(data.id, agentToolsInsight);
+            let toolsBlock = '';
+            if (cTools.length) {
+                toolsBlock =
+                    '<dt class="text-gray-500 pt-2">Host tools</dt><dd class="mt-1 flex flex-wrap gap-1">' +
+                    cTools
+                        .map(function (t) {
+                            const tip = [t.displayName || t.clrTypeName, t.description].filter(Boolean).join(' — ');
+                            return (
+                                '<span class="inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" title="' +
+                                esc(tip) +
+                                '">' +
+                                esc(t.displayName || t.clrTypeName) +
+                                '</span>'
+                            );
+                        })
+                        .join('') +
+                    '</dd>';
+            } else {
+                toolsBlock =
+                    '<dt class="text-gray-500 pt-2">Host tools</dt><dd class="text-xs text-gray-500 dark:text-gray-400">None resolved for this type (see Tool access section).</dd>';
+            }
             if (!drawerPanel) return;
             drawerPanel.innerHTML =
                 '<div class="p-6 space-y-4">' +
@@ -319,7 +344,9 @@
                 '</dd>' +
                 '<dt class="text-gray-500">Enabled</dt><dd>' +
                 esc(String(det.enabled !== false)) +
-                '</dd></dl>' +
+                '</dd>' +
+                toolsBlock +
+                '</dl>' +
                 '</div>';
             openPmDrawer();
             return;
@@ -398,7 +425,161 @@
         return map;
     }
 
-    function render(config, agents, current, definitions, scenarios) {
+    /** Tools linked to a C# agent type (same keys as runtime toggles). */
+    function csharpToolsForType(typeName, insight) {
+        if (!insight || !Array.isArray(insight.agents)) return [];
+        const row = insight.agents.find(function (a) {
+            return a.kind === 'csharp-agent-type' && a.agentId === typeName;
+        });
+        return row && Array.isArray(row.tools) ? row.tools : [];
+    }
+
+    /** Card grid: each agent with tool chips + optional unmapped YAML tokens. */
+    function renderAgentToolsSection(insight) {
+        const errKey = 'agent-tool-usage-api';
+        const err = backendErrors.has(errKey) ? backendErrors.get(errKey) : null;
+        if (err) {
+            return (
+                '<section class="mb-6 p-4 rounded-xl border border-red-200 bg-red-50/90 dark:bg-red-900/20 dark:border-red-800">' +
+                '<h2 class="text-sm font-semibold text-red-900 dark:text-red-100">Tool access by agent</h2>' +
+                '<p class="mt-2 text-sm text-red-800 dark:text-red-200">' +
+                esc(err) +
+                '</p></section>'
+            );
+        }
+        const agents = insight && Array.isArray(insight.agents) ? insight.agents : [];
+        if (!agents.length) {
+            return (
+                '<section class="mb-6 p-6 rounded-xl border border-dashed border-gray-300 bg-gray-50/80 dark:border-gray-600 dark:bg-gray-800/50">' +
+                '<h2 class="text-base font-semibold text-gray-900 dark:text-white">Tool access by agent</h2>' +
+                '<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">No mappings returned yet. Open a project with agent YAML or ensure tool actors are registered.</p></section>'
+            );
+        }
+        const cards = agents
+            .map(function (a) {
+                const isYaml = a.kind === 'project-memory-yaml';
+                const kindBadge =
+                    '<span class="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ' +
+                    (isYaml
+                        ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100'
+                        : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100') +
+                    '">' +
+                    (isYaml ? 'YAML' : 'C#') +
+                    '</span>';
+                const tools = Array.isArray(a.tools) ? a.tools : [];
+                const pills =
+                    tools.length === 0
+                        ? ''
+                        : '<div class="mt-3 flex flex-wrap gap-1.5" role="list">' +
+                          tools
+                              .map(function (t) {
+                                  const tip = [t.displayName || t.clrTypeName, t.description, t.detail].filter(Boolean).join(' — ');
+                                  const rest = t.httpPrimaryId
+                                      ? '<span class="ml-1 text-[10px] opacity-75 font-normal">' + esc(t.httpPrimaryId) + '</span>'
+                                      : '';
+                                  return (
+                                      '<span role="listitem" class="inline-flex max-w-full items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" title="' +
+                                      esc(tip) +
+                                      '">' +
+                                      '<span class="truncate">' +
+                                      esc(t.displayName || t.clrTypeName) +
+                                      '</span>' +
+                                      rest +
+                                      '</span>'
+                                  );
+                              })
+                              .join('') +
+                          '</div>';
+                const unmapped = Array.isArray(a.unmappedYamlAllowTokens) ? a.unmappedYamlAllowTokens : [];
+                const unmappedBlock =
+                    unmapped.length === 0
+                        ? ''
+                        : '<div class="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-2 dark:border-amber-800/60 dark:bg-amber-900/20">' +
+                          '<p class="text-[11px] font-medium text-amber-900 dark:text-amber-100">Allow-list tokens not mapped to a host tool</p>' +
+                          '<div class="mt-1 flex flex-wrap gap-1">' +
+                          unmapped
+                              .map(function (tok) {
+                                  return '<code class="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-amber-950 dark:bg-gray-900 dark:text-amber-100">' + esc(tok) + '</code>';
+                              })
+                              .join('') +
+                          '</div></div>';
+                const foot =
+                    tools.length === 0 && unmapped.length === 0
+                        ? '<p class="mt-3 text-xs text-gray-500 dark:text-gray-400">No host tools linked for this agent.</p>'
+                        : '';
+                return (
+                    '<article class="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800/90">' +
+                    '<div class="flex items-start justify-between gap-2">' +
+                    '<div class="min-w-0">' +
+                    '<h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white" title="' +
+                    esc(a.agentLabel || a.agentId) +
+                    '">' +
+                    esc(a.agentLabel || a.agentId) +
+                    '</h3>' +
+                    '<p class="mt-0.5 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">' +
+                    esc(a.agentId) +
+                    '</p></div>' +
+                    kindBadge +
+                    '</div>' +
+                    pills +
+                    unmappedBlock +
+                    foot +
+                    '</article>'
+                );
+            })
+            .join('');
+        return (
+            '<section class="mb-6" aria-labelledby="agent-tools-heading">' +
+            '<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">' +
+            '<div>' +
+            '<h2 id="agent-tools-heading" class="text-base font-semibold text-gray-900 dark:text-white">Tool access by agent</h2>' +
+            '<p class="mt-1 max-w-3xl text-xs leading-relaxed text-gray-600 dark:text-gray-400">Host tools each agent may use, derived dynamically from project-memory <span class="font-mono text-[10px]">tools.allow</span> and known C# routing. Open the Tools page for the inverse view (tool → agents).</p>' +
+            '</div>' +
+            '<a href="/Dashboard/Tools" class="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">Tools dashboard</a>' +
+            '</div>' +
+            '<div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">' +
+            cards +
+            '</div></section>'
+        );
+    }
+
+    /** Lookup tool list for a definition id (YAML id or C# type name). */
+    function toolsForDefinitionId(defId, insight) {
+        if (!insight || !Array.isArray(insight.agents)) return [];
+        const row = insight.agents.find(function (a) {
+            return a.agentId === defId;
+        });
+        return row && Array.isArray(row.tools) ? row.tools : [];
+    }
+
+    function renderDefinitionToolsCell(defId, insight) {
+        const tools = toolsForDefinitionId(defId, insight);
+        if (!tools.length) {
+            return '<td class="px-6 py-4 text-xs text-gray-400 dark:text-gray-500">—</td>';
+        }
+        const title = tools
+            .map(function (t) {
+                return t.displayName || t.clrTypeName;
+            })
+            .join(', ');
+        const preview = tools
+            .slice(0, 2)
+            .map(function (t) {
+                return esc(t.displayName || t.clrTypeName);
+            })
+            .join('<span class="text-gray-300 dark:text-gray-600"> · </span>');
+        const more = tools.length > 2 ? ' <span class="text-gray-400">+' + String(tools.length - 2) + '</span>' : '';
+        return (
+            '<td class="px-6 py-4 text-xs text-gray-800 dark:text-gray-200 max-w-[10rem]" title="' +
+            esc(title) +
+            '">' +
+            preview +
+            more +
+            '</td>'
+        );
+    }
+
+    function render(config, agents, current, definitions, scenarios, agentTools) {
         const list = Array.isArray(agents) ? agents : [];
         const defs = Array.isArray(definitions) ? definitions : [];
         const scs = Array.isArray(scenarios) ? scenarios : [];
@@ -423,6 +604,26 @@
         for (const typeName of typeKeys) {
             const enabled = enablement[typeName] !== false;
             const instances = byType.get(typeName) || [];
+            const ctTools = csharpToolsForType(typeName, agentTools);
+            let csharpToolsHtml = '';
+            if (ctTools.length) {
+                csharpToolsHtml =
+                    '<div class="mt-2 flex max-w-md flex-wrap gap-1" role="list" aria-label="Host tools for this type">' +
+                    ctTools
+                        .map(function (t) {
+                            const tip = [t.displayName || t.clrTypeName, t.description].filter(Boolean).join(' — ');
+                            return (
+                                '<span role="listitem" class="inline-flex max-w-full items-center rounded-md border border-indigo-100 bg-indigo-50/90 px-1.5 py-0.5 text-[11px] font-medium text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100" title="' +
+                                esc(tip) +
+                                '">' +
+                                '<span class="truncate">' +
+                                esc(t.displayName || t.clrTypeName) +
+                                '</span></span>'
+                            );
+                        })
+                        .join('') +
+                    '</div>';
+            }
             const countBadge =
                 '<span class="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-gray-700 dark:text-gray-300">' +
                 instances.length +
@@ -451,6 +652,7 @@
                 '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
                 '<th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">' +
                 esc(typeName) +
+                csharpToolsHtml +
                 '</th>' +
                 '<td class="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs break-all max-w-md">' +
                 esc(agentTypes[typeName] || '') +
@@ -511,6 +713,7 @@
                 '<td class="px-6 py-4 text-xs font-mono break-all max-w-md">' + esc(d.source || '') + '</td>' +
                 '<td class="px-6 py-4 text-xs">' + esc(d.state || '') + '</td>' +
                 '<td class="px-6 py-4 text-xs">' + runtimeBadge + '</td>' +
+                renderDefinitionToolsCell(d.id, agentTools) +
                 '<td class="px-6 py-4 text-xs break-all max-w-md">' + esc(meta) + '</td>' +
                 '<td class="px-6 py-4 text-xs whitespace-nowrap">' +
                 yamlActions +
@@ -520,7 +723,7 @@
         if (!defRows) {
             defRows =
                 '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
-                '<td class="px-6 py-4 text-xs text-gray-500 dark:text-gray-400" colspan="8">No definitions found.</td>' +
+                '<td class="px-6 py-4 text-xs text-gray-500 dark:text-gray-400" colspan="9">No definitions found.</td>' +
                 '</tr>';
         }
 
@@ -568,6 +771,7 @@
             '</tr></thead><tbody>' +
             rows +
             '</tbody></table></div>' +
+            renderAgentToolsSection(agentTools) +
             '<div class="mt-4 p-4 rounded-lg bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800">' +
             '<p class="text-sm font-medium text-indigo-900 dark:text-indigo-100">Runtime vs non-runtime definitions</p>' +
             '<p class="mt-1 text-xs text-indigo-800 dark:text-indigo-200">' +
@@ -591,6 +795,7 @@
             '<th scope="col" class="px-6 py-3">Source</th>' +
             '<th scope="col" class="px-6 py-3">State</th>' +
             '<th scope="col" class="px-6 py-3">Runtime</th>' +
+            '<th scope="col" class="px-6 py-3">Host tools</th>' +
             '<th scope="col" class="px-6 py-3">Metadata</th>' +
             '<th scope="col" class="px-6 py-3">Actions</th>' +
             '</tr></thead><tbody>' +
@@ -630,23 +835,33 @@
     }
 
     async function refreshRuntimeData(showInlineError, forceRender) {
-        const [agents, current, defs, scenarios] = await Promise.all([
+        const [agents, current, defs, scenarios, toolUsage] = await Promise.all([
             fetchJson('/api/agents', 'agents-api', agentsData),
             fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario),
             fetchJson('/api/agents/definitions', 'agent-definitions-api', definitionsData),
-            fetchJson('/api/scenarios', 'scenarios-api', scenariosData)
+            fetchJson('/api/scenarios', 'scenarios-api', scenariosData),
+            fetchJson('/api/agents/definitions/tool-usage', 'agent-tool-usage-api', agentToolsInsight)
         ]);
 
         agentsData = Array.isArray(agents) ? agents : [];
         currentScenario = current;
         definitionsData = Array.isArray(defs) ? defs : [];
         scenariosData = Array.isArray(scenarios) ? scenarios : [];
+        agentToolsInsight =
+            toolUsage && typeof toolUsage === 'object' && Array.isArray(toolUsage.agents) ? toolUsage : { agents: [] };
 
         if (configData) {
-            const nextSignature = buildRenderSignature(configData, agentsData, currentScenario, definitionsData, scenariosData);
+            const nextSignature = buildRenderSignature(
+                configData,
+                agentsData,
+                currentScenario,
+                definitionsData,
+                scenariosData,
+                agentToolsInsight
+            );
             if (forceRender || nextSignature !== lastRenderSignature) {
                 lastLoadedAt = Date.now();
-                render(configData, agentsData, currentScenario, definitionsData, scenariosData);
+                render(configData, agentsData, currentScenario, definitionsData, scenariosData, agentToolsInsight);
                 lastRenderSignature = nextSignature;
             }
         }

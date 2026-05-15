@@ -228,9 +228,9 @@ EndGlobal
                 var consoleLogger = new AgctorConsoleLogger();
                 var sp = new Microsoft.Extensions.DependencyInjection.ServiceCollection().BuildServiceProvider();
                 var agentFactory = new AgctorSDK.Core.Agents.AgentFactory(_runtimeAdapter, sp, consoleLogger, _agentRegistry);
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CodeEditorTool>();
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
-                agentFactory.RegisterAgentType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
+                agentFactory.RegisterToolActorType<AgctorSDK.Core.Tools.Implementations.CodeEditorTool>();
+                agentFactory.RegisterToolActorType<AgctorSDK.Core.Tools.Implementations.CompileTool>();
+                agentFactory.RegisterToolActorType<AgctorSDK.Core.Tools.Implementations.TestRunnerTool>();
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.CoderAgent>();
                 agentFactory.RegisterAgentType<AgctorSDK.CodeGraph.Agents.RefactorAgent>();
                 agentFactory.RegisterAgentType<AgctorSDK.Core.Agents.SessionCoordinatorAgent>();

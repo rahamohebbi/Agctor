@@ -3,8 +3,6 @@ using System.Threading.Channels;
 using Microsoft.AspNetCore.Mvc;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Tools;
-using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Streaming;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
@@ -620,8 +618,6 @@ namespace AgctorSDK.Host.Controllers
                 "RootAgent" => await _agentFactory.SpawnAgentAsync<Agent>(prompt, parentAgentId, agentId),
                 "Agent" => await _agentFactory.SpawnAgentAsync<Agent>(prompt, parentAgentId, agentId),
                 "LLMAgent" => await _agentFactory.SpawnAgentAsync<LLMAgent>(prompt, parentAgentId, agentId),
-                "CodeExecutorTool" => await _agentFactory.SpawnAgentAsync<CodeExecutorTool>(prompt, parentAgentId, agentId),
-                "CodeEditorTool" => await _agentFactory.SpawnAgentAsync<CodeEditorTool>(prompt, parentAgentId, agentId),
                 _ => throw new ArgumentException($"Unknown agent type: {agentType}")
             };
 

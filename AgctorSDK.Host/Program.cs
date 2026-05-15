@@ -1,7 +1,6 @@
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Services.ProjectMemory;
 using AgctorSDK.Host.Services.Scenarios;
@@ -70,9 +69,6 @@ builder.Services.Configure<AgentTypeOptions>(options =>
 {
     options.RegisterAgentType("Agent", typeof(Agent));
     options.RegisterAgentType("LLMAgent", typeof(LLMAgent));
-    options.RegisterAgentType("CodeExecutorTool", typeof(CodeExecutorTool));
-    options.RegisterAgentType("CompileTool", typeof(CompileTool));
-    options.RegisterAgentType("TestRunnerTool", typeof(TestRunnerTool));
     options.RegisterAgentType("CoderAgent", typeof(CoderAgent));
     options.RegisterAgentType("SessionCoordinatorAgent", typeof(SessionCoordinatorAgent));
     options.RegisterAgentType("SessionMemoryAgent", typeof(SessionMemoryAgent));
@@ -157,6 +153,8 @@ builder.Services.AddAgctorVisualization();
 builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
 builder.Services.AddSingleton<IAgentOutputStreamRegistry, AgentOutputStreamRegistry>();
 builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
+builder.Services.AddSingleton(_ => AgctorToolCatalog.CreateDefault());
+builder.Services.AddSingleton<IToolAgentsInsightService, ToolAgentsInsightService>();
 builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
 var sessionStorePath = builder.Configuration.GetValue<string>("Agctor:SessionStorePath")
     ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");
@@ -295,6 +293,9 @@ catch (Exception resEx)
 
 // Keep session coordination available even before a demo scenario is applied.
 var startupAgentFactory = app.Services.GetRequiredService<IAgentFactory>();
+// Tools are IToolActor instances — registered from AgctorToolCatalog (same list as HTTP discovery + extra actors).
+var toolCatalog = app.Services.GetRequiredService<AgctorToolCatalog>();
+toolCatalog.RegisterToolActorTypes(startupAgentFactory);
 var startupAgentRegistry = app.Services.GetRequiredService<IAgentRegistry>();
 var startupEnablement = app.Services.GetRequiredService<IAgentTypeEnablementService>();
 if (await startupAgentRegistry.GetAgentByIdAsync("session-coordinator-agent") == null

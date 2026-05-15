@@ -87,9 +87,9 @@ namespace AgctorSDK.Core.IntegrationTests
             // Use the real AgentFactory
             var agentFactory = new AgentFactory(runtime, serviceProvider, logger, agentRegistry);
 
-            TestContext.WriteLine("Registering agent types...");
-            agentFactory.RegisterAgentType<CodeEditorTool>();
-            agentFactory.RegisterAgentType<CodeExecutorTool>();
+            TestContext.WriteLine("Registering agent and tool types...");
+            agentFactory.RegisterToolActorType<CodeEditorTool>();
+            agentFactory.RegisterToolActorType<CodeExecutorTool>();
             agentFactory.RegisterAgentType<LLMAgent>();
 
             // Step 2: Define the task for the root agent (code generator)

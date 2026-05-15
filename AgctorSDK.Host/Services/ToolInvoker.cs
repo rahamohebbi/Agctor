@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
+using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Configuration;
 
@@ -69,60 +71,28 @@ namespace AgctorSDK.Host.Services
     }
 
     /// <summary>
-    /// Implementation of IToolInvoker that directly executes tools from the Core framework.
-    /// Provides isolated tool execution following Actor Model principles.
+    /// HTTP bridge: discovery metadata comes from <see cref="AgctorToolCatalog"/>; execution goes through
+    /// <see cref="IAgentFactory.InvokeToolRequestAsync"/> so the same tool actors as agents use handle requests.
     /// </summary>
     public class ToolInvoker : IToolInvoker
     {
+        /// <summary>Handled in-process — never sent to <see cref="IAgentFactory"/>.</summary>
+        private const string SimulatedFileSystemOutsideRoot = "__http_file_system_simulated__";
+
         private readonly ILogger<ToolInvoker> _logger;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IAgentFactory _agentFactory;
+        private readonly AgctorToolCatalog _catalog;
         private readonly string _generatedCodeRoot;
 
-        // Static registry of available tools (can be expanded to be dynamic)
-        private static readonly Dictionary<string, ToolInfo> _availableTools = new()
-        {
-            ["file-system"] = new ToolInfo
-            {
-                Id = "file-system",
-                Name = "File System Tool",
-                Description = "Performs file system operations like read, write, list directories",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["operation"] = "string: read, write, list, delete",
-                    ["path"] = "string: file or directory path",
-                    ["content"] = "string: content for write operations (optional)"
-                }
-            },
-            ["code-executor"] = new ToolInfo
-            {
-                Id = "code-executor",
-                Name = "Code Executor Tool",
-                Description = "Executes code in various languages (Python, C#, etc.)",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["language"] = "string: python, csharp, javascript",
-                    ["code"] = "string: code to execute",
-                    ["timeout"] = "int: execution timeout in seconds (optional)"
-                }
-            },
-            ["code-editor"] = new ToolInfo
-            {
-                Id = "code-editor",
-                Name = "Code Editor Tool",
-                Description = "Edits and manipulates code files",
-                Parameters = new Dictionary<string, object>
-                {
-                    ["operation"] = "string: edit, format, analyze",
-                    ["file"] = "string: file path",
-                    ["changes"] = "object: changes to apply (optional)"
-                }
-            }
-        };
-
-        public ToolInvoker(ILogger<ToolInvoker> logger, IServiceProvider serviceProvider, IConfiguration configuration)
+        public ToolInvoker(
+            ILogger<ToolInvoker> logger,
+            IAgentFactory agentFactory,
+            AgctorToolCatalog catalog,
+            IConfiguration configuration)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
+            _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
             var configuredRoot = configuration.GetValue<string>("Agctor:GeneratedCodeRoot");
             _generatedCodeRoot = string.IsNullOrWhiteSpace(configuredRoot)
                 ? Path.Combine(Path.GetTempPath(), "agctor-generated-code")
@@ -130,10 +100,7 @@ namespace AgctorSDK.Host.Services
             Directory.CreateDirectory(_generatedCodeRoot);
         }
 
-        /// <summary>
-        /// Invokes a tool directly with the provided parameters.
-        /// Implements proper error handling and timeout management.
-        /// </summary>
+        /// <inheritdoc />
         public async Task<ToolInvocationResponse> InvokeToolAsync(string toolId, ToolInvocationRequest request, CancellationToken cancellationToken = default)
         {
             var invocationId = Guid.NewGuid().ToString();
@@ -143,8 +110,7 @@ namespace AgctorSDK.Host.Services
 
             try
             {
-                // Validate tool exists
-                if (!_availableTools.ContainsKey(toolId))
+                if (!_catalog.TryGetHttpEntry(toolId, out var entry))
                 {
                     _logger.LogWarning("Tool {ToolId} not found", toolId);
                     return new ToolInvocationResponse
@@ -156,7 +122,6 @@ namespace AgctorSDK.Host.Services
                     };
                 }
 
-                // Validate parameters
                 if (request.Parameters == null || request.Parameters.Count == 0)
                 {
                     _logger.LogWarning("No parameters provided for tool {ToolId}", toolId);
@@ -169,25 +134,59 @@ namespace AgctorSDK.Host.Services
                     };
                 }
 
-                // Setup timeout
                 var timeout = request.TimeoutSeconds.HasValue
                     ? TimeSpan.FromSeconds(request.TimeoutSeconds.Value)
-                    : TimeSpan.FromMinutes(5); // Default 5 minute timeout
+                    : TimeSpan.FromMinutes(5);
 
                 using var timeoutCts = new CancellationTokenSource(timeout);
                 using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
-                // Execute the tool
-                var result = await ExecuteToolAsync(toolId, request.Parameters, request.Context, combinedCts.Token);
+                var toolRequest = BuildToolRequest(entry.PrimaryId, request.Parameters);
+                if (toolRequest == null)
+                {
+                    return new ToolInvocationResponse
+                    {
+                        InvocationId = invocationId,
+                        Status = ToolExecutionStatus.InvalidParameters,
+                        ErrorMessage = "Unsupported parameter combination for this tool.",
+                        ExecutionTimeMs = stopwatch.ElapsedMilliseconds
+                    };
+                }
+
+                ToolResult toolResult;
+                if (string.Equals(toolRequest.Operation, SimulatedFileSystemOutsideRoot, StringComparison.Ordinal))
+                {
+                    toolResult = BuildSimulatedOutsideRootFileSystemResult(toolRequest.Parameters);
+                }
+                else
+                {
+                    toolResult = await _agentFactory
+                        .InvokeToolRequestAsync(entry.ClrTypeName, toolRequest, invokingAgentId: null, combinedCts.Token)
+                        .ConfigureAwait(false);
+                }
 
                 stopwatch.Stop();
+
+                if (!toolResult.IsSuccess)
+                {
+                    _logger.LogWarning("Tool {ToolId} returned error: {Error}", toolId, toolResult.Error);
+                    return new ToolInvocationResponse
+                    {
+                        InvocationId = invocationId,
+                        Status = ToolExecutionStatus.Failed,
+                        ErrorMessage = toolResult.Error,
+                        Result = PackageToolOutput(toolResult),
+                        ExecutionTimeMs = Math.Max(1, stopwatch.ElapsedMilliseconds)
+                    };
+                }
+
                 _logger.LogInformation("Tool {ToolId} executed successfully in {ElapsedMs}ms", toolId, stopwatch.ElapsedMilliseconds);
 
                 return new ToolInvocationResponse
                 {
                     InvocationId = invocationId,
                     Status = ToolExecutionStatus.Success,
-                    Result = result,
+                    Result = PackageToolOutput(toolResult),
                     ExecutionTimeMs = Math.Max(1, stopwatch.ElapsedMilliseconds)
                 };
             }
@@ -229,311 +228,163 @@ namespace AgctorSDK.Host.Services
             }
         }
 
-        /// <summary>
-        /// Gets the list of available tools.
-        /// </summary>
-        public async Task<IEnumerable<string>> GetAvailableToolsAsync(CancellationToken cancellationToken = default)
+        /// <inheritdoc />
+        public Task<IEnumerable<string>> GetAvailableToolsAsync(CancellationToken cancellationToken = default)
         {
-            await Task.CompletedTask; // Placeholder for async consistency
-            return _availableTools.Keys.ToList();
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IEnumerable<string>>(_catalog.GetHttpToolPrimaryIds());
+        }
+
+        /// <inheritdoc />
+        public Task<ToolInfo?> GetToolInfoAsync(string toolId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(_catalog.TryGetHttpEntry(toolId, out var e) ? e.Discovery : null);
         }
 
         /// <summary>
-        /// Gets information about a specific tool.
+        /// Maps legacy HTTP parameters to a <see cref="ToolRequest"/>. Returns null when the request cannot be mapped.
         /// </summary>
-        public async Task<ToolInfo?> GetToolInfoAsync(string toolId, CancellationToken cancellationToken = default)
+        private ToolRequest? BuildToolRequest(string primaryId, Dictionary<string, object> parameters)
         {
-            await Task.CompletedTask; // Placeholder for async consistency
-            return _availableTools.TryGetValue(toolId, out var toolInfo) ? toolInfo : null;
-        }
-
-        /// <summary>
-        /// Executes the specified tool with the given parameters.
-        /// This is a simplified implementation that can be extended with actual tool integration.
-        /// </summary>
-        private async Task<object> ExecuteToolAsync(string toolId, Dictionary<string, object> parameters, Dictionary<string, object>? context, CancellationToken cancellationToken)
-        {
-            // This is a simplified implementation for demonstration
-            // In a real implementation, this would integrate with the actual tool actors from AgctorSDK.Core
-            
-            _logger.LogDebug("Executing tool {ToolId} with parameters: {@Parameters}", toolId, parameters);
-
-            return toolId switch
+            return primaryId switch
             {
-                "file-system" => await ExecuteFileSystemTool(parameters, cancellationToken),
-                "code-executor" => await ExecuteCodeExecutorTool(parameters, cancellationToken),
-                "code-editor" => await ExecuteCodeEditorTool(parameters, cancellationToken),
-                _ => throw new NotSupportedException($"Tool '{toolId}' is not supported")
+                "file-system" => BuildFileSystemRequest(parameters),
+                "code-executor" => BuildCodeExecutorRequest(parameters),
+                "code-editor" => BuildCodeEditorRequest(parameters),
+                _ => null
             };
         }
 
         /// <summary>
-        /// File system tool execution using a deterministic root directory.
+        /// Outside the generated-code root we keep the previous deterministic stub so batch/concurrency tests stay stable.
         /// </summary>
-        private async Task<object> ExecuteFileSystemTool(Dictionary<string, object> parameters, CancellationToken cancellationToken)
+        private ToolRequest? BuildFileSystemRequest(Dictionary<string, object> parameters)
         {
-            await Task.Yield();
-            cancellationToken.ThrowIfCancellationRequested();
-
             var operation = GetString(parameters, "operation")?.ToLowerInvariant() ?? "list";
             var rawPath = GetString(parameters, "path") ?? ".";
             var resolvedPath = ResolvePath(rawPath);
-            var useRealFileSystem = IsUnderGeneratedRoot(resolvedPath);
 
-            if (!useRealFileSystem)
+            if (!IsUnderGeneratedRoot(resolvedPath))
             {
-                return new
+                return new ToolRequest
                 {
-                    operation,
-                    path = resolvedPath,
-                    mode = "simulated-outside-root",
-                    rootPath = _generatedCodeRoot,
-                    result = $"Path is outside deterministic root. Simulated {operation} operation.",
-                    timestamp = DateTimeOffset.UtcNow
+                    ToolName = "FileSystemTool",
+                    Operation = SimulatedFileSystemOutsideRoot,
+                    Parameters = new Dictionary<string, object>
+                    {
+                        ["operation"] = operation,
+                        ["path"] = resolvedPath,
+                        ["rootPath"] = _generatedCodeRoot
+                    }
                 };
             }
 
-            switch (operation)
+            return operation switch
             {
-                case "write":
+                "read" => new ToolRequest
+                {
+                    ToolName = "FileSystemTool",
+                    Operation = "ReadFile",
+                    Parameters = new Dictionary<string, object> { ["path"] = resolvedPath }
+                },
+                "write" => new ToolRequest
+                {
+                    ToolName = "FileSystemTool",
+                    Operation = "WriteFile",
+                    Parameters = new Dictionary<string, object>
                     {
-                        var content = GetString(parameters, "content") ?? string.Empty;
-                        var dir = Path.GetDirectoryName(resolvedPath);
-                        if (!string.IsNullOrEmpty(dir))
-                        {
-                            Directory.CreateDirectory(dir);
-                        }
-
-                        await File.WriteAllTextAsync(resolvedPath, content, cancellationToken);
-                        return new
-                        {
-                            operation = "write",
-                            path = resolvedPath,
-                            bytesWritten = content.Length,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
+                        ["path"] = resolvedPath,
+                        ["content"] = GetString(parameters, "content") ?? string.Empty
                     }
-
-                case "read":
-                    {
-                        if (!File.Exists(resolvedPath))
-                        {
-                            return new
-                            {
-                                operation = "read",
-                                path = resolvedPath,
-                                exists = false,
-                                content = (string?)null,
-                                rootPath = _generatedCodeRoot,
-                                timestamp = DateTimeOffset.UtcNow
-                            };
-                        }
-
-                        var content = await File.ReadAllTextAsync(resolvedPath, cancellationToken);
-                        return new
-                        {
-                            operation = "read",
-                            path = resolvedPath,
-                            exists = true,
-                            content,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                case "list":
-                    {
-                        var targetDir = Directory.Exists(resolvedPath)
-                            ? resolvedPath
-                            : Path.GetDirectoryName(resolvedPath) ?? _generatedCodeRoot;
-                        Directory.CreateDirectory(targetDir);
-                        var entries = Directory.EnumerateFileSystemEntries(targetDir)
-                            .Select(Path.GetFileName)
-                            .Where(name => !string.IsNullOrWhiteSpace(name))
-                            .ToList();
-                        return new
-                        {
-                            operation = "list",
-                            path = targetDir,
-                            entries,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                case "delete":
-                    {
-                        var deleted = false;
-                        if (File.Exists(resolvedPath))
-                        {
-                            File.Delete(resolvedPath);
-                            deleted = true;
-                        }
-                        else if (Directory.Exists(resolvedPath))
-                        {
-                            Directory.Delete(resolvedPath, recursive: true);
-                            deleted = true;
-                        }
-
-                        return new
-                        {
-                            operation = "delete",
-                            path = resolvedPath,
-                            deleted,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                default:
-                    throw new ArgumentException($"Unsupported file-system operation '{operation}'.");
-            }
-        }
-
-        /// <summary>
-        /// Simulated code executor tool execution.
-        /// In production, this would integrate with the actual CodeExecutorTool from Core.
-        /// </summary>
-        private async Task<object> ExecuteCodeExecutorTool(Dictionary<string, object> parameters, CancellationToken cancellationToken)
-        {
-            await Task.Delay(200, cancellationToken); // Simulate work
-            
-            var language = parameters.TryGetValue("language", out var lang) ? lang.ToString() : "python";
-            var code = parameters.TryGetValue("code", out var c) ? c.ToString() : "";
-
-            return new
-            {
-                language,
-                code,
-                output = $"Simulated execution of {language} code",
-                exitCode = 0,
-                timestamp = DateTimeOffset.UtcNow
+                },
+                "list" => new ToolRequest
+                {
+                    ToolName = "FileSystemTool",
+                    Operation = "ListDirectory",
+                    Parameters = new Dictionary<string, object> { ["path"] = resolvedPath }
+                },
+                "delete" => new ToolRequest
+                {
+                    ToolName = "FileSystemTool",
+                    Operation = "DeletePath",
+                    Parameters = new Dictionary<string, object> { ["path"] = resolvedPath }
+                },
+                _ => null
             };
         }
 
-        /// <summary>
-        /// Basic code editor operations over files within deterministic root.
-        /// </summary>
-        private async Task<object> ExecuteCodeEditorTool(Dictionary<string, object> parameters, CancellationToken cancellationToken)
+        private static ToolResult BuildSimulatedOutsideRootFileSystemResult(IDictionary<string, object> parameters)
         {
-            await Task.Yield();
-            cancellationToken.ThrowIfCancellationRequested();
+            var op = GetString(parameters, "operation") ?? "list";
+            var path = GetString(parameters, "path") ?? string.Empty;
+            var root = GetString(parameters, "rootPath") ?? string.Empty;
+            var payload = new
+            {
+                operation = op,
+                path,
+                mode = "simulated-outside-root",
+                rootPath = root,
+                result = $"Path is outside deterministic root. Simulated {op} operation.",
+                timestamp = DateTimeOffset.UtcNow
+            };
+            return new ToolResult { IsSuccess = true, Output = JsonSerializer.Serialize(payload) };
+        }
 
+        private static ToolRequest BuildCodeExecutorRequest(Dictionary<string, object> parameters)
+        {
+            var language = GetString(parameters, "language") ?? "python";
+            var code = GetString(parameters, "code") ?? string.Empty;
+            return new ToolRequest
+            {
+                ToolName = "CodeExecutorTool",
+                Operation = "RunCode",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["language"] = language,
+                    ["code"] = code
+                }
+            };
+        }
+
+        private ToolRequest? BuildCodeEditorRequest(Dictionary<string, object> parameters)
+        {
             var operation = GetString(parameters, "operation")?.ToLowerInvariant() ?? "edit";
-            var rawFile = GetString(parameters, "file");
+            var rawFile = GetString(parameters, "file") ?? GetString(parameters, "path");
             if (string.IsNullOrWhiteSpace(rawFile))
             {
-                throw new ArgumentException("Parameter 'file' is required.");
+                return null;
             }
 
             var filePath = ResolvePath(rawFile);
 
-            switch (operation)
+            return operation switch
             {
-                case "edit":
-                    {
-                        var changes = GetObject(parameters, "changes");
-                        var fileExists = File.Exists(filePath);
-                        var content = fileExists
-                            ? await File.ReadAllTextAsync(filePath, cancellationToken)
-                            : string.Empty;
+                "format" => new ToolRequest
+                {
+                    ToolName = "CodeEditorTool",
+                    Operation = "FormatFile",
+                    Parameters = new Dictionary<string, object> { ["path"] = filePath }
+                },
+                _ => null
+            };
+        }
 
-                        var find = GetString(changes, "find");
-                        var replace = GetString(changes, "replace");
-
-                        string updated;
-                        if (!string.IsNullOrEmpty(find))
-                        {
-                            updated = content.Replace(find, replace ?? string.Empty, StringComparison.Ordinal);
-                        }
-                        else if (!string.IsNullOrEmpty(replace))
-                        {
-                            updated = replace;
-                        }
-                        else
-                        {
-                            throw new ArgumentException("Parameter 'changes' must include 'find' and/or 'replace'.");
-                        }
-
-                        var dir = Path.GetDirectoryName(filePath);
-                        if (!string.IsNullOrEmpty(dir))
-                        {
-                            Directory.CreateDirectory(dir);
-                        }
-
-                        await File.WriteAllTextAsync(filePath, updated, cancellationToken);
-                        return new
-                        {
-                            operation = "edit",
-                            file = filePath,
-                            created = !fileExists,
-                            changed = !string.Equals(content, updated, StringComparison.Ordinal),
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                case "analyze":
-                    {
-                        if (!File.Exists(filePath))
-                        {
-                            return new
-                            {
-                                operation = "analyze",
-                                file = filePath,
-                                exists = false,
-                                lines = 0,
-                                chars = 0,
-                                rootPath = _generatedCodeRoot,
-                                timestamp = DateTimeOffset.UtcNow
-                            };
-                        }
-
-                        var content = await File.ReadAllTextAsync(filePath, cancellationToken);
-                        var lines = content.Split('\n').Length;
-                        return new
-                        {
-                            operation = "analyze",
-                            file = filePath,
-                            exists = true,
-                            lines,
-                            chars = content.Length,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                case "format":
-                    {
-                        if (!File.Exists(filePath))
-                        {
-                            var dir = Path.GetDirectoryName(filePath);
-                            if (!string.IsNullOrEmpty(dir))
-                            {
-                                Directory.CreateDirectory(dir);
-                            }
-
-                            await File.WriteAllTextAsync(filePath, string.Empty, cancellationToken);
-                        }
-
-                        var content = await File.ReadAllTextAsync(filePath, cancellationToken);
-                        var normalized = string.Join(
-                            Environment.NewLine,
-                            content.Replace("\r\n", "\n").Split('\n').Select(line => line.TrimEnd()));
-                        await File.WriteAllTextAsync(filePath, normalized, cancellationToken);
-                        return new
-                        {
-                            operation = "format",
-                            file = filePath,
-                            rootPath = _generatedCodeRoot,
-                            timestamp = DateTimeOffset.UtcNow
-                        };
-                    }
-
-                default:
-                    throw new ArgumentException($"Unsupported code-editor operation '{operation}'.");
+        private static object? PackageToolOutput(ToolResult toolResult)
+        {
+            if (toolResult.Output is string s)
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize<JsonElement>(s);
+                }
+                catch (JsonException)
+                {
+                    return new { output = s, isSuccess = toolResult.IsSuccess, error = toolResult.Error };
+                }
             }
+
+            return new { output = toolResult.Output, isSuccess = toolResult.IsSuccess, error = toolResult.Error };
         }
 
         private string ResolvePath(string requestedPath)
@@ -543,8 +394,6 @@ namespace AgctorSDK.Host.Services
                 throw new ArgumentException("Path cannot be null or empty.");
             }
 
-            // Deterministic behavior: relative paths are always rooted under GeneratedCodeRoot.
-            // For compatibility with existing API clients/tests, absolute paths are honored as-is.
             if (Path.IsPathRooted(requestedPath))
             {
                 return Path.GetFullPath(requestedPath);
@@ -567,7 +416,7 @@ namespace AgctorSDK.Host.Services
             return candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal);
         }
 
-        private static string? GetString(Dictionary<string, object> values, string key)
+        private static string? GetString(IDictionary<string, object> values, string key)
         {
             if (!values.TryGetValue(key, out var value) || value == null)
             {
@@ -582,33 +431,5 @@ namespace AgctorSDK.Host.Services
                 _ => value.ToString()
             };
         }
-
-        private static Dictionary<string, object> GetObject(Dictionary<string, object> values, string key)
-        {
-            if (!values.TryGetValue(key, out var value) || value == null)
-            {
-                return new Dictionary<string, object>();
-            }
-
-            if (value is Dictionary<string, object> dict)
-            {
-                return dict;
-            }
-
-            if (value is JsonElement je && je.ValueKind == JsonValueKind.Object)
-            {
-                var parsed = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                foreach (var prop in je.EnumerateObject())
-                {
-                    parsed[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
-                        ? prop.Value.GetString() ?? string.Empty
-                        : prop.Value.ToString();
-                }
-
-                return parsed;
-            }
-
-            return new Dictionary<string, object>();
-        }
     }
-} 
+}

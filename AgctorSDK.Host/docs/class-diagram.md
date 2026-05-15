@@ -10,15 +10,17 @@ Controllers, services, and background workers in the Host project.
 
 ## Controllers
 - **AgentsController**: Agent CRUD + messaging via MessageDispatcher; agent-type enablement via IAgentTypeEnablementService (PRD-010)
+- **AgentsDefinitionsController**: Unified definitions catalog, YAML CRUD, and **`GET /api/agents/definitions/tool-usage`** for dashboard agent→tool insight
 - **GoalsController**: Goal CRUD via IGoalStore
-- **ToolsController**: Tool invocation via ToolInvoker
+- **ToolsController**: Tool invocation via ToolInvoker; **`GET /api/tools/agent-associations`** for dashboard tool→agent insight
 - **TestController**: Scenario setup via IScenarioFactory; optional scenario name from IConfiguration (PRD-010)
 - **CodeGraphController**: CodeGraph status, embeddings, and file preview
 - **RuntimeController**: `GET`/`PUT /api/runtime` — live adapter + catalog; Tier A persistence via IUserRuntimeSettingsService (PRD-012)
 
 ## Services
 - **MessageDispatcher**: Routes messages through actor runtime
-- **ToolInvoker**: Direct tool execution
+- **ToolInvoker**: Direct tool execution; resolves tools via **AgctorToolCatalog**
+- **ToolAgentsInsightService** (`IToolAgentsInsightService`): Builds tool↔agent and agent↔tool dashboard payloads from catalog + YAML + C# hints
 - **ScenarioFactory**: Creates test scenarios
 - **CurrentScenarioStore**: Persists the selected scenario for the dashboard session
 - **HostConfigurationService**: Aggregates `GET /api/Config` including dashboard scenario name and per-type enablement (PRD-010)
@@ -37,6 +39,8 @@ Razor **ViewComponents** under `ViewComponents/` render the CodeGraph dashboard 
 
 Client orchestration for the page lives in **`wwwroot/js/dashboard/codegraph-page.js`** (stable element `id`s match the component partials).
 
-The **Agents** dashboard page uses **`wwwroot/js/dashboard/agents-page.js`** (PRD-010).
+The **Agents** dashboard page uses **`wwwroot/js/dashboard/agents-page.js`** (PRD-010): loads **`/api/agents/definitions/tool-usage`** for the tool-access card grid, runtime chips, definitions column, and C# drawer.
+
+The **Tools** dashboard page uses **`wwwroot/js/dashboard/tools-page.js`**: loads **`/api/tools/agent-associations`** for the tool list and per-tool agent table.
 
 The **Actor runtime** dashboard page uses **`wwwroot/js/dashboard/actor-runtime-page.js`** (PRD-012).

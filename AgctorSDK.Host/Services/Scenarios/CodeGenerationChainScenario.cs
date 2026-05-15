@@ -1,7 +1,5 @@
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Agents;
-using AgctorSDK.Core.Tools;
-using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 
@@ -67,22 +65,9 @@ public class CodeGenerationChainScenario : IScenario, IScenarioDefinitionAware
             if (llmAgent != null)
             {
                 createdAgentIds.Add(llmAgentId);
-                agentRoles[llmAgentId] = "LLM Agent for code generation with CodeExecutor tool access";
+                agentRoles[llmAgentId] = "LLM Agent for code generation; CodeExecutor is invoked as a tool when needed (not a separate agent instance).";
                 _logger.LogInformation("Created LLM Agent: {AgentId}", llmAgentId);
             }
-
-            // 3. Create CodeExecutor Tool
-            var codeExecutorId = "code-executor-tool";
-            var codeExecutorTool = await CreateAgentAsync(codeExecutorId, "CodeExecutorTool");
-            if (codeExecutorTool != null)
-            {
-                createdAgentIds.Add(codeExecutorId);
-                agentRoles[codeExecutorId] = "Code execution tool for validating generated code";
-                _logger.LogInformation("Created CodeExecutor Tool: {AgentId}", codeExecutorId);
-            }
-
-            // Set up agent relationships (conceptually - this would depend on your agent implementation)
-            // In a full implementation, you might configure the LLM agent to know about and use the CodeExecutor tool
 
             _logger.LogInformation("Code generation chain scenario setup completed. Created {Count} agents", createdAgentIds.Count);
 
@@ -124,7 +109,6 @@ public class CodeGenerationChainScenario : IScenario, IScenarioDefinitionAware
             {
                 "RootAgent" => "You are a root coordinator agent responsible for managing the code generation workflow.",
                 "LLMAgent" => "You are an LLM agent responsible for generating code based on user requests. You can use tools to validate your code.",
-                "CodeExecutorTool" => "You are a code execution tool that can run and validate code snippets.",
                 _ => "You are an agent in the AGCTOR system."
             };
 
@@ -133,7 +117,6 @@ public class CodeGenerationChainScenario : IScenario, IScenarioDefinitionAware
             {
                 "RootAgent" => await _agentFactory.SpawnAgentAsync<Agent>(prompt, agentId: agentId),
                 "LLMAgent" => await _agentFactory.SpawnAgentAsync<LLMAgent>(prompt, agentId: agentId),
-                "CodeExecutorTool" => await _agentFactory.SpawnAgentAsync<CodeExecutorTool>(prompt, agentId: agentId),
                 _ => throw new ArgumentException($"Unknown agent type: {agentType}")
             };
 

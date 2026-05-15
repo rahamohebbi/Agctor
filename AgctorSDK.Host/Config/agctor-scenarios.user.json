@@ -9,8 +9,7 @@
       "handler": "CodeGenerationChainScenario",
       "agentTypes": [
         "Agent",
-        "LLMAgent",
-        "CodeExecutorTool"
+        "LLMAgent"
       ],
       "personaAgentIds": [],
       "personaBindings": {

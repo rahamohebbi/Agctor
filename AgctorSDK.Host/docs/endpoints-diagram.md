@@ -8,6 +8,8 @@
 
 HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 
+**Dashboard tool insight:** the **Tools** page (`/Dashboard/Tools`) and **Agents** page (`/Dashboard/Agents`) load **`GET /api/tools/agent-associations`** and **`GET /api/agents/definitions/tool-usage`** respectively — same underlying merge of `AgctorToolCatalog`, registered tool actors, project-memory YAML `tools.allow`, and C# routing hints (not runtime invocation traces).
+
 ## REST API Endpoints
 
 ### Config – Dashboard (PRD-006 / PRD-010)
@@ -43,6 +45,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/agents/definitions` | Unified catalog: registered C# agent types + project-memory YAML specs |
+| GET | `/api/agents/definitions/tool-usage` | **Dashboard / Agents:** dynamic view of host tools each agent may use (YAML `tools.allow` + known C# routing); complements `GET /api/tools/agent-associations` |
 | GET | `/api/agents/definitions/{id}` | Detail for a type name or YAML spec id |
 | POST | `/api/agents/definitions/project-memory` | Create new `*.agent.yaml` (body `SaveAgentRequestDto`) |
 | PUT | `/api/agents/definitions/project-memory/{id}` | Update YAML on disk |
@@ -61,6 +64,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/tools` | List available tools |
+| GET | `/api/tools/agent-associations` | **Dashboard / Tools:** dynamic tool list, per-tool agent associations, unmapped YAML allow tokens |
 | GET | `/api/tools/{id}` | Get tool info |
 | POST | `/api/tools/{id}/invoke` | Invoke tool |
 | POST | `/api/tools/batch` | Batch invoke tools |
@@ -144,7 +148,8 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 
 ## Dashboard (Razor Pages)
 - **GET /Dashboard** – Host configuration overview
-- **GET /Dashboard/Agents** – Unified agent-type table with toggles and single configured scenario (PRD-010)
+- **GET /Dashboard/Agents** – Unified agent-type table, **live tool access by agent** (`/api/agents/definitions/tool-usage`), definitions, scenario apply (PRD-010 / PRD-013)
+- **GET /Dashboard/Tools** – **Tools** tab: host tool catalog with **which agents use each tool** (`/api/tools/agent-associations`), tool descriptions from `AgctorToolCatalog`
 - **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
 - **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
 - **GET /Dashboard/ProjectMemory** – Project memory overview (PRD-013)

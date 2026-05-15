@@ -1,9 +1,30 @@
+@{
+    // Normalize for active nav + Project memory submenu (case-insensitive paths).
+    var rawPath = Context?.Request?.Path.Value?.TrimEnd('/') ?? string.Empty;
+    var path = rawPath.ToLowerInvariant();
+    bool IsPath(string exact) => string.Equals(path, exact, StringComparison.Ordinal);
+    bool Under(string prefix) => path == prefix || path.StartsWith(prefix + "/", StringComparison.Ordinal);
+    var activeNav = "inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors";
+    var inactiveNav = activeNav + " text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700";
+    var activeNavCls = activeNav + " bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white";
+    var pmOpen = Under("/dashboard/projectmemory");
+    var activeAgents = Under("/dashboard/agents") || Under("/dashboard/agentdetail");
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>@ViewData["Title"] - AGCTOR Dashboard</title>
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('agctor-theme') === 'dark')
+                    document.documentElement.classList.add('dark');
+            } catch (_) { /* ignore */ }
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class', theme: { extend: {} } }
@@ -15,54 +36,123 @@
         }
     </script>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 min-h-screen">
-    <!-- Flowbite navbar -->
-    <nav class="bg-white border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+<body class="bg-gray-50 dark:bg-gray-900 min-h-screen flex flex-col text-gray-900 dark:text-gray-100 antialiased">
+    <a href="#main-content" class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-[100] focus:px-4 focus:py-2 focus:bg-white focus:text-gray-900 focus:rounded-lg focus:shadow-lg dark:focus:bg-gray-800 dark:focus:text-white">Skip to main content</a>
+
+    <nav class="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-gray-200 dark:bg-gray-800/95 dark:border-gray-700" aria-label="Primary">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
-                <div class="flex">
+                <div class="flex min-w-0 flex-1">
                     <div class="flex-shrink-0 flex items-center">
-                        <a href="/Dashboard" class="text-xl font-semibold text-gray-800 dark:text-white">AGCTOR</a>
+                        <a href="/Dashboard" class="text-xl font-semibold tracking-tight text-gray-800 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors">AGCTOR</a>
                     </div>
-                    <div class="hidden sm:ml-8 sm:flex sm:space-x-4">
-                        <a href="/Dashboard" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Overview</a>
-                        <a href="/Dashboard/Agents" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Agents</a>
-                        <a href="/Dashboard/Scenarios" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Scenarios</a>
-                        <a href="/Dashboard/ActorRuntime" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Actor runtime</a>
-                        <a href="/Dashboard/Goals" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">Goals</a>
-                        <a href="/Dashboard/CodeGraph" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">CodeGraph</a>
+                    <div class="hidden md:flex md:ml-8 md:space-x-1 lg:space-x-2">
+                        <a href="/Dashboard" class="@(IsPath("/dashboard") ? activeNavCls : inactiveNav)">Overview</a>
+                        <a href="/Dashboard/Agents" class="@(activeAgents ? activeNavCls : inactiveNav)">Agents</a>
+                        <a href="/Dashboard/Tools" class="@(Under("/dashboard/tools") ? activeNavCls : inactiveNav)">Tools</a>
+                        <a href="/Dashboard/Scenarios" class="@(Under("/dashboard/scenarios") ? activeNavCls : inactiveNav)">Scenarios</a>
+                        <a href="/Dashboard/ActorRuntime" class="@(Under("/dashboard/actorruntime") ? activeNavCls : inactiveNav)">Actor runtime</a>
+                        <a href="/Dashboard/Goals" class="@(Under("/dashboard/goals") ? activeNavCls : inactiveNav)">Goals</a>
+                        <a href="/Dashboard/CodeGraph" class="@(Under("/dashboard/codegraph") ? activeNavCls : inactiveNav)">CodeGraph</a>
                         <div class="relative flex items-center">
-                            <button type="button" id="pm-nav-toggle" data-dropdown-toggle="pm-nav-menu" data-dropdown-placement="bottom-start" class="inline-flex items-center px-3 py-2 text-sm font-medium leading-5 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <button type="button" id="pm-nav-toggle" data-dropdown-toggle="pm-nav-menu" data-dropdown-placement="bottom-start" class="@(pmOpen ? activeNavCls : inactiveNav)" aria-expanded="@(pmOpen ? "true" : "false")" aria-haspopup="true">
                                 Project memory
-                                <svg class="w-2.5 h-2.5 ms-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
+                                <svg class="w-2.5 h-2.5 ms-1.5 shrink-0" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/></svg>
                             </button>
-                            <div id="pm-nav-menu" class="z-50 hidden bg-white divide-y divide-gray-100 rounded-lg shadow w-56 dark:bg-gray-700 dark:divide-gray-600 border border-gray-200 dark:border-gray-600">
+                            <div id="pm-nav-menu" class="z-50 hidden bg-white divide-y divide-gray-100 rounded-lg shadow-lg w-56 dark:bg-gray-700 dark:divide-gray-600 border border-gray-200 dark:border-gray-600">
                                 <ul class="py-2 text-sm text-gray-700 dark:text-gray-200" aria-labelledby="pm-nav-toggle">
-                                    <li><a href="/Dashboard/ProjectMemory" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Overview</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Agents" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Agents <span class="text-gray-500 dark:text-gray-400">(advanced)</span></a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Templates" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Templates</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Playground" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Playground</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Pipeline" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Pipeline</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Projects" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Projects</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Schema" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Schema</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Workspace" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Workspace</a></li>
-                                    <li><a href="/Dashboard/ProjectMemory/Maintenance" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white">Maintenance</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(IsPath("/dashboard/projectmemory") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Overview</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Agents" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/agents") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Agents <span class="text-gray-500 dark:text-gray-400 font-normal">(advanced)</span></a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Templates" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/templates") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Templates</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Playground" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/playground") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Playground</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Pipeline" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/pipeline") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Pipeline</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Projects" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/projects") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Projects</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Schema" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/schema") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Schema</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Workspace" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/workspace") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Workspace</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/ResolutionReview" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/resolutionreview") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Resolution review</a></li>
+                                    <li><a href="/Dashboard/ProjectMemory/Maintenance" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 @(Under("/dashboard/projectmemory/maintenance") ? "font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-600/50" : "")">Maintenance</a></li>
                                 </ul>
                             </div>
                         </div>
-                        <a href="/swagger" target="_blank" class="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">API (Swagger)</a>
+                        <a href="/swagger" target="_blank" rel="noopener noreferrer" class="@inactiveNav text-gray-500 dark:text-gray-400">API (Swagger)</a>
                     </div>
                 </div>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" id="agctor-theme-toggle" class="inline-flex items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40" title="Toggle dark mode" aria-pressed="false">
+                        <span class="sr-only">Toggle dark mode</span>
+                        <svg id="agctor-icon-sun" class="hidden dark:block h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z"/></svg>
+                        <svg id="agctor-icon-moon" class="dark:hidden h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/></svg>
+                    </button>
+                    <button type="button" id="mobile-nav-toggle" class="md:hidden inline-flex items-center justify-center rounded-lg p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/40" aria-expanded="false" aria-controls="mobile-nav-panel">
+                        <span class="sr-only">Open menu</span>
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div id="mobile-nav-panel" class="md:hidden hidden border-t border-gray-200 dark:border-gray-700 py-3 space-y-1">
+                <a href="/Dashboard" class="block rounded-lg px-3 py-2 text-sm font-medium @(IsPath("/dashboard") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Overview</a>
+                <a href="/Dashboard/Agents" class="block rounded-lg px-3 py-2 text-sm font-medium @(activeAgents ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Agents</a>
+                <a href="/Dashboard/Tools" class="block rounded-lg px-3 py-2 text-sm font-medium @(Under("/dashboard/tools") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Tools</a>
+                <a href="/Dashboard/Scenarios" class="block rounded-lg px-3 py-2 text-sm font-medium @(Under("/dashboard/scenarios") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Scenarios</a>
+                <a href="/Dashboard/ActorRuntime" class="block rounded-lg px-3 py-2 text-sm font-medium @(Under("/dashboard/actorruntime") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Actor runtime</a>
+                <a href="/Dashboard/Goals" class="block rounded-lg px-3 py-2 text-sm font-medium @(Under("/dashboard/goals") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Goals</a>
+                <a href="/Dashboard/CodeGraph" class="block rounded-lg px-3 py-2 text-sm font-medium @(Under("/dashboard/codegraph") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50")">CodeGraph</a>
+                <p class="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Project memory</p>
+                <a href="/Dashboard/ProjectMemory" class="block rounded-lg px-3 py-2 text-sm font-medium @(IsPath("/dashboard/projectmemory") ? "bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Overview</a>
+                <a href="/Dashboard/ProjectMemory/Agents" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/agents") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Agents (advanced)</a>
+                <a href="/Dashboard/ProjectMemory/Templates" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/templates") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Templates</a>
+                <a href="/Dashboard/ProjectMemory/Playground" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/playground") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Playground</a>
+                <a href="/Dashboard/ProjectMemory/Pipeline" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/pipeline") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Pipeline</a>
+                <a href="/Dashboard/ProjectMemory/Projects" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/projects") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Projects</a>
+                <a href="/Dashboard/ProjectMemory/Schema" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/schema") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Schema</a>
+                <a href="/Dashboard/ProjectMemory/Workspace" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/workspace") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Workspace</a>
+                <a href="/Dashboard/ProjectMemory/ResolutionReview" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/resolutionreview") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Resolution review</a>
+                <a href="/Dashboard/ProjectMemory/Maintenance" class="block rounded-lg px-3 py-2 text-sm @(Under("/dashboard/projectmemory/maintenance") ? "font-medium bg-gray-100 text-gray-900 dark:bg-gray-700 dark:text-white" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50")">Maintenance</a>
+                <a href="/swagger" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">API (Swagger)</a>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main id="main-content" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8" tabindex="-1">
         @RenderBody()
     </main>
 
+    <footer class="mt-auto border-t border-gray-200 bg-white/80 py-4 text-center text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/80 dark:text-gray-400">
+        <span class="inline-block">AGCTOR Host dashboard</span>
+        <span class="mx-2 opacity-40" aria-hidden="true">·</span>
+        <a href="/swagger" class="underline decoration-gray-400 underline-offset-2 hover:text-gray-800 dark:hover:text-gray-200" target="_blank" rel="noopener noreferrer">OpenAPI</a>
+    </footer>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/flowbite/2.2.1/flowbite.min.js"></script>
     <script src="~/js/dashboard.js" asp-append-version="true"></script>
+    <script>
+        (function () {
+            var btn = document.getElementById('agctor-theme-toggle');
+            if (!btn) return;
+            function syncAria() {
+                var dark = document.documentElement.classList.contains('dark');
+                btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+            }
+            syncAria();
+            btn.addEventListener('click', function () {
+                document.documentElement.classList.toggle('dark');
+                var dark = document.documentElement.classList.contains('dark');
+                try { localStorage.setItem('agctor-theme', dark ? 'dark' : 'light'); } catch (_) { }
+                syncAria();
+            });
+        })();
+        (function () {
+            var toggle = document.getElementById('mobile-nav-toggle');
+            var panel = document.getElementById('mobile-nav-panel');
+            if (!toggle || !panel) return;
+            toggle.addEventListener('click', function () {
+                var open = panel.classList.toggle('hidden') === false;
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                var sr = toggle.querySelector('span.sr-only');
+                if (sr) sr.textContent = open ? 'Close menu' : 'Open menu';
+            });
+        })();
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

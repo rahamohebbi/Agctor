@@ -26,7 +26,7 @@ namespace AgctorSDK.Core.Tests.Tools
 
             var tool = new CodeEditorTool("test");
             var cmd = $"CodeEditorTool InsertIntoFile --path \"{Path.GetFileName(tmp)}\" --content \"public static double Division(double a, double b) {{ return a / b; }}\" --selector \"class:MathUtils\"";
-            await tool.ProcessPromptAsync(cmd);
+            await tool.RunFromPromptAsync(cmd);
 
             var updated = await File.ReadAllTextAsync(tmp);
             Assert.Contains("public static double Division(double a, double b)", updated);
@@ -48,7 +48,7 @@ namespace AgctorSDK.Core.Tests.Tools
 
             var tool = new CodeEditorTool("test");
             var cmd = $"CodeEditorTool ReplaceInFile --path \"{Path.GetFileName(tmp)}\" --content \"\" --selector \"class:MathUtils > method:Division\"";
-            await tool.ProcessPromptAsync(cmd);
+            await tool.RunFromPromptAsync(cmd);
 
             var updated = await File.ReadAllTextAsync(tmp);
             Assert.DoesNotContain("Division", updated);

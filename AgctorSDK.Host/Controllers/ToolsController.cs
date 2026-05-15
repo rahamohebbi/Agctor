@@ -14,13 +14,16 @@ namespace AgctorSDK.Host.Controllers
     public class ToolsController : ControllerBase
     {
         private readonly IToolInvoker _toolInvoker;
+        private readonly IToolAgentsInsightService _toolAgentsInsight;
         private readonly ILogger<ToolsController> _logger;
 
         public ToolsController(
             IToolInvoker toolInvoker,
+            IToolAgentsInsightService toolAgentsInsight,
             ILogger<ToolsController> logger)
         {
             _toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
+            _toolAgentsInsight = toolAgentsInsight ?? throw new ArgumentNullException(nameof(toolAgentsInsight));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -120,6 +123,31 @@ namespace AgctorSDK.Host.Controllers
                 {
                     Code = "INTERNAL_ERROR",
                     Message = "An internal error occurred while invoking the tool"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard: registered host tools plus agents linked via project-memory <c>tools.allow</c> and known C# routing patterns.
+        /// </summary>
+        [HttpGet("agent-associations")]
+        [ProducesResponseType(typeof(ToolAgentsInsightResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<ToolAgentsInsightResponse>> GetToolAgentAssociationsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var dto = await _toolAgentsInsight.GetInsightAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building tool/agent associations");
+                return StatusCode(500, new ErrorResponse
+                {
+                    Code = "INTERNAL_ERROR",
+                    Message = "An internal error occurred while building tool associations"
                 });
             }
         }

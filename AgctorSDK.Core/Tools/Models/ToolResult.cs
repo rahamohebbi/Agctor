@@ -5,7 +5,7 @@ namespace AgctorSDK.Core.Tools.Models
         public bool IsSuccess { get; set; }
         public object Output { get; set; }
         public string Error { get; set; }
-        
+
         public ToolResult()
         {
             IsSuccess = false;
@@ -13,4 +13,4 @@ namespace AgctorSDK.Core.Tools.Models
             Error = string.Empty;
         }
     }
-} 
+}
