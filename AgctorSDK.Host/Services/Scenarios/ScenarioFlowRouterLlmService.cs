@@ -66,7 +66,7 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         }
 
         var routerText = string.IsNullOrEmpty(routingContext) ? userMessage : routingContext;
-        var prompt = BuildRoutingPrompt(routerText, yamlLines.ToString(), allowed, config.LlmRoutingInstructions);
+        var prompt = BuildRoutingPrompt(routerText, yamlLines.ToString(), allowed, config);
         string raw;
         try
         {
@@ -104,7 +104,11 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         return JsonSerializer.Serialize(t);
     }
 
-    private static string BuildRoutingPrompt(string routingText, string candidatesYaml, HashSet<string> allowed, string? globalInstructions)
+    private static string BuildRoutingPrompt(
+        string routingText,
+        string candidatesYaml,
+        HashSet<string> allowed,
+        ScenarioFlowRouterConfig config)
     {
         var allowList = string.Join(", ", allowed.OrderBy(x => x, StringComparer.Ordinal));
         var sb = new StringBuilder();
@@ -121,7 +125,18 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         sb.AppendLine("Rules:");
         sb.AppendLine("- schemaVersion must be \"1.0\".");
         sb.Append("- targets[].personaId must be from this set only: ").AppendLine(allowList);
-        sb.AppendLine("- You may return multiple targets if the user needs combined expertise; keep the list short.");
+        if (config.TargetPolicy == ScenarioFlowRouterTargetPolicy.SingleBest)
+        {
+            sb.AppendLine("- Return exactly ONE target: the single best-matching personaId for this message.");
+            sb.AppendLine("- Rank by fit to each candidate's routingHint and summary; set confidence for that choice only (other branches should not appear in targets).");
+        }
+        else
+        {
+            sb.AppendLine("- You may return multiple targets when more than one branch clearly applies; keep the list short.");
+            if (config.MaxTargets is { } cap && cap > 0)
+                sb.Append("- Return at most ").Append(cap).AppendLine(" target(s).");
+        }
+
         sb.AppendLine("- If the message is ambiguous, set needsClarification true and put a short question in clarificationPrompt.");
         sb.AppendLine("- Each candidate may include routingHint — treat it as authoritative routing guidance for that branch.");
         sb.AppendLine();
@@ -130,12 +145,12 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         sb.AppendLine();
         sb.AppendLine("Routing context (user message or upstream pipeline text):");
         sb.Append(routingText);
-        if (!string.IsNullOrWhiteSpace(globalInstructions))
+        if (!string.IsNullOrWhiteSpace(config.LlmRoutingInstructions))
         {
             sb.AppendLine();
             sb.AppendLine();
             sb.AppendLine("Global routing policy (from flow designer; apply together with routingHint lines):");
-            sb.Append(globalInstructions.Trim());
+            sb.Append(config.LlmRoutingInstructions.Trim());
         }
 
         return sb.ToString();

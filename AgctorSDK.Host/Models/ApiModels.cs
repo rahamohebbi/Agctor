@@ -442,6 +442,9 @@ namespace AgctorSDK.Host.Models
         public string? ProjectId { get; set; }
         public string? Name { get; set; }
         public string? ScenarioId { get; set; }
+        /// <summary>Entity slug for coref focus (e.g. <c>ryan</c>).</summary>
+        public string? FocusEntityKey { get; set; }
+        public string? FocusDisplayName { get; set; }
     }
 
     /// <summary>Updates chat project metadata.</summary>
@@ -449,6 +452,8 @@ namespace AgctorSDK.Host.Models
     {
         public string? Name { get; set; }
         public string? ScenarioId { get; set; }
+        public string? FocusEntityKey { get; set; }
+        public string? FocusDisplayName { get; set; }
     }
 
     /// <summary>Updates a chat session (currently: title only).</summary>

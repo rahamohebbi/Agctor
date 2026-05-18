@@ -36,7 +36,13 @@ public sealed class ChatProjectsController : ControllerBase
             if (_scenarioCatalog.Get(scenarioId) == null)
                 return BadRequest(new ErrorResponse { Code = "SCENARIO_NOT_FOUND", Message = $"Scenario '{scenarioId}' was not found." });
 
-            var created = await _sessionStore.CreateProjectAsync(request?.ProjectId, request?.Name, scenarioId, cancellationToken)
+            var created = await _sessionStore.CreateProjectAsync(
+                    request?.ProjectId,
+                    request?.Name,
+                    scenarioId,
+                    request?.FocusEntityKey,
+                    request?.FocusDisplayName,
+                    cancellationToken)
                 .ConfigureAwait(false);
             return Created($"/api/chat/projects/{created.ProjectId}", created);
         }
@@ -116,12 +122,15 @@ public sealed class ChatProjectsController : ControllerBase
                 });
             }
 
-            if (request == null || (string.IsNullOrWhiteSpace(request.Name) && string.IsNullOrWhiteSpace(request.ScenarioId)))
+            if (request == null || (string.IsNullOrWhiteSpace(request.Name)
+                                    && string.IsNullOrWhiteSpace(request.ScenarioId)
+                                    && request.FocusEntityKey == null
+                                    && request.FocusDisplayName == null))
             {
                 return BadRequest(new ErrorResponse
                 {
                     Code = "PROJECT_UPDATE_EMPTY",
-                    Message = "Provide at least one of name or scenarioId."
+                    Message = "Provide at least one of name, scenarioId, focusEntityKey, or focusDisplayName."
                 });
             }
             var req = request;
@@ -135,6 +144,8 @@ public sealed class ChatProjectsController : ControllerBase
                 ProjectId = existing.ProjectId,
                 Name = string.IsNullOrWhiteSpace(req.Name) ? existing.Name : req.Name.Trim(),
                 ScenarioId = scenarioId,
+                FocusEntityKey = req.FocusEntityKey == null ? existing.FocusEntityKey : (string.IsNullOrWhiteSpace(req.FocusEntityKey) ? null : req.FocusEntityKey.Trim()),
+                FocusDisplayName = req.FocusDisplayName == null ? existing.FocusDisplayName : (string.IsNullOrWhiteSpace(req.FocusDisplayName) ? null : req.FocusDisplayName.Trim()),
                 CreatedAt = existing.CreatedAt,
                 SessionCount = existing.SessionCount
             };

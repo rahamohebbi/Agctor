@@ -76,7 +76,7 @@
     {
       "id": "people",
       "displayName": "People / person",
-      "description": "Chat and session memory oriented around people workflows.",
+      "description": "People memory with LLM routing: learn facts, answer questions, and save to markdown (default scenario).",
       "kind": "declarative",
       "handler": null,
       "agentTypes": [
@@ -115,59 +115,110 @@
             "config": {}
           },
           {
-            "id": "n_a01zmd6u",
+            "id": "n_people_router",
             "type": "Router",
             "label": "Router",
-            "config": {}
+            "config": {
+              "routerMode": "llm",
+              "routerTargetPolicy": "single_best"
+            }
           },
           {
-            "id": "n_ll596ej4",
+            "id": "n_people_extract",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Extract",
             "config": {
               "personaId": "person-extractor"
             }
           },
           {
-            "id": "n_gpa3rkrz",
+            "id": "n_people_curate",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Curate",
             "config": {
-              "personaId": "memory-curator"
+              "personaId": "memory-curator",
+              "toolIds": [
+                "apply-memory-intents"
+              ]
             }
+          },
+          {
+            "id": "n_people_query",
+            "type": "LlmNode",
+            "label": "Query",
+            "config": {
+              "personaId": "person-query",
+              "contextStrategy": "markdown_all",
+              "toolIds": [
+                "person-memory-context"
+              ]
+            }
+          },
+          {
+            "id": "n_people_merge",
+            "type": "Merge",
+            "label": "Merge",
+            "config": {}
           }
         ],
         "edges": [
           {
-            "id": "e_p4mdsaqp",
+            "id": "e_people_in_router",
             "fromNodeId": "in1",
-            "toNodeId": "n_a01zmd6u",
+            "toNodeId": "n_people_router",
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
             "llmRoutingHint": null
           },
           {
-            "id": "e_hw83b71m",
-            "fromNodeId": "n_a01zmd6u",
-            "toNodeId": "n_ll596ej4",
+            "id": "e_people_extract_curate",
+            "fromNodeId": "n_people_extract",
+            "toNodeId": "n_people_curate",
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
             "llmRoutingHint": null
           },
           {
-            "id": "e_apmbxktp",
-            "fromNodeId": "n_ll596ej4",
-            "toNodeId": "n_gpa3rkrz",
+            "id": "e_people_router_extract",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_extract",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user shares new facts about a person, or asks to save/persist/write what was said.\nExamples: Ryan is 12; his favorite color is blue; please save this; persist what we know."
+          },
+          {
+            "id": "e_people_router_query",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_query",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user asks factual questions (who/what/when) without asking to save.\nExamples: Who is Ryan? What do we know about Mom? What is her favorite color?"
+          },
+          {
+            "id": "e_people_query_merge",
+            "fromNodeId": "n_people_query",
+            "toNodeId": "n_people_merge",
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
             "llmRoutingHint": null
           },
           {
-            "id": "e_jobxjn1q",
-            "fromNodeId": "n_gpa3rkrz",
+            "id": "e_people_curate_merge",
+            "fromNodeId": "n_people_curate",
+            "toNodeId": "n_people_merge",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_people_merge_out",
+            "fromNodeId": "n_people_merge",
             "toNodeId": "out1",
             "mode": "sequential",
             "condition": null,
@@ -178,24 +229,32 @@
         "ui": {
           "nodeLayouts": {
             "in1": {
-              "x": -111.33816227471382,
-              "y": -39.955209527212595
+              "x": -400,
+              "y": 150
             },
             "out1": {
-              "x": 299.4937498125102,
-              "y": 28.5
+              "x": 340,
+              "y": 200
             },
-            "n_a01zmd6u": {
-              "x": -59.74782363491329,
-              "y": 72.4487075589337
+            "n_people_router": {
+              "x": -200,
+              "y": 165
             },
-            "n_ll596ej4": {
-              "x": 52.218745639804666,
-              "y": 51.24697545092618
+            "n_people_extract": {
+              "x": -60,
+              "y": 110
             },
-            "n_gpa3rkrz": {
-              "x": 175.80717864796847,
-              "y": 50.48759766176402
+            "n_people_curate": {
+              "x": 140,
+              "y": 110
+            },
+            "n_people_query": {
+              "x": -10,
+              "y": 240
+            },
+            "n_people_merge": {
+              "x": 220,
+              "y": 200
             }
           }
         }
@@ -249,7 +308,8 @@
             "type": "Router",
             "label": "Router",
             "config": {
-              "routerMode": "llm"
+              "routerMode": "llm",
+              "routerTargetPolicy": "single_best"
             }
           },
           {
@@ -392,7 +452,7 @@
     {
       "id": "person_3",
       "displayName": "Person 3",
-      "description": "",
+      "description": "People memory with LLM routing: learn facts, answer questions, and relationship coaching (person_3 scenario workspace).",
       "kind": "declarative",
       "handler": null,
       "agentTypes": [
@@ -404,7 +464,8 @@
       "personaAgentIds": [
         "person-extractor",
         "memory-curator",
-        "person-query"
+        "person-query",
+        "relationship-coach"
       ],
       "personaBindings": {
         "extractor": "person-extractor",
@@ -437,7 +498,8 @@
             "type": "Router",
             "label": "Router",
             "config": {
-              "routerMode": "llm"
+              "routerMode": "llm",
+              "routerTargetPolicy": "single_best"
             }
           },
           {
@@ -465,6 +527,18 @@
             "label": "LlmNode",
             "config": {
               "personaId": "person-query",
+              "contextStrategy": "markdown_all",
+              "toolIds": [
+                "person-memory-context"
+              ]
+            }
+          },
+          {
+            "id": "n_coach_p3",
+            "type": "LlmNode",
+            "label": "Relationship coach",
+            "config": {
+              "personaId": "relationship-coach",
               "contextStrategy": "markdown_all",
               "toolIds": [
                 "person-memory-context"
@@ -513,7 +587,25 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use where user ask questions. for example:\n1. Who is X? \n2. What does X do? \n3. what is X\u0027s favorite color?"
+            "llmRoutingHint": "Use when the user asks factual questions about someone (who/what/when), not for advice.\nExamples: Who is X? What does X do? What is X\u0027s favorite color?"
+          },
+          {
+            "id": "e_router_coach_p3",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_coach_p3",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user wants relationship or friendship help grounded in what we know about someone.\nExamples: gift ideas, how to reconnect, advice after an argument, supporting a stressed friend, planning a thoughtful message, improving the relationship."
+          },
+          {
+            "id": "e_coach_merge_p3",
+            "fromNodeId": "n_coach_p3",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_bgq3dgrz",
@@ -568,6 +660,10 @@
             "n_r5v0z426": {
               "x": -11.251630241107634,
               "y": 238.60889065328544
+            },
+            "n_coach_p3": {
+              "x": -11.251630241107634,
+              "y": 320.6088906532854
             },
             "n_i02xj4ob": {
               "x": 222.87782733985364,

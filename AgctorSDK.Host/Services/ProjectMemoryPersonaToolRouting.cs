@@ -10,6 +10,7 @@ public static class ProjectMemoryPersonaToolRouting
         new List<(string, string)>
         {
             ("person-query", "PersonMemoryContextTool"),
+            ("relationship-coach", "PersonMemoryContextTool"),
             ("memory-curator", "ApplyMemoryIntentsTool")
         };
 }

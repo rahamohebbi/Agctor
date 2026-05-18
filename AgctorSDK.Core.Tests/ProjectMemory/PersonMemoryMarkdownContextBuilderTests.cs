@@ -26,4 +26,11 @@ public sealed class PersonMemoryMarkdownContextBuilderTests
         var el = JsonDocument.Parse("""{"contextStrategy":"markdown_focus"}""").RootElement;
         PersonMemoryMarkdownContextBuilder.ParseStrategy(el).Should().Be("markdown_focus");
     }
+
+    [Fact]
+    public void ExtractFocusQueryFromUserMessage_Parses_Possessive_Name()
+    {
+        PersonMemoryMarkdownContextBuilder.ExtractFocusQueryFromUserMessage("I am Ryan's dad what is important?")
+            .Should().Be("Ryan");
+    }
 }

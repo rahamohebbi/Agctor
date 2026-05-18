@@ -38,6 +38,30 @@ public sealed class ScenarioFlowRouterLlmParserTests
     }
 
     [Fact]
+    public void Parse_SingleBest_PicksHighestConfidence()
+    {
+        var raw = """
+            {"schemaVersion":"1.0","targets":[
+              {"personaId":"person-extractor","confidence":0.4},
+              {"personaId":"relationship-coach","confidence":0.92}
+            ],"needsClarification":false}
+            """;
+        var cfg = new ScenarioFlowRouterConfig(
+            ScenarioFlowRouterMode.Llm,
+            null,
+            null,
+            null,
+            null,
+            ScenarioFlowRouterTargetPolicy.SingleBest);
+        var r = ScenarioFlowRouterLlmParser.Parse(
+            raw,
+            new[] { "person-extractor", "relationship-coach" },
+            cfg);
+        r.Ok.Should().BeTrue();
+        r.SelectedPersonaIds.Should().Equal("relationship-coach");
+    }
+
+    [Fact]
     public void Parse_FallbackWhenEmptyTargets()
     {
         var raw = """{"schemaVersion":"1.0","targets":[],"needsClarification":false}""";

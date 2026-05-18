@@ -1,0 +1,6 @@
+entityKey: user
+entityType: person
+displayName: User
+aliases: []
+schemaVersion: 1
+status: active

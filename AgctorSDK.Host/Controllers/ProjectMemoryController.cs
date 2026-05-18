@@ -17,6 +17,7 @@ using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
+using AgctorSDK.Core.ProjectMemory.LifeSignals;
 using AgctorSDK.Core.ProjectMemory.Tools;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
@@ -60,6 +61,7 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly IConfirmationIntentClassifier _confirmClassifier;
     private readonly IGenericInboxReplayService _genericInboxReplay;
     private readonly IProjectMemoryCoreferenceCoordinator _corefCoordinator;
+    private readonly IConversationFocusStore _focusStore;
     private readonly IAgentFactory _agentFactory;
 
     public ProjectMemoryController(
@@ -79,6 +81,7 @@ public sealed class ProjectMemoryController : ControllerBase
         IConfirmationIntentClassifier confirmClassifier,
         IGenericInboxReplayService genericInboxReplay,
         IProjectMemoryCoreferenceCoordinator corefCoordinator,
+        IConversationFocusStore focusStore,
         IAgentFactory agentFactory,
         ILogger<ProjectMemoryController> logger,
         IActivityTracker? activityTracker = null)
@@ -99,6 +102,7 @@ public sealed class ProjectMemoryController : ControllerBase
         _confirmClassifier = confirmClassifier;
         _genericInboxReplay = genericInboxReplay;
         _corefCoordinator = corefCoordinator;
+        _focusStore = focusStore ?? throw new ArgumentNullException(nameof(focusStore));
         _agentFactory = agentFactory;
         _activityTracker = activityTracker;
         _logger = logger;
@@ -129,6 +133,16 @@ public sealed class ProjectMemoryController : ControllerBase
         {
             _logger.LogWarning(ex, "Project memory file missing for root {Root}", root);
             return (null, BadRequest(new { error = ex.Message }));
+        }
+        catch (InvalidDataException ex)
+        {
+            _logger.LogWarning(ex, "Project memory data invalid for root {Root}", root);
+            return (null, BadRequest(new { error = ex.Message }));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Project memory load failed for root {Root}", root);
+            return (null, StatusCode(500, new { error = "Project memory load failed.", detail = ex.Message }));
         }
     }
 
@@ -187,11 +201,11 @@ public sealed class ProjectMemoryController : ControllerBase
             Description = a.Description ?? "",
             InputType = a.Input?.Type ?? "",
             OutputType = a.Output?.Type ?? "",
-            ToolsAllow = a.Tools.Allow,
-            ToolsDeny = a.Tools.Deny,
-            MemoryRead = a.MemoryAccess.Read,
-            MemoryWrite = a.MemoryAccess.Write,
-            Guardrails = a.Guardrails,
+            ToolsAllow = a.Tools?.Allow ?? new List<string>(),
+            ToolsDeny = a.Tools?.Deny ?? new List<string>(),
+            MemoryRead = a.MemoryAccess?.Read ?? new List<string>(),
+            MemoryWrite = a.MemoryAccess?.Write ?? new List<string>(),
+            Guardrails = a.Guardrails ?? new List<string>(),
             ProjectTypes = a.ProjectTypes,
             SourcePath = a.SourcePath,
             RelativePath = a.SourcePath != null ? ProjectMemoryPathSecurity.ToRelativePath(root, a.SourcePath) : null
@@ -334,6 +348,116 @@ public sealed class ProjectMemoryController : ControllerBase
         });
     }
 
+    /// <summary>Read-only birthday / contact nudges for a scenario workspace (person_3 coaching UX).</summary>
+    [HttpGet("life-signals")]
+    [ProducesResponseType(typeof(PersonLifeSignalsResponseDto), StatusCodes.Status200OK)]
+    public ActionResult<PersonLifeSignalsResponseDto> GetLifeSignals(
+        [FromQuery] string scenarioId = "person_3",
+        [FromQuery] int staleContactDays = 30,
+        [FromQuery] int birthdayHorizonDays = 14)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var sid = string.IsNullOrWhiteSpace(scenarioId) ? "person_3" : scenarioId.Trim();
+        var signals = PersonLifeSignalsReader.Scan(root, sid, staleContactDays: staleContactDays, birthdayHorizonDays: birthdayHorizonDays);
+        return Ok(new PersonLifeSignalsResponseDto
+        {
+            ScenarioId = sid,
+            Signals = signals.Select(s => new PersonLifeSignalDto
+            {
+                EntityKey = s.EntityKey,
+                DisplayName = s.DisplayName,
+                Kind = s.Kind,
+                Message = s.Message,
+                DaysUntil = s.DaysUntil,
+                Priority = s.Priority
+            }).ToList()
+        });
+    }
+
+    /// <summary>One-line note → ingest pipeline (no full chat turn). Ideal for quick daily logs.</summary>
+    [HttpPost("quick-capture")]
+    [ProducesResponseType(typeof(ProjectMemoryOrchestratorRunResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ProjectMemoryOrchestratorRunResponseDto>> QuickCaptureAsync(
+        [FromBody] ProjectMemoryQuickCaptureRequestDto body,
+        CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+        if (string.IsNullOrWhiteSpace(body.Text))
+            return BadRequest(new { error = "text is required." });
+
+        var wrapped = "[Quick capture — store as timeline observation or profile fact when appropriate]\n" + body.Text.Trim();
+        return await RunIngestCaptureAsync(
+            wrapped,
+            body.ScenarioId?.Trim() ?? "person_3",
+            body.SessionId?.Trim(),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Replay session transcript through ingest to update markdown memory.</summary>
+    [HttpPost("sessions/{sessionId}/capture-to-memory")]
+    [ProducesResponseType(typeof(ProjectMemoryOrchestratorRunResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ProjectMemoryOrchestratorRunResponseDto>> CaptureSessionToMemoryAsync(
+        [FromRoute] string sessionId,
+        [FromBody] ProjectMemorySessionCaptureRequestDto? body,
+        CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "sessionId is required." });
+
+        var prior = await _sessions.GetTurnsAsync(sessionId.Trim(), null, cancellationToken).ConfigureAwait(false);
+        if (prior.Count == 0)
+            return BadRequest(new { error = "Session has no turns to capture." });
+
+        var prefix = BuildOrchestratorTranscriptPrefix(prior);
+        var wrapped = "[Session capture — extract durable facts and timeline observations from this conversation]\n"
+                        + (prefix ?? "");
+        return await RunIngestCaptureAsync(
+            wrapped,
+            body?.ScenarioId?.Trim() ?? "person_3",
+            sessionId.Trim(),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<ActionResult<ProjectMemoryOrchestratorRunResponseDto>> RunIngestCaptureAsync(
+        string userMessage,
+        string scenarioId,
+        string? sessionId,
+        CancellationToken cancellationToken)
+    {
+        var req = new ProjectMemoryPipelineRequest
+        {
+            ProjectRoot = RootOrNull()!,
+            UserMessage = userMessage,
+            CorrelationId = Guid.NewGuid().ToString("N"),
+            Mode = ProjectMemoryPipelineMode.IngestOnly,
+            ScenarioId = scenarioId,
+            SessionId = sessionId
+        };
+
+        var result = await _pipeline.RunAsync(req, cancellationToken).ConfigureAwait(false);
+        return Ok(new ProjectMemoryOrchestratorRunResponseDto
+        {
+            CorrelationId = result.CorrelationId,
+            Success = result.Success,
+            FinalText = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(result.FinalText, Request),
+            Steps = result.Steps.Select(s => new ProjectMemoryOrchestratorStepDto
+            {
+                Name = s.Name,
+                Ok = s.Ok,
+                Detail = s.Detail,
+                UpdatedFiles = s.UpdatedFiles
+            }).ToList()
+        });
+    }
+
     /// <summary>
     /// PRD-019 back-fill: replay <c>confirmed.yaml</c> through current <c>routing-rules.yaml</c> and project routed
     /// rows into entity files. Idempotent unless <c>includeAlreadyReplayed = true</c>.
@@ -389,6 +513,67 @@ public sealed class ProjectMemoryController : ControllerBase
         }
 
         return null;
+    }
+
+    /// <summary>Lists entity folder slugs under <c>scenarios/&lt;id&gt;/people/</c> for project focus picker.</summary>
+    [HttpGet("scenario-entities")]
+    [ProducesResponseType(typeof(IReadOnlyList<ScenarioEntityListItemDto>), StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<ScenarioEntityListItemDto>> ListScenarioEntities([FromQuery] string? scenarioId = null)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var sid = string.IsNullOrWhiteSpace(scenarioId) ? "people" : scenarioId.Trim();
+        var workspace = PersonaScenarioScope.GetEntityWorkspaceRoot(root, sid);
+        var peopleDir = Path.Combine(workspace, "people");
+        if (!Directory.Exists(peopleDir))
+            return Ok(Array.Empty<ScenarioEntityListItemDto>());
+
+        var list = new List<ScenarioEntityListItemDto>();
+        foreach (var dir in Directory.EnumerateDirectories(peopleDir))
+        {
+            var key = Path.GetFileName(dir);
+            if (string.IsNullOrWhiteSpace(key) || key.StartsWith('.'))
+                continue;
+
+            var display = key;
+            var profilePath = Path.Combine(dir, "profile.md");
+            if (System.IO.File.Exists(profilePath))
+            {
+                var text = System.IO.File.ReadAllText(profilePath);
+                var m = System.Text.RegularExpressions.Regex.Match(text, @"(?im)^\s*[-*]?\s*name\s*:\s*(.+)$");
+                if (m.Success)
+                    display = m.Groups[1].Value.Trim();
+            }
+
+            list.Add(new ScenarioEntityListItemDto { EntityKey = key, DisplayName = display });
+        }
+
+        list.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
+        return Ok(list);
+    }
+
+    private async Task ApplyChatProjectFocusAsync(
+        string projectRoot,
+        SessionProject? chatProject,
+        string sessionId,
+        CancellationToken cancellationToken)
+    {
+        if (chatProject == null || string.IsNullOrWhiteSpace(chatProject.FocusEntityKey))
+            return;
+
+        var focus = new ConversationFocus
+        {
+            EntityKey = PersonaScenarioScope.SanitizeFolderSegment(chatProject.FocusEntityKey).ToLowerInvariant(),
+            DisplayName = string.IsNullOrWhiteSpace(chatProject.FocusDisplayName)
+                ? chatProject.FocusEntityKey
+                : chatProject.FocusDisplayName.Trim(),
+            UpdatedAtUtc = DateTimeOffset.UtcNow.ToString("o"),
+            UpdatedBySessionId = sessionId,
+            Source = "project"
+        };
+        await _focusStore.SaveAsync(projectRoot, chatProject.ScenarioId, focus, cancellationToken).ConfigureAwait(false);
     }
 
     private static string? BuildOrchestratorTranscriptPrefix(IReadOnlyList<SessionTurn>? turns)
@@ -489,18 +674,19 @@ public sealed class ProjectMemoryController : ControllerBase
         }
 
         // Match scenario-scoped flows: body may omit scenarioId — inherit from the session's chat project (same bucket as flow run).
+        var sessInfo = await _sessions.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
         var scenarioFromBody = body.ScenarioId?.Trim();
         string? scenarioResolved = string.IsNullOrWhiteSpace(scenarioFromBody) ? null : scenarioFromBody;
-        if (string.IsNullOrWhiteSpace(scenarioResolved))
+        if (string.IsNullOrWhiteSpace(scenarioResolved) && !string.IsNullOrWhiteSpace(sessInfo?.ProjectId))
         {
-            var sessInfo = await _sessions.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(sessInfo?.ProjectId))
-            {
-                var chatProj = await _sessions.GetProjectAsync(sessInfo.ProjectId!, cancellationToken).ConfigureAwait(false);
-                if (chatProj is { ScenarioId: var sid } && !string.IsNullOrWhiteSpace(sid))
-                    scenarioResolved = sid.Trim();
-            }
+            var chatProj = await _sessions.GetProjectAsync(sessInfo.ProjectId!, cancellationToken).ConfigureAwait(false);
+            if (chatProj is { ScenarioId: var sid } && !string.IsNullOrWhiteSpace(sid))
+                scenarioResolved = sid.Trim();
         }
+
+        SessionProject? chatProject = null;
+        if (!string.IsNullOrWhiteSpace(sessInfo?.ProjectId))
+            chatProject = await _sessions.GetProjectAsync(sessInfo.ProjectId!, cancellationToken).ConfigureAwait(false);
 
         var scenarioDef = string.IsNullOrWhiteSpace(scenarioResolved) ? null : _scenarioCatalog.Get(scenarioResolved);
         var flowCatalogOk = scenarioDef?.Flow != null && ScenarioFlowValidator.Validate(scenarioDef).Count == 0;
@@ -797,6 +983,16 @@ public sealed class ProjectMemoryController : ControllerBase
                 spec.Id,
                 JsonSse);
 
+            // Phase 1: chat project focus seeds scenario coref store so "he/she" and short questions scope correctly.
+            try
+            {
+                await ApplyChatProjectFocusAsync(rootFull, chatProject, sessionId, ct).ConfigureAwait(false);
+            }
+            catch (Exception exFocusBootstrap)
+            {
+                _logger.LogDebug(exFocusBootstrap, "Playground: chat project focus bootstrap skipped");
+            }
+
             // PRD-019 Option B + F: resolve pronouns once before the flow graph executes so the rewritten
             // text reaches every persona via ChatInput → person-extractor. Without this, the playground
             // bypasses ProjectMemoryPipelineRunner and follow-ups like "He likes basketball" extract under
@@ -886,53 +1082,23 @@ public sealed class ProjectMemoryController : ControllerBase
                           write_document is not executed here. Do not claim markdown files were written to disk.
                           """;
                 }
-                else if (string.Equals(personaId.Trim(), "person-query", StringComparison.OrdinalIgnoreCase))
+                else
                 {
                     var flowNode = scenarioDef.Flow?.Nodes?.FirstOrDefault(n =>
                         !string.IsNullOrWhiteSpace(flowNodeId)
                         && string.Equals(n.Id, flowNodeId, StringComparison.OrdinalIgnoreCase));
-                    var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
-                    var flowToolIds = ScenarioFlowLlmNodeToolIds.ParseFlowDeclaredToolIds(flowNode?.Config);
-                    var yamlAllow = pSpec.Tools?.Allow ?? new List<string>();
-                    var useContextTool = ScenarioFlowLlmNodeToolIds.UnionAllows(
-                        yamlAllow,
-                        flowToolIds,
-                        ScenarioFlowLlmNodeToolIds.PersonMemoryContext);
-                    if (useContextTool)
+                    if (PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(pSpec, flowNode?.Config))
                     {
-                        var toolReq = new ToolRequest
-                        {
-                            Operation = "BuildContext",
-                            Parameters = new Dictionary<string, object>
-                            {
-                                ["projectRoot"] = rootFull,
-                                ["scenarioId"] = scenarioResolved ?? "",
-                                ["contextStrategy"] = strat,
-                                ["userMessage"] = flowUserMessage
-                            }
-                        };
+                        var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
                         try
                         {
-                            var tr = await _agentFactory
-                                .InvokeToolRequestAsync(nameof(PersonMemoryContextTool), toolReq, null, cancellationToken)
-                                .ConfigureAwait(false);
-                            flowAppendix = tr is { IsSuccess: true, Output: not null }
-                                ? Convert.ToString(tr.Output) ?? ""
-                                : await PlaygroundFallbackAppendixAsync().ConfigureAwait(false);
-                        }
-                        catch (Exception exTool)
-                        {
-                            _logger.LogWarning(exTool, "Playground: PersonMemoryContextTool failed; falling back to direct markdown load.");
-                            flowAppendix = await PlaygroundFallbackAppendixAsync().ConfigureAwait(false);
-                        }
-
-                        async Task<string> PlaygroundFallbackAppendixAsync()
-                        {
-                            var pmOps = new ProjectMemoryOperations(_loader, _entities);
-                            return await PlaygroundPersonQueryContextBuilder
-                                .BuildAppendixAsync(
-                                    pmOps,
+                            flowAppendix = await PlaygroundPersonQueryContextBuilder
+                                .BuildFlowAppendixAsync(
+                                    _loader,
+                                    _entities,
+                                    _agentFactory,
                                     pSpec,
+                                    personaId.Trim(),
                                     rootFull,
                                     scenarioResolved,
                                     strat,
@@ -940,20 +1106,11 @@ public sealed class ProjectMemoryController : ControllerBase
                                     cancellationToken)
                                 .ConfigureAwait(false);
                         }
-                    }
-                    else
-                    {
-                        var pmOps = new ProjectMemoryOperations(_loader, _entities);
-                        flowAppendix = await PlaygroundPersonQueryContextBuilder
-                            .BuildAppendixAsync(
-                                pmOps,
-                                pSpec,
-                                rootFull,
-                                scenarioResolved,
-                                strat,
-                                flowUserMessage,
-                                cancellationToken)
-                            .ConfigureAwait(false);
+                        catch (Exception exCtx)
+                        {
+                            _logger.LogWarning(exCtx, "Playground: person-memory-context load failed for {PersonaId}", personaId);
+                            flowAppendix = "---\nPerson-memory context failed to load: " + exCtx.Message + "\n";
+                        }
                     }
                 }
 

@@ -8,11 +8,16 @@ public sealed record ScenarioFlowRouterConfig(
     int? MaxTargets,
     double? MinConfidence,
     string? FallbackPersonaId,
-    string? LlmRoutingInstructions)
+    string? LlmRoutingInstructions,
+    ScenarioFlowRouterTargetPolicy TargetPolicy = ScenarioFlowRouterTargetPolicy.AllMatching)
 {
     /// <summary>Default when <c>config</c> is empty or <c>routerMode</c> is not <c>llm</c>.</summary>
     public static ScenarioFlowRouterConfig Default { get; } =
         new(ScenarioFlowRouterMode.Deterministic, null, null, null, null);
+
+    /// <summary>Cap applied after parsing router JSON (single_best always forces 1).</summary>
+    public int? EffectiveMaxTargets =>
+        TargetPolicy == ScenarioFlowRouterTargetPolicy.SingleBest ? 1 : MaxTargets;
 
     public static ScenarioFlowRouterConfig Parse(JsonElement? config)
     {
@@ -47,6 +52,20 @@ public sealed record ScenarioFlowRouterConfig(
         if (string.IsNullOrWhiteSpace(llmInstr))
             llmInstr = null;
 
-        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr);
+        var policy = ParseTargetPolicy(el);
+        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr, policy);
+    }
+
+    private static ScenarioFlowRouterTargetPolicy ParseTargetPolicy(JsonElement el)
+    {
+        if (!el.TryGetProperty("routerTargetPolicy", out var tp) || tp.ValueKind != JsonValueKind.String)
+            return ScenarioFlowRouterTargetPolicy.AllMatching;
+
+        return tp.GetString()?.Trim().ToLowerInvariant() switch
+        {
+            "single_best" or "single-best" or "single" or "one" => ScenarioFlowRouterTargetPolicy.SingleBest,
+            "all_matching" or "all-matching" or "all" or "multi" => ScenarioFlowRouterTargetPolicy.AllMatching,
+            _ => ScenarioFlowRouterTargetPolicy.AllMatching
+        };
     }
 }

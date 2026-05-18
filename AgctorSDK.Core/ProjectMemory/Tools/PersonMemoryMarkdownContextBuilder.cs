@@ -52,10 +52,14 @@ public static class PersonMemoryMarkdownContextBuilder
         if (quoted.Success)
             return quoted.Groups[1].Value.Trim();
 
+        var possessive = Regex.Match(t, @"\b([A-Za-z][a-zA-Z0-9]{1,40})['\u2019]s\b");
+        if (possessive.Success)
+            return possessive.Groups[1].Value.Trim();
+
         foreach (var prefix in new[]
                  {
                      "who is", "who's", "what is", "what's", "tell me about", "do you know",
-                     "who was", "what was"
+                     "who was", "what was", "i am", "i'm"
                  })
         {
             if (!t.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -172,13 +176,30 @@ public static class PersonMemoryMarkdownContextBuilder
         sb.AppendLine("---");
         sb.AppendLine(loadedViaLine
                       ?? "Person-query: markdown below was read from disk (playground single-step path; no tool loop).");
-        sb.AppendLine("Use ONLY this text as factual context. Answer the latest user message in plain text.");
+        if (IsRelationshipCoachingSpec(querySpec))
+        {
+            sb.AppendLine(
+                "Relationship coaching: use ONLY the markdown below. Map who is speaking from relationships.md (e.g. user → child: ryan means the user is Ryan's parent).");
+            sb.AppendLine(
+                "Give advice TO the user in their role toward the named person. Do NOT invent age, grade, hobbies, or timeline events absent from the files.");
+            sb.AppendLine(
+                "If profile does not state an age, say age is unknown — do not assume a teenager or adult.");
+        }
+        else
+        {
+            sb.AppendLine("Use ONLY this text as factual context. Answer the latest user message in plain text.");
+        }
+
         if (notes.Length > 0)
             sb.AppendLine(notes.ToString().TrimEnd());
         sb.AppendLine();
         sb.AppendLine(combined);
         return sb.ToString().TrimEnd();
     }
+
+    private static bool IsRelationshipCoachingSpec(AgentDefinitionSpec spec) =>
+        string.Equals(spec.Id, "relationship-coach", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(spec.Role, "coaching", StringComparison.OrdinalIgnoreCase);
 
     private static async Task<string> ReadMarkdownBundleForEntityAsync(
         ProjectMemoryOperations ops,

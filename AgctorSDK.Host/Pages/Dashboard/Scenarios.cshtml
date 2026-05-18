@@ -261,8 +261,14 @@
                                 <label class="mt-0.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-llm-instr">Global policy for this router (optional)</label>
                                 <p class="text-[9px] text-gray-500 dark:text-gray-500">Appended to the routing prompt after per-branch hints — use for priorities, exclusions, or tone.</p>
                                 <textarea id="sc-flow-router-llm-instr" rows="3" class="mt-0.5 w-full resize-y rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. Prefer person-query for any who-is question; never route billing text to extraction."></textarea>
-                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-max">Max persona branches per message (optional)</label>
-                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Set to <strong class="font-medium text-gray-700 dark:text-gray-300">1</strong> if you have several LlmNode arrows from this router but <strong class="font-medium text-gray-700 dark:text-gray-300">no Merge</strong> — only one branch runs, so a join node is not required. Leave empty or higher when branches meet at one Merge before Output.</p>
+                                <label class="mt-1.5 block text-[10px] font-medium text-gray-700 dark:text-gray-300" for="sc-flow-router-target-policy">How many branches may run per message</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500"><strong>Single best match</strong> — one Ollama pick (highest confidence + routing hint). <strong>All matching</strong> — every branch the model marks applicable runs (needs a shared Merge when multiple LlmNodes).</p>
+                                <select id="sc-flow-router-target-policy" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="single_best">Single best match — one persona only</option>
+                                    <option value="all_matching">All matching personas — parallel branches</option>
+                                </select>
+                                <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-max">Max persona branches (optional, all-matching only)</label>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Caps how many targets run when using <em>all matching</em>. Ignored for single best. Leave empty for no cap.</p>
                                 <input type="number" id="sc-flow-router-max" min="1" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="empty = no cap" />
                                 <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-minconf">Minimum confidence (0–1, optional)</label>
                                 <p class="text-[9px] text-gray-500 dark:text-gray-500">Targets below this threshold are dropped before execution.</p>

@@ -259,3 +259,40 @@ public sealed class ProjectMemoryGenericInboxReplayIssueDto
     public string Message { get; set; } = "";
     public bool IsError { get; set; }
 }
+
+/// <summary>One-line daily-life nudge from <see cref="PersonLifeSignalsReader"/>.</summary>
+public sealed class ScenarioEntityListItemDto
+{
+    public string EntityKey { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+}
+
+public sealed class PersonLifeSignalDto
+{
+    public string EntityKey { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Kind { get; set; } = "";
+    public string Message { get; set; } = "";
+    public int? DaysUntil { get; set; }
+    public int Priority { get; set; }
+}
+
+public sealed class PersonLifeSignalsResponseDto
+{
+    public string ScenarioId { get; set; } = "";
+    public IReadOnlyList<PersonLifeSignalDto> Signals { get; set; } = Array.Empty<PersonLifeSignalDto>();
+}
+
+/// <summary>Fast path to persist a short note without full chat (runs ingest pipeline).</summary>
+public sealed class ProjectMemoryQuickCaptureRequestDto
+{
+    public string Text { get; set; } = "";
+    public string? ScenarioId { get; set; }
+    public string? SessionId { get; set; }
+}
+
+/// <summary>Flush session transcript into memory via ingest (timeline / profile updates).</summary>
+public sealed class ProjectMemorySessionCaptureRequestDto
+{
+    public string? ScenarioId { get; set; }
+}

@@ -186,14 +186,15 @@ public static class ScenarioFlowValidator
                 // Multiple LlmNode candidates can only run in parallel when the LLM returns >1 target.
                 // maxTargets == 1 caps the parser to one persona, so each message uses a single linear branch
                 // (no shared Merge required — same as one candidate at design time).
-                var singleTargetCap = rcfg.MaxTargets is { } mtMax && mtMax == 1;
+                var singleTargetCap = rcfg.TargetPolicy == ScenarioFlowRouterTargetPolicy.SingleBest
+                                      || rcfg.EffectiveMaxTargets == 1;
                 if (!singleTargetCap)
                 {
                     var merge = ScenarioFlowGraphInterpreter.FindCommonMergeForBranchStarts(flow, personaBranchIds);
                     if (merge == null)
                     {
                         errors.Add(
-                            $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) has multiple LlmNode branches but no shared Merge before Output. Add one Merge where every branch meets, or set maxTargets to 1 so at most one branch runs per message.");
+                            $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) has multiple LlmNode branches but no shared Merge before Output. Add one Merge where every branch meets, or set routerTargetPolicy to single_best (or maxTargets to 1) so at most one branch runs per message.");
                     }
                 }
             }

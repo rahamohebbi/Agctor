@@ -93,7 +93,7 @@
         },
         "config": {
           "type": "object",
-          "description": "Type-specific payload. LlmNode: personaId (string); optional contextStrategy for person-query (markdown_all | markdown_focus | rag | graph_rag); optional toolIds (string[]) and/or toolPreset (person-memory-read | memory-write | person-memory-and-write) to merge with YAML tools.allow — e.g. person-memory-context routes playground context through the registered tool actor.",
+          "description": "Type-specific payload. Router (llm): routerMode, routerTargetPolicy (single_best | all_matching), maxTargets, minConfidence, fallbackPersonaId, llmRoutingInstructions. LlmNode: personaId (string); optional contextStrategy; optional toolIds / toolPreset.",
           "additionalProperties": true
         }
       }

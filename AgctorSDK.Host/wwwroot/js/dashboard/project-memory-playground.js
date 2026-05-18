@@ -282,6 +282,12 @@
         return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId))
             .then(function (r) {
                 if (!r.ok) throw new Error('Failed to load transcript');
+                var ct = (r.headers.get('content-type') || '').toLowerCase();
+                if (ct.indexOf('json') < 0) {
+                    return r.text().then(function (t) {
+                        throw new Error(t || 'Session response was not JSON');
+                    });
+                }
                 return r.json();
             })
             .then(renderTranscript);
@@ -975,6 +981,7 @@
                 refreshAgentSelection();
                 setScenarioPanelVisible(false);
                 status.textContent = 'Scenario updated for this project.';
+                return loadFocusEntityOptions();
             });
     }
 
@@ -1310,6 +1317,176 @@
                 .finally(function () { scenarioApplyBtn.disabled = false; });
         });
     }
+
+    var dailyLifeEl = document.getElementById('pm-play-daily-life');
+    var lifeSignalsEl = document.getElementById('pm-play-life-signals');
+    var quickInput = document.getElementById('pm-play-quick-input');
+    var quickCaptureBtn = document.getElementById('pm-play-quick-capture');
+    var captureSessionBtn = document.getElementById('pm-play-capture-session');
+    var refreshSignalsBtn = document.getElementById('pm-play-refresh-signals');
+
+    function syncDailyLifePanel() {
+        if (!dailyLifeEl) return;
+        var show = activeProjectScenarioId === 'person_3';
+        dailyLifeEl.classList.toggle('hidden', !show);
+        if (show) loadLifeSignals();
+    }
+
+    function loadLifeSignals() {
+        if (!lifeSignalsEl) return;
+        lifeSignalsEl.innerHTML = '<li>Loading…</li>';
+        fetch('/api/project-memory/life-signals?scenarioId=person_3')
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('signals')); })
+            .then(function (data) {
+                var list = (data && data.signals) || [];
+                if (!list.length) {
+                    lifeSignalsEl.innerHTML = '<li class="list-none -ml-4 text-emerald-800/70">No nudges right now.</li>';
+                    return;
+                }
+                lifeSignalsEl.innerHTML = list.map(function (s) {
+                    return '<li>' + esc(s.message || '') + '</li>';
+                }).join('');
+            })
+            .catch(function () {
+                lifeSignalsEl.innerHTML = '<li class="list-none -ml-4">Could not load nudges.</li>';
+            });
+    }
+
+    function runQuickCapture(endpoint, body) {
+        if (!activeProjectScenarioId) {
+            status.textContent = 'Select a project with scenario person_3.';
+            return Promise.resolve();
+        }
+        status.textContent = 'Capturing…';
+        return fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        })
+            .then(function (r) {
+                return r.json().then(function (j) {
+                    if (!r.ok) throw new Error((j && j.error) || String(r.status));
+                    return j;
+                });
+            })
+            .then(function (res) {
+                status.textContent = res.success ? 'Saved to memory' : 'Capture finished (check steps)';
+                if (quickInput) quickInput.value = '';
+                loadLifeSignals();
+                if (activeSessionId) return loadTranscript(activeSessionId);
+            })
+            .catch(function (e) {
+                status.textContent = e.message || 'Capture failed';
+            });
+    }
+
+    if (refreshSignalsBtn) {
+        refreshSignalsBtn.addEventListener('click', loadLifeSignals);
+    }
+    if (quickCaptureBtn && quickInput) {
+        quickCaptureBtn.addEventListener('click', function () {
+            var text = (quickInput.value || '').trim();
+            if (!text) return;
+            runQuickCapture('/api/project-memory/quick-capture', {
+                text: text,
+                scenarioId: activeProjectScenarioId,
+                sessionId: activeSessionId || null
+            });
+        });
+        quickInput.addEventListener('keydown', function (ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                quickCaptureBtn.click();
+            }
+        });
+    }
+    if (captureSessionBtn) {
+        captureSessionBtn.addEventListener('click', function () {
+            if (!activeSessionId) {
+                status.textContent = 'Select a session first.';
+                return;
+            }
+            runQuickCapture(
+                '/api/project-memory/sessions/' + encodeURIComponent(activeSessionId) + '/capture-to-memory',
+                { scenarioId: activeProjectScenarioId }
+            );
+        });
+    }
+
+    var focusEntitySel = document.getElementById('pm-play-focus-entity');
+
+    function activeProject() {
+        if (!activeProjectId) return null;
+        for (var i = 0; i < projectsCache.length; i++) {
+            if (projectsCache[i].projectId === activeProjectId) return projectsCache[i];
+        }
+        return null;
+    }
+
+    function loadFocusEntityOptions() {
+        if (!focusEntitySel || !activeProjectScenarioId) return Promise.resolve();
+        return fetch('/api/project-memory/scenario-entities?scenarioId=' + encodeURIComponent(activeProjectScenarioId))
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (entities) {
+                var current = activeProject();
+                var selected = current && current.focusEntityKey ? current.focusEntityKey : '';
+                focusEntitySel.innerHTML = '<option value="">(none — infer from chat)</option>';
+                (entities || []).forEach(function (e) {
+                    var opt = document.createElement('option');
+                    opt.value = e.entityKey || '';
+                    opt.textContent = (e.displayName || e.entityKey) + ' (' + e.entityKey + ')';
+                    opt.dataset.display = e.displayName || e.entityKey;
+                    focusEntitySel.appendChild(opt);
+                });
+                focusEntitySel.value = selected;
+            })
+            .catch(function () {
+                /* keep existing options */
+            });
+    }
+
+    function applyFocusEntityChange() {
+        if (!activeProjectId || !focusEntitySel) return Promise.resolve();
+        var key = String(focusEntitySel.value || '').trim();
+        var opt = focusEntitySel.options[focusEntitySel.selectedIndex];
+        var display = opt && opt.dataset.display ? opt.dataset.display : key;
+        return fetch('/api/chat/projects/' + encodeURIComponent(activeProjectId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                focusEntityKey: key,
+                focusDisplayName: key ? display : ''
+            })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Could not update focus person');
+                return r.json();
+            })
+            .then(function (updated) {
+                for (var i = 0; i < projectsCache.length; i++) {
+                    if (projectsCache[i].projectId === activeProjectId) {
+                        projectsCache[i].focusEntityKey = updated.focusEntityKey || null;
+                        projectsCache[i].focusDisplayName = updated.focusDisplayName || null;
+                        break;
+                    }
+                }
+                status.textContent = key ? 'Focus person set.' : 'Focus cleared.';
+            })
+            .catch(function (e) {
+                status.textContent = e.message || 'Focus update failed';
+            });
+    }
+
+    if (focusEntitySel) {
+        focusEntitySel.addEventListener('change', applyFocusEntityChange);
+    }
+
+    var _updateProjectHeaderOrig = updateProjectHeader;
+    updateProjectHeader = function () {
+        _updateProjectHeaderOrig();
+        syncDailyLifePanel();
+        loadFocusEntityOptions();
+    };
 
     sendBtn.addEventListener('click', sendStreaming);
     input.addEventListener('keydown', function (ev) {

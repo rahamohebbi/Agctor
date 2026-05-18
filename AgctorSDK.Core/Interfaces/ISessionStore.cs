@@ -27,7 +27,13 @@ namespace AgctorSDK.Core.Interfaces
         Task<SessionTraceLink> UpsertTraceLinkAsync(SessionTraceLink traceLink, CancellationToken cancellationToken = default);
         Task<SessionSummary?> GetSummaryAsync(string sessionId, CancellationToken cancellationToken = default);
         Task UpsertSummaryAsync(SessionSummary summary, CancellationToken cancellationToken = default);
-        Task<SessionProject> CreateProjectAsync(string? projectId = null, string? name = null, string? scenarioId = null, CancellationToken cancellationToken = default);
+        Task<SessionProject> CreateProjectAsync(
+            string? projectId = null,
+            string? name = null,
+            string? scenarioId = null,
+            string? focusEntityKey = null,
+            string? focusDisplayName = null,
+            CancellationToken cancellationToken = default);
         Task<SessionProject?> GetProjectAsync(string projectId, CancellationToken cancellationToken = default);
         Task<IReadOnlyList<SessionProject>> ListProjectsAsync(int limit = 50, int offset = 0, CancellationToken cancellationToken = default);
         Task<SessionProject> UpdateProjectAsync(SessionProject project, CancellationToken cancellationToken = default);

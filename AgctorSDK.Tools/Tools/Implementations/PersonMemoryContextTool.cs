@@ -74,6 +74,9 @@ public sealed class PersonMemoryContextTool : ToolActorBase
             if (spec == null)
                 return new ToolResult { IsSuccess = false, Error = $"Agent spec '{agentSpecId}' not found in project." };
 
+            var provenance = string.Equals(spec.Role, "coaching", StringComparison.OrdinalIgnoreCase)
+                ? "Relationship-coach context: markdown below was loaded via PersonMemoryContextTool (read-only)."
+                : "Person-query context: markdown below was loaded via PersonMemoryContextTool (read-only).";
             var appendix = await PersonMemoryMarkdownContextBuilder.BuildAppendixAsync(
                     ops,
                     spec,
@@ -82,7 +85,7 @@ public sealed class PersonMemoryContextTool : ToolActorBase
                     strategy,
                     userMessage,
                     CancellationToken.None,
-                    "Person-query context: markdown below was loaded via PersonMemoryContextTool (read-only).")
+                    provenance)
                 .ConfigureAwait(false);
 
             return new ToolResult { IsSuccess = true, Output = appendix };

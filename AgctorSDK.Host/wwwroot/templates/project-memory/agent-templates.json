@@ -72,5 +72,30 @@
       },
       "guardrails": ["Read-only; never modify canonical files."]
     }
+  },
+  {
+    "templateId": "relationship-coach",
+    "name": "Relationship Coach",
+    "description": "Grounded friendship and relationship advice from canonical people memory.",
+    "spec": {
+      "id": "relationship-coach",
+      "name": "Relationship Coach",
+      "role": "coaching",
+      "description": "Relationship and friendship coaching using read-only people documents.",
+      "projectTypes": ["people"],
+      "instructions": [
+        "Load person-memory-context before advising.",
+        "Base suggestions on profile, relationships, and timeline; ask when memory is thin.",
+        "Offer practical reconnection, gift, and conflict guidance without inventing facts."
+      ],
+      "input": { "type": "text" },
+      "output": { "type": "text" },
+      "tools": { "allow": ["read_document", "search_entities", "load_schema"], "deny": ["write_document"] },
+      "memoryAccess": {
+        "read": ["people/**", "schemas/people/**", "views/**"],
+        "write": ["memory_intents_only"]
+      },
+      "guardrails": ["Read-only; never modify canonical files.", "Do not invent missing facts."]
+    }
   }
 ]

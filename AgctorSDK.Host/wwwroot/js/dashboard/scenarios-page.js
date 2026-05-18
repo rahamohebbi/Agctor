@@ -756,6 +756,7 @@
         var btnDeleteEdges = document.getElementById('sc-flow-delete-edges');
         var routerPanel = document.getElementById('sc-flow-router-panel');
         var routerModeEl = document.getElementById('sc-flow-router-mode');
+        var routerTargetPolicyEl = document.getElementById('sc-flow-router-target-policy');
         var routerMaxEl = document.getElementById('sc-flow-router-max');
         var routerMinConfEl = document.getElementById('sc-flow-router-minconf');
         var routerFallbackEl = document.getElementById('sc-flow-router-fallback');
@@ -1140,6 +1141,11 @@
             var isLlm = routerModeEl.value === 'llm';
             det.classList.toggle('hidden', isLlm);
             llm.classList.toggle('hidden', !isLlm);
+            if (routerMaxEl && routerTargetPolicyEl) {
+                var single = routerTargetPolicyEl.value === 'single_best';
+                routerMaxEl.disabled = single;
+                routerMaxEl.classList.toggle('opacity-50', single);
+            }
         }
 
         function refreshFlowRouterInspector() {
@@ -1162,12 +1168,17 @@
                 cfg = {};
             }
             routerModeEl.value = (cfg.routerMode === 'llm') ? 'llm' : 'deterministic';
+            if (routerTargetPolicyEl) {
+                routerTargetPolicyEl.value =
+                    cfg.routerTargetPolicy === 'single_best' ? 'single_best' : 'all_matching';
+            }
             routerMaxEl.value = cfg.maxTargets != null && cfg.maxTargets !== '' ? String(cfg.maxTargets) : '';
             routerMinConfEl.value = cfg.minConfidence != null && cfg.minConfidence !== '' ? String(cfg.minConfidence) : '';
             routerFallbackEl.value = cfg.fallbackPersonaId ? String(cfg.fallbackPersonaId) : '';
             if (routerLlmInstrEl) {
                 routerLlmInstrEl.value = cfg.llmRoutingInstructions ? String(cfg.llmRoutingInstructions) : '';
             }
+            updateRouterModeDependentUi();
             var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
             var rid = sel.id();
             routerCandUl.innerHTML = '';
@@ -1419,8 +1430,13 @@
             }
             if (routerModeEl.value === 'llm') {
                 cfg.routerMode = 'llm';
+                if (routerTargetPolicyEl) {
+                    cfg.routerTargetPolicy = routerTargetPolicyEl.value === 'single_best' ? 'single_best' : 'all_matching';
+                }
                 var mx = routerMaxEl.value.trim();
-                if (mx) {
+                if (routerTargetPolicyEl && routerTargetPolicyEl.value === 'single_best') {
+                    delete cfg.maxTargets;
+                } else if (mx) {
                     var nmx = parseInt(mx, 10);
                     if (!isNaN(nmx) && nmx > 0) cfg.maxTargets = nmx;
                     else delete cfg.maxTargets;
@@ -1441,6 +1457,7 @@
                 }
             } else {
                 delete cfg.routerMode;
+                delete cfg.routerTargetPolicy;
                 delete cfg.maxTargets;
                 delete cfg.minConfidence;
                 delete cfg.fallbackPersonaId;
@@ -1488,7 +1505,16 @@
                 });
         }
 
-        if (routerModeEl) routerModeEl.addEventListener('change', persistFlowRouterInspector);
+        if (routerModeEl) routerModeEl.addEventListener('change', function () {
+            updateRouterModeDependentUi();
+            persistFlowRouterInspector();
+        });
+        if (routerTargetPolicyEl) {
+            routerTargetPolicyEl.addEventListener('change', function () {
+                updateRouterModeDependentUi();
+                persistFlowRouterInspector();
+            });
+        }
         if (routerMaxEl) routerMaxEl.addEventListener('change', persistFlowRouterInspector);
         if (routerMinConfEl) routerMinConfEl.addEventListener('change', persistFlowRouterInspector);
         if (routerFallbackEl) routerFallbackEl.addEventListener('change', persistFlowRouterInspector);

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.Sessions.Models;
 using Microsoft.Data.Sqlite;
 
@@ -559,12 +560,20 @@ DO UPDATE SET content = excluded.content,
             }
         }
 
-        public async Task<SessionProject> CreateProjectAsync(string? projectId = null, string? name = null, string? scenarioId = null, CancellationToken cancellationToken = default)
+        public async Task<SessionProject> CreateProjectAsync(
+            string? projectId = null,
+            string? name = null,
+            string? scenarioId = null,
+            string? focusEntityKey = null,
+            string? focusDisplayName = null,
+            CancellationToken cancellationToken = default)
         {
             var id = string.IsNullOrWhiteSpace(projectId) ? Guid.NewGuid().ToString() : projectId.Trim();
             var now = DateTimeOffset.UtcNow;
             var resolvedName = string.IsNullOrWhiteSpace(name) ? $"Project {now:yyyy-MM-dd HH:mm:ss}" : name.Trim();
             var resolvedScenarioId = string.IsNullOrWhiteSpace(scenarioId) ? SessionProjectTypes.People : scenarioId.Trim().ToLowerInvariant();
+            var resolvedFocusKey = NormalizeFocusEntityKey(focusEntityKey);
+            var resolvedFocusName = string.IsNullOrWhiteSpace(focusDisplayName) ? null : focusDisplayName.Trim();
 
             await _dbLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -573,15 +582,19 @@ DO UPDATE SET content = excluded.content,
                 await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-INSERT INTO session_projects (project_id, name, scenario_id, created_at, updated_at)
-VALUES ($id, $name, $scenarioId, $createdAt, $updatedAt)
+INSERT INTO session_projects (project_id, name, scenario_id, focus_entity_key, focus_display_name, created_at, updated_at)
+VALUES ($id, $name, $scenarioId, $focusKey, $focusName, $createdAt, $updatedAt)
 ON CONFLICT(project_id) DO UPDATE SET
   scenario_id = excluded.scenario_id,
   name = excluded.name,
+  focus_entity_key = excluded.focus_entity_key,
+  focus_display_name = excluded.focus_display_name,
   updated_at = excluded.updated_at;";
                 cmd.Parameters.AddWithValue("$id", id);
                 cmd.Parameters.AddWithValue("$name", resolvedName);
                 cmd.Parameters.AddWithValue("$scenarioId", resolvedScenarioId);
+                cmd.Parameters.AddWithValue("$focusKey", resolvedFocusKey is null ? DBNull.Value : resolvedFocusKey);
+                cmd.Parameters.AddWithValue("$focusName", resolvedFocusName is null ? DBNull.Value : resolvedFocusName);
                 cmd.Parameters.AddWithValue("$createdAt", now.ToString("O"));
                 cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -604,11 +617,11 @@ ON CONFLICT(project_id) DO UPDATE SET
             await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
 FROM session_projects p
 LEFT JOIN sessions s ON s.project_id = p.project_id
 WHERE p.project_id = $id
-GROUP BY p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at;";
+GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at;";
             cmd.Parameters.AddWithValue("$id", projectId.Trim());
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -627,10 +640,10 @@ GROUP BY p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at;";
             await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
 FROM session_projects p
 LEFT JOIN sessions s ON s.project_id = p.project_id
-GROUP BY p.project_id, p.name, p.scenario_id, p.created_at, p.updated_at
+GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at
 ORDER BY p.updated_at DESC
 LIMIT $limit OFFSET $offset;";
             cmd.Parameters.AddWithValue("$limit", limit);
@@ -656,11 +669,15 @@ LIMIT $limit OFFSET $offset;";
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
 UPDATE session_projects
-SET name = $name, scenario_id = $scenarioId, updated_at = $updatedAt
+SET name = $name, scenario_id = $scenarioId, focus_entity_key = $focusKey, focus_display_name = $focusName, updated_at = $updatedAt
 WHERE project_id = $id;";
                 cmd.Parameters.AddWithValue("$name", (project.Name ?? "").Trim());
                 var scenarioId = string.IsNullOrWhiteSpace(project.ScenarioId) ? SessionProjectTypes.People : project.ScenarioId.Trim().ToLowerInvariant();
                 cmd.Parameters.AddWithValue("$scenarioId", scenarioId);
+                var focusKey = NormalizeFocusEntityKey(project.FocusEntityKey);
+                cmd.Parameters.AddWithValue("$focusKey", focusKey is null ? DBNull.Value : focusKey);
+                var focusName = string.IsNullOrWhiteSpace(project.FocusDisplayName) ? null : project.FocusDisplayName.Trim();
+                cmd.Parameters.AddWithValue("$focusName", focusName is null ? DBNull.Value : focusName);
                 cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
                 cmd.Parameters.AddWithValue("$id", project.ProjectId.Trim());
                 var changed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -858,6 +875,7 @@ CREATE TABLE IF NOT EXISTS session_project_moves (
             // Index uses project_id — must run after legacy ALTER adds the column.
             EnsureSessionProjectColumn(conn);
             EnsureSessionProjectsSchema(conn);
+            EnsureProjectFocusColumns(conn);
             using var projIdx = conn.CreateCommand();
             projIdx.CommandText = @"
 CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
@@ -921,10 +939,50 @@ VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
                 ProjectId = reader.GetString(0),
                 Name = reader.GetString(1),
                 ScenarioId = scenarioId,
-                CreatedAt = DateTimeOffset.Parse(reader.GetString(3)),
-                UpdatedAt = DateTimeOffset.Parse(reader.GetString(4)),
-                SessionCount = reader.GetInt32(5)
+                FocusEntityKey = reader.IsDBNull(3) ? null : reader.GetString(3),
+                FocusDisplayName = reader.IsDBNull(4) ? null : reader.GetString(4),
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(5)),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(6)),
+                SessionCount = reader.GetInt32(7)
             };
+        }
+
+        private static string? NormalizeFocusEntityKey(string? key)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+                return null;
+            return PersonaScenarioScope.SanitizeFolderSegment(key.Trim()).ToLowerInvariant();
+        }
+
+        private static void EnsureProjectFocusColumns(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(session_projects);";
+            var hasFocusKey = false;
+            var hasFocusName = false;
+            using (var reader = pragma.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    var col = reader.GetString(1);
+                    if (string.Equals(col, "focus_entity_key", StringComparison.OrdinalIgnoreCase)) hasFocusKey = true;
+                    if (string.Equals(col, "focus_display_name", StringComparison.OrdinalIgnoreCase)) hasFocusName = true;
+                }
+            }
+
+            if (!hasFocusKey)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_projects ADD COLUMN focus_entity_key TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
+
+            if (!hasFocusName)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_projects ADD COLUMN focus_display_name TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
         }
 
         private static void EnsureTurnGroupColumn(SqliteConnection conn)

@@ -37,26 +37,28 @@ public static class ScenarioFlowRouterLlmParser
             return ScenarioFlowRouterLlmResult.Clarify(dto.ClarificationPrompt);
 
         var minConf = config.MinConfidence ?? 0;
-        var list = new List<string>();
+        var scored = new List<(string PersonaId, double Confidence)>();
         foreach (var t in dto.Targets ?? new List<RouterLlmTargetDto>())
         {
             var pid = t.PersonaId?.Trim();
             if (string.IsNullOrEmpty(pid) || !allowed.Contains(pid))
                 continue;
-            if (t.Confidence is { } c && c < minConf)
+            var conf = t.Confidence ?? 0;
+            if (conf < minConf)
                 continue;
-            list.Add(pid);
+            scored.Add((pid, conf));
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var ordered = new List<string>();
-        foreach (var p in list)
-        {
-            if (seen.Add(p))
-                ordered.Add(p);
-        }
+        // One row per persona — keep highest confidence if the model duplicated ids.
+        var ordered = scored
+            .GroupBy(x => x.PersonaId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(x => x.Confidence).First())
+            .OrderByDescending(x => x.Confidence)
+            .ThenBy(x => x.PersonaId, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.PersonaId)
+            .ToList();
 
-        if (config.MaxTargets is { } cap && cap > 0 && ordered.Count > cap)
+        if (config.EffectiveMaxTargets is { } cap && cap > 0 && ordered.Count > cap)
             ordered = ordered.Take(cap).ToList();
 
         if (ordered.Count > 0)
