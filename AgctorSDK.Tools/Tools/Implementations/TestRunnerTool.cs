@@ -7,11 +7,14 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
+using AgctorSDK.Core.Tools;
+
 namespace AgctorSDK.Core.Tools.Implementations
 {
     /// <summary>
     /// Tool actor that triggers language-specific test execution.
     /// </summary>
+    [AgctorHostTool("test-runner", "Test Runner Tool", "Runs unit tests", ExposeOnHttpApi = false)]
     public class TestRunnerTool : ToolActorBase
     {
         private readonly ILanguageTestRunnerFactory _runnerFactory;

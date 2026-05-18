@@ -6,10 +6,12 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.LanguageExecutors;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
+    [AgctorHostTool("code-executor", "Code Executor Tool", "Executes code in various languages (Python, C#, etc.)")]
     public class CodeExecutorTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;

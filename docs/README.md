@@ -4,6 +4,7 @@ This directory contains the **solution-level** architecture documentation for th
 
 ## Documentation Files
 
+- **system-overview-diagram**: High-level assembly and component interaction (start here)
 - **architecture-diagram**: Complete system architecture across all layers
 - **class-diagram**: Key classes and inheritance across all projects
 - **endpoints-diagram**: All external-facing interfaces (HTTP, MCP, CLI)

@@ -7,7 +7,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />
-    <ProjectReference Include="..\AgctorSDK.Agents\AgctorSDK.Agents.csproj" />
   </ItemGroup>
 
   <ItemGroup>

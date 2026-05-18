@@ -1,0 +1,15 @@
+flowchart TB
+    subgraph ToolsAsm [AgctorSDK.Tools]
+        ToolActors[Tool actors]
+        LangServices[Language services]
+    end
+
+    Core[AgctorSDK.Core]
+    Host[AgctorSDK.Host]
+
+    Host --> ToolActors
+    ToolActors --> LangServices
+    ToolActors --> Core
+
+    style ToolsAsm fill:#c8e6c9
+    style Core fill:#e1f5ff

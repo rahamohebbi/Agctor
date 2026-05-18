@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Adapters;
+using AgctorRuntimeCatalog = AgctorSDK.Core.Runtime.AgctorRuntimeCatalog;
 
 namespace AgctorSDK.Core.DependencyInjection
 {
@@ -130,9 +131,10 @@ namespace AgctorSDK.Core.DependencyInjection
             }
 
             if (!RuntimeTypeMap.TryGetValue(runtimeName, out var runtimeType))
-            {
                 return false;
-            }
+
+            if (AgctorRuntimeCatalog.IsExperimental(runtimeName) && !_options.AllowExperimentalRuntimes)
+                return false;
 
             // Check if the runtime type is registered in the DI container
             try

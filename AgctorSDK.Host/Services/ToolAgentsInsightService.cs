@@ -7,6 +7,8 @@ using AgctorSDK.Core.Tools;
 using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Options;
 
+using AgctorSDK.Extensions.Services;
+
 namespace AgctorSDK.Host.Services;
 
 /// <inheritdoc />
@@ -59,9 +61,7 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
         var tools = new List<ToolInsightDto>();
         foreach (var entry in catalogEntries.OrderBy(e => e.ClrTypeName, StringComparer.OrdinalIgnoreCase))
         {
-            if (!registered.Contains(entry.ClrTypeName))
-                continue;
-
+            var isRegistered = registered.Contains(entry.ClrTypeName);
             var assoc = new List<ToolAgentAssociationDto>();
             foreach (var (spec, token) in yamlRows)
             {
@@ -79,6 +79,7 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
             }
 
             AppendCSharpHints(entry.ClrTypeName, assoc);
+            AppendProjectMemoryPersonaHints(entry.ClrTypeName, specs, assoc);
 
             tools.Add(new ToolInsightDto
             {
@@ -86,6 +87,7 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
                 HttpPrimaryId = entry.ExposeOnHttpApi ? entry.PrimaryId : null,
                 DisplayName = string.IsNullOrWhiteSpace(entry.Discovery.Name) ? entry.ClrTypeName : entry.Discovery.Name,
                 Description = entry.Discovery.Description ?? "",
+                IsRegistered = isRegistered,
                 Associations = DedupeAssociations(assoc)
             });
         }
@@ -262,6 +264,33 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>YAML personas that route to host tools via scenario-flow <c>toolIds</c> / playground (not always listed in <c>tools.allow</c>).</summary>
+    private static void AppendProjectMemoryPersonaHints(
+        string clrToolName,
+        IReadOnlyList<AgentDefinitionSpec> specs,
+        List<ToolAgentAssociationDto> assoc)
+    {
+        foreach (var (personaId, clrTool) in ProjectMemoryPersonaToolRouting.KnownRoutes)
+        {
+            if (!string.Equals(clrToolName, clrTool, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var spec = specs.FirstOrDefault(s =>
+                string.Equals(s.Id, personaId, StringComparison.OrdinalIgnoreCase));
+            if (spec == null)
+                continue;
+
+            assoc.Add(new ToolAgentAssociationDto
+            {
+                Kind = "project-memory-yaml",
+                AgentId = spec.Id,
+                AgentLabel = string.IsNullOrWhiteSpace(spec.Name) ? spec.Id : spec.Name,
+                Source = "scenario-flow-toolIds",
+                Detail = "LlmNode.config.toolIds / playground routing (see AgctorToolCatalog HTTP id)"
+            });
+        }
     }
 
     private void AppendCSharpHints(string clrToolName, List<ToolAgentAssociationDto> assoc)

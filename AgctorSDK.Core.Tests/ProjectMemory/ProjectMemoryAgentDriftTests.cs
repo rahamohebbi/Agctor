@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgctorSDK.Agents.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory;

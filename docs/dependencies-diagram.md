@@ -14,7 +14,7 @@ Complete dependency graph for all 11 projects in the Agctor solution.
 |---------|-----------|
 | **AgctorSDK.Core** | _(none — foundation)_ |
 | **AgctorSDK.Agents** | Core |
-| **AgctorSDK.Tools** | Core, Agents |
+| **AgctorSDK.Tools** | Core |
 | **AgctorSDK.CodeGraph** | Core, Agents |
 | **AgctorSDK.Extensions** | Core, Agents, Tools |
 | **AgctorSDK.Host** | Core, Agents, Tools, Extensions, CodeGraph |

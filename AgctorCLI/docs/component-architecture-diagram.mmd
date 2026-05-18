@@ -1,0 +1,19 @@
+flowchart LR
+    User[CLI user]
+    Cli[AgctorCLI]
+    Ext[AgctorSDK.Extensions]
+    CodeGraph[AgctorSDK.CodeGraph]
+    Agents[AgctorSDK.Agents]
+    Tools[AgctorSDK.Tools]
+    Core[AgctorSDK.Core]
+
+    User --> Cli
+    Cli --> Ext
+    Ext --> Core
+    Ext --> Agents
+    Ext --> Tools
+    Ext --> CodeGraph
+    CodeGraph --> Agents
+
+    style Cli fill:#fff9c4
+    style Core fill:#e1f5ff

@@ -1,22 +1,16 @@
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Host.DependencyInjection;
 using AgctorSDK.Host.Services;
-using AgctorSDK.Host.Services.ProjectMemory;
-using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Snippets;
-using AgctorSDK.Core.DependencyInjection;
 using AgctorSDK.Core.ProjectMemory;
-using AgctorSDK.Core.ProjectMemory.Orchestration;
-using AgctorSDK.Core.Ollama;
-using AgctorSDK.Agents.ProjectMemory;
 using AgctorSDK.Extensions.DependencyInjection;
+using AgctorSDK.Extensions.Hosting;
 using AgctorSDK.Extensions.Services;
 using AgctorSDK.Core.Sessions;
-using AgctorSDK.Host.Services.Sessions;
-using AgctorSDK.Host.Services.Traces;
 using AgctorSDK.Core.Streaming;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -64,173 +58,15 @@ builder.Services.AddSwaggerGen(c =>
     */
 });
 
-// Configure agent types
-builder.Services.Configure<AgentTypeOptions>(options =>
-{
-    options.RegisterAgentType("Agent", typeof(Agent));
-    options.RegisterAgentType("LLMAgent", typeof(LLMAgent));
-    options.RegisterAgentType("CoderAgent", typeof(CoderAgent));
-    options.RegisterAgentType("SessionCoordinatorAgent", typeof(SessionCoordinatorAgent));
-    options.RegisterAgentType("SessionMemoryAgent", typeof(SessionMemoryAgent));
-    options.RegisterAgentType("PersonExtractorProjectAgent", typeof(PersonExtractorProjectAgent));
-    options.RegisterAgentType("MemoryCuratorProjectAgent", typeof(MemoryCuratorProjectAgent));
-    options.RegisterAgentType("PersonQueryProjectAgent", typeof(PersonQueryProjectAgent));
-});
-
 var defaultProjectMemoryRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "samples", "people-project"));
-builder.Services.Configure<ProjectMemoryAgentOptions>(o =>
-{
-    var cfgPath = builder.Configuration["Agctor:ProjectMemory:ProjectRoot"];
-    o.ProjectRoot = !string.IsNullOrWhiteSpace(cfgPath) ? Path.GetFullPath(cfgPath) : defaultProjectMemoryRoot;
-    if (Enum.TryParse<ProjectMemoryPipelineExecutionMode>(
-            builder.Configuration["Agctor:ProjectMemory:ExecutionMode"],
-            ignoreCase: true,
-            out var executionMode))
-    {
-        o.ExecutionMode = executionMode;
-    }
-});
-builder.Services.AddAgctorProjectMemory();
-// PRD-018: entity-resolution subsystem (signal producers, metrics, bootstrapper).
-builder.Services.AddAgctorResolution();
-builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.Resolution.Trace.IResolveSpanSink>(sp =>
-    new AgctorSDK.Host.Services.ProjectMemory.ResolveSpanTraceSink(sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
-builder.Services.AddSingleton<IProjectMemoryLlmClient, OllamaConfiguredCompletionClient>();
-// PRD-019 Host classifier: heuristic fast path + LLM fallback so natural consent phrasing
-// (e.g. "yes I wish to save it") is recognized without code edits.
-builder.Services.AddSingleton<AgctorSDK.Core.ProjectMemory.OutOfSchema.IConfirmationIntentClassifier,
-    AgctorSDK.Core.ProjectMemory.OutOfSchema.LlmConfirmationIntentClassifier>();
-// PRD-019 Option B: LLM-driven multilingual coreference resolver is wired automatically by
-// AddAgctorProjectMemory whenever an IProjectMemoryLlmClient is registered (always true here),
-// so no explicit Host registration is required.
-builder.Services.AddSingleton<ProjectMemoryPipelineRunner>();
-builder.Services.AddSingleton<IProjectMemoryPipelineRunner>(sp =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ProjectMemoryAgentOptions>>().Value;
-    return options.ExecutionMode == ProjectMemoryPipelineExecutionMode.ActorWorkflow
-        ? new ActorBackedProjectMemoryPipelineRunner(
-            sp.GetRequiredService<IActorRuntimeAdapter>(),
-            sp.GetRequiredService<ProjectMemoryPipelineRunner>())
-        : sp.GetRequiredService<ProjectMemoryPipelineRunner>();
-});
-builder.Services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
-builder.Services.AddSingleton<IProjectMemoryAgentYamlPersistence, ProjectMemoryAgentYamlPersistence>();
-builder.Services.AddSingleton<IUserProjectMemorySettingsService, UserProjectMemorySettingsService>();
-builder.Services.AddSingleton<ILlmUserSettingsService, LlmUserSettingsService>();
-builder.Services.AddSingleton<IOllamaModelCatalog, OllamaModelCatalog>();
-
-// Register AGCTOR Core services
-var defaultRuntime = builder.Configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory");
-Console.WriteLine($"🔄 Configured actor runtime: {defaultRuntime}");
 var llmApiUrl = builder.Configuration.GetValue<string>("Agctor:LLM:OllamaApiUrl", "http://localhost:11434");
 var llmModel = builder.Configuration.GetValue<string>("Agctor:LLM:DefaultModel", "mistral");
 var configuredMcpPort = builder.Configuration.GetValue<int?>("Mcp:Port") ?? 8080;
 LLMAgent.ConfigureDefaults(llmApiUrl, llmModel);
 Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfiguredOllamaApiUrl()}, model={LLMAgent.GetConfiguredDefaultModel()}");
 
-switch (defaultRuntime)
-{
-    case "Proto":
-    case "Proto.Actor":
-        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.ProtoActorAdapter>(opts => opts.DefaultRuntime = "Proto.Actor");
-        break;
-    case "Orleans":
-        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.OrleansAdapter>(opts => opts.DefaultRuntime = "Orleans");
-        break;
-    default:
-        builder.Services.AddAgctor<AgctorSDK.Core.Adapters.InMemoryActorRuntime>(opts => opts.DefaultRuntime = "InMemory");
-        break;
-}
-
-// Use the lightweight in-process tracker for host startup reliability.
-builder.Services.AddAgctorActivityTracking(opts =>
-{
-    opts.EnableToolTracing = true;
-});
-builder.Services.AddAgctorVisualization();
-
-// Register Host-specific services
-builder.Services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
-builder.Services.AddSingleton<IAgentOutputStreamRegistry, AgentOutputStreamRegistry>();
-builder.Services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
-builder.Services.AddSingleton(_ => AgctorToolCatalog.CreateDefault());
-builder.Services.AddSingleton<IToolAgentsInsightService, ToolAgentsInsightService>();
-builder.Services.AddSingleton<IToolInvoker, ToolInvoker>();
-var sessionStorePath = builder.Configuration.GetValue<string>("Agctor:SessionStorePath")
-    ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");
-builder.Services.AddSingleton(new SessionMemoryOptions
-{
-    RecentTurnWindow = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:RecentTurnWindow") ?? 8,
-    SummaryRefreshTurns = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:SummaryRefreshTurns") ?? 12,
-    MaxContextChars = builder.Configuration.GetValue<int?>("Agctor:SessionMemory:MaxContextChars") ?? 12000
-});
-builder.Services.AddSingleton<ISessionStore>(_ => new SqliteSessionStore(sessionStorePath));
-var traceStorePath = builder.Configuration.GetValue<string>("Agctor:TraceStorePath")
-    ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-traces-{configuredMcpPort}.db");
-builder.Services.AddSingleton<ITraceTimelineStore>(_ => new SqliteTraceTimelineStore(traceStorePath));
-builder.Services.AddSingleton<ISessionContextComposer, SessionContextComposer>();
-// Register InMemoryTaskStore
-builder.Services.AddInMemoryTaskStore();
-// Code generation + pull-request automation
-builder.Services.AddPullRequestAutomation();
-// Configure background-service options, but start them after HTTP startup so the dashboard remains reachable.
-builder.Services.Configure<TaskScoperHostedService.TaskScoperOptions>(options =>
-{
-    var seconds = builder.Configuration.GetValue<int?>("TaskScoper:ScanInterval");
-    if (seconds.HasValue && seconds.Value > 0)
-    {
-        options.ScanInterval = TimeSpan.FromSeconds(seconds.Value);
-    }
-});
-builder.Services.Configure<TaskFlowHostedService.TaskFlowOptions>(options =>
-{
-    var seconds = builder.Configuration.GetValue<int?>("TaskFlow:Interval");
-    if (seconds.HasValue && seconds.Value > 0)
-    {
-        options.Interval = TimeSpan.FromSeconds(seconds.Value);
-    }
-});
-builder.Services.AddSingleton<TaskScoperHostedService>();
-builder.Services.AddSingleton<TaskFlowHostedService>();
-// Register InMemoryGoalStore
-builder.Services.AddInMemoryGoalStore();
-
-// Register LLM client (Ollama default)
-builder.Services.AddHttpClient<OllamaLlmClient>();
-builder.Services.AddSingleton<ILlmClient>(sp => sp.GetRequiredService<OllamaLlmClient>());
-
-// Register scenario services
-builder.Services.Configure<ScenarioCatalogOptions>(builder.Configuration.GetSection("Agctor:Scenarios"));
-builder.Services.AddSingleton<IScenarioCatalog, JsonScenarioCatalog>();
-builder.Services.AddSingleton<IScenarioFactory, ScenarioFactory>();
-builder.Services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
-builder.Services.AddSingleton<IScenarioApplicationService, ScenarioApplicationService>();
-builder.Services.AddSingleton<IProjectMemoryPersonaLlmRunner, ProjectMemoryPersonaLlmRunner>();
-builder.Services.AddSingleton<IScenarioFlowRouterLlmService, ScenarioFlowRouterLlmService>();
-builder.Services.AddSingleton<IScenarioFlowExecutionService, ScenarioFlowExecutionService>();
-
-// Agent type enablement persisted to appsettings.User.json (PRD-010)
-builder.Services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();
-
-// Dashboard config service (PRD-006)
-builder.Services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
-
-// Actor runtime selection persisted to appsettings.User.json (PRD-012 Tier A)
-builder.Services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
-
-// Agent detail providers for dashboard (PRD-006)
-builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.LLMAgentDetailProvider>();
-builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, AgctorSDK.Host.Services.AgentDetailProviders.CoderAgentDetailProvider>();
-builder.Services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProviderRegistry, AgentDetailProviderRegistry>();
-
-// CodeGraph context for dashboard (PRD-006); scenario sets context when code-graph-demo runs
-builder.Services.AddSingleton<ICodeGraphContextAccessor, CodeGraphContextAccessor>();
-
-// Register MCP listener as a singleton and start it after HTTP is up.
-builder.Services.AddSingleton<McpListener>();
-
-// Register endpoint info so tests can discover chosen port when 0 is used
-builder.Services.AddSingleton<AgctorSDK.Host.Models.McpEndpointInfo>();
+builder.Services.AddAgctorHost(builder.Configuration, defaultProjectMemoryRoot);
+builder.Services.AddAgctorHostWeb(builder.Configuration, configuredMcpPort);
 
 // Add CORS for development
 builder.Services.AddCors(options =>

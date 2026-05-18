@@ -1,5 +1,13 @@
 # Architecture Diagram
 
+## Component overview (high level)
+
+![Component architecture](./component-architecture-diagram.jpg)
+
+[Edit overview source](./component-architecture-diagram.mmd)
+
+## Detailed architecture
+
 ![Architecture Diagram](./architecture-diagram.jpg)
 
 [Edit source](./architecture-diagram.mmd)

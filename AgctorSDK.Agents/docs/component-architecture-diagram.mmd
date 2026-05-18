@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph AgentsAsm [AgctorSDK.Agents]
+        AgentTypes[Workflow agents]
+        Factory[Factory and registry]
+        Runtime[Runtime adapters]
+    end
+
+    Core[AgctorSDK.Core]
+    Tools[AgctorSDK.Tools]
+    Host[Hosts and CLI]
+
+    Host --> Factory
+    Factory --> AgentTypes
+    Factory --> Runtime
+    AgentTypes --> Core
+    Runtime --> Core
+    Tools --> AgentTypes
+
+    style AgentsAsm fill:#b3e5fc
+    style Core fill:#e1f5ff

@@ -7,9 +7,8 @@ using AgctorSDK.Core.Interfaces;
 namespace AgctorSDK.Core.Adapters
 {
     /// <summary>
-    /// Orleans actor runtime adapter implementation.
-    /// This adapter provides integration with Microsoft Orleans distributed actor framework.
-    /// Currently contains placeholder implementations that will be developed in future iterations.
+    /// <strong>Experimental.</strong> Orleans distributed runtime adapter (placeholder).
+    /// Enable via <c>Agctor:AllowExperimentalRuntimes=true</c>; default host/CLI use InMemory.
     /// </summary>
     public class OrleansAdapter : IActorRuntimeAdapter
     {

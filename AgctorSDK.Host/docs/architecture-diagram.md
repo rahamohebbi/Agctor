@@ -1,5 +1,13 @@
 # Architecture Diagram
 
+## Component overview (high level)
+
+![Component architecture](./component-architecture-diagram.jpg)
+
+[Edit overview source](./component-architecture-diagram.mmd)
+
+## Detailed architecture
+
 ![Architecture Diagram](./architecture-diagram.jpg)
 
 [Edit source](./architecture-diagram.mmd)
@@ -27,7 +35,7 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 - **SqliteSessionStore** / **SqliteTraceTimelineStore**: Durable chat and trace timelines
 - **AgctorToolCatalog**: Single registry of `IToolActor` types, HTTP tool ids, and **`ToolInfo`** discovery (name, description, parameters) used by **ToolInvoker** and insight APIs
 - **ToolInvoker**: Direct tool execution path used by HTTP/MCP (resolves tools via the catalog)
-- **ToolAgentsInsightService** (`IToolAgentsInsightService`): Builds merged **tool↔agent** and **agent↔tool** views from the catalog, `IAgentFactory` tool registration, project-memory YAML `tools.allow`, and C# affinity hints for dashboards
+- **ToolAgentsInsightService** (`IToolAgentsInsightService`): Merged **tool↔agent** / **agent↔tool** views from **AgctorToolCatalog** (Extensions), `IAgentFactory` registration, project-memory YAML `tools.allow`, and C# affinity hints
 - **Scenario** types: catalog, factory, application service, and current-scenario store for demos and dashboard
 
 ### Background services

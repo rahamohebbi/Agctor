@@ -1,0 +1,47 @@
+flowchart TB
+    subgraph consumers [Consumers]
+        HttpClient[HTTP clients and dashboard]
+        McpClient[MCP TCP clients]
+        CliUser[AgctorCLI]
+    end
+
+    subgraph hosts [Application hosts]
+        Host[AgctorSDK.Host]
+        Cli[AgctorCLI]
+    end
+
+    subgraph composition [Composition layer]
+        Ext[AgctorSDK.Extensions]
+    end
+
+    subgraph intelligence [Intelligence layer]
+        Agents[AgctorSDK.Agents]
+        CodeGraph[AgctorSDK.CodeGraph]
+    end
+
+    subgraph operations [Operations layer]
+        Tools[AgctorSDK.Tools]
+    end
+
+    Core[AgctorSDK.Core]
+
+    HttpClient --> Host
+    McpClient --> Host
+    CliUser --> Cli
+    Host --> Ext
+    Cli --> Ext
+    Ext --> Core
+    Ext --> Agents
+    Ext --> Tools
+    Agents --> Core
+    Tools --> Core
+    CodeGraph --> Core
+    CodeGraph --> Agents
+    Host --> CodeGraph
+
+    style Core fill:#e1f5ff
+    style Host fill:#fff9c4
+    style Agents fill:#b3e5fc
+    style CodeGraph fill:#b3e5fc
+    style Tools fill:#c8e6c9
+    style Ext fill:#f3e5f5

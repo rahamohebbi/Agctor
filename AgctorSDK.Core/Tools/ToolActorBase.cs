@@ -3,16 +3,14 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
-using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Utils.Logging;
 
-namespace AgctorSDK.Core.Tools.Implementations;
+namespace AgctorSDK.Core.Tools;
 
 /// <summary>
-/// Base class for tool actors: <see cref="IActor"/> + <see cref="IToolActor"/> without <see cref="IAgent"/>.
-/// Agents invoke tools via <see cref="IAgentFactory.InvokeToolByPromptAsync"/> or <see cref="ToolRequest"/> messages;
-/// tools must not spawn or message other agents except returning results to the caller's request-response channel.
+/// Base for tool actors: <see cref="IActor"/> + <see cref="IToolActor"/> without <see cref="IAgent"/>.
+/// Tools must not spawn agents; they only handle prompts and <see cref="ToolRequest"/> messages.
 /// </summary>
 public abstract class ToolActorBase : BaseActor, IToolActor
 {
@@ -42,14 +40,8 @@ public abstract class ToolActorBase : BaseActor, IToolActor
         }
     }
 
-    /// <summary>
-    /// Parses a natural-language or CLI-style prompt and returns a <see cref="ToolResult"/> (no agent hierarchy).
-    /// </summary>
     protected abstract Task<ToolResult> OnProcessPromptAsync(string prompt, CancellationToken cancellationToken);
 
-    /// <summary>
-    /// Runs a CLI-style prompt for tests or direct callers without going through the actor runtime mailbox.
-    /// </summary>
     public Task<ToolResult> RunFromPromptAsync(string prompt, CancellationToken cancellationToken = default) =>
         OnProcessPromptAsync(prompt, cancellationToken);
 

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Tools;
+using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Models;
 using Microsoft.Extensions.Options;
 
@@ -17,6 +18,11 @@ namespace AgctorSDK.Core.Tools.Implementations;
 /// Read-only: loads scenario-scoped people markdown for Q&amp;A (same data as the person-query appendix builder).
 /// Invoked via <see cref="ToolRequest"/> from HTTP or scenario flow when <c>person-memory-context</c> is allowed.
 /// </summary>
+[AgctorHostTool(
+    "person-memory-context",
+    "Person memory context",
+    "Read-only: loads scenario-scoped people markdown for person-query (BuildContext operation).",
+    DefaultOperation = "BuildContext")]
 public sealed class PersonMemoryContextTool : ToolActorBase
 {
     public PersonMemoryContextTool(string id) : base(id, nameof(PersonMemoryContextTool))

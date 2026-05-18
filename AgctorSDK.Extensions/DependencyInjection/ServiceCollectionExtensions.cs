@@ -302,5 +302,10 @@ namespace AgctorSDK.Core.DependencyInjection
         /// These will be passed to the adapter during initialization.
         /// </summary>
         public Dictionary<string, object> AdditionalProperties { get; set; } = new();
+
+        /// <summary>
+        /// When false (default), <see cref="IActorRuntimeAdapterFactory"/> treats Proto.Actor and Orleans as unavailable.
+        /// </summary>
+        public bool AllowExperimentalRuntimes { get; set; }
     }
 } 

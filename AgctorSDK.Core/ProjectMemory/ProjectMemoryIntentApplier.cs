@@ -4,20 +4,17 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
 
-namespace AgctorSDK.Agents.ProjectMemory;
+namespace AgctorSDK.Core.ProjectMemory;
 
 /// <summary>
-/// Deterministic apply of extractor JSON (<see cref="MemoryIntentBatch"/>) to markdown — same pipeline as
-/// <see cref="MemoryCuratorProjectAgent"/>, callable from tools without duplicating orchestration rules.
+/// Applies extractor JSON (<see cref="MemoryIntentBatch"/>) to markdown — shared by curator agents and tools.
 /// </summary>
 public static class ProjectMemoryIntentApplier
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
-    /// <summary>Applies intents; returns JSON text body suitable for LLM/tool consumers.</summary>
     public static async Task<string> ApplyFromJsonAsync(
         string json,
         IProjectMemoryAgentServices services,

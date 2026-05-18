@@ -9,11 +9,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using AgctorSDK.Core.Tools;
+
 namespace AgctorSDK.Core.Tools.Implementations
 {
     /// <summary>
     /// Tool actor that can compile code or source files for multiple languages using the <see cref="ILanguageCompilerFactory"/> abstraction.
     /// </summary>
+    [AgctorHostTool("compile", "Compile Tool", "Builds projects or solutions", ExposeOnHttpApi = false)]
     public class CompileTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;

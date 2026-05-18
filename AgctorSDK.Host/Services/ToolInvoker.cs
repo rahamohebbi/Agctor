@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.Text.Json;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Configuration;
+
+using AgctorSDK.Extensions.Services;
 
 namespace AgctorSDK.Host.Services
 {
@@ -37,38 +40,6 @@ namespace AgctorSDK.Host.Services
         /// <param name="cancellationToken">Cancellation token for the operation</param>
         /// <returns>Tool information or null if not found</returns>
         Task<ToolInfo?> GetToolInfoAsync(string toolId, CancellationToken cancellationToken = default);
-    }
-
-    /// <summary>
-    /// Represents information about a tool.
-    /// Used for tool discovery and parameter validation.
-    /// </summary>
-    public class ToolInfo
-    {
-        /// <summary>
-        /// Unique identifier of the tool.
-        /// </summary>
-        public string Id { get; set; } = null!;
-
-        /// <summary>
-        /// Human-readable name of the tool.
-        /// </summary>
-        public string Name { get; set; } = null!;
-
-        /// <summary>
-        /// Description of what the tool does.
-        /// </summary>
-        public string Description { get; set; } = null!;
-
-        /// <summary>
-        /// Expected parameters for the tool.
-        /// </summary>
-        public Dictionary<string, object> Parameters { get; set; } = new();
-
-        /// <summary>
-        /// Tool version information.
-        /// </summary>
-        public string Version { get; set; } = "1.0.0";
     }
 
     /// <summary>
@@ -253,19 +224,25 @@ namespace AgctorSDK.Host.Services
                 "file-system" => BuildFileSystemRequest(parameters),
                 "code-executor" => BuildCodeExecutorRequest(parameters),
                 "code-editor" => BuildCodeEditorRequest(parameters),
-                "person-memory-context" => new ToolRequest
-                {
-                    ToolName = nameof(PersonMemoryContextTool),
-                    Operation = GetString(parameters, "operation") ?? "BuildContext",
-                    Parameters = new Dictionary<string, object>(parameters)
-                },
-                "apply-memory-intents" => new ToolRequest
-                {
-                    ToolName = nameof(ApplyMemoryIntentsTool),
-                    Operation = GetString(parameters, "operation") ?? "Apply",
-                    Parameters = new Dictionary<string, object>(parameters)
-                },
-                _ => null
+                _ => BuildPassthroughToolRequest(primaryId, parameters)
+            };
+        }
+
+        /// <summary>Attributed tools: forward HTTP parameters to <see cref="ToolRequest"/> (discovered via <see cref="AgctorHostToolAttribute"/>).</summary>
+        private ToolRequest? BuildPassthroughToolRequest(string primaryId, Dictionary<string, object> parameters)
+        {
+            if (!_catalog.TryGetHttpEntry(primaryId, out var entry))
+                return null;
+
+            var op = GetString(parameters, "operation");
+            if (string.IsNullOrWhiteSpace(op))
+                op = string.IsNullOrWhiteSpace(entry.DefaultOperation) ? "Execute" : entry.DefaultOperation;
+
+            return new ToolRequest
+            {
+                ToolName = entry.ClrTypeName,
+                Operation = op,
+                Parameters = new Dictionary<string, object>(parameters)
             };
         }
 

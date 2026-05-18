@@ -5,7 +5,7 @@
 }
 <div class="mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Scenario catalog</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Edit scenario catalog configuration separately from runtime apply actions.</p>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose and configure how a chat session behaves: which programs start, which AI profiles are used, and how messages flow. Saving here updates your config file; use <strong class="font-medium text-gray-700 dark:text-gray-200">Apply</strong> to load a scenario into the current session.</p>
 </div>
 
 <div class="mb-4 grid gap-3 md:grid-cols-3">
@@ -33,13 +33,14 @@
                 <button type="button" id="sc-delete-scenario" class="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Delete</button>
             </div>
         </div>
+        <p id="sc-list-status" class="mb-2 min-h-[1rem] text-xs text-gray-600 dark:text-gray-400" aria-live="polite"></p>
         <div id="scenarios-list" class="space-y-2 text-sm"></div>
     </div>
 
     <div class="space-y-4 lg:col-span-2">
         <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Run scenario now (runtime)</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Applies selected scenario to the current session and can spawn/update actor instances.</p>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Run scenario now</h2>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Loads this scenario into your current chat session and starts the agents listed below.</p>
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="sc-apply" class="px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Apply to current session</button>
                 <a href="/Dashboard/Agents" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Open Agents</a>
@@ -53,32 +54,41 @@
             <div id="scenarios-editor" class="hidden space-y-3">
                 <div class="grid gap-3 md:grid-cols-2">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Internal id</label>
                         <input id="sc-id" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Stable name used in config files. You cannot rename it here after creation.</p>
                     </div>
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kind</label>
+                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario type</label>
                         <input id="sc-kind" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        <p id="sc-kind-help" class="mt-1 text-[11px] leading-snug text-gray-600 dark:text-gray-300" aria-live="polite"></p>
                     </div>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
                     <input id="sc-display-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                    <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Friendly title shown in this list and elsewhere in the dashboard.</p>
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                     <textarea id="sc-description" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                    <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Short summary of what this scenario is for (for your reference, not sent to the AI).</p>
+                </div>
+                <div id="sc-handler-section" class="hidden space-y-2">
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Built-in setup program</label>
+                    <p class="text-[11px] leading-snug text-gray-500 dark:text-gray-400">Demo scenarios ship with a fixed program that wires agents together automatically. You do not edit this field.</p>
+                    <div id="sc-handler-help" class="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-950 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100" aria-live="polite"></div>
+                    <input id="sc-handler" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                </div>
+                <div id="sc-declarative-hint" class="hidden rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] leading-snug text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+                    <strong class="font-medium">You configure this scenario.</strong> Choose which agents start when you apply it, attach memory personas below, and use the visual flow designer to define how chat steps run. No built-in setup program is used.
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Handler (scripted only)</label>
-                    <input id="sc-handler" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Runtime agent roster</label>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Add/remove runtime-capable C# agent types. YAML project-memory definitions are managed on the Agents page.</p>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agents to start when applied</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Live workers for your chat session (for example, something that coordinates messages or remembers context). Persona definitions (how the AI thinks and what it remembers) are added in the section below and on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.</p>
                     <div id="sc-agent-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
-                        <input id="sc-agent-add" list="sc-agent-suggestions" placeholder="Type agent name..." class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        <input id="sc-agent-add" list="sc-agent-suggestions" placeholder="Search or type an agent name…" class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
                         <datalist id="sc-agent-suggestions"></datalist>
                         <button type="button" id="sc-agent-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
                         <button type="button" id="sc-agent-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
@@ -87,10 +97,10 @@
                     <div id="sc-agent-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Persona roster (YAML, non-runtime)</label>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Attach project-memory personas such as <code>person-extractor</code>, <code>memory-curator</code>, and <code>person-query</code>.</p>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">AI memory &amp; behavior profiles</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Attach profiles that tell the AI how to extract facts, organize memory, and answer questions (for example <code>person-extractor</code>, <code>memory-curator</code>, <code>person-query</code>).</p>
                     <div class="mb-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
-                        Helper: Persona selections configure project-memory extraction/curation/query behavior. They are non-runtime definitions and are not spawned as actor instances when a scenario is applied.
+                        These profiles are instructions and settings, not separate running programs. They are used when your flow runs an AI step. Edit the full definition on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.
                     </div>
                     <div id="sc-persona-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
@@ -103,18 +113,21 @@
                     <div id="sc-persona-validation" class="mt-2 text-xs space-y-1"></div>
                     <div id="sc-persona-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
                 </div>
-                <div class="grid gap-3 md:grid-cols-3">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Extractor binding (optional)</label>
-                        <input id="sc-bind-extractor" list="sc-persona-suggestions" placeholder="person-extractor" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Curator binding (optional)</label>
-                        <input id="sc-bind-curator" list="sc-persona-suggestions" placeholder="memory-curator" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Query binding (optional)</label>
-                        <input id="sc-bind-query" list="sc-persona-suggestions" placeholder="person-query" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                <div>
+                    <p class="mb-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">Optional shortcuts: pick which profile plays each role when the system needs to extract facts, organize memory, or answer questions. Leave blank if you only use the flow designer.</p>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fact extraction profile (optional)</label>
+                            <input id="sc-bind-extractor" list="sc-persona-suggestions" placeholder="person-extractor" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory organization profile (optional)</label>
+                            <input id="sc-bind-curator" list="sc-persona-suggestions" placeholder="memory-curator" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Question answering profile (optional)</label>
+                            <input id="sc-bind-query" list="sc-persona-suggestions" placeholder="person-query" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
                     </div>
                 </div>
                 <details class="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
@@ -122,8 +135,8 @@
                     <textarea id="sc-agent-types" rows="6" class="mt-2 w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
                 </details>
                 <div class="rounded-lg border border-indigo-200 bg-indigo-50/80 p-3 dark:border-indigo-800 dark:bg-indigo-900/20">
-                    <p class="text-xs font-medium text-indigo-900 dark:text-indigo-100">Persona flow (PRD-014)</p>
-                    <p class="mt-1 text-[11px] text-indigo-800 dark:text-indigo-200">Visual editor stores a portable <code class="text-[10px]">flow</code> graph (not runtime actors). Uses Cytoscape.js behind an adapter.</p>
+                    <p class="text-xs font-medium text-indigo-900 dark:text-indigo-100">Conversation flow</p>
+                    <p class="mt-1 text-[11px] text-indigo-800 dark:text-indigo-200">Design the path each message takes (chat in → AI steps → reply out). This is where you connect routers and AI profiles for custom scenarios.</p>
                     <button type="button" id="sc-open-flow" class="mt-2 px-3 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Open visual designer</button>
                 </div>
                 <div class="flex items-center gap-2">
@@ -132,6 +145,32 @@
                     <button type="button" id="sc-reload" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Reload from disk</button>
                     <span id="sc-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="sc-new-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-modal="true" role="dialog" aria-labelledby="sc-new-title">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-900/60" data-sc-new-backdrop></div>
+        <div class="relative w-full max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <h2 id="sc-new-title" class="text-base font-semibold text-gray-900 dark:text-white">New scenario</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Creates a declarative entry in the user catalog (<code class="text-[10px]">agctor-scenarios.user.json</code>).</p>
+            <div class="mt-3 space-y-3">
+                <div>
+                    <label for="sc-new-id" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>
+                    <input id="sc-new-id" type="text" autocomplete="off" placeholder="my-scenario" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
+                    <p class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">Letters, digits, hyphen, underscore, or dot (1–120 chars).</p>
+                </div>
+                <div>
+                    <label for="sc-new-display" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
+                    <input id="sc-new-display" type="text" autocomplete="off" placeholder="Optional — defaults to id" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
+                </div>
+                <p id="sc-new-error" class="hidden text-xs text-red-600 dark:text-red-400" role="alert"></p>
+            </div>
+            <div class="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium dark:border-gray-600" data-sc-new-cancel>Cancel</button>
+                <button type="button" id="sc-new-submit" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700">Create</button>
             </div>
         </div>
     </div>
@@ -153,9 +192,25 @@
                     <div class="flex min-h-0 max-h-[min(58vh,720px)] flex-1 flex-col overflow-y-auto rounded-lg border border-gray-200 bg-white/70 p-2 shadow-sm dark:border-gray-600 dark:bg-gray-900/50">
                         <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Add node</p>
                         <div class="flex flex-col gap-1.5">
-                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Router">Router</button>
-                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">LlmNode</button>
-                            <button type="button" class="rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Merge">Merge</button>
+                            @* group-hover shows copy below the chip; survives moving the pointer onto the text (same group). Native title remains for accessibility. *@
+                            <div class="group">
+                                <button type="button" title="Branches flow after ChatInput. Rule-based routing matches outgoing edges; LLM mode (routerMode: llm) lets Ollama choose LlmNode targets." class="w-full rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Router">Router</button>
+                                <div role="tooltip" class="mt-1 hidden rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] leading-snug text-gray-700 shadow-sm group-hover:block dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                                    Branches flow after <strong class="font-medium text-gray-900 dark:text-gray-100">ChatInput</strong>. <strong class="font-medium">Rule-based:</strong> each outgoing edge has a condition so one branch runs. <strong class="font-medium">LLM mode</strong> (<code class="text-[9px]">routerMode: llm</code>): Ollama picks which <strong class="font-medium">LlmNode</strong> persona(s) run next from labeled branches.
+                                </div>
+                            </div>
+                            <div class="group">
+                                <button type="button" title="One LLM step: persona YAML + Ollama; set config.personaId from the scenario roster." class="w-full rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">LlmNode</button>
+                                <div role="tooltip" class="mt-1 hidden rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] leading-snug text-gray-700 shadow-sm group-hover:block dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                                    One local <strong class="font-medium text-gray-900 dark:text-gray-100">LLM</strong> turn per node: that persona’s project-memory <strong class="font-medium">YAML</strong> (tools, paths, tone) plus Ollama. Set <code class="text-[9px]">config.personaId</code> from this scenario’s roster; optional extra catalog tools in the inspector.
+                                </div>
+                            </div>
+                            <div class="group">
+                                <button type="button" title="Join parallel branches before Output; required when multiple paths run together." class="w-full rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="Merge">Merge</button>
+                                <div role="tooltip" class="mt-1 hidden rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] leading-snug text-gray-700 shadow-sm group-hover:block dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                                    Joins <strong class="font-medium text-gray-900 dark:text-gray-100">parallel</strong> branches before <strong class="font-medium">Output</strong>. When several paths run at once they must meet here so results combine cleanly. Omit only when the router fans out to a single branch (no true parallelism).
+                                </div>
+                            </div>
                         </div>
                         <button type="button" id="sc-flow-connect" title="Direction follows node types (ChatInput → Router → LlmNode → Merge → Output) when both are known; otherwise first selected → second." class="mt-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800">Connect 2 selected</button>
                         <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
@@ -255,7 +310,35 @@
                 <button type="button" id="sc-flow-validate" class="rounded-lg bg-gray-100 px-3 py-2 text-xs font-medium text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">Validate</button>
                 <button type="button" id="sc-flow-simulate" class="rounded-lg bg-gray-100 px-3 py-2 text-xs font-medium text-gray-800 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">Simulate order</button>
                 <button type="button" id="sc-flow-save" title="Writes this scenario’s flow to Config/agctor-scenarios.user.json (PUT /api/scenarios/{id}/flow); validates on server." class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700">Save flow to scenario</button>
+                <button type="button" id="sc-flow-copy" title="Copy the flow on this canvas to a different scenario’s saved flow." class="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-medium text-indigo-900 hover:bg-indigo-100 dark:border-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-100 dark:hover:bg-indigo-950/70">Copy flow to another scenario</button>
                 <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium dark:border-gray-600" data-sc-flow-close>Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="sc-flow-copy-modal" class="hidden fixed inset-0 z-[60] overflow-y-auto" aria-modal="true" role="dialog" aria-labelledby="sc-flow-copy-title">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-900/60" data-sc-flow-copy-backdrop></div>
+        <div class="relative w-full max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+            <h2 id="sc-flow-copy-title" class="text-base font-semibold text-gray-900 dark:text-white">Copy conversation flow</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Copies the flow currently on the designer canvas to another scenario’s saved flow. This does not change the scenario you are editing until you save there separately.</p>
+            <div id="sc-flow-copy-step-select" class="mt-3 space-y-3">
+                <div>
+                    <label for="sc-flow-copy-target" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Target scenario</label>
+                    <select id="sc-flow-copy-target" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white"></select>
+                </div>
+                <p id="sc-flow-copy-error" class="hidden text-xs text-red-600 dark:text-red-400" role="alert"></p>
+            </div>
+            <div id="sc-flow-copy-step-confirm" class="hidden mt-3 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2.5 text-xs leading-snug text-amber-950 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-100">
+                <p class="font-medium">Replace existing flow?</p>
+                <p id="sc-flow-copy-confirm-text" class="mt-1"></p>
+                <p class="mt-1 text-[11px] opacity-90">The target scenario’s current conversation flow will be permanently replaced by the copy from this canvas.</p>
+            </div>
+            <div class="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium dark:border-gray-600" data-sc-flow-copy-cancel>Cancel</button>
+                <button type="button" id="sc-flow-copy-approve" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700">Approve</button>
+                <button type="button" id="sc-flow-copy-override" class="hidden rounded-lg bg-amber-600 px-3 py-2 text-xs font-medium text-white hover:bg-amber-700">Replace existing flow</button>
             </div>
         </div>
     </div>

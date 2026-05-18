@@ -7,11 +7,14 @@ using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Core.Tools.Implementations.Format;
 
+using AgctorSDK.Core.Tools;
+
 namespace AgctorSDK.Core.Tools.Implementations
 {
     /// <summary>
     /// Generic tool actor that formats source code in multiple languages using concrete <see cref="ICodeFormatter"/> implementations.
     /// </summary>
+    [AgctorHostTool("format", "Format Tool", "Formats source files", ExposeOnHttpApi = false)]
     public sealed class FormatTool : ToolActorBase
     {
         public FormatTool(string id) : base(id, "FormatTool")

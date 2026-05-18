@@ -40,6 +40,10 @@ public class ToolsInsightsApiIntegrationTests : IClassFixture<AgctorWebApplicati
         dto.Should().NotBeNull();
         dto!.Tools.Should().NotBeEmpty();
         dto.Tools.Should().Contain(t => t.ClrTypeName == "CodeEditorTool" && !string.IsNullOrWhiteSpace(t.Description));
+        dto.Tools.Should().Contain(t =>
+            t.HttpPrimaryId == "person-memory-context" && t.IsRegistered);
+        dto.Tools.Should().Contain(t =>
+            t.HttpPrimaryId == "apply-memory-intents" && t.IsRegistered);
         dto.Tools.Should().Contain(t => t.Associations.Any(a => a.Kind == "csharp-agent-type" && a.AgentId == "LLMAgent"));
         dto.UnmappedYamlAllowTokens.Should().NotBeNull();
     }

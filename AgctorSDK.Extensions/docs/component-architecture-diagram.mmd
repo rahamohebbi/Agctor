@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph ExtAsm [AgctorSDK.Extensions]
+        Di[DI registration]
+        RuntimeFactory[Runtime adapter factory]
+        BgWorkers[Background workers]
+    end
+
+    Core[AgctorSDK.Core]
+    Agents[AgctorSDK.Agents]
+    Tools[AgctorSDK.Tools]
+    Host[AgctorSDK.Host]
+    Cli[AgctorCLI]
+
+    Host --> Di
+    Cli --> Di
+    Di --> Core
+    Di --> Agents
+    Di --> Tools
+    RuntimeFactory --> Agents
+    BgWorkers --> Core
+
+    style ExtAsm fill:#f3e5f5
+    style Core fill:#e1f5ff

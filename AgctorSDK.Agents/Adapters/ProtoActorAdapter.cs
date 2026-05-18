@@ -16,9 +16,8 @@ using AgctorSDK.Core.Messages;
 namespace AgctorSDK.Core.Adapters
 {
     /// <summary>
-    /// Proto.Actor runtime adapter implementation.
-    /// This adapter provides integration with the Proto.Actor high-performance actor framework.
-    /// Currently contains placeholder implementations that will be developed in future iterations.
+    /// <strong>Experimental.</strong> Proto.Actor runtime adapter (partial implementation).
+    /// Enable via <c>Agctor:AllowExperimentalRuntimes=true</c>; default host/CLI use InMemory.
     /// </summary>
     public class ProtoActorAdapter : IActorRuntimeAdapter
     {

@@ -44,6 +44,10 @@
                       esc(t.httpPrimaryId) +
                       '</span>'
                     : '';
+                const regBadge =
+                    t.isRegistered === false
+                        ? '<span class="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">not registered</span>'
+                        : '';
                 return (
                     '<button type="button" data-tool-clr="' +
                     esc(t.clrTypeName) +
@@ -58,6 +62,7 @@
                     '<span class="block text-xs opacity-80 mt-0.5">' +
                     esc(t.clrTypeName) +
                     badge +
+                    regBadge +
                     '</span></button>'
                 );
             })

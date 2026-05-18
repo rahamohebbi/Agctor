@@ -12,6 +12,10 @@
     var displayEl = document.getElementById('sc-display-name');
     var descEl = document.getElementById('sc-description');
     var handlerEl = document.getElementById('sc-handler');
+    var kindHelpEl = document.getElementById('sc-kind-help');
+    var handlerSectionEl = document.getElementById('sc-handler-section');
+    var handlerHelpEl = document.getElementById('sc-handler-help');
+    var declarativeHintEl = document.getElementById('sc-declarative-hint');
     var typesEl = document.getElementById('sc-agent-types');
     var chipsEl = document.getElementById('sc-agent-chips');
     var addInput = document.getElementById('sc-agent-add');
@@ -41,6 +45,22 @@
     var chipCurrent = document.getElementById('sc-chip-current');
     var chipDirty = document.getElementById('sc-chip-dirty');
     if (!list || !refreshBtn || !empty || !editor || !idEl || !kindEl || !displayEl || !descEl || !handlerEl || !typesEl || !chipsEl || !addInput || !addBtn || !clearBtn || !suggestionEl || !validationEl || !previewEl || !personaChipsEl || !personaAddInput || !personaAddBtn || !personaClearBtn || !personaDefaultsBtn || !personaSuggestionEl || !personaValidationEl || !personaPreviewEl || !bindExtractor || !bindCurator || !bindQuery || !saveBtn || !discardBtn || !reloadBtn || !status || !applyBtn || !applyStatus || !chipDefault || !chipCurrent || !chipDirty) return;
+
+    /** Plain-language labels for scenario kind (technical value stays in sc-kind input). */
+    var KIND_LABELS = {
+        declarative: 'Custom',
+        scripted: 'Built-in demo'
+    };
+
+    var KIND_HELP = {
+        declarative: 'You choose which agents start, which AI memory profiles to use, and how chat steps run in the flow designer.',
+        scripted: 'A pre-installed example. A fixed setup program connects agents for you; you usually only need Apply to try it.'
+    };
+
+    var SCRIPTED_HANDLER_BLURBS = {
+        CodeGenerationChainScenario: 'Sets up a root agent and an AI agent for generating and checking code.',
+        CodeGraphDemoScenario: 'Sets up a small code-graph demo with indexing agents.'
+    };
 
     var all = [];
     /** Default-catalog ids hidden via user file (server); included on catalog save. */
@@ -131,8 +151,9 @@
             var active = s.id === selectedId;
             html += '<button class="w-full text-left rounded border p-2 ' + (active ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700') + ' sc-pick" data-id="' + esc(s.id) + '">';
             html += '<div class="font-medium text-gray-900 dark:text-white">' + esc(s.displayName || s.id) + '</div>';
-            html += '<div class="text-xs text-gray-500 dark:text-gray-400">' + esc(s.id) + ' · ' + esc(s.kind) + '</div>';
-            html += '<div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400">' + ((s.agentTypes || []).length) + ' agent type(s)' + (getScenarioFlow(s) ? ' · flow' : '') + '</div>';
+            var listKind = KIND_LABELS[String(s.kind || '').toLowerCase()] || s.kind;
+            html += '<div class="text-xs text-gray-500 dark:text-gray-400">' + esc(s.id) + ' · ' + esc(listKind) + '</div>';
+            html += '<div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400">' + ((s.agentTypes || []).length) + ' agent(s)' + (getScenarioFlow(s) ? ' · conversation flow' : '') + '</div>';
             html += '</button>';
         }
         list.innerHTML = html;
@@ -144,6 +165,50 @@
                 applyStatus.textContent = '';
             });
         });
+    }
+
+    function isScriptedScenario(s) {
+        return String((s && s.kind) || '').toLowerCase() === 'scripted';
+    }
+
+    function renderScenarioTypeHelp(s) {
+        if (!s) return;
+        var kind = String(s.kind || '').toLowerCase();
+        var friendly = KIND_LABELS[kind] || (s.kind || 'unknown');
+        var helpText = KIND_HELP[kind] || ('Technical type: ' + (s.kind || 'unknown'));
+        if (kindHelpEl) {
+            kindHelpEl.textContent = helpText;
+        }
+        if (kindEl) {
+            kindEl.value = friendly;
+            kindEl.title = helpText + ' (stored as: ' + (s.kind || '') + ')';
+        }
+        var scripted = isScriptedScenario(s);
+        if (handlerSectionEl) {
+            handlerSectionEl.classList.toggle('hidden', !scripted);
+        }
+        if (declarativeHintEl) {
+            declarativeHintEl.classList.toggle('hidden', scripted);
+        }
+        if (handlerHelpEl) {
+            if (!scripted) {
+                handlerHelpEl.textContent = '';
+            } else {
+                var handlerName = String(s.handler || '').trim();
+                var blurb = SCRIPTED_HANDLER_BLURBS[handlerName] || '';
+                if (!handlerName) {
+                    handlerHelpEl.textContent = 'This demo scenario is missing a setup program name in config. It may not run until a developer fixes it.';
+                } else if (blurb) {
+                    handlerHelpEl.textContent = 'Program name: ' + handlerName + '. ' + blurb + ' You cannot change this here.';
+                } else {
+                    handlerHelpEl.textContent = 'Program name: ' + handlerName + '. This is a developer-maintained demo; agent and profile lists below are mainly for reference.';
+                }
+            }
+        }
+        if (handlerEl) {
+            handlerEl.value = s.handler || '';
+            handlerEl.placeholder = scripted ? '' : 'Not used for custom scenarios';
+        }
     }
 
     function renderEditor() {
@@ -158,14 +223,13 @@
         editor.classList.remove('hidden');
         applyBtn.disabled = false;
         idEl.value = s.id || '';
-        kindEl.value = s.kind || '';
         displayEl.value = s.displayName || '';
         descEl.value = s.description || '';
-        handlerEl.value = s.handler || '';
         typesEl.value = (s.agentTypes || []).join('\n');
         bindExtractor.value = (s.personaBindings && s.personaBindings.extractor) || '';
         bindCurator.value = (s.personaBindings && s.personaBindings.curator) || '';
         bindQuery.value = (s.personaBindings && s.personaBindings.query) || '';
+        renderScenarioTypeHelp(s);
         renderAgentTypeEditor();
         renderPersonaEditor();
     }
@@ -201,7 +265,7 @@
         var types = (s.agentTypes || []).map(normalizeType).filter(Boolean);
         chipsEl.innerHTML = '';
         if (!types.length) {
-            chipsEl.innerHTML = '<span class="text-xs text-gray-400 dark:text-gray-500">No agent types selected.</span>';
+            chipsEl.innerHTML = '<span class="text-xs text-gray-400 dark:text-gray-500">No agents selected — add at least one if you want something to start when you apply this scenario.</span>';
         } else {
             types.forEach(function (t) {
                 var known = knownAgentTypes.indexOf(t) >= 0;
@@ -242,8 +306,8 @@
         });
         var configOnly = types.filter(function (t) { return willStart.indexOf(t) < 0; });
         previewEl.innerHTML =
-            'Apply impact preview: <strong>Will bootstrap:</strong> ' + esc(willStart.length ? willStart.join(', ') : '(none)') +
-            ' · <strong>Configured only:</strong> ' + esc(configOnly.length ? configOnly.join(', ') : '(none)');
+            'When you click Apply: <strong>Will start now:</strong> ' + esc(willStart.length ? willStart.join(', ') : '(none)') +
+            ' · <strong>Saved for this scenario only:</strong> ' + esc(configOnly.length ? configOnly.join(', ') : '(none)');
 
         chipsEl.querySelectorAll('[data-remove-type]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -530,55 +594,139 @@
     bindQuery.addEventListener('input', updateScenarioFromForm);
     refreshBtn.addEventListener('click', loadAll);
 
+    var listStatus = document.getElementById('sc-list-status');
+    function setListStatus(msg) {
+        if (listStatus) listStatus.textContent = msg || '';
+    }
+
+    /** Inline modal — window.prompt is blocked in many embedded browsers. */
     var newScenarioBtn = document.getElementById('sc-new-scenario');
-    if (newScenarioBtn) {
-        newScenarioBtn.addEventListener('click', function () {
-            var rawId = window.prompt('New scenario id (letters, digits, - _ . only):', '');
-            if (rawId == null) return;
-            var id = String(rawId || '').trim();
-            if (!id) {
-                status.textContent = 'Id required.';
-                return;
-            }
-            var dn = window.prompt('Display name (optional, defaults to id):', id);
-            if (dn == null) return;
-            var disp = String(dn || '').trim() || id;
-            status.textContent = 'Creating…';
-            newScenarioBtn.disabled = true;
-            api('/api/scenarios', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, displayName: disp, description: '' })
+    var newModal = document.getElementById('sc-new-modal');
+    var newIdInput = document.getElementById('sc-new-id');
+    var newDisplayInput = document.getElementById('sc-new-display');
+    var newErrorEl = document.getElementById('sc-new-error');
+    var newSubmitBtn = document.getElementById('sc-new-submit');
+
+    function showNewError(msg) {
+        if (!newErrorEl) return;
+        if (msg) {
+            newErrorEl.textContent = msg;
+            newErrorEl.classList.remove('hidden');
+        } else {
+            newErrorEl.textContent = '';
+            newErrorEl.classList.add('hidden');
+        }
+    }
+
+    function closeNewModal() {
+        if (newModal) newModal.classList.add('hidden');
+        showNewError('');
+    }
+
+    function openNewModal() {
+        if (!newModal || !newIdInput) return;
+        newIdInput.value = '';
+        if (newDisplayInput) newDisplayInput.value = '';
+        showNewError('');
+        newModal.classList.remove('hidden');
+        newIdInput.focus();
+    }
+
+    function isValidNewScenarioId(id) {
+        return /^[A-Za-z0-9._-]{1,120}$/.test(id);
+    }
+
+    function submitNewScenario() {
+        if (!newIdInput) return;
+        var id = String(newIdInput.value || '').trim();
+        var disp = newDisplayInput ? String(newDisplayInput.value || '').trim() : '';
+        if (!id) {
+            showNewError('Id is required.');
+            newIdInput.focus();
+            return;
+        }
+        if (!isValidNewScenarioId(id)) {
+            showNewError('Id must be 1–120 characters: letters, digits, hyphen, underscore, or dot.');
+            newIdInput.focus();
+            return;
+        }
+        disp = disp || id;
+        showNewError('');
+        setListStatus('Creating…');
+        if (newSubmitBtn) newSubmitBtn.disabled = true;
+        if (newScenarioBtn) newScenarioBtn.disabled = true;
+        api('/api/scenarios', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: id, displayName: disp, description: '' })
+        })
+            .then(function (created) {
+                selectedId = (created && created.id) || id;
+                closeNewModal();
+                setListStatus('Created "' + selectedId + '".');
+                status.textContent = '';
+                return loadCatalog();
             })
-                .then(function (created) {
-                    status.textContent = 'Created.';
-                    selectedId = (created && created.id) || id;
-                    return loadCatalog();
-                })
-                .catch(function (e) {
-                    status.textContent = e.message || 'Create failed';
-                })
-                .finally(function () {
-                    newScenarioBtn.disabled = false;
-                });
+            .catch(function (e) {
+                showNewError(e.message || 'Create failed');
+                setListStatus('');
+            })
+            .finally(function () {
+                if (newSubmitBtn) newSubmitBtn.disabled = false;
+                if (newScenarioBtn) newScenarioBtn.disabled = false;
+            });
+    }
+
+    if (newScenarioBtn) {
+        newScenarioBtn.addEventListener('click', openNewModal);
+    }
+    if (newSubmitBtn) {
+        newSubmitBtn.addEventListener('click', submitNewScenario);
+    }
+    if (newIdInput) {
+        newIdInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitNewScenario();
+            }
+        });
+    }
+    if (newDisplayInput) {
+        newDisplayInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitNewScenario();
+            }
+        });
+    }
+    if (newModal) {
+        newModal.querySelectorAll('[data-sc-new-cancel], [data-sc-new-backdrop]').forEach(function (el) {
+            el.addEventListener('click', closeNewModal);
+        });
+        newModal.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !newModal.classList.contains('hidden')) closeNewModal();
         });
     }
 
     var delScenarioBtn = document.getElementById('sc-delete-scenario');
     if (delScenarioBtn) {
         delScenarioBtn.addEventListener('click', function () {
-            if (!selectedId) return;
+            if (!selectedId) {
+                setListStatus('Select a scenario to delete.');
+                return;
+            }
             if (!window.confirm('Delete scenario "' + selectedId + '" from the user catalog? Built-in defaults require a second delete to hide.')) return;
-            status.textContent = 'Deleting…';
+            setListStatus('Deleting…');
+            status.textContent = '';
             delScenarioBtn.disabled = true;
             api('/api/scenarios/' + encodeURIComponent(selectedId), { method: 'DELETE' })
                 .then(function () {
-                    status.textContent = 'Deleted.';
+                    setListStatus('Deleted.');
                     selectedId = null;
                     return loadCatalog();
                 })
                 .catch(function (e) {
-                    status.textContent = e.message || 'Delete failed';
+                    setListStatus(e.message || 'Delete failed');
                 })
                 .finally(function () {
                     delScenarioBtn.disabled = false;
@@ -595,6 +743,15 @@
         var btnValidate = document.getElementById('sc-flow-validate');
         var btnSimulate = document.getElementById('sc-flow-simulate');
         var btnSaveFlow = document.getElementById('sc-flow-save');
+        var btnCopyFlow = document.getElementById('sc-flow-copy');
+        var copyModal = document.getElementById('sc-flow-copy-modal');
+        var copyTargetEl = document.getElementById('sc-flow-copy-target');
+        var copyErrorEl = document.getElementById('sc-flow-copy-error');
+        var copyStepSelect = document.getElementById('sc-flow-copy-step-select');
+        var copyStepConfirm = document.getElementById('sc-flow-copy-step-confirm');
+        var copyConfirmText = document.getElementById('sc-flow-copy-confirm-text');
+        var copyApproveBtn = document.getElementById('sc-flow-copy-approve');
+        var copyOverrideBtn = document.getElementById('sc-flow-copy-override');
         var btnConnect = document.getElementById('sc-flow-connect');
         var btnDeleteEdges = document.getElementById('sc-flow-delete-edges');
         var routerPanel = document.getElementById('sc-flow-router-panel');
@@ -623,6 +780,131 @@
 
         var renderer = null;
         var draftBase = null;
+        /** Target scenario id when override step is shown (copy flow modal). */
+        var copyPendingTargetId = null;
+
+        function readFlowDocFromRenderer() {
+            if (!renderer || !draftBase) return null;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return null;
+            persistFlowRouterInspector();
+            persistFlowPersonaInspector();
+            persistFlowEdgeInspector();
+            return renderer.read(JSON.parse(JSON.stringify(draftBase)));
+        }
+
+        function flowDocForTargetScenario(doc, targetScenarioId) {
+            var copy = JSON.parse(JSON.stringify(doc));
+            var tid = String(targetScenarioId || '').trim();
+            copy.graphId = tid + '-flow';
+            return copy;
+        }
+
+        function scenarioById(id) {
+            return all.find(function (x) { return x.id === id; }) || null;
+        }
+
+        function targetScenarioHasSavedFlow(targetId) {
+            var t = scenarioById(targetId);
+            return !!getScenarioFlow(t);
+        }
+
+        function resetCopyFlowModal() {
+            copyPendingTargetId = null;
+            if (copyStepSelect) copyStepSelect.classList.remove('hidden');
+            if (copyStepConfirm) copyStepConfirm.classList.add('hidden');
+            if (copyApproveBtn) {
+                copyApproveBtn.classList.remove('hidden');
+                copyApproveBtn.disabled = false;
+                copyApproveBtn.textContent = 'Approve';
+            }
+            if (copyOverrideBtn) copyOverrideBtn.classList.add('hidden');
+            if (copyErrorEl) {
+                copyErrorEl.classList.add('hidden');
+                copyErrorEl.textContent = '';
+            }
+        }
+
+        function closeCopyFlowModal() {
+            if (!copyModal) return;
+            copyModal.classList.add('hidden');
+            resetCopyFlowModal();
+        }
+
+        function populateCopyTargetDropdown(sourceId) {
+            if (!copyTargetEl) return;
+            var opts = '<option value="">— Select a scenario —</option>';
+            for (var i = 0; i < all.length; i++) {
+                var sc = all[i];
+                if (!sc || !sc.id || sc.id === sourceId) continue;
+                var label = String(sc.displayName || sc.id).trim();
+                if (label !== sc.id) label += ' (' + sc.id + ')';
+                if (getScenarioFlow(sc)) label += ' · has flow';
+                opts += '<option value="' + esc(sc.id) + '">' + esc(label) + '</option>';
+            }
+            copyTargetEl.innerHTML = opts;
+            copyTargetEl.value = '';
+        }
+
+        function openCopyFlowModal() {
+            var s = currentScenario();
+            if (!s || !copyModal) return;
+            if (!readFlowDocFromRenderer()) {
+                setFlowMsg('<span class="text-amber-700">Open the flow designer and wait for the canvas to load before copying.</span>');
+                return;
+            }
+            resetCopyFlowModal();
+            populateCopyTargetDropdown(s.id);
+            copyModal.classList.remove('hidden');
+            if (copyTargetEl) copyTargetEl.focus();
+        }
+
+        function showCopyOverrideStep(targetId) {
+            var t = scenarioById(targetId);
+            var tLabel = t ? (t.displayName || t.id) : targetId;
+            copyPendingTargetId = targetId;
+            if (copyStepSelect) copyStepSelect.classList.add('hidden');
+            if (copyStepConfirm) copyStepConfirm.classList.remove('hidden');
+            if (copyConfirmText) {
+                copyConfirmText.textContent =
+                    '“' + tLabel + '” (' + targetId + ') already has a saved conversation flow. Do you want to replace it with the flow from this canvas?';
+            }
+            if (copyApproveBtn) copyApproveBtn.classList.add('hidden');
+            if (copyOverrideBtn) copyOverrideBtn.classList.remove('hidden');
+        }
+
+        function performCopyFlowToTarget(targetId) {
+            var source = currentScenario();
+            if (!source) return Promise.reject(new Error('No source scenario selected.'));
+            var doc = readFlowDocFromRenderer();
+            if (!doc) return Promise.reject(new Error('Flow canvas is not ready.'));
+            var payload = flowDocForTargetScenario(doc, targetId);
+            var target = scenarioById(targetId);
+            var roster = (target && target.personaAgentIds) ? target.personaAgentIds.slice() : [];
+            if (window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.validateFlowDocument === 'function') {
+                var v = window.AgctorScenarioFlow.validateFlowDocument(payload, { personaAgentIds: roster });
+                if (!v.ok) {
+                    return Promise.reject(new Error('Flow is not valid for the target scenario: ' + v.errors.join('; ')));
+                }
+            }
+            if (copyApproveBtn) copyApproveBtn.disabled = true;
+            if (copyOverrideBtn) copyOverrideBtn.disabled = true;
+            return api('/api/scenarios/' + encodeURIComponent(targetId) + '/flow', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).then(function () {
+                return loadCatalog();
+            }).then(function () {
+                closeCopyFlowModal();
+                var tLabel = target ? (target.displayName || target.id) : targetId;
+                setFlowMsg('<span class="text-emerald-600">Flow copied to “' + esc(tLabel) + '”.</span>');
+                status.textContent = 'Flow copied to scenario "' + targetId + '".';
+            }).finally(function () {
+                if (copyApproveBtn) copyApproveBtn.disabled = false;
+                if (copyOverrideBtn) copyOverrideBtn.disabled = false;
+            });
+        }
         /** PRD-014 Phase 11: `id.toLowerCase()` → agent row from `GET /api/project-memory/agents`. */
         var flowModalAgentLabels = {};
 
@@ -1304,19 +1586,15 @@
 
         btnSaveFlow.addEventListener('click', function () {
             var s = currentScenario();
-            if (!s || !renderer || !draftBase) {
+            if (!s) {
                 setFlowMsg('<span class="text-amber-700">Nothing to save (open the flow editor first).</span>');
                 return;
             }
-            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
-            if (!cy) {
+            var doc = readFlowDocFromRenderer();
+            if (!doc) {
                 setFlowMsg('<span class="text-red-600">Graph is not ready yet — wait a second after opening, then try again.</span>');
                 return;
             }
-            persistFlowRouterInspector();
-            persistFlowPersonaInspector();
-            persistFlowEdgeInspector();
-            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
             setFlowMsg('<span class="text-gray-600 dark:text-gray-400">Saving to disk…</span>');
             btnSaveFlow.disabled = true;
             api('/api/scenarios/' + encodeURIComponent(s.id) + '/flow', {
@@ -1339,6 +1617,83 @@
                     btnSaveFlow.disabled = false;
                 });
         });
+
+        if (btnCopyFlow) {
+            btnCopyFlow.addEventListener('click', openCopyFlowModal);
+        }
+
+        if (copyModal) {
+            copyModal.querySelectorAll('[data-sc-flow-copy-cancel], [data-sc-flow-copy-backdrop]').forEach(function (el) {
+                el.addEventListener('click', function () {
+                    if (copyStepConfirm && !copyStepConfirm.classList.contains('hidden')) {
+                        resetCopyFlowModal();
+                        return;
+                    }
+                    closeCopyFlowModal();
+                });
+            });
+            copyModal.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && !copyModal.classList.contains('hidden')) closeCopyFlowModal();
+            });
+        }
+
+        if (copyApproveBtn) {
+            copyApproveBtn.addEventListener('click', function () {
+                if (copyErrorEl) {
+                    copyErrorEl.classList.add('hidden');
+                    copyErrorEl.textContent = '';
+                }
+                var targetId = copyTargetEl ? String(copyTargetEl.value || '').trim() : '';
+                if (!targetId) {
+                    if (copyErrorEl) {
+                        copyErrorEl.textContent = 'Choose a target scenario.';
+                        copyErrorEl.classList.remove('hidden');
+                    }
+                    return;
+                }
+                var source = currentScenario();
+                if (source && targetId === source.id) {
+                    if (copyErrorEl) {
+                        copyErrorEl.textContent = 'Choose a different scenario than the one you are editing.';
+                        copyErrorEl.classList.remove('hidden');
+                    }
+                    return;
+                }
+                if (targetScenarioHasSavedFlow(targetId)) {
+                    showCopyOverrideStep(targetId);
+                    return;
+                }
+                performCopyFlowToTarget(targetId).catch(function (e) {
+                    var m = (e && e.message) ? String(e.message) : 'Copy failed';
+                    if (copyErrorEl) {
+                        copyErrorEl.textContent = m;
+                        copyErrorEl.classList.remove('hidden');
+                    }
+                    setFlowMsg('<span class="text-red-600">' + esc(m) + '</span>');
+                });
+            });
+        }
+
+        if (copyOverrideBtn) {
+            copyOverrideBtn.addEventListener('click', function () {
+                if (!copyPendingTargetId) {
+                    resetCopyFlowModal();
+                    return;
+                }
+                performCopyFlowToTarget(copyPendingTargetId).catch(function (e) {
+                    var m = (e && e.message) ? String(e.message) : 'Copy failed';
+                    if (copyStepSelect) copyStepSelect.classList.remove('hidden');
+                    if (copyStepConfirm) copyStepConfirm.classList.add('hidden');
+                    if (copyApproveBtn) copyApproveBtn.classList.remove('hidden');
+                    if (copyOverrideBtn) copyOverrideBtn.classList.add('hidden');
+                    if (copyErrorEl) {
+                        copyErrorEl.textContent = m;
+                        copyErrorEl.classList.remove('hidden');
+                    }
+                    setFlowMsg('<span class="text-red-600">' + esc(m) + '</span>');
+                });
+            });
+        }
     })();
 
     loadAll();

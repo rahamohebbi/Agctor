@@ -5,12 +5,14 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Abstractions;
 using AgctorSDK.Core.Tools.Models;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
     // TODO: Add security checks for file system access.
+    [AgctorHostTool("file-system", "File System Tool", "Performs file system operations like read, write, list directories")]
     public class FileSystemTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;

@@ -1,5 +1,13 @@
 # Agctor — System Architecture Overview
 
+## Assembly overview (high level)
+
+![System overview — assemblies](./system-overview-diagram.jpg)
+
+[Edit overview source](./system-overview-diagram.mmd) · [Full overview doc](./system-overview-diagram.md)
+
+## Detailed architecture
+
 ![Architecture Diagram](./architecture-diagram.jpg)
 
 [Edit source](./architecture-diagram.mmd)
@@ -108,7 +116,7 @@ AgctorSDK.Core  ← Foundation (no dependencies)
     │
     ├── AgctorSDK.Agents  ← Agent framework + runtime adapters
     │       │
-    │       ├── AgctorSDK.Tools  ← Tool actors
+    │       ├── AgctorSDK.Tools  ← Tool actors (Core only)
     │       │
     │       └── AgctorSDK.CodeGraph  ← Code intelligence
     │

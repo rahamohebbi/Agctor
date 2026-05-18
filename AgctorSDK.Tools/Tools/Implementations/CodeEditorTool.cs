@@ -12,8 +12,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using AgctorSDK.Core.Tools.Implementations.LanguageAdapters;
 
+using AgctorSDK.Core.Tools;
+
 namespace AgctorSDK.Core.Tools.Implementations
 {
+    [AgctorHostTool("code-editor", "Code Editor Tool", "Edits and manipulates code files")]
     public class CodeEditorTool : ToolActorBase
     {
         private readonly IFileSystem _fileSystem;

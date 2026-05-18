@@ -1,0 +1,20 @@
+flowchart TB
+    subgraph CodeGraphAsm [AgctorSDK.CodeGraph]
+        Graph[Code graph actors]
+        IntelAgents[Intelligence agents]
+        Analysis[Analyzers embeddings snapshots]
+    end
+
+    Core[AgctorSDK.Core]
+    Agents[AgctorSDK.Agents]
+    Host[AgctorSDK.Host]
+
+    Host --> IntelAgents
+    Graph --> IntelAgents
+    IntelAgents --> Analysis
+    Graph --> Core
+    IntelAgents --> Agents
+    IntelAgents --> Core
+
+    style CodeGraphAsm fill:#b3e5fc
+    style Core fill:#e1f5ff

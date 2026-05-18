@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using AgctorSDK.Agents.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Models;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +14,11 @@ namespace AgctorSDK.Core.Tools.Implementations;
 /// Writes curated memory: applies <see cref="Models.MemoryIntentBatch"/> JSON to markdown under scenario rules
 /// (same steps as <c>MemoryCuratorProjectAgent</c>). Use only when policy allows this tool id.
 /// </summary>
+[AgctorHostTool(
+    "apply-memory-intents",
+    "Apply memory intents",
+    "Applies MemoryIntentBatch JSON to markdown files under scenario scope (Apply operation).",
+    DefaultOperation = "Apply")]
 public sealed class ApplyMemoryIntentsTool : ToolActorBase
 {
     public ApplyMemoryIntentsTool(string id) : base(id, nameof(ApplyMemoryIntentsTool))

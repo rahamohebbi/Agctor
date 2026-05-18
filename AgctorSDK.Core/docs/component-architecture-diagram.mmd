@@ -1,0 +1,22 @@
+flowchart TB
+    subgraph Core [AgctorSDK.Core]
+        Contracts[Actor and agent contracts]
+        Messaging[Messages and envelopes]
+        Work[Goals and task flow]
+        Memory[Project memory and resolution]
+        Obs[Observability and visualization]
+    end
+
+    subgraph Consumers [Referenced by]
+        Agents[AgctorSDK.Agents]
+        Tools[AgctorSDK.Tools]
+        Ext[AgctorSDK.Extensions]
+        Host[AgctorSDK.Host]
+    end
+
+    Agents --> Contracts
+    Tools --> Contracts
+    Ext --> Contracts
+    Host --> Contracts
+
+    style Core fill:#e1f5ff

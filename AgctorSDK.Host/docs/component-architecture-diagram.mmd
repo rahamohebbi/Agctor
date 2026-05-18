@@ -1,0 +1,35 @@
+flowchart TB
+    subgraph Clients [Clients]
+        Browser[Browser and REST clients]
+        Mcp[MCP TCP clients]
+    end
+
+    subgraph HostAsm [AgctorSDK.Host]
+        Api[HTTP API and dashboard]
+        McpSrv[MCP listener]
+        Services[Dispatch sessions scenarios]
+        Insights[ToolAgentsInsight catalog factory YAML]
+        Catalog[AgctorToolCatalog in Extensions]
+    end
+
+    Ext[AgctorSDK.Extensions]
+    Agents[AgctorSDK.Agents]
+    Tools[AgctorSDK.Tools]
+    CodeGraph[AgctorSDK.CodeGraph]
+    Core[AgctorSDK.Core]
+
+    Browser --> Api
+    Mcp --> McpSrv
+    Api --> Services
+    McpSrv --> Services
+    Services --> Ext
+    Insights --> Catalog
+    Insights --> Agents
+    Services --> Agents
+    Services --> Tools
+    Services --> CodeGraph
+    Services --> Core
+    Catalog --> Tools
+
+    style HostAsm fill:#fff9c4
+    style Core fill:#e1f5ff

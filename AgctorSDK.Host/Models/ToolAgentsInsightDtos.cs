@@ -21,6 +21,9 @@ public sealed class ToolInsightDto
     /// <summary>Short human summary from catalog discovery metadata (<c>ToolInfo.Description</c>).</summary>
     public string Description { get; set; } = "";
 
+    /// <summary>True when <see cref="AgctorToolCatalog.RegisterToolActorTypes"/> registered this CLR tool on the host factory.</summary>
+    public bool IsRegistered { get; set; }
+
     public IReadOnlyList<ToolAgentAssociationDto> Associations { get; set; } = Array.Empty<ToolAgentAssociationDto>();
 }
 
