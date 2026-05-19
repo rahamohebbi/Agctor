@@ -1265,6 +1265,8 @@
             })
             .then(function () {
                 status.textContent = 'Done';
+                loadLifeSignals();
+                loadInbox();
                 return loadTranscript(sessionId);
             })
             .catch(function (e) {
@@ -1318,99 +1320,232 @@
         });
     }
 
-    var dailyLifeEl = document.getElementById('pm-play-daily-life');
+    var nudgesPanelEl = document.getElementById('pm-play-daily-life');
     var lifeSignalsEl = document.getElementById('pm-play-life-signals');
-    var quickInput = document.getElementById('pm-play-quick-input');
-    var quickCaptureBtn = document.getElementById('pm-play-quick-capture');
-    var captureSessionBtn = document.getElementById('pm-play-capture-session');
+    var nudgesScenarioLabel = document.getElementById('pm-play-nudges-scenario');
     var refreshSignalsBtn = document.getElementById('pm-play-refresh-signals');
 
-    function syncDailyLifePanel() {
-        if (!dailyLifeEl) return;
-        var show = activeProjectScenarioId === 'person_3';
-        dailyLifeEl.classList.toggle('hidden', !show);
+    /** Read-only reminders from PersonLifeSignalsReader; chat goes through scenario flow only. */
+    function syncNudgesPanel() {
+        if (!nudgesPanelEl) return;
+        var show = !!activeProjectScenarioId;
+        nudgesPanelEl.classList.toggle('hidden', !show);
+        if (nudgesScenarioLabel) {
+            nudgesScenarioLabel.textContent = show ? '(' + activeProjectScenarioId + ')' : '';
+        }
         if (show) loadLifeSignals();
     }
 
     function loadLifeSignals() {
-        if (!lifeSignalsEl) return;
+        if (!lifeSignalsEl || !activeProjectScenarioId) return;
         lifeSignalsEl.innerHTML = '<li>Loading…</li>';
-        fetch('/api/project-memory/life-signals?scenarioId=person_3')
+        fetch(
+            '/api/project-memory/life-signals?scenarioId=' + encodeURIComponent(activeProjectScenarioId)
+        )
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('signals')); })
             .then(function (data) {
                 var list = (data && data.signals) || [];
                 if (!list.length) {
-                    lifeSignalsEl.innerHTML = '<li class="list-none -ml-4 text-emerald-800/70">No nudges right now.</li>';
+                    lifeSignalsEl.innerHTML =
+                        '<li class="list-none -ml-4 text-emerald-800/70">No urgent nudges in the next 14 days.</li>';
                     return;
                 }
-                lifeSignalsEl.innerHTML = list.map(function (s) {
-                    return '<li>' + esc(s.message || '') + '</li>';
-                }).join('');
+                lifeSignalsEl.innerHTML = list
+                    .map(function (s) {
+                        return '<li>' + esc(s.message || '') + '</li>';
+                    })
+                    .join('');
             })
             .catch(function () {
                 lifeSignalsEl.innerHTML = '<li class="list-none -ml-4">Could not load nudges.</li>';
             });
     }
 
-    function runQuickCapture(endpoint, body) {
-        if (!activeProjectScenarioId) {
-            status.textContent = 'Select a project with scenario person_3.';
-            return Promise.resolve();
-        }
-        status.textContent = 'Capturing…';
-        return fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        })
-            .then(function (r) {
-                return r.json().then(function (j) {
-                    if (!r.ok) throw new Error((j && j.error) || String(r.status));
-                    return j;
-                });
-            })
-            .then(function (res) {
-                status.textContent = res.success ? 'Saved to memory' : 'Capture finished (check steps)';
-                if (quickInput) quickInput.value = '';
-                loadLifeSignals();
-                if (activeSessionId) return loadTranscript(activeSessionId);
-            })
-            .catch(function (e) {
-                status.textContent = e.message || 'Capture failed';
-            });
-    }
-
     if (refreshSignalsBtn) {
         refreshSignalsBtn.addEventListener('click', loadLifeSignals);
     }
-    if (quickCaptureBtn && quickInput) {
-        quickCaptureBtn.addEventListener('click', function () {
-            var text = (quickInput.value || '').trim();
-            if (!text) return;
-            runQuickCapture('/api/project-memory/quick-capture', {
-                text: text,
-                scenarioId: activeProjectScenarioId,
-                sessionId: activeSessionId || null
+
+    var inboxPanelEl = document.getElementById('pm-play-inbox');
+    var inboxListEl = document.getElementById('pm-play-inbox-list');
+    var inboxCountEl = document.getElementById('pm-play-inbox-count');
+    var refreshInboxBtn = document.getElementById('pm-play-refresh-inbox');
+    var privacyPanelEl = document.getElementById('pm-play-privacy');
+    var privacyAutoIngestEl = document.getElementById('pm-play-privacy-auto-ingest');
+    var forgetEntitySel = document.getElementById('pm-play-forget-entity');
+    var forgetBtn = document.getElementById('pm-play-forget-btn');
+    var exportBtn = document.getElementById('pm-play-export-btn');
+
+    function syncInboxPanel() {
+        if (!inboxPanelEl) return;
+        var show = !!activeProjectScenarioId;
+        inboxPanelEl.classList.toggle('hidden', !show);
+        if (show) loadInbox();
+    }
+
+    function loadInbox() {
+        if (!inboxListEl || !activeProjectScenarioId) return;
+        inboxListEl.innerHTML = '<li>Loading…</li>';
+        fetch(
+            '/api/project-memory/generic-inbox/pending?scenarioId=' + encodeURIComponent(activeProjectScenarioId)
+        )
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('inbox')); })
+            .then(function (data) {
+                var items = (data && data.items) || [];
+                if (inboxCountEl) {
+                    inboxCountEl.textContent = items.length ? '(' + items.length + ' pending)' : '';
+                }
+                if (!items.length) {
+                    inboxListEl.innerHTML =
+                        '<li class="list-none text-amber-900/70">Nothing waiting for review.</li>';
+                    return;
+                }
+                inboxListEl.innerHTML = items
+                    .map(function (item) {
+                        var line = esc(item.userPromptLine || item.value || '');
+                        var meta = esc(item.entityKey || '') + ' · ' + esc(item.knowledgeType || '');
+                        return (
+                            '<li class="border border-amber-200/80 rounded p-2 dark:border-amber-800">' +
+                            '<div class="font-medium">' + line + '</div>' +
+                            '<div class="text-[10px] opacity-80 mt-0.5">' + meta + '</div>' +
+                            '<div class="mt-1.5 flex gap-2">' +
+                            '<button type="button" class="pm-inbox-approve text-[10px] font-medium text-emerald-800 hover:underline" data-id="' +
+                            esc(item.proposalId) +
+                            '">Approve</button>' +
+                            '<button type="button" class="pm-inbox-reject text-[10px] font-medium text-red-800 hover:underline" data-id="' +
+                            esc(item.proposalId) +
+                            '">Reject</button>' +
+                            '</div></li>'
+                        );
+                    })
+                    .join('');
+                inboxListEl.querySelectorAll('.pm-inbox-approve').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        decideInbox(btn.getAttribute('data-id'), true);
+                    });
+                });
+                inboxListEl.querySelectorAll('.pm-inbox-reject').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        decideInbox(btn.getAttribute('data-id'), false);
+                    });
+                });
+            })
+            .catch(function () {
+                inboxListEl.innerHTML = '<li class="list-none">Could not load inbox.</li>';
             });
-        });
-        quickInput.addEventListener('keydown', function (ev) {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                quickCaptureBtn.click();
-            }
+    }
+
+    function decideInbox(proposalId, approve) {
+        if (!proposalId || !activeProjectScenarioId) return;
+        fetch('/api/project-memory/generic-inbox/decide', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                scenarioId: activeProjectScenarioId,
+                decisions: [{ proposalId: proposalId, approve: approve }]
+            })
+        })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('decide')); })
+            .then(function () {
+                loadInbox();
+                loadLifeSignals();
+            })
+            .catch(function () {
+                status.textContent = 'Inbox action failed';
+            });
+    }
+
+    if (refreshInboxBtn) refreshInboxBtn.addEventListener('click', loadInbox);
+
+    function syncPrivacyPanel() {
+        if (!privacyPanelEl) return;
+        var show = !!activeProjectScenarioId;
+        privacyPanelEl.classList.toggle('hidden', !show);
+        if (!show) return;
+        fetch('/api/project-memory/privacy/settings')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (s) {
+                if (privacyAutoIngestEl && s) {
+                    privacyAutoIngestEl.checked = s.autoIngestOnSessionEnd !== false;
+                }
+            })
+            .catch(function () { /* defaults */ });
+        populateForgetEntityOptions();
+    }
+
+    function populateForgetEntityOptions() {
+        if (!forgetEntitySel || !activeProjectScenarioId) return;
+        fetch('/api/project-memory/scenario-entities?scenarioId=' + encodeURIComponent(activeProjectScenarioId))
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (entities) {
+                forgetEntitySel.innerHTML = '';
+                (entities || []).forEach(function (e) {
+                    var opt = document.createElement('option');
+                    opt.value = e.entityKey || '';
+                    opt.textContent = (e.displayName || e.entityKey) + ' (' + e.entityKey + ')';
+                    forgetEntitySel.appendChild(opt);
+                });
+            })
+            .catch(function () { /* ignore */ });
+    }
+
+    function savePrivacySettings() {
+        if (!privacyAutoIngestEl) return;
+        fetch('/api/project-memory/privacy/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ autoIngestOnSessionEnd: !!privacyAutoIngestEl.checked })
+        }).catch(function () { status.textContent = 'Could not save privacy settings'; });
+    }
+
+    if (privacyAutoIngestEl) {
+        privacyAutoIngestEl.addEventListener('change', savePrivacySettings);
+    }
+
+    if (forgetBtn) {
+        forgetBtn.addEventListener('click', function () {
+            var key = forgetEntitySel && forgetEntitySel.value ? forgetEntitySel.value.trim() : '';
+            if (!key || !activeProjectScenarioId) return;
+            var label = forgetEntitySel.options[forgetEntitySel.selectedIndex]
+                ? forgetEntitySel.options[forgetEntitySel.selectedIndex].textContent
+                : key;
+            if (!window.confirm('Permanently delete all memory files for ' + label + '?')) return;
+            fetch('/api/project-memory/privacy/forget-person', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    scenarioId: activeProjectScenarioId,
+                    entityKey: key,
+                    projectId: activeProjectId || null,
+                    clearProjectFocusWhenMatched: true
+                })
+            })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('forget failed');
+                    status.textContent = 'Removed ' + key;
+                    loadFocusEntityOptions();
+                    populateForgetEntityOptions();
+                    loadLifeSignals();
+                    loadInbox();
+                })
+                .catch(function () {
+                    status.textContent = 'Forget person failed';
+                });
         });
     }
-    if (captureSessionBtn) {
-        captureSessionBtn.addEventListener('click', function () {
-            if (!activeSessionId) {
-                status.textContent = 'Select a session first.';
-                return;
-            }
-            runQuickCapture(
-                '/api/project-memory/sessions/' + encodeURIComponent(activeSessionId) + '/capture-to-memory',
-                { scenarioId: activeProjectScenarioId }
-            );
+
+    if (exportBtn) {
+        exportBtn.addEventListener('click', function () {
+            if (!activeProjectScenarioId) return;
+            window.location.href =
+                '/api/project-memory/privacy/export?scenarioId=' +
+                encodeURIComponent(activeProjectScenarioId);
         });
+    }
+
+    function syncCompanionPanels() {
+        syncNudgesPanel();
+        syncInboxPanel();
+        syncPrivacyPanel();
     }
 
     var focusEntitySel = document.getElementById('pm-play-focus-entity');
@@ -1484,7 +1619,7 @@
     var _updateProjectHeaderOrig = updateProjectHeader;
     updateProjectHeader = function () {
         _updateProjectHeaderOrig();
-        syncDailyLifePanel();
+        syncCompanionPanels();
         loadFocusEntityOptions();
     };
 

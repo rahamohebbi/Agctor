@@ -260,6 +260,62 @@ public sealed class ProjectMemoryGenericInboxReplayIssueDto
     public bool IsError { get; set; }
 }
 
+/// <summary>PRD-022a: one pending generic-inbox row for the confirmation UI.</summary>
+public sealed class GenericInboxPendingItemDto
+{
+    public string ProposalId { get; set; } = "";
+    public string EntityKey { get; set; } = "";
+    public string KnowledgeType { get; set; } = "";
+    public string? Attribute { get; set; }
+    public string Value { get; set; } = "";
+    public double Confidence { get; set; }
+    public string Disposition { get; set; } = "";
+    public string ScenarioSegment { get; set; } = "";
+    public string QueuedAtUtc { get; set; } = "";
+    public string UserPromptLine { get; set; } = "";
+}
+
+public sealed class GenericInboxPendingListResponseDto
+{
+    public string ScenarioId { get; set; } = "";
+    public IReadOnlyList<GenericInboxPendingItemDto> Items { get; set; } = Array.Empty<GenericInboxPendingItemDto>();
+}
+
+public sealed class GenericInboxDecisionItemDto
+{
+    public string ProposalId { get; set; } = "";
+    public bool Approve { get; set; }
+}
+
+public sealed class GenericInboxDecideRequestDto
+{
+    public string? ScenarioId { get; set; }
+    public IReadOnlyList<GenericInboxDecisionItemDto> Decisions { get; set; } = Array.Empty<GenericInboxDecisionItemDto>();
+}
+
+public sealed class GenericInboxDecideResponseDto
+{
+    public int Approved { get; set; }
+    public int Rejected { get; set; }
+    public int RejectedMismatch { get; set; }
+    public IReadOnlyList<string> UpdatedFiles { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> Errors { get; set; } = Array.Empty<string>();
+}
+
+/// <summary>PRD-022b companion privacy settings.</summary>
+public sealed class CompanionPrivacySettingsDto
+{
+    public bool AutoIngestOnSessionEnd { get; set; } = true;
+}
+
+public sealed class ForgetPersonRequestDto
+{
+    public string ScenarioId { get; set; } = "";
+    public string EntityKey { get; set; } = "";
+    public string? ProjectId { get; set; }
+    public bool ClearProjectFocusWhenMatched { get; set; } = true;
+}
+
 /// <summary>One-line daily-life nudge from <see cref="PersonLifeSignalsReader"/>.</summary>
 public sealed class ScenarioEntityListItemDto
 {

@@ -180,9 +180,12 @@ public static class PersonLifeSignalsReader
     {
         month = day = 0;
         raw = raw.Trim().TrimEnd('.');
+        // Curator output often uses ordinals ("22nd May 1980"); strip them before TryParse.
+        var normalized = Regex.Replace(raw, @"(\d{1,2})(?:st|nd|rd|th)\b", "$1", RegexOptions.IgnoreCase).Trim();
+
         foreach (var culture in new[] { CultureInfo.InvariantCulture, CultureInfo.CurrentCulture })
         {
-            if (DateTime.TryParse(raw, culture, DateTimeStyles.AllowWhiteSpaces, out var full))
+            if (DateTime.TryParse(normalized, culture, DateTimeStyles.AllowWhiteSpaces, out var full))
             {
                 month = full.Month;
                 day = full.Day;
@@ -190,12 +193,22 @@ public static class PersonLifeSignalsReader
             }
         }
 
-        var m = Regex.Match(raw, @"(?i)(\d{1,2})(?:st|nd|rd|th)?\s+of\s+([A-Za-z]+)");
-        if (m.Success
-            && DateTime.TryParse($"{m.Groups[1].Value} {m.Groups[2].Value}", CultureInfo.InvariantCulture, DateTimeStyles.None, out var ofDate))
+        var ofPattern = Regex.Match(normalized, @"(?i)(\d{1,2})\s+of\s+([A-Za-z]+)");
+        if (ofPattern.Success
+            && DateTime.TryParse($"{ofPattern.Groups[1].Value} {ofPattern.Groups[2].Value}", CultureInfo.InvariantCulture, DateTimeStyles.None, out var ofDate))
         {
             month = ofDate.Month;
             day = ofDate.Day;
+            return true;
+        }
+
+        // "22 May" or "22 May 1980" after ordinal normalization.
+        var dayMonth = Regex.Match(normalized, @"(?i)^(\d{1,2})\s+([A-Za-z]+)(?:\s+\d{2,4})?$");
+        if (dayMonth.Success
+            && DateTime.TryParse($"{dayMonth.Groups[1].Value} {dayMonth.Groups[2].Value}", CultureInfo.InvariantCulture, DateTimeStyles.None, out var dmDate))
+        {
+            month = dmDate.Month;
+            day = dmDate.Day;
             return true;
         }
 

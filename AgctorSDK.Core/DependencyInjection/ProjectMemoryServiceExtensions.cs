@@ -3,7 +3,9 @@ using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.ProjectMemory.Indexing;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory.Inbox;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
+using AgctorSDK.Core.ProjectMemory.Privacy;
 using AgctorSDK.Core.ProjectMemory.Parsing;
 using AgctorSDK.Core.ProjectMemory.Processing;
 using Microsoft.Extensions.DependencyInjection;
@@ -48,6 +50,8 @@ public static class ProjectMemoryServiceExtensions
         services.AddSingleton<PostgresRuntimeIndexStoreFactory>();
         services.AddSingleton<IRuntimeIndexStoreFactory, SwitchingRuntimeIndexStoreFactory>();
         services.AddSingleton<RebuildCoordinator>();
+        services.AddSingleton<IGenericInboxDecisionService, GenericInboxDecisionService>();
+        services.AddSingleton<IPrivacyMemoryService, PrivacyMemoryService>();
         return services;
     }
 }

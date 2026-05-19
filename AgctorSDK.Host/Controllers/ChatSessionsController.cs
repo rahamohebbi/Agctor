@@ -1,9 +1,13 @@
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory.Companion;
+using AgctorSDK.Core.ProjectMemory.Privacy;
 using AgctorSDK.Core.ProjectMemory.Resolution;
 using AgctorSDK.Core.ProjectMemory.Resolution.Bridge;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Host.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Controllers
 {
@@ -20,19 +24,28 @@ namespace AgctorSDK.Host.Controllers
         private readonly SessionSummaryEmitter? _summaryEmitter;
         private readonly SessionMentionAccumulator? _accumulator;
         private readonly ResolutionBootstrapper? _resolutionBootstrap;
+        private readonly ISessionEndIngestService? _sessionEndIngest;
+        private readonly IPrivacyMemoryService? _privacy;
+        private readonly IOptions<ProjectMemoryAgentOptions>? _projectMemoryOptions;
 
         public ChatSessionsController(
             ISessionStore sessionStore,
             ILogger<ChatSessionsController> logger,
             SessionSummaryEmitter? summaryEmitter = null,
             SessionMentionAccumulator? accumulator = null,
-            ResolutionBootstrapper? resolutionBootstrap = null)
+            ResolutionBootstrapper? resolutionBootstrap = null,
+            ISessionEndIngestService? sessionEndIngest = null,
+            IPrivacyMemoryService? privacy = null,
+            IOptions<ProjectMemoryAgentOptions>? projectMemoryOptions = null)
         {
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _summaryEmitter = summaryEmitter;
             _accumulator = accumulator;
             _resolutionBootstrap = resolutionBootstrap;
+            _sessionEndIngest = sessionEndIngest;
+            _privacy = privacy;
+            _projectMemoryOptions = projectMemoryOptions;
         }
 
         [HttpPost]
@@ -251,6 +264,8 @@ namespace AgctorSDK.Host.Controllers
         {
             try
             {
+                // PRD-021: ingest new transcript turns into people markdown before the session row is removed.
+                await TrySessionEndIngestAsync(sessionId, SessionEndIngestTrigger.Delete, cancellationToken);
                 // PRD-018: emit the session's accumulated mentions to the reconciler before we drop
                 // the session record. Best-effort so resolver failures never block a legitimate delete.
                 await TryEmitSessionSummaryAsync(sessionId, cancellationToken);
@@ -298,10 +313,50 @@ namespace AgctorSDK.Host.Controllers
         [ProducesResponseType(StatusCodes.Status202Accepted)]
         public async Task<IActionResult> CheckpointAsync([FromRoute] string sessionId, CancellationToken cancellationToken = default)
         {
-            // Manual checkpoint hook: flush the session's mentions without deleting the session. Useful
-            // for long-running assistant sessions that should propagate evidence before they end.
+            // PRD-021: ingest new turns; PRD-018: flush resolution mentions (session stays open).
+            await TrySessionEndIngestAsync(sessionId, SessionEndIngestTrigger.Checkpoint, cancellationToken);
             await TryEmitSessionSummaryAsync(sessionId, cancellationToken);
             return Accepted(new { ok = true, sessionId });
+        }
+
+        /// <summary>Best-effort ProjectMemory ingest for new transcript turns since the last cursor.</summary>
+        private async Task TrySessionEndIngestAsync(
+            string sessionId,
+            SessionEndIngestTrigger trigger,
+            CancellationToken cancellationToken)
+        {
+            if (_sessionEndIngest == null) return;
+            var root = _projectMemoryOptions?.Value?.ProjectRoot;
+            if (string.IsNullOrWhiteSpace(root)) return;
+            if (string.IsNullOrWhiteSpace(sessionId)) return;
+
+            try
+            {
+                if (_privacy != null)
+                {
+                    var settings = await _privacy.GetSettingsAsync(root!, cancellationToken).ConfigureAwait(false);
+                    if (!settings.AutoIngestOnSessionEnd)
+                        return;
+                }
+
+                var result = await _sessionEndIngest.TryIngestOnSessionEndAsync(
+                    sessionId,
+                    root!,
+                    trigger,
+                    cancellationToken).ConfigureAwait(false);
+                if (!result.Skipped && result.Success)
+                {
+                    _logger.LogDebug(
+                        "Session-end ingest completed for {SessionId} ({Trigger}) correlation={CorrelationId}",
+                        sessionId,
+                        trigger,
+                        result.CorrelationId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Session-end ingest skipped for {SessionId}", sessionId);
+            }
         }
 
         [HttpGet("{sessionId}")]

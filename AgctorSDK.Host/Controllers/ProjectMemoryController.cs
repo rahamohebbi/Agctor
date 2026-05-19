@@ -17,7 +17,11 @@ using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
+using AgctorSDK.Core.ProjectMemory.Companion;
+using AgctorSDK.Core.ProjectMemory.Inbox;
 using AgctorSDK.Core.ProjectMemory.LifeSignals;
+using AgctorSDK.Core.ProjectMemory.Privacy;
+using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.ProjectMemory.Tools;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 using AgctorSDK.Host.Models;
@@ -63,6 +67,9 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly IProjectMemoryCoreferenceCoordinator _corefCoordinator;
     private readonly IConversationFocusStore _focusStore;
     private readonly IAgentFactory _agentFactory;
+    private readonly IProactiveSignalsService _proactiveSignals;
+    private readonly IGenericInboxDecisionService _inboxDecisions;
+    private readonly IPrivacyMemoryService _privacy;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -83,6 +90,9 @@ public sealed class ProjectMemoryController : ControllerBase
         IProjectMemoryCoreferenceCoordinator corefCoordinator,
         IConversationFocusStore focusStore,
         IAgentFactory agentFactory,
+        IProactiveSignalsService proactiveSignals,
+        IGenericInboxDecisionService inboxDecisions,
+        IPrivacyMemoryService privacy,
         ILogger<ProjectMemoryController> logger,
         IActivityTracker? activityTracker = null)
     {
@@ -104,6 +114,9 @@ public sealed class ProjectMemoryController : ControllerBase
         _corefCoordinator = corefCoordinator;
         _focusStore = focusStore ?? throw new ArgumentNullException(nameof(focusStore));
         _agentFactory = agentFactory;
+        _proactiveSignals = proactiveSignals ?? throw new ArgumentNullException(nameof(proactiveSignals));
+        _inboxDecisions = inboxDecisions ?? throw new ArgumentNullException(nameof(inboxDecisions));
+        _privacy = privacy ?? throw new ArgumentNullException(nameof(privacy));
         _activityTracker = activityTracker;
         _logger = logger;
     }
@@ -318,7 +331,7 @@ public sealed class ProjectMemoryController : ControllerBase
         if (!string.IsNullOrWhiteSpace(body.SessionId))
         {
             var prior = await _sessions.GetTurnsAsync(body.SessionId.Trim(), null, cancellationToken).ConfigureAwait(false);
-            conversationPrefix = BuildOrchestratorTranscriptPrefix(prior);
+            conversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior);
         }
 
         var req = new ProjectMemoryPipelineRequest
@@ -348,20 +361,23 @@ public sealed class ProjectMemoryController : ControllerBase
         });
     }
 
-    /// <summary>Read-only birthday / contact nudges for a scenario workspace (person_3 coaching UX).</summary>
+    /// <summary>Read-only birthday / contact nudges for a scenario workspace (playground Reminders panel).</summary>
     [HttpGet("life-signals")]
     [ProducesResponseType(typeof(PersonLifeSignalsResponseDto), StatusCodes.Status200OK)]
-    public ActionResult<PersonLifeSignalsResponseDto> GetLifeSignals(
+    public async Task<ActionResult<PersonLifeSignalsResponseDto>> GetLifeSignals(
         [FromQuery] string scenarioId = "person_3",
         [FromQuery] int staleContactDays = 30,
-        [FromQuery] int birthdayHorizonDays = 14)
+        [FromQuery] int birthdayHorizonDays = 14,
+        CancellationToken cancellationToken = default)
     {
         var root = RootOrNull();
         if (root == null)
             return BadRoot();
 
         var sid = string.IsNullOrWhiteSpace(scenarioId) ? "person_3" : scenarioId.Trim();
-        var signals = PersonLifeSignalsReader.Scan(root, sid, staleContactDays: staleContactDays, birthdayHorizonDays: birthdayHorizonDays);
+        var signals = await _proactiveSignals
+            .ScanAsync(root, sid, staleContactDays, birthdayHorizonDays, cancellationToken)
+            .ConfigureAwait(false);
         return Ok(new PersonLifeSignalsResponseDto
         {
             ScenarioId = sid,
@@ -377,7 +393,7 @@ public sealed class ProjectMemoryController : ControllerBase
         });
     }
 
-    /// <summary>One-line note → ingest pipeline (no full chat turn). Ideal for quick daily logs.</summary>
+    /// <summary>One-line note → ingest pipeline (API only; playground uses scenario flow + router instead).</summary>
     [HttpPost("quick-capture")]
     [ProducesResponseType(typeof(ProjectMemoryOrchestratorRunResponseDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<ProjectMemoryOrchestratorRunResponseDto>> QuickCaptureAsync(
@@ -398,7 +414,7 @@ public sealed class ProjectMemoryController : ControllerBase
             cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Replay session transcript through ingest to update markdown memory.</summary>
+    /// <summary>Replay session transcript through ingest (API only; playground uses scenario flow + router instead).</summary>
     [HttpPost("sessions/{sessionId}/capture-to-memory")]
     [ProducesResponseType(typeof(ProjectMemoryOrchestratorRunResponseDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<ProjectMemoryOrchestratorRunResponseDto>> CaptureSessionToMemoryAsync(
@@ -416,7 +432,7 @@ public sealed class ProjectMemoryController : ControllerBase
         if (prior.Count == 0)
             return BadRequest(new { error = "Session has no turns to capture." });
 
-        var prefix = BuildOrchestratorTranscriptPrefix(prior);
+        var prefix = SessionTranscriptFormatter.BuildPrefix(prior);
         var wrapped = "[Session capture — extract durable facts and timeline observations from this conversation]\n"
                         + (prefix ?? "");
         return await RunIngestCaptureAsync(
@@ -500,6 +516,160 @@ public sealed class ProjectMemoryController : ControllerBase
         });
     }
 
+    /// <summary>PRD-022a: pending generic-inbox rows for the confirmation panel.</summary>
+    [HttpGet("generic-inbox/pending")]
+    [ProducesResponseType(typeof(GenericInboxPendingListResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<GenericInboxPendingListResponseDto>> ListGenericInboxPendingAsync(
+        [FromQuery] string scenarioId = "person_3",
+        CancellationToken cancellationToken = default)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var sid = string.IsNullOrWhiteSpace(scenarioId) ? "person_3" : scenarioId.Trim();
+        var rows = await _inboxDecisions.ListPendingAsync(root, sid, cancellationToken).ConfigureAwait(false);
+        return Ok(new GenericInboxPendingListResponseDto
+        {
+            ScenarioId = sid,
+            Items = rows.Select(r => new GenericInboxPendingItemDto
+            {
+                ProposalId = r.ProposalId,
+                EntityKey = r.EntityKey,
+                KnowledgeType = r.KnowledgeType,
+                Attribute = r.Attribute,
+                Value = r.Value,
+                Confidence = r.Confidence,
+                Disposition = r.Disposition,
+                ScenarioSegment = r.ScenarioSegment,
+                QueuedAtUtc = r.QueuedAtUtc,
+                UserPromptLine = string.IsNullOrWhiteSpace(r.UserPromptLine)
+                    ? $"{r.EntityKey}: {r.Value}"
+                    : r.UserPromptLine
+            }).ToList()
+        });
+    }
+
+    /// <summary>PRD-022a: approve or reject pending inbox rows (replay runs on approve).</summary>
+    [HttpPost("generic-inbox/decide")]
+    [ProducesResponseType(typeof(GenericInboxDecideResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<GenericInboxDecideResponseDto>> DecideGenericInboxAsync(
+        [FromBody] GenericInboxDecideRequestDto body,
+        CancellationToken cancellationToken = default)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+        if (body.Decisions == null || body.Decisions.Count == 0)
+            return BadRequest(new { error = "decisions are required." });
+
+        var sid = string.IsNullOrWhiteSpace(body.ScenarioId) ? "person_3" : body.ScenarioId.Trim();
+        var decisions = body.Decisions
+            .Select(d => new GenericInboxDecision { ProposalId = d.ProposalId ?? "", Approve = d.Approve })
+            .ToList();
+
+        var result = await _inboxDecisions
+            .ApplyDecisionsAsync(root, sid, decisions, cancellationToken)
+            .ConfigureAwait(false);
+
+        return Ok(new GenericInboxDecideResponseDto
+        {
+            Approved = result.Approved,
+            Rejected = result.Rejected,
+            RejectedMismatch = result.RejectedMismatch,
+            UpdatedFiles = result.UpdatedFiles,
+            Errors = result.Errors
+        });
+    }
+
+    [HttpGet("privacy/settings")]
+    [ProducesResponseType(typeof(CompanionPrivacySettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CompanionPrivacySettingsDto>> GetPrivacySettingsAsync(CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var s = await _privacy.GetSettingsAsync(root, cancellationToken).ConfigureAwait(false);
+        return Ok(new CompanionPrivacySettingsDto { AutoIngestOnSessionEnd = s.AutoIngestOnSessionEnd });
+    }
+
+    [HttpPut("privacy/settings")]
+    [ProducesResponseType(typeof(CompanionPrivacySettingsDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<CompanionPrivacySettingsDto>> PutPrivacySettingsAsync(
+        [FromBody] CompanionPrivacySettingsDto body,
+        CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var saved = await _privacy.UpdateSettingsAsync(
+            root,
+            new CompanionPrivacySettings { AutoIngestOnSessionEnd = body.AutoIngestOnSessionEnd },
+            cancellationToken).ConfigureAwait(false);
+
+        return Ok(new CompanionPrivacySettingsDto { AutoIngestOnSessionEnd = saved.AutoIngestOnSessionEnd });
+    }
+
+    [HttpPost("privacy/forget-person")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ForgetPersonAsync(
+        [FromBody] ForgetPersonRequestDto body,
+        CancellationToken cancellationToken)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+        if (string.IsNullOrWhiteSpace(body.ScenarioId) || string.IsNullOrWhiteSpace(body.EntityKey))
+            return BadRequest(new { error = "scenarioId and entityKey are required." });
+
+        var removed = await _privacy
+            .ForgetPersonAsync(root, body.ScenarioId.Trim(), body.EntityKey.Trim(), cancellationToken)
+            .ConfigureAwait(false);
+        if (!removed)
+            return NotFound(new { error = "Person folder not found." });
+
+        if (body.ClearProjectFocusWhenMatched && !string.IsNullOrWhiteSpace(body.ProjectId))
+        {
+            var project = await _sessions.GetProjectAsync(body.ProjectId.Trim(), cancellationToken).ConfigureAwait(false);
+            if (project != null
+                && string.Equals(project.FocusEntityKey, body.EntityKey.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                project.FocusEntityKey = null;
+                project.FocusDisplayName = null;
+                project.UpdatedAt = DateTimeOffset.UtcNow;
+                await _sessions.UpdateProjectAsync(project, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return Ok(new { ok = true });
+    }
+
+    [HttpGet("privacy/export")]
+    [Produces("application/zip")]
+    public async Task<IActionResult> ExportScenarioPeopleAsync(
+        [FromQuery] string scenarioId = "person_3",
+        CancellationToken cancellationToken = default)
+    {
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var sid = string.IsNullOrWhiteSpace(scenarioId) ? "person_3" : scenarioId.Trim();
+        try
+        {
+            var stream = await _privacy.ExportScenarioPeopleZipAsync(root, sid, cancellationToken).ConfigureAwait(false);
+            var fileName = $"people-{sid}-{DateTime.UtcNow:yyyyMMdd}.zip";
+            return File(stream, "application/zip", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Returns the most recent <c>Assistant</c> turn content (used to ground confirmation classification).</summary>
     private static string? LastAssistantContent(IReadOnlyList<SessionTurn>? turns)
     {
@@ -574,22 +744,6 @@ public sealed class ProjectMemoryController : ControllerBase
             Source = "project"
         };
         await _focusStore.SaveAsync(projectRoot, chatProject.ScenarioId, focus, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static string? BuildOrchestratorTranscriptPrefix(IReadOnlyList<SessionTurn>? turns)
-    {
-        if (turns == null || turns.Count == 0)
-            return null;
-        var sb = new StringBuilder();
-        foreach (var t in turns.OrderBy(x => x.Sequence))
-        {
-            if (t.Role is SessionRole.System or SessionRole.Tool)
-                continue;
-            var label = t.Role == SessionRole.User ? "User" : "Assistant";
-            sb.Append(label).Append(": ").Append(t.Content).Append('\n');
-        }
-
-        return sb.Length == 0 ? null : sb.ToString();
     }
 
     private static bool TryParsePipelineMode(string? s, out ProjectMemoryPipelineMode mode)
@@ -826,7 +980,7 @@ public sealed class ProjectMemoryController : ControllerBase
                     UserMessage = body.Payload.Trim(),
                     CorrelationId = messageId,
                     Mode = ProjectMemoryPipelineMode.IngestOnly,
-                    ConversationPrefix = BuildOrchestratorTranscriptPrefix(prior),
+                    ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior),
                     ScenarioId = scenarioResolved,
                     SessionId = sessionId,
                     TurnId = turnGroupId
@@ -1005,7 +1159,7 @@ public sealed class ProjectMemoryController : ControllerBase
                         rootFull,
                         scenarioResolved,
                         body.Payload,
-                        BuildOrchestratorTranscriptPrefix(prior),
+                        SessionTranscriptFormatter.BuildPrefix(prior),
                         ct)
                     .ConfigureAwait(false);
             }
@@ -1048,7 +1202,7 @@ public sealed class ProjectMemoryController : ControllerBase
                         UserMessage = body.Payload.Trim(),
                         CorrelationId = messageId,
                         Mode = ProjectMemoryPipelineMode.IngestOnly,
-                        ConversationPrefix = BuildOrchestratorTranscriptPrefix(prior),
+                        ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior),
                         ScenarioId = scenarioResolved,
                         SessionId = sessionId,
                         TurnId = turnGroupId

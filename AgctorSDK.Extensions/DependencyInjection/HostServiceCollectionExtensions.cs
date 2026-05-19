@@ -30,6 +30,7 @@ public static class HostServiceCollectionExtensions
         services.ConfigureAgentTypes();
         services.ConfigureProjectMemoryOptions(configuration, defaultProjectMemoryRoot);
         services.AddAgctorProjectMemory();
+        services.AddAgctorCompanionMemory();
         services.AddAgctorResolution();
 
         services.TryAddSingleton<IProjectMemoryLlmClient, OllamaConfiguredCompletionClient>();

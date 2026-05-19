@@ -1,0 +1,48 @@
+﻿Phased roadmap
+
+### Phase 1 ΓÇö Make chat actually useful for ΓÇ£who is X?ΓÇ¥ (1ΓÇô2 weeks)
+- Fix default `people` scenario flow: LLM router like `person_1`, with `person-query` + `person-memory-context` on recall paths.
+- Chat project UI: bind each project to `scenarioId` + optional **focus entity** (`ConversationFocusStore` already exists under `.agctor/runtime/coref/`).
+- Routing rules: utterances like ΓÇ£save thisΓÇ¥, ΓÇ£what do we know about RyanΓÇ¥, ΓÇ£how can I be a better friend toΓÇªΓÇ¥ ΓåÆ correct persona (PRD-016 P1ΓÇôP4).
+
+### Phase 2 ΓÇö Relationship & advice layer (2ΓÇô3 weeks)
+- New agent: **`relationship-coach`** (read-heavy, optional write via intents to `timeline` / `relationships` sections).
+- Extend `document-types` or add `preferences.md` / `interaction-log.md` for gifts, communication style, boundaries.
+- Flow edges with `llmRoutingHint`: e.g. ΓÇ£Use when user asks for advice, conflict, gift ideas, how to reconnect.ΓÇ¥
+
+### Phase 3 ΓÇö Daily-life capture (3ΓÇô4 weeks)
+- **Quick capture** API + UI: one line ΓåÆ `CaptureIngestActor` ΓåÆ extractor pipeline (no full chat required).
+- **Session end summary** ΓåÆ timeline ΓÇ£ObservationsΓÇ¥ automatically (session memory ΓåÆ extractor on schedule).
+- **Proactive signals actor** (read-only first): birthdays from profile, stale contact from timeline, upcoming events from import.
+
+### Phase 4 ΓÇö Multi-channel & trust (later)
+- Import adapters (calendar, contacts) as tools/actors, not hardcoded UI.
+- Confirmation inbox for sensitive writes (generic-inbox pattern already in sample project).
+- Privacy: per-project encryption, export, ΓÇ£forget this factΓÇ¥ intents.
+
+---
+
+## Example interactions (end state)
+
+| User | System behavior |
+|------|------------------|
+| ΓÇ£RyanΓÇÖs dad is RahaΓÇ¥ | Extractor ΓåÆ intents ΓåÆ `relationships.md`; reconciler soft-links mention ΓåÆ `people/raha` |
+| ΓÇ£What should I get Ryan for his birthday?ΓÇ¥ | Router ΓåÆ coach; reads profile + preferences + timeline; suggests ideas; asks to store outcome |
+| ΓÇ£Log: had coffee with Ryan, heΓÇÖs stressed about workΓÇ¥ | Quick capture ΓåÆ timeline Observations + optional relationship note |
+| ΓÇ£HavenΓÇÖt talked to my sister in a monthΓÇ¥ | Proactive actor or coach: reads timeline last contact, suggests reach-out using stored preferences |
+
+---
+
+## Recommended next step in *this* repo
+
+Highest leverage with least new surface area:
+
+1. **Align default `people` scenario flow with `person_1`** (router + query node + ingest tools).
+2. **Add `relationship-coach` agent YAML** + one `LlmNode` in the flow with clear routing hints.
+3. **Wire chat projects to focus entity** so ΓÇ£this chat is about RyanΓÇ¥ scopes reads/writes correctly.
+
+I can start implementing Phase 1 (scenario flow + focus entity + routing) in code, or draft a formal **PRD-021** under `Project/` if you want that documented first.
+
+Which matters more right now: **better Q&A about people youΓÇÖve already stored**, or **relationship/advice coaching**? And is the primary surface **Host dashboard chat**, **playground**, or something else (mobile, CLI)?
+
+[REDACTED]

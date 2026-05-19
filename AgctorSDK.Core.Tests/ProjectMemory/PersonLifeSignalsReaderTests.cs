@@ -49,4 +49,25 @@ public sealed class PersonLifeSignalsReaderTests
         var signals = PersonLifeSignalsReader.Scan(_root, "person_3", new DateTime(2026, 5, 17), staleContactDays: 30);
         Assert.IsTrue(signals.Any(s => s.Kind == "stale_contact" && s.EntityKey == "ryan"));
     }
+
+    [TestMethod]
+    public void Scan_FindsUpcomingBirthday_ForCuratorDateOfBirthLine()
+    {
+        var people = Path.Combine(_root, "scenarios", "person_3", "people", "raha");
+        Directory.CreateDirectory(people);
+        File.WriteAllText(Path.Combine(people, "profile.md"), """
+            # Raha Profile
+            ## Basic Info
+            Name: Raha
+            Date of birth: 22nd May 1980
+            """);
+        File.WriteAllText(Path.Combine(people, "timeline.md"), """
+            # Raha Timeline
+            ## Observations
+            - 2026-05-01 - Checked in.
+            """);
+
+        var signals = PersonLifeSignalsReader.Scan(_root, "person_3", new DateTime(2026, 5, 18), birthdayHorizonDays: 14);
+        Assert.IsTrue(signals.Any(s => s.Kind == "birthday_upcoming" && s.EntityKey == "raha" && s.DaysUntil == 4));
+    }
 }
