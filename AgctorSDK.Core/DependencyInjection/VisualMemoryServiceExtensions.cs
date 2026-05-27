@@ -30,6 +30,7 @@ public static class VisualMemoryServiceExtensions
 
         services.AddHttpClient<IOllamaVisionChatClient, OllamaVisionChatClient>();
         services.AddSingleton<VisualAssetCatalogStore>();
+        services.AddSingleton<VisualAssetDeleter>();
         services.AddSingleton<PersonVisualContextBuilder>();
         services.AddSingleton<VisualPipelineService>();
         services.AddSingleton<ActorBackedVisualAssetUploadService>();

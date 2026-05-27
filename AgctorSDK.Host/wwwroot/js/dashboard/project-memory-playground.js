@@ -179,6 +179,7 @@
             input.disabled = false;
             sendBtn.disabled = false;
             if (agentSel) agentSel.disabled = false;
+            syncComposerSendEnabled();
         } else {
             noSessionEl.classList.remove('hidden');
             sessionDetailEl.classList.add('hidden');
@@ -275,16 +276,76 @@
         return st === 'failed' || detail.toLowerCase().indexOf('failed') >= 0;
     }
 
+    /** PRD-023b: ⋯ menu for sent transcript photos (Tag / Don't analyze / Delete). */
+    function renderAttachmentActionsMenu(assetId) {
+        if (!assetId || !activeProjectScenarioId) return '';
+        return (
+            '<details class="pm-att-menu relative inline-block text-left">' +
+            '<summary class="cursor-pointer select-none list-none px-1 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200" title="Photo actions">⋯</summary>' +
+            '<div class="absolute left-0 z-20 mt-1 min-w-[9.5rem] rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-gray-800">' +
+            '<button type="button" class="block w-full px-2 py-1 text-left text-[10px] hover:bg-gray-100 dark:hover:bg-gray-700" data-pm-sent-tag="' +
+            esc(assetId) +
+            '">Tag people</button>' +
+            '<button type="button" class="block w-full px-2 py-1 text-left text-[10px] hover:bg-gray-100 dark:hover:bg-gray-700" data-pm-sent-skip="' +
+            esc(assetId) +
+            '">Don\'t analyze</button>' +
+            '<button type="button" class="block w-full px-2 py-1 text-left text-[10px] text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40" data-pm-sent-delete="' +
+            esc(assetId) +
+            '">Delete photo</button>' +
+            '</div></details>'
+        );
+    }
+
+    function renderStreamAttachmentHtml(assetId, previewUrl) {
+        if (!assetId) return '';
+        // Prefer signed view URL so composer blob URLs can be revoked after Send.
+        var url = previewUrl || '';
+        if (assetId && activeProjectScenarioId) {
+            url =
+                '/api/visual/assets/' +
+                encodeURIComponent(assetId) +
+                '/view?scenarioId=' +
+                encodeURIComponent(activeProjectScenarioId);
+        }
+        var html =
+            '<div class="inline-flex flex-col max-w-full" data-pm-att-wrap="' + esc(assetId) + '">';
+        if (url) {
+            html +=
+                '<a href="' +
+                esc(url) +
+                '" target="_blank" rel="noopener" class="block"><img data-asset-id="' +
+                esc(assetId) +
+                '" src="' +
+                esc(url) +
+                '" alt="" class="max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover" /></a>';
+        }
+        if (activeProjectScenarioId) {
+            html +=
+                '<div class="mt-0.5 flex flex-wrap items-center gap-1">' +
+                renderAttachmentActionsMenu(assetId) +
+                '</div>' +
+                '<div data-pm-sent-tag-slot="' +
+                esc(assetId) +
+                '"></div>';
+        }
+        html += '</div>';
+        return html;
+    }
+
     function renderAttachmentsBlock(attachments, footerDetail) {
         if (!attachments || !attachments.length) return '';
         var html = '<div class="mt-2 flex flex-wrap gap-2">';
         attachments.forEach(function (att) {
+            var assetId = att.assetId || att.AssetId || '';
             var url = resolveAttachmentViewUrl(att);
+            html += '<div class="inline-flex flex-col max-w-full" data-pm-att-wrap="' + esc(assetId) + '">';
             if (url) {
                 html +=
                     '<a href="' +
                     esc(url) +
-                    '" target="_blank" rel="noopener" class="block"><img src="' +
+                    '" target="_blank" rel="noopener" class="block"><img data-asset-id="' +
+                    esc(assetId) +
+                    '" src="' +
                     esc(url) +
                     '" alt="" class="max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover" /></a>';
             } else {
@@ -292,6 +353,15 @@
                     '<span class="inline-flex items-center rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 dark:border-gray-600">' +
                     esc(att.fileName || att.assetId || 'image') +
                     '</span>';
+            }
+            if (assetId && activeProjectScenarioId) {
+                html +=
+                    '<div class="mt-0.5 flex flex-wrap items-center gap-1">' +
+                    renderAttachmentActionsMenu(assetId) +
+                    '</div>' +
+                    '<div data-pm-sent-tag-slot="' +
+                    esc(assetId) +
+                    '"></div>';
             }
             var line = attachmentFooterLine(att, footerDetail);
             if (line) {
@@ -305,6 +375,7 @@
                     esc(line) +
                     '</div>';
             }
+            html += '</div>';
         });
         html += '</div>';
         return html;
@@ -328,6 +399,7 @@
     }
 
     function renderTranscript(transcript) {
+        openSentTagAssetId = null;
         var turns = transcript && transcript.turns ? transcript.turns : [];
         if (turns.length === 0) {
             messages.innerHTML =
@@ -616,9 +688,25 @@
     }
 
     var sendBtnDefaultHtml = sendBtn ? sendBtn.innerHTML : 'Send';
+    var streamBusy = false;
+    var attachGateBlocked = false;
+    var openSentTagAssetId = null;
+
+    function syncComposerSendEnabled() {
+        if (!sendBtn || streamBusy) return;
+        if (!activeSessionId) {
+            sendBtn.disabled = true;
+            return;
+        }
+        var text = input ? input.value.trim() : '';
+        var pendingVisual = visualUploader ? visualUploader.getPending() : [];
+        var hasReady = pendingVisual.length > 0;
+        sendBtn.disabled = attachGateBlocked || (!text && !hasReady);
+    }
 
     function setSendBusy(busy) {
         if (!sendBtn) return;
+        streamBusy = busy;
         sendBtn.disabled = busy;
         if (input) input.disabled = busy;
         if (busy) {
@@ -626,6 +714,7 @@
                 '<span class="pm-send-loading"><span class="pm-send-spinner" aria-hidden="true"></span>Sending…</span>';
         } else {
             sendBtn.innerHTML = sendBtnDefaultHtml;
+            syncComposerSendEnabled();
         }
     }
 
@@ -1500,7 +1589,25 @@
         var bubble = messages.querySelector('.pm-stream-user-turn:last-of-type');
         if (!bubble) return;
         var img = bubble.querySelector('img[data-asset-id="' + assetId + '"]');
-        if (img) img.src = viewUrl;
+        if (img) {
+            img.src = viewUrl;
+            return;
+        }
+        var wrap = bubble.querySelector('[data-pm-att-wrap="' + assetId + '"]');
+        if (!wrap) return;
+        var link = document.createElement('a');
+        link.href = viewUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.className = 'block';
+        var newImg = document.createElement('img');
+        newImg.setAttribute('data-asset-id', assetId);
+        newImg.src = viewUrl;
+        newImg.alt = '';
+        newImg.className =
+            'max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover';
+        link.appendChild(newImg);
+        wrap.insertBefore(link, wrap.firstChild);
     }
 
     function updateStreamUserAttachmentDetail(assetId, detail) {
@@ -1525,6 +1632,168 @@
         if (!text) return false;
         return /\b(remember|save|note|keep|store|memorize|don't forget|dont forget)\b/i.test(text);
     }
+
+    function postVisualAnnotate(assetId, body) {
+        if (!activeProjectScenarioId || !assetId) return Promise.reject(new Error('missing context'));
+        return fetch('/api/visual/assets/' + encodeURIComponent(assetId) + '/annotate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(
+                Object.assign({ scenarioId: activeProjectScenarioId }, body || {})
+            )
+        }).then(function (r) {
+            return r.ok ? r.json() : r.text().then(function (t) { throw new Error(t || String(r.status)); });
+        });
+    }
+
+    function announceVisualStatus(message) {
+        if (!message) return;
+        status.textContent = message;
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+    }
+
+    function maybeShowClarifyFromExtract(assetId, inferenceConfidence, userText) {
+        if (inferenceConfidence == null || inferenceConfidence >= 0.45) return;
+        if (!userAskedToSave(userText)) return;
+        var bubble = messages.querySelector('.pm-stream-user-turn:last-of-type');
+        showClarifyChips(bubble, assetId, scenarioEntitiesCache);
+    }
+
+    function closeAttachmentMenuFrom(el) {
+        var menu = el && el.closest ? el.closest('.pm-att-menu') : null;
+        if (menu) menu.removeAttribute('open');
+    }
+
+    function deleteVisualAsset(assetId) {
+        if (!activeProjectScenarioId || !assetId) return Promise.reject(new Error('missing context'));
+        if (
+            !window.confirm(
+                'Delete this photo from the project? The image file will be removed and analysis will stop.'
+            )
+        ) {
+            return Promise.resolve(null);
+        }
+        return fetch(
+            '/api/visual/assets/' +
+                encodeURIComponent(assetId) +
+                '?scenarioId=' +
+                encodeURIComponent(activeProjectScenarioId),
+            { method: 'DELETE' }
+        ).then(function (r) {
+            return r.ok ? r.json() : r.text().then(function (t) { throw new Error(t || String(r.status)); });
+        });
+    }
+
+    function readSentTagPanel(assetId) {
+        var panel = messages.querySelector('[data-pm-sent-tag-panel="' + assetId + '"]');
+        if (!panel) return null;
+        var primarySel = panel.querySelector('[data-pm-tag-primary]');
+        var secondarySel = panel.querySelector('[data-pm-tag-secondary]');
+        var captionInput = panel.querySelector('[data-pm-tag-caption]');
+        var privacySel = panel.querySelector('[data-pm-tag-privacy]');
+        var entityKey = primarySel && primarySel.value ? primarySel.value : null;
+        var secondaryEntityKey = secondarySel && secondarySel.value ? secondarySel.value : null;
+        if (entityKey && secondaryEntityKey === entityKey) secondaryEntityKey = null;
+        var body = visualUploader && visualUploader.buildAnnotateBody
+            ? visualUploader.buildAnnotateBody({
+                  entityKey: entityKey,
+                  secondaryEntityKey: secondaryEntityKey,
+                  caption: captionInput ? captionInput.value : '',
+                  sensitivity: privacySel ? privacySel.value : 'normal'
+              })
+            : {
+                  entityKey: entityKey,
+                  secondaryEntityKey: secondaryEntityKey,
+                  userCaption: captionInput ? String(captionInput.value || '').trim() : null,
+                  sensitivity: privacySel ? privacySel.value : 'normal'
+              };
+        return body;
+    }
+
+    function toggleSentTagPopover(assetId) {
+        if (!visualUploader || !visualUploader.renderSentTagPopover) return;
+        var slot = messages.querySelector('[data-pm-sent-tag-slot="' + assetId + '"]');
+        if (!slot) return;
+        if (openSentTagAssetId === assetId) {
+            openSentTagAssetId = null;
+            slot.innerHTML = '';
+            return;
+        }
+        openSentTagAssetId = assetId;
+        messages.querySelectorAll('[data-pm-sent-tag-slot]').forEach(function (el) {
+            if (el.getAttribute('data-pm-sent-tag-slot') !== assetId) el.innerHTML = '';
+        });
+        slot.innerHTML = visualUploader.renderSentTagPopover(assetId, {
+            entityKey: activeFocusEntityKey() || null,
+            sensitivity: 'normal'
+        });
+        var saveBtn = slot.querySelector('[data-pm-sent-tag-save]');
+        var cancelBtn = slot.querySelector('[data-pm-sent-tag-cancel]');
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function () {
+                openSentTagAssetId = null;
+                slot.innerHTML = '';
+            });
+        }
+        if (saveBtn) {
+            saveBtn.addEventListener('click', function () {
+                var body = readSentTagPanel(assetId);
+                if (!body) return;
+                postVisualAnnotate(assetId, body)
+                    .then(function () {
+                        openSentTagAssetId = null;
+                        slot.innerHTML = '';
+                        status.textContent = 'Photo tags saved.';
+                        if (activeSessionId) return loadTranscript(activeSessionId);
+                    })
+                    .catch(function () {
+                        status.textContent = 'Could not save photo tags';
+                    });
+            });
+        }
+    }
+
+    messages.addEventListener('click', function (ev) {
+        var tagBtn = ev.target.closest('[data-pm-sent-tag]');
+        if (tagBtn) {
+            ev.preventDefault();
+            closeAttachmentMenuFrom(tagBtn);
+            toggleSentTagPopover(tagBtn.getAttribute('data-pm-sent-tag'));
+            return;
+        }
+        var skipBtn = ev.target.closest('[data-pm-sent-skip]');
+        if (skipBtn) {
+            ev.preventDefault();
+            closeAttachmentMenuFrom(skipBtn);
+            var skipId = skipBtn.getAttribute('data-pm-sent-skip');
+            postVisualAnnotate(skipId, { sensitivity: 'do_not_infer' })
+                .then(function () {
+                    status.textContent = 'Photo saved; analysis skipped.';
+                    if (activeSessionId) return loadTranscript(activeSessionId);
+                })
+                .catch(function () {
+                    status.textContent = 'Could not update photo privacy';
+                });
+            return;
+        }
+        var deleteBtn = ev.target.closest('[data-pm-sent-delete]');
+        if (deleteBtn) {
+            ev.preventDefault();
+            closeAttachmentMenuFrom(deleteBtn);
+            var deleteId = deleteBtn.getAttribute('data-pm-sent-delete');
+            deleteVisualAsset(deleteId)
+                .then(function (result) {
+                    if (!result) return;
+                    openSentTagAssetId = null;
+                    status.textContent = 'Photo deleted.';
+                    if (activeSessionId) return loadTranscript(activeSessionId);
+                })
+                .catch(function () {
+                    status.textContent = 'Could not delete photo';
+                });
+        }
+    });
 
     var scenarioEntitiesCache = [];
 
@@ -1555,7 +1824,8 @@
                     body: JSON.stringify({
                         scenarioId: activeProjectScenarioId,
                         entityKey: e.entityKey,
-                        displayName: e.displayName || e.entityKey
+                        displayName: e.displayName || e.entityKey,
+                        reExtract: true
                     })
                 })
                     .then(function (r) {
@@ -1650,6 +1920,10 @@
             return;
         }
         if (!text && pendingVisual.length === 0) return;
+        if (attachGateBlocked) {
+            status.textContent = 'Wait for photo uploads to finish.';
+            return;
+        }
 
         var sentUserText = text;
         streamTurnGroupId = streamTurnGroupId || 'tg-' + Date.now() + '-' + Math.random().toString(16).slice(2);
@@ -1669,13 +1943,8 @@
 
         var pendingHtml = '';
         pendingVisual.forEach(function (p) {
-            if (p.previewUrl) {
-                pendingHtml +=
-                    '<img data-asset-id="' +
-                    esc(p.assetId || '') +
-                    '" src="' +
-                    esc(p.previewUrl) +
-                    '" alt="" class="max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover" />';
+            if (p.assetId || p.previewUrl) {
+                pendingHtml += renderStreamAttachmentHtml(p.assetId || '', p.previewUrl || '');
             }
         });
         messages.insertAdjacentHTML(
@@ -1751,7 +2020,10 @@
                     state: 'uploaded',
                     fileName: p.fileName,
                     mime: p.mime,
-                    entityKey: p.entityKey || null
+                    entityKey: p.entityKey || null,
+                    secondaryEntityKey: p.secondaryEntityKey || null,
+                    caption: p.caption || null,
+                    sensitivity: p.sensitivity && p.sensitivity !== 'normal' ? p.sensitivity : null
                 };
             });
         }
@@ -1770,6 +2042,7 @@
                 var reader = res.body.getReader();
                 var dec = new TextDecoder();
                 var buf = '';
+                var streamVisualExtractSeen = false;
                 function pump() {
                     return reader.read().then(function (result) {
                         if (result.value) buf += dec.decode(result.value, { stream: true });
@@ -1800,6 +2073,51 @@
                                 } catch (eApv) {
                                     /* ignore */
                                 }
+                            }
+                            if (evt.type === 'visual_extract_started' && evt.payload) {
+                                try {
+                                    var vStart = JSON.parse(evt.payload);
+                                    updateStreamUserAttachmentDetail(vStart.assetId, 'Analyzing photo…');
+                                } catch (eVStart) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'visual_extract_done' && evt.payload) {
+                                try {
+                                    var vDone = JSON.parse(evt.payload);
+                                    var proposalCount = typeof vDone.proposalCount === 'number' ? vDone.proposalCount : 0;
+                                    var footerParts = [];
+                                    if (vDone.inferredSummary && !vDone.error) {
+                                        footerParts.push(String(vDone.inferredSummary));
+                                    }
+                                    if (proposalCount > 0) {
+                                        footerParts.push(
+                                            'Insights ready · ' + proposalCount + ' memories to review'
+                                        );
+                                    } else if (vDone.error) {
+                                        footerParts.push(String(vDone.error));
+                                    } else if (!vDone.inferredSummary) {
+                                        footerParts.push('Photo analyzed.');
+                                    }
+                                    updateStreamUserAttachmentDetail(
+                                        vDone.assetId,
+                                        footerParts.join(' · ')
+                                    );
+                                    streamVisualExtractSeen = true;
+                                    if (!vDone.error) {
+                                        announceVisualStatus('Photo analysis complete.');
+                                    }
+                                    maybeShowClarifyFromExtract(
+                                        vDone.assetId,
+                                        vDone.inferenceConfidence,
+                                        text
+                                    );
+                                } catch (eVDone) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'visual_inbox' && evt.payload) {
+                                loadInbox();
                             }
                             if (evt.type === 'flow_plan' && evt.payload && flowStepsEl) {
                                 try {
@@ -1909,7 +2227,9 @@
                 loadLifeSignals();
                 loadInbox();
                 return loadTranscript(sessionId).then(function () {
-                    if (sentAssetIds.length) return pollVisualAttachmentStatus(sentAssetIds, 0, sentUserText);
+                    if (sentAssetIds.length && !streamVisualExtractSeen) {
+                        return pollVisualAttachmentStatus(sentAssetIds, 0, sentUserText);
+                    }
                 }).then(function () {
                     return syncPlaygroundFocus();
                 });
@@ -2369,8 +2689,6 @@
     };
 
 
-    var scenarioEntitiesCache = [];
-
     function loadScenarioEntitiesForTags() {
         if (!activeProjectScenarioId) {
             scenarioEntitiesCache = [];
@@ -2388,6 +2706,16 @@
                 scenarioEntitiesCache = [];
                 return [];
             });
+    }
+
+    function activeFocusEntityKey() {
+        if (!activeProjectId) return null;
+        for (var i = 0; i < projectsCache.length; i++) {
+            if (projectsCache[i].projectId === activeProjectId && projectsCache[i].focusEntityKey) {
+                return projectsCache[i].focusEntityKey;
+            }
+        }
+        return focusEntitySel && focusEntitySel.value ? focusEntitySel.value : null;
     }
 
     if (window.PMVisualUpload && attachBtn && fileInput && attachChipsEl) {
@@ -2411,6 +2739,11 @@
             },
             getEntities: function () {
                 return scenarioEntitiesCache;
+            },
+            getFocusEntityKey: activeFocusEntityKey,
+            onSendGate: function (gate) {
+                attachGateBlocked = !!(gate && gate.uploading);
+                syncComposerSendEnabled();
             },
             onPlaceholderHint: function (hasAttachments) {
                 if (!input) return;
@@ -2440,6 +2773,7 @@
     }
 
     sendBtn.addEventListener('click', sendStreaming);
+    input.addEventListener('input', syncComposerSendEnabled);
     input.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter' && !ev.shiftKey) {
             ev.preventDefault();

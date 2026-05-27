@@ -22,7 +22,7 @@ namespace AgctorSDK.Core.Tools.Implementations;
 [AgctorHostTool(
     "person-visual-ingest",
     "Person visual ingest",
-    "Upload and annotate scenario-scoped photos (InitUpload, CompleteUpload, Annotate, InferFromPrompt, LinkToTurn, GetAsset).",
+    "Upload and annotate scenario-scoped photos (InitUpload, CompleteUpload, Annotate, InferFromPrompt, LinkToTurn, GetAsset, DeleteAsset).",
     DefaultOperation = "InitUpload")]
 public sealed class PersonVisualIngestTool : ToolActorBase
 {
@@ -52,6 +52,7 @@ public sealed class PersonVisualIngestTool : ToolActorBase
                 "annotate" => await AnnotateAsync(p, CancellationToken.None).ConfigureAwait(false),
                 "inferfromprompt" => await InferFromPromptAsync(p, CancellationToken.None).ConfigureAwait(false),
                 "linktoturn" => await LinkToTurnAsync(p, CancellationToken.None).ConfigureAwait(false),
+                "deleteasset" => await DeleteAssetAsync(p, CancellationToken.None).ConfigureAwait(false),
                 _ => new ToolResult { IsSuccess = false, Error = $"Unsupported operation: {request.Operation}" }
             };
         }
@@ -129,6 +130,9 @@ public sealed class PersonVisualIngestTool : ToolActorBase
 
         var record = await uploads.GetAssetAsync(root, scenarioId, assetId, cancellationToken).ConfigureAwait(false);
         if (record == null)
+            return new ToolResult { IsSuccess = false, Error = "asset_not_found" };
+
+        if (string.Equals(record.State, VisualAssetStates.Deleted, StringComparison.OrdinalIgnoreCase))
             return new ToolResult { IsSuccess = false, Error = "asset_not_found" };
 
         string? viewUrl = null;
@@ -235,5 +239,34 @@ public sealed class PersonVisualIngestTool : ToolActorBase
 
         await catalog.SaveAsync(root, scenarioId, record, cancellationToken).ConfigureAwait(false);
         return new ToolResult { IsSuccess = true, Output = VisualToolParams.ToJson(record) };
+    }
+
+    private static async Task<ToolResult> DeleteAssetAsync(
+        IDictionary<string, object> p,
+        CancellationToken cancellationToken)
+    {
+        var deleter = ProjectMemoryServiceAccessor.GetRequiredService<VisualAssetDeleter>();
+        var root = VisualToolParams.ResolveProjectRoot(p);
+        var scenarioId = VisualToolParams.RequireScenarioId(p);
+        var assetId = VisualToolParams.RequireAssetId(p);
+
+        var result = await deleter
+            .DeleteAsync(root, scenarioId, assetId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!result.Success)
+            return new ToolResult { IsSuccess = false, Error = result.Error ?? "delete_failed" };
+
+        return new ToolResult
+        {
+            IsSuccess = true,
+            Output = VisualToolParams.ToJson(new
+            {
+                assetId = result.AssetId,
+                deleted = true,
+                blobDeleted = result.BlobDeleted,
+                alreadyDeleted = result.AlreadyDeleted
+            })
+        };
     }
 }

@@ -1,0 +1,81 @@
+schemaVersion: 1.0
+assetId: f349f33397b94f4590ae31e2abb26d5a
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/f349f33397b94f4590ae31e2abb26d5a/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 95060
+state: inbox_pending
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779858999904-86fb11badf8028
+context:
+  userCaption: Raha's is wearing yellow shirt
+  occasion: 
+subjects:
+- entityKey: raha
+  role: primary
+  displayName: Raha
+inference:
+  source: vision
+  confidence: 1
+  entityKeys:
+  - raha
+  rationale: User explicitly identified the person in the yellow shirt as Raha.
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: completed
+  sceneSummary: Raha and a group of friends are sitting at an outdoor table with drinks and food, wearing casual summer clothing.
+  ollamaModel: gemma4:31b
+  promptVersion: visual-extract-v1
+  lastRunAt:
+    dateTime: 2026-05-27T05:18:22.9912169
+    utcDateTime: 2026-05-27T05:18:22.9912169Z
+    localDateTime: 2026-05-26T22:18:22.9912169-07:00
+    date: 2026-05-27T00:00:00.0000000
+    day: 27
+    dayOfWeek: Wednesday
+    dayOfYear: 147
+    hour: 5
+    millisecond: 991
+    microsecond: 216
+    nanosecond: 900
+    minute: 18
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 22
+    ticks: 639154559029912169
+    utcTicks: 639154559029912169
+    timeOfDay: 05:18:22.9912169
+    year: 2026

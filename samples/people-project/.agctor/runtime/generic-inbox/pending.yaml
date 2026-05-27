@@ -10,6 +10,7 @@ items:
   scenarioSegment: person_1
   queuedAtUtc: 2026-04-22T14:45:20.6991510+00:00
   userPromptLine: 'I found information that is not covered by current memory routing rules: **raha** — `education` → "Computer Science degree from the university of Salford in the UK". Do you want me to store it under **Other information** (generic inbox) for later organization? (yes/no)'
+  sourceAssetId: 
 - proposalId: 1b04b95c80e9bd8805df89e78cc722275be1cfb7d29a77e0e3b20a9bff7296d5
   entityKey: raha
   knowledgeType: profile_fact
@@ -20,3 +21,4 @@ items:
   scenarioSegment: person_1
   queuedAtUtc: 2026-04-24T21:11:59.5432080+00:00
   userPromptLine: 'I found information that is not covered by current memory routing rules: **raha** — `profile_fact (education)` → "Computer Science degree from the university of Salford in the UK". Do you want me to store it under **Other information** (generic inbox) for later organization? (yes/no)'
+  sourceAssetId: 

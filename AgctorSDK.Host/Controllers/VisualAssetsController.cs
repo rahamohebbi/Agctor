@@ -17,6 +17,7 @@ namespace AgctorSDK.Host.Controllers;
 public sealed class VisualAssetsController : ControllerBase
 {
     private readonly VisualIngestToolBridge _ingest;
+    private readonly VisualExtractToolBridge _extract;
     private readonly IBlobStore _blobs;
     private readonly IOptionsMonitor<ProjectMemoryAgentOptions> _projectOptions;
     private readonly VisualStorageOptions _visualOptions;
@@ -26,12 +27,14 @@ public sealed class VisualAssetsController : ControllerBase
 
     public VisualAssetsController(
         VisualIngestToolBridge ingest,
+        VisualExtractToolBridge extract,
         IBlobStore blobs,
         IOptionsMonitor<ProjectMemoryAgentOptions> projectOptions,
         IOptions<VisualStorageOptions> visualOptions,
         ILogger<VisualAssetsController> logger)
     {
         _ingest = ingest ?? throw new ArgumentNullException(nameof(ingest));
+        _extract = extract ?? throw new ArgumentNullException(nameof(extract));
         _blobs = blobs ?? throw new ArgumentNullException(nameof(blobs));
         _projectOptions = projectOptions ?? throw new ArgumentNullException(nameof(projectOptions));
         _visualOptions = visualOptions?.Value ?? new VisualStorageOptions();
@@ -128,7 +131,7 @@ public sealed class VisualAssetsController : ControllerBase
         return Ok(await ToDtoAsync(record, root.Root!, cancellationToken).ConfigureAwait(false));
     }
 
-    /// <summary>Manual subject tag from playground clarify chips (PRD-023f).</summary>
+    /// <summary>Manual subject tag from playground clarify chips or Tag popover (PRD-023b).</summary>
     [HttpPost("{assetId}/annotate")]
     [ProducesResponseType(typeof(VisualAssetDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
@@ -137,34 +140,60 @@ public sealed class VisualAssetsController : ControllerBase
         [FromBody] VisualAssetAnnotateRequestDto? body,
         CancellationToken cancellationToken)
     {
-        if (body == null || string.IsNullOrWhiteSpace(body.ScenarioId) || string.IsNullOrWhiteSpace(body.EntityKey))
-            return BadRequest(new ErrorResponse { Code = "ANNOTATE_INVALID", Message = "scenarioId and entityKey are required." });
+        if (body == null || string.IsNullOrWhiteSpace(body.ScenarioId))
+            return BadRequest(new ErrorResponse { Code = "ANNOTATE_INVALID", Message = "scenarioId is required." });
+
+        var hasSubject = !string.IsNullOrWhiteSpace(body.EntityKey);
+        var hasSecondary = !string.IsNullOrWhiteSpace(body.SecondaryEntityKey);
+        var hasCaption = !string.IsNullOrWhiteSpace(body.UserCaption);
+        var hasPrivacy = !string.IsNullOrWhiteSpace(body.Sensitivity);
+        if (!hasSubject && !hasSecondary && !hasCaption && !hasPrivacy)
+            return BadRequest(new ErrorResponse { Code = "ANNOTATE_INVALID", Message = "Provide entityKey, caption, or sensitivity." });
 
         var root = ResolveProjectRoot(body.ProjectRoot);
         if (root.Error != null)
             return root.Error;
 
-        var subjects = JsonSerializer.Serialize(new[]
+        var subjects = new List<VisualAssetSubject>();
+        if (hasSubject)
         {
-            new VisualAssetSubject
+            subjects.Add(new VisualAssetSubject
             {
-                EntityKey = body.EntityKey.Trim(),
+                EntityKey = body.EntityKey!.Trim(),
                 DisplayName = string.IsNullOrWhiteSpace(body.DisplayName) ? null : body.DisplayName.Trim(),
                 Role = "primary"
-            }
-        });
+            });
+        }
 
-        var (ok, json, err) = await _ingest.InvokeAsync(
-                "Annotate",
-                new Dictionary<string, object>
-                {
-                    ["projectRoot"] = root.Root!,
-                    ["scenarioId"] = body.ScenarioId.Trim(),
-                    ["assetId"] = assetId,
-                    ["subjects"] = subjects
-                },
-                cancellationToken)
-            .ConfigureAwait(false);
+        if (hasSecondary)
+        {
+            subjects.Add(new VisualAssetSubject
+            {
+                EntityKey = body.SecondaryEntityKey!.Trim(),
+                DisplayName = string.IsNullOrWhiteSpace(body.SecondaryDisplayName)
+                    ? null
+                    : body.SecondaryDisplayName.Trim(),
+                Role = "also_in_photo"
+            });
+        }
+
+        var parameters = new Dictionary<string, object>
+        {
+            ["projectRoot"] = root.Root!,
+            ["scenarioId"] = body.ScenarioId.Trim(),
+            ["assetId"] = assetId
+        };
+
+        if (subjects.Count > 0)
+            parameters["subjects"] = JsonSerializer.Serialize(subjects);
+
+        if (hasCaption)
+            parameters["userCaption"] = body.UserCaption!.Trim();
+
+        if (hasPrivacy)
+            parameters["sensitivity"] = body.Sensitivity!.Trim();
+
+        var (ok, json, err) = await _ingest.InvokeAsync("Annotate", parameters, cancellationToken).ConfigureAwait(false);
 
         if (!ok || json == null)
             return BadRequest(new ErrorResponse { Code = "ANNOTATE_FAILED", Message = err ?? "Annotate failed." });
@@ -173,7 +202,141 @@ public sealed class VisualAssetsController : ControllerBase
         if (record == null)
             return BadRequest(new ErrorResponse { Code = "ANNOTATE_FAILED", Message = "Invalid tool response." });
 
+        if (body.ReExtract)
+        {
+            var (reOk, _, reErr) = await InvokeReExtractAsync(
+                    root.Root!,
+                    body.ScenarioId.Trim(),
+                    assetId,
+                    userMessage: null,
+                    focusEntityKey: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!reOk)
+            {
+                _logger.LogWarning("Annotate succeeded but re-extract failed for {AssetId}: {Error}", assetId, reErr);
+            }
+            else
+            {
+                var (reloadOk, reloadJson, _) = await _ingest.InvokeAsync(
+                        "GetAsset",
+                        new Dictionary<string, object>
+                        {
+                            ["projectRoot"] = root.Root!,
+                            ["scenarioId"] = body.ScenarioId.Trim(),
+                            ["assetId"] = assetId
+                        },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                if (reloadOk && reloadJson != null)
+                {
+                    var reloadPayload = JsonSerializer.Deserialize<GetAssetToolPayload>(
+                        reloadJson.Value.GetRawText(),
+                        JsonRead);
+                    if (reloadPayload?.Asset != null)
+                        record = reloadPayload.Asset;
+                }
+            }
+        }
+
         return Ok(await ToDtoAsync(record, root.Root!, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>Re-run Gemma 4 vision extract (PRD-023 debug / late-tag refresh).</summary>
+    [HttpPost("{assetId}/re-extract")]
+    [ProducesResponseType(typeof(VisualAssetDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<VisualAssetDto>> ReExtractAsync(
+        [FromRoute] string assetId,
+        [FromBody] VisualAssetReExtractRequestDto? body,
+        CancellationToken cancellationToken)
+    {
+        if (body == null || string.IsNullOrWhiteSpace(body.ScenarioId))
+            return BadRequest(new ErrorResponse { Code = "SCENARIO_REQUIRED", Message = "scenarioId is required." });
+
+        var root = ResolveProjectRoot(body.ProjectRoot);
+        if (root.Error != null)
+            return root.Error;
+
+        var (ok, _, err) = await InvokeReExtractAsync(
+                root.Root!,
+                body.ScenarioId.Trim(),
+                assetId,
+                body.UserMessage,
+                body.FocusEntityKey,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!ok)
+            return BadRequest(new ErrorResponse { Code = "REEXTRACT_FAILED", Message = err ?? "Re-extract failed." });
+
+        var (getOk, getJson, getErr) = await _ingest.InvokeAsync(
+                "GetAsset",
+                new Dictionary<string, object>
+                {
+                    ["projectRoot"] = root.Root!,
+                    ["scenarioId"] = body.ScenarioId.Trim(),
+                    ["assetId"] = assetId
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!getOk || getJson == null)
+            return BadRequest(new ErrorResponse { Code = "REEXTRACT_FAILED", Message = getErr ?? "Could not load asset." });
+
+        var payload = JsonSerializer.Deserialize<GetAssetToolPayload>(getJson.Value.GetRawText(), JsonRead);
+        if (payload?.Asset == null)
+            return BadRequest(new ErrorResponse { Code = "REEXTRACT_FAILED", Message = "Invalid tool response." });
+
+        return Ok(await ToDtoAsync(payload.Asset, root.Root!, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>Tombstone catalog entry and delete blob (PRD-023 playground ⋯ menu).</summary>
+    [HttpDelete("{assetId}")]
+    [ProducesResponseType(typeof(VisualAssetDeleteResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<VisualAssetDeleteResponseDto>> DeleteAsync(
+        [FromRoute] string assetId,
+        [FromQuery] string scenarioId,
+        [FromQuery] string? projectRoot,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(scenarioId))
+            return BadRequest(new ErrorResponse { Code = "SCENARIO_REQUIRED", Message = "scenarioId is required." });
+
+        var root = ResolveProjectRoot(projectRoot);
+        if (root.Error != null)
+            return root.Error;
+
+        var (ok, json, err) = await _ingest.InvokeAsync(
+                "DeleteAsset",
+                new Dictionary<string, object>
+                {
+                    ["projectRoot"] = root.Root!,
+                    ["scenarioId"] = scenarioId.Trim(),
+                    ["assetId"] = assetId
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!ok || json == null)
+        {
+            if (string.Equals(err, "asset_not_found", StringComparison.OrdinalIgnoreCase))
+                return NotFound(new ErrorResponse { Code = "ASSET_NOT_FOUND", Message = $"Asset '{assetId}' not found." });
+
+            return BadRequest(new ErrorResponse { Code = "DELETE_FAILED", Message = err ?? "Delete failed." });
+        }
+
+        var payload = JsonSerializer.Deserialize<DeleteAssetToolPayload>(json.Value.GetRawText(), JsonRead);
+        if (payload == null || string.IsNullOrWhiteSpace(payload.AssetId))
+            return BadRequest(new ErrorResponse { Code = "DELETE_FAILED", Message = "Invalid tool response." });
+
+        return Ok(new VisualAssetDeleteResponseDto
+        {
+            AssetId = payload.AssetId,
+            Deleted = payload.Deleted,
+            BlobDeleted = payload.BlobDeleted
+        });
     }
 
     [HttpPut("{assetId}/raw")]
@@ -428,6 +591,30 @@ public sealed class VisualAssetsController : ControllerBase
         return (root, null);
     }
 
+    private async Task<(bool Ok, JsonElement? Body, string? Error)> InvokeReExtractAsync(
+        string projectRoot,
+        string scenarioId,
+        string assetId,
+        string? userMessage,
+        string? focusEntityKey,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new Dictionary<string, object>
+        {
+            ["projectRoot"] = projectRoot,
+            ["scenarioId"] = scenarioId,
+            ["assetId"] = assetId
+        };
+
+        if (!string.IsNullOrWhiteSpace(userMessage))
+            parameters["userMessage"] = userMessage.Trim();
+
+        if (!string.IsNullOrWhiteSpace(focusEntityKey))
+            parameters["focusEntityKey"] = focusEntityKey.Trim();
+
+        return await _extract.InvokeAsync("ReExtract", parameters, cancellationToken).ConfigureAwait(false);
+    }
+
     private sealed class InitUploadToolPayload
     {
         public string? AssetId { get; set; }
@@ -441,5 +628,12 @@ public sealed class VisualAssetsController : ControllerBase
         public VisualAssetRecord? Asset { get; set; }
         public string? ViewUrl { get; set; }
         public DateTimeOffset? ViewUrlExpiresAt { get; set; }
+    }
+
+    private sealed class DeleteAssetToolPayload
+    {
+        public string? AssetId { get; set; }
+        public bool Deleted { get; set; }
+        public bool BlobDeleted { get; set; }
     }
 }

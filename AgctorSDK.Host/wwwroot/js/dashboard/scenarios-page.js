@@ -75,13 +75,38 @@
     /** From GET /api/Config → tools (id, name, description) for LlmNode extra tool picker. */
     var hostCatalogTools = [];
 
-    /** Drops tool ids that do not apply to this LlmNode persona (avoids stale checks after persona change). */
-    function sanitizeLlmNodeToolIdsForPersona(personaId, toolIds) {
-        var p = String(personaId || '').toLowerCase();
-        var arr = Array.isArray(toolIds) ? toolIds.map(function (x) { return String(x).toLowerCase(); }) : [];
-        if (p === 'person-query') return arr.filter(function (x) { return x === 'person-memory-context'; });
-        if (p === 'memory-curator') return arr.filter(function (x) { return x === 'apply-memory-intents'; });
+    /** Cached GET /api/tools/for-persona/{id} — eligibility from server (AgctorPersonaToolsUi). */
+    var personaToolsById = {};
+
+    function flowEligibleHostToolIds(personaId) {
+        var dto = personaToolsById[normPersonaKey(personaId)];
+        if (window.AgctorPersonaToolsUi && dto) {
+            return window.AgctorPersonaToolsUi.eligibleHostToolIds(dto);
+        }
         return [];
+    }
+
+    function normPersonaKey(personaId) {
+        return String(personaId || '').trim().toLowerCase();
+    }
+
+    function ensurePersonaTools(personaId) {
+        var key = normPersonaKey(personaId);
+        if (!key || !window.AgctorPersonaToolsUi) return Promise.resolve(null);
+        if (personaToolsById[key]) return Promise.resolve(personaToolsById[key]);
+        return window.AgctorPersonaToolsUi.fetchForPersona(personaId).then(function (dto) {
+            if (dto) personaToolsById[key] = dto;
+            return dto;
+        });
+    }
+
+    function sanitizeLlmNodeToolIdsForPersona(personaId, toolIds) {
+        var eligible = flowEligibleHostToolIds(personaId);
+        var arr = Array.isArray(toolIds) ? toolIds.map(function (x) { return String(x).toLowerCase(); }) : [];
+        if (!eligible.length) return [];
+        return arr.filter(function (x) {
+            return eligible.indexOf(x) >= 0;
+        });
     }
 
     function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -336,11 +361,31 @@
                     ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
                     : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
                 var title = known ? 'Known YAML persona' : 'Unknown persona id';
+                var toolsHint = '';
+                var key = normPersonaKey(p);
+                var dto = personaToolsById[key];
+                if (dto && window.AgctorPersonaToolsUi) {
+                    var summary = window.AgctorPersonaToolsUi.summarizeAllowedHostTools(dto);
+                    if (summary) {
+                        toolsHint =
+                            ' <span class="ml-1 font-normal opacity-80" title="' +
+                            esc(window.AgctorPersonaToolsUi.summarizeToolsTitle(dto)) +
+                            '">· ' +
+                            esc(summary) +
+                            '</span>';
+                    }
+                }
                 personaChipsEl.innerHTML +=
-                    '<span class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ' + cls + '" title="' + esc(title) + '">' +
+                    '<span class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium ' + cls + '" title="' + esc(title) + '" data-persona-chip="' + esc(p) + '">' +
                     esc(p) +
+                    toolsHint +
                     '<button type="button" class="font-bold leading-none hover:opacity-80" data-remove-persona="' + esc(p) + '" aria-label="Remove ' + esc(p) + '">×</button>' +
                     '</span>';
+                if (known && window.AgctorPersonaToolsUi && !dto) {
+                    ensurePersonaTools(p).then(function () {
+                        renderPersonaEditor();
+                    }).catch(function () { /* chip stays without tools hint */ });
+                }
             });
         }
 
@@ -776,7 +821,9 @@
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
         var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
         var personaCapEl = document.getElementById('sc-flow-persona-cap');
-        var flowLlmToolsWrap = document.getElementById('sc-flow-llm-tools-wrap');
+        var flowAgentToolsSection = document.getElementById('sc-flow-agent-tools-section');
+        var flowYamlToolsEl = document.getElementById('sc-flow-yaml-tools');
+        var flowEditAgentLink = document.getElementById('sc-flow-edit-agent-link');
         var flowLlmToolsEl = document.getElementById('sc-flow-llm-tools');
         if (!openBtn || !modal || !cyHost || !msgEl || !btnValidate || !btnSimulate || !btnSaveFlow || !btnConnect) return;
         if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.createGraphRenderer !== 'function') return;
@@ -1016,7 +1063,8 @@
                 personaCapEl.innerHTML = '';
                 personaCapEl.classList.add('hidden');
             }
-            if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
+            if (flowAgentToolsSection) flowAgentToolsSection.classList.add('hidden');
+            if (flowYamlToolsEl) flowYamlToolsEl.innerHTML = '';
             if (flowLlmToolsEl) flowLlmToolsEl.innerHTML = '';
             modal.classList.add('hidden');
             cyHost.innerHTML = '';
@@ -1098,9 +1146,6 @@
                 esc(row.outputType || '—') +
                 '</span></p>'
             );
-            if (row.toolsAllow && row.toolsAllow.length) {
-                chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Tools allow</p>' + strListHtml(row.toolsAllow));
-            }
             if (row.toolsDeny && row.toolsDeny.length) {
                 chunks.push('<p class="mt-1 font-semibold text-gray-900 dark:text-gray-100">Tools deny</p>' + strListHtml(row.toolsDeny));
             }
@@ -1126,7 +1171,8 @@
                 if (routerPanel) routerPanel.classList.add('hidden');
                 if (personaPanel) personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
-                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
+                if (flowAgentToolsSection) flowAgentToolsSection.classList.add('hidden');
+                if (flowYamlToolsEl) flowYamlToolsEl.innerHTML = '';
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -1345,55 +1391,74 @@
             updateRouterModeDependentUi();
         }
 
-        /** PRD-014: optional LlmNode.config.toolIds — fixed project-memory pair; catalog fills descriptions when available. */
-        function renderFlowLlmExtraTools(cfg, effectivePid) {
-            if (!flowLlmToolsWrap || !flowLlmToolsEl) return;
-            flowLlmToolsEl.innerHTML = '';
-            var known = ['person-memory-context', 'apply-memory-intents'];
-            var byId = {};
+        function hostToolCatalogRow(toolId) {
+            var tid = String(toolId || '').toLowerCase();
+            var row = null;
             (hostCatalogTools || []).forEach(function (t) {
-                if (t && t.id) byId[String(t.id).toLowerCase()] = t;
+                if (t && String(t.id || '').toLowerCase() === tid) row = t;
             });
-            flowLlmToolsWrap.classList.remove('hidden');
-            var pid = String(effectivePid || '').toLowerCase();
-            var selected = sanitizeLlmNodeToolIdsForPersona(effectivePid, cfg.toolIds);
-            known.forEach(function (tid) {
-                var row = byId[tid];
-                var lab = document.createElement('label');
-                lab.className = 'flex cursor-pointer items-start gap-1.5 text-[10px] text-gray-800 dark:text-gray-100';
-                var cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.setAttribute('data-flow-tool-id', tid);
-                cb.checked = selected.indexOf(tid) >= 0;
-                if (tid === 'person-memory-context') {
-                    cb.disabled = pid !== 'person-query';
-                    cb.title = pid === 'person-query'
-                        ? 'Playground person-query may load context via this host tool (same path as HTTP API).'
-                        : 'Only enabled when this node uses the person-query persona.';
-                } else if (tid === 'apply-memory-intents') {
-                    cb.disabled = pid !== 'memory-curator';
-                    cb.title = pid === 'memory-curator'
-                        ? 'Lets the curator persona apply MemoryIntent JSON batches through the host tool pipeline.'
-                        : 'Only enabled when this node uses the memory-curator persona.';
+            return row;
+        }
+
+        function renderFlowYamlToolsBaseline(personaId) {
+            if (!flowYamlToolsEl) return;
+            flowYamlToolsEl.innerHTML = '';
+            var pid = normalizeType(personaId);
+            if (!pid) {
+                flowYamlToolsEl.innerHTML =
+                    '<span class="text-[9px] text-gray-500 dark:text-gray-400">Pick a persona first.</span>';
+                return;
+            }
+            if (flowEditAgentLink) {
+                flowEditAgentLink.href =
+                    '/Dashboard/ProjectMemory/Agents/Edit?id=' + encodeURIComponent(pid);
+            }
+            var dto = personaToolsById[normPersonaKey(pid)];
+            if (window.AgctorPersonaToolsUi && dto) {
+                window.AgctorPersonaToolsUi.renderYamlBaselinePills(flowYamlToolsEl, dto);
+                return;
+            }
+            ensurePersonaTools(pid).then(function (loaded) {
+                if (window.AgctorPersonaToolsUi && loaded) {
+                    window.AgctorPersonaToolsUi.renderYamlBaselinePills(flowYamlToolsEl, loaded);
+                } else {
+                    flowYamlToolsEl.innerHTML =
+                        '<span class="text-[9px] text-gray-500 dark:text-gray-400">Could not load persona tools.</span>';
                 }
-                if (cb.disabled) {
-                    lab.classList.add('opacity-60');
-                    lab.classList.remove('cursor-pointer');
-                    lab.classList.add('cursor-not-allowed');
+            }).catch(function () {
+                flowYamlToolsEl.innerHTML =
+                    '<span class="text-[9px] text-red-600 dark:text-red-400">Failed to load tools.</span>';
+            });
+        }
+
+        /** PRD-014: LlmNode.config.toolIds — grouped host tools eligible for this persona. */
+        function renderFlowLlmExtraTools(cfg, effectivePid) {
+            if (!flowAgentToolsSection || !flowLlmToolsEl) return;
+            flowLlmToolsEl.innerHTML = '';
+            var pid = normalizeType(effectivePid);
+            if (!pid) {
+                flowAgentToolsSection.classList.add('hidden');
+                return;
+            }
+            flowAgentToolsSection.classList.remove('hidden');
+            renderFlowYamlToolsBaseline(pid);
+
+            var selected = sanitizeLlmNodeToolIdsForPersona(pid, cfg.toolIds);
+            var dto = personaToolsById[normPersonaKey(pid)];
+            if (window.AgctorPersonaToolsUi && dto) {
+                window.AgctorPersonaToolsUi.renderFlowStepToolToggles(flowLlmToolsEl, dto, selected, esc);
+                return;
+            }
+            ensurePersonaTools(pid).then(function (loaded) {
+                if (window.AgctorPersonaToolsUi && loaded) {
+                    window.AgctorPersonaToolsUi.renderFlowStepToolToggles(flowLlmToolsEl, loaded, selected, esc);
+                } else {
+                    flowLlmToolsEl.innerHTML =
+                        '<p class="text-[9px] text-gray-500 dark:text-gray-400">Could not load persona tools.</p>';
                 }
-                var span = document.createElement('span');
-                var desc = (row && (row.description || row.name)) || tid;
-                if (!row) {
-                    desc += ' (not listed in GET /api/Config.tools — upgrade host or check tool registration)';
-                }
-                span.innerHTML =
-                    '<span class="font-mono text-[9px]">' +
-                    esc(tid) +
-                    '</span> — ' +
-                    esc(desc);
-                lab.appendChild(cb);
-                lab.appendChild(span);
-                flowLlmToolsEl.appendChild(lab);
+            }).catch(function () {
+                flowLlmToolsEl.innerHTML =
+                    '<p class="text-[9px] text-red-600 dark:text-red-400">Failed to load tools.</p>';
             });
         }
 
@@ -1403,7 +1468,8 @@
             if (!cy) {
                 personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
-                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
+                if (flowAgentToolsSection) flowAgentToolsSection.classList.add('hidden');
+                if (flowYamlToolsEl) flowYamlToolsEl.innerHTML = '';
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -1414,7 +1480,8 @@
             if (sel.length !== 1 || sel.data('agctorType') !== 'LlmNode') {
                 personaPanel.classList.add('hidden');
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
-                if (flowLlmToolsWrap) flowLlmToolsWrap.classList.add('hidden');
+                if (flowAgentToolsSection) flowAgentToolsSection.classList.add('hidden');
+                if (flowYamlToolsEl) flowYamlToolsEl.innerHTML = '';
                 if (personaCapEl) {
                     personaCapEl.innerHTML = '';
                     personaCapEl.classList.add('hidden');
@@ -1517,7 +1584,7 @@
             var nextToolIds = [];
             if (flowLlmToolsEl) {
                 flowLlmToolsEl.querySelectorAll('input[type="checkbox"][data-flow-tool-id]').forEach(function (cb) {
-                    if (!cb.disabled && cb.checked) nextToolIds.push(cb.getAttribute('data-flow-tool-id') || '');
+                    if (cb.checked) nextToolIds.push(cb.getAttribute('data-flow-tool-id') || '');
                 });
             }
             nextToolIds = sanitizeLlmNodeToolIdsForPersona(pid, nextToolIds);

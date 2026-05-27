@@ -487,6 +487,30 @@ namespace AgctorSDK.Host.IntegrationTests
         }
 
         [Fact]
+        public async Task GetToolsForPersona_ValidPersona_ReturnsCatalogShape()
+        {
+            var response = await _client.GetAsync("/api/tools/for-persona/person-query");
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var dto = await response.Content.ReadFromJsonAsync<PersonaHostToolsResponseDto>();
+            dto.Should().NotBeNull();
+            dto!.PersonaId.Should().Be("person-query");
+            dto.HostTools.Should().NotBeEmpty();
+            dto.HostTools.Select(t => t.Id).Should().Contain("person-memory-context");
+            dto.HostTools.Select(t => t.Id).Should().Contain("person-visual-context");
+            dto.SemanticTools.Should().NotBeEmpty();
+        }
+
+        [Fact]
+        public async Task GetToolsForPersona_EmptyPersonaId_ReturnsBadRequest()
+        {
+            var response = await _client.GetAsync("/api/tools/for-persona/%20");
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+
+        [Fact]
         public async Task InvokeTool_InvalidJsonInParameters_HandleGracefully()
         {
             // Arrange

@@ -32,6 +32,9 @@ public sealed class OutOfSchemaFactProposal
 
     /// <summary>Ready-to-show line for the UI or assistant (no extra templating required).</summary>
     public string UserPromptLine { get; init; } = "";
+
+    /// <summary>Visual asset that produced this proposal (PRD-023 inbox thumbnails).</summary>
+    public string? SourceAssetId { get; init; }
 }
 
 /// <summary>Caller payload after the user approves storing unrouted facts in the generic inbox.</summary>

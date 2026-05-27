@@ -49,6 +49,7 @@ public sealed class PersonVisualToolTests
         services.AddSingleton<VisualPipelineService>();
         services.AddSingleton<IVisualPipelineService>(sp => sp.GetRequiredService<VisualPipelineService>());
         services.AddSingleton<VisualAssetCatalogStore>();
+        services.AddSingleton<VisualAssetDeleter>();
         services.AddSingleton<PersonVisualContextBuilder>();
         _provider = services.BuildServiceProvider();
         ProjectMemoryServiceAccessor.Initialize(_provider);
@@ -115,6 +116,102 @@ public sealed class PersonVisualToolTests
         saved.Inference.Should().NotBeNull();
         saved.Inference!.EntityKeys.Should().Contain("raha");
         saved.Inference.Source.Should().Be("vision");
+    }
+
+    [TestMethod]
+    public async Task Annotate_applies_secondary_subject_caption_and_do_not_infer()
+    {
+        var catalog = _provider!.GetRequiredService<VisualAssetCatalogStore>();
+        var record = new VisualAssetRecord
+        {
+            AssetId = "a2",
+            ScenarioId = "people",
+            ProjectId = "test-proj",
+            State = VisualAssetStates.Uploaded,
+            Storage = new VisualAssetStorageRef { Bucket = "b", Key = "k2", ContentType = "image/jpeg", Bytes = 10 }
+        };
+        await catalog.SaveAsync(_root, "people", record, CancellationToken.None);
+
+        var ingest = new PersonVisualIngestTool("t-ingest");
+        var annotate = await ingest.Handle(new ToolRequest
+        {
+            Operation = "Annotate",
+            Parameters = new Dictionary<string, object>
+            {
+                ["projectRoot"] = _root,
+                ["scenarioId"] = "people",
+                ["assetId"] = "a2",
+                ["userCaption"] = "family dinner",
+                ["sensitivity"] = "do_not_infer",
+                ["subjects"] =
+                    "[{\"entityKey\":\"raha\",\"role\":\"primary\"},{\"entityKey\":\"ryan\",\"role\":\"also_in_photo\"}]"
+            }
+        });
+        annotate.IsSuccess.Should().BeTrue();
+
+        var saved = await catalog.LoadAsync(_root, "people", "a2", CancellationToken.None);
+        saved!.Context.UserCaption.Should().Be("family dinner");
+        saved.Privacy.Sensitivity.Should().Be("do_not_infer");
+        saved.Subjects.Should().HaveCount(2);
+        saved.Subjects[0].EntityKey.Should().Be("raha");
+        saved.Subjects[1].Role.Should().Be("also_in_photo");
+    }
+
+    [TestMethod]
+    public async Task DeleteAsset_tombstones_catalog_and_removes_blob()
+    {
+        var blobs = _provider!.GetRequiredService<IBlobStore>() as FileSystemBlobStore;
+        var tinyJpeg = Convert.FromBase64String(
+            "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/Z");
+        await blobs!.WriteObjectAsync("b-del", "k-del", new MemoryStream(tinyJpeg), CancellationToken.None);
+
+        var catalog = _provider.GetRequiredService<VisualAssetCatalogStore>();
+        var record = new VisualAssetRecord
+        {
+            AssetId = "del-1",
+            ScenarioId = "people",
+            ProjectId = "test-proj",
+            State = VisualAssetStates.Uploaded,
+            Storage = new VisualAssetStorageRef
+            {
+                Bucket = "b-del",
+                Key = "k-del",
+                ContentType = "image/jpeg",
+                Bytes = tinyJpeg.Length
+            }
+        };
+        await catalog.SaveAsync(_root, "people", record, CancellationToken.None);
+
+        var ingest = new PersonVisualIngestTool("t-ingest");
+        var deleted = await ingest.Handle(new ToolRequest
+        {
+            Operation = "DeleteAsset",
+            Parameters = new Dictionary<string, object>
+            {
+                ["projectRoot"] = _root,
+                ["scenarioId"] = "people",
+                ["assetId"] = "del-1"
+            }
+        });
+        deleted.IsSuccess.Should().BeTrue();
+
+        var saved = await catalog.LoadAsync(_root, "people", "del-1", CancellationToken.None);
+        saved!.State.Should().Be(VisualAssetStates.Deleted);
+
+        var listed = await catalog.ListAsync(_root, "people", CancellationToken.None);
+        listed.Should().NotContain(a => a.AssetId == "del-1");
+
+        var get = await ingest.Handle(new ToolRequest
+        {
+            Operation = "GetAsset",
+            Parameters = new Dictionary<string, object>
+            {
+                ["projectRoot"] = _root,
+                ["scenarioId"] = "people",
+                ["assetId"] = "del-1"
+            }
+        });
+        get.IsSuccess.Should().BeFalse();
     }
 
     private static void CopyDir(string source, string dest)

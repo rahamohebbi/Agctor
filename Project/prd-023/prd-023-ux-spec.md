@@ -144,8 +144,8 @@ Who should we save this for?  [ Raha ] [ Ryan ] [ Someone else… ]
 
 ## 12. UX acceptance checklist
 
-- [ ] Attach + Send in 2 actions with no required tag step
-- [ ] Assistant text begins &lt; 2s after Send (before extract completes)
-- [ ] User sees upload and analysis progress without opening Trace
-- [ ] Optional Tag popover works on sent and unsent chips
-- [ ] Inbox thumbnail visible on pending visual rows
+- [x] Attach + Send in 2 actions with no required tag step
+- [x] Assistant text begins &lt; 2s after Send (extract async; stream never blocked)
+- [x] User sees upload and analysis progress without opening Trace
+- [x] Optional Tag popover works on sent and unsent chips
+- [x] Inbox thumbnail visible on pending visual rows (`SourceAssetId` on proposals)

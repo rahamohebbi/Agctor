@@ -40,3 +40,33 @@ items:
   source: user_approved
   capturedAtUtc: 2026-05-24T17:14:27.8120733+00:00
   replayedAtUtc: 
+- proposalId: 390d55ab0379612eaac1c55b4cc62f106bb580935298d04ba78d0137217350e9
+  entityKey: raha
+  knowledgeType: profile_fact
+  attribute: pet
+  value: has a dog named Magi
+  confidence: 1
+  scenarioSegment: person_3
+  source: user_approved
+  capturedAtUtc: 2026-05-27T04:57:05.9157146+00:00
+  replayedAtUtc: 
+- proposalId: 55b30bd030566c9e7a11d968830753f0f4eb913c0b463651e645b2814bb3ddc8
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: accessory
+  value: sunglasses
+  confidence: 1
+  scenarioSegment: person_3
+  source: user_approved
+  capturedAtUtc: 2026-05-27T05:15:12.1826516+00:00
+  replayedAtUtc: 
+- proposalId: 7c58f223d49da9f84efbdf36e2193e33e7889e376319d94b880dbe00b4d116d3
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: yellow shirt
+  confidence: 1
+  scenarioSegment: person_3
+  source: user_approved
+  capturedAtUtc: 2026-05-27T05:18:56.1914059+00:00
+  replayedAtUtc: 

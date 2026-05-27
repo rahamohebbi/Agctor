@@ -112,8 +112,8 @@
         spec.input = { type: /** @type {HTMLInputElement} */ (document.getElementById('pm-spec-in')).value.trim() };
         spec.output = { type: /** @type {HTMLInputElement} */ (document.getElementById('pm-spec-out')).value.trim() };
         spec.tools = {
-            allow: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-tallow')).value),
-            deny: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-tdeny')).value)
+            allow: collectToolsAllow(),
+            deny: collectToolsDeny()
         };
         spec.memoryAccess = {
             read: linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-mr')).value),
@@ -128,6 +128,42 @@
 
     var yamlPreview = '';
     var isExisting = false;
+
+    function collectToolsAllow() {
+        const panel = document.getElementById('pm-spec-tools-panel');
+        if (panel && window.AgctorPersonaToolsUi) {
+            return window.AgctorPersonaToolsUi.collectAllowFromEditor(panel);
+        }
+        return [];
+    }
+
+    function collectToolsDeny() {
+        const panel = document.getElementById('pm-spec-tools-panel');
+        if (panel && window.AgctorPersonaToolsUi) {
+            return window.AgctorPersonaToolsUi.collectDenyFromEditor(panel);
+        }
+        return [];
+    }
+
+    function loadToolsPanel(personaId) {
+        const panel = document.getElementById('pm-spec-tools-panel');
+        if (!panel || !window.AgctorPersonaToolsUi) return;
+        const pid = String(personaId || '').trim();
+        if (!pid) {
+            panel.innerHTML =
+                '<p class="text-xs text-gray-500 dark:text-gray-400">Enter an agent id to load the tool catalog.</p>';
+            return;
+        }
+        panel.innerHTML = '<p class="text-xs text-gray-500 dark:text-gray-400">Loading tools…</p>';
+        window.AgctorPersonaToolsUi.fetchForPersona(pid, true)
+            .then(function (dto) {
+                window.AgctorPersonaToolsUi.renderAgentStudioTools(panel, dto || { hostTools: [], semanticTools: [], customAllowTokens: [], yamlDeny: [] });
+            })
+            .catch(function (e) {
+                panel.innerHTML =
+                    '<p class="text-xs text-red-600 dark:text-red-400">Failed to load tools: ' + esc(e.message || e) + '</p>';
+            });
+    }
 
     function renderForm() {
         root.innerHTML =
@@ -166,12 +202,8 @@
             '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Output contract type</label>' +
             '<input id="pm-spec-out" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" /></div>' +
             '</div>' +
-            '<div class="grid gap-4 md:grid-cols-2">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools allow (one per line)</label>' +
-            '<textarea id="pm-spec-tallow" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools deny (one per line)</label>' +
-            '<textarea id="pm-spec-tdeny" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea></div>' +
-            '</div>' +
+            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools</label>' +
+            '<div id="pm-spec-tools-panel"></div></div>' +
             '<div class="grid gap-4 md:grid-cols-2">' +
             '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory read (one per line)</label>' +
             '<textarea id="pm-spec-mr" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea></div>' +
@@ -204,8 +236,13 @@
         /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-ins')).value = arrToLines(spec.instructions);
         /** @type {HTMLInputElement} */ (document.getElementById('pm-spec-in')).value = spec.input.type;
         /** @type {HTMLInputElement} */ (document.getElementById('pm-spec-out')).value = spec.output.type;
-        /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-tallow')).value = arrToLines(spec.tools.allow);
-        /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-tdeny')).value = arrToLines(spec.tools.deny);
+        loadToolsPanel(spec.id);
+        const idInput = /** @type {HTMLInputElement} */ (document.getElementById('pm-spec-id'));
+        if (idInput && !isExisting) {
+            idInput.addEventListener('change', function () {
+                loadToolsPanel(idInput.value.trim());
+            });
+        }
         /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-mr')).value = arrToLines(spec.memoryAccess.read);
         /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-mw')).value = arrToLines(spec.memoryAccess.write);
         /** @type {HTMLTextAreaElement} */ (document.getElementById('pm-spec-g')).value = arrToLines(spec.guardrails);
@@ -266,6 +303,8 @@
                     isExisting = true;
                     if (titleEl) titleEl.textContent = 'Agent: ' + payload.spec.id;
                     window.history.replaceState({}, '', '/Dashboard/ProjectMemory/Agents/Edit?id=' + encodeURIComponent(payload.spec.id));
+                    if (window.AgctorPersonaToolsUi) window.AgctorPersonaToolsUi.invalidatePersona(payload.spec.id);
+                    loadToolsPanel(payload.spec.id);
                     return fetch('/api/project-memory/agents/' + encodeURIComponent(payload.spec.id)).then(function (r) {
                         return r.ok ? r.json() : null;
                     });

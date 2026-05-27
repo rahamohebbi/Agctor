@@ -100,12 +100,65 @@ public sealed class VisualExtractPipelineTests
 
         result.Success.Should().BeTrue();
         result.ProposalCount.Should().BeGreaterThan(0);
+        result.Proposals.Should().NotBeEmpty();
+        result.Proposals.Should().OnlyContain(p => p.SourceAssetId == assetId);
         result.Record!.State.Should().Be(VisualAssetStates.InboxPending);
         result.Record.Extraction.SceneSummary.Should().Contain("kayak");
 
         var inbox = _provider.GetRequiredService<IGenericInboxStore>();
         var pending = await inbox.LoadPendingAsync(_root, CancellationToken.None);
-        pending.Should().NotBeEmpty();
+        var newRows = pending
+            .Where(r => result.Proposals.Any(p => string.Equals(p.ProposalId, r.ProposalId, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        newRows.Should().NotBeEmpty();
+        newRows.Should().OnlyContain(r => r.SourceAssetId == assetId);
+    }
+
+    [TestMethod]
+    public async Task InferFromPrompt_with_manual_tag_sets_mixed_source()
+    {
+        var blobs = _provider!.GetRequiredService<IBlobStore>() as FileSystemBlobStore;
+        var catalog = _provider.GetRequiredService<VisualAssetCatalogStore>();
+        const string assetId = "mixed-infer";
+        await blobs!.WriteObjectAsync("agctor-visual", "proj/people/m.jpg", new MemoryStream(TinyJpeg), CancellationToken.None);
+
+        await catalog.SaveAsync(
+            _root,
+            "people",
+            new VisualAssetRecord
+            {
+                AssetId = assetId,
+                ScenarioId = "people",
+                State = VisualAssetStates.Uploaded,
+                Subjects = { new VisualAssetSubject { EntityKey = "raha", Role = "primary" } },
+                Inference = new VisualAssetInference
+                {
+                    Source = "manual_tag",
+                    Confidence = 0.95,
+                    EntityKeys = ["raha"]
+                },
+                Storage = new VisualAssetStorageRef
+                {
+                    Bucket = "agctor-visual",
+                    Key = "proj/people/m.jpg",
+                    ContentType = "image/jpeg",
+                    Bytes = TinyJpeg.Length
+                }
+            },
+            CancellationToken.None);
+
+        var pipeline = _provider.GetRequiredService<IVisualPipelineService>();
+        var result = await pipeline.InferFromPromptAsync(new VisualInferRequest
+        {
+            ProjectRoot = _root,
+            ScenarioId = "people",
+            AssetId = assetId,
+            UserMessage = "How does Raha look?",
+            FocusEntityKey = "raha"
+        }, CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Record!.Inference!.Source.Should().Be("mixed");
     }
 
     private static void CopyDir(string source, string dest)

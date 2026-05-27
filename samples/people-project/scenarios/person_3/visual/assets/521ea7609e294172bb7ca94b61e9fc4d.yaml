@@ -1,0 +1,81 @@
+schemaVersion: 1.0
+assetId: 521ea7609e294172bb7ca94b61e9fc4d
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/521ea7609e294172bb7ca94b61e9fc4d/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 68269
+state: inbox_pending
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779857302081-31446b3d7b36f
+context:
+  userCaption: Raha and Magi
+  occasion: 
+subjects:
+- entityKey: raha
+  role: primary
+  displayName: Raha
+inference:
+  source: vision
+  confidence: 1
+  entityKeys:
+  - raha
+  rationale: User explicitly identifies Raha and his dog Magi in the photo; Raha is the primary human subject.
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: completed
+  sceneSummary: Raha is sitting in the driver's seat of a car with his dog Magi, wearing sunglasses, a blue t-shirt, and pink shorts.
+  ollamaModel: gemma4:31b
+  promptVersion: visual-extract-v1
+  lastRunAt:
+    dateTime: 2026-05-27T04:55:43.1636243
+    utcDateTime: 2026-05-27T04:55:43.1636243Z
+    localDateTime: 2026-05-26T21:55:43.1636243-07:00
+    date: 2026-05-27T00:00:00.0000000
+    day: 27
+    dayOfWeek: Wednesday
+    dayOfYear: 147
+    hour: 4
+    millisecond: 163
+    microsecond: 624
+    nanosecond: 300
+    minute: 55
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 43
+    ticks: 639154545431636243
+    utcTicks: 639154545431636243
+    timeOfDay: 04:55:43.1636243
+    year: 2026

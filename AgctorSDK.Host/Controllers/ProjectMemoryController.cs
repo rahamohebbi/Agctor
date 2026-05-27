@@ -74,6 +74,7 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly IGenericInboxDecisionService _inboxDecisions;
     private readonly IPrivacyMemoryService _privacy;
     private readonly VisualPlaygroundAttachmentService? _visualAttachments;
+    private readonly VisualPlaygroundStreamExtractService? _streamVisualExtract;
     private readonly GenericInboxVisualEnricher? _inboxVisualEnricher;
     private readonly IOllamaVisionChatClient? _visionChat;
     private readonly IBlobStore? _blobStore;
@@ -106,6 +107,7 @@ public sealed class ProjectMemoryController : ControllerBase
         ILogger<ProjectMemoryController> logger,
         IActivityTracker? activityTracker = null,
         VisualPlaygroundAttachmentService? visualAttachments = null,
+        VisualPlaygroundStreamExtractService? streamVisualExtract = null,
         GenericInboxVisualEnricher? inboxVisualEnricher = null,
         IOllamaVisionChatClient? visionChat = null,
         IBlobStore? blobStore = null,
@@ -137,6 +139,7 @@ public sealed class ProjectMemoryController : ControllerBase
         _activityTracker = activityTracker;
         _logger = logger;
         _visualAttachments = visualAttachments;
+        _streamVisualExtract = streamVisualExtract;
         _inboxVisualEnricher = inboxVisualEnricher;
         _visionChat = visionChat;
         _blobStore = blobStore;
@@ -566,7 +569,8 @@ public sealed class ProjectMemoryController : ControllerBase
             QueuedAtUtc = r.QueuedAtUtc,
             UserPromptLine = string.IsNullOrWhiteSpace(r.UserPromptLine)
                 ? $"{r.EntityKey}: {r.Value}"
-                : r.UserPromptLine
+                : r.UserPromptLine,
+            SourceAssetId = string.IsNullOrWhiteSpace(r.SourceAssetId) ? null : r.SourceAssetId.Trim()
         }).ToList();
 
         if (_inboxVisualEnricher != null)
@@ -1181,15 +1185,43 @@ public sealed class ProjectMemoryController : ControllerBase
             await Response.Body.FlushAsync(ct).ConfigureAwait(false);
         }
 
-        if (hasAttachments && _visualAttachments != null && !string.IsNullOrWhiteSpace(scenarioResolved))
-        {
-            var assetIds = body.Attachments!
+        var streamVisualAssetIds = hasAttachments && body.Attachments != null
+            ? body.Attachments
                 .Where(a => !string.IsNullOrWhiteSpace(a.AssetId))
                 .Select(a => a.AssetId.Trim())
-                .ToList();
-            var manualTags = body.Attachments!
-                .Where(a => !string.IsNullOrWhiteSpace(a.AssetId) && !string.IsNullOrWhiteSpace(a.EntityKey))
-                .ToDictionary(a => a.AssetId.Trim(), a => a.EntityKey!.Trim(), StringComparer.OrdinalIgnoreCase);
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : new List<string>();
+
+        async Task RunStreamVisualExtractIfNeededAsync()
+        {
+            if (streamVisualAssetIds.Count == 0
+                || _streamVisualExtract == null
+                || string.IsNullOrWhiteSpace(scenarioResolved))
+                return;
+
+            try
+            {
+                await _streamVisualExtract
+                    .RunAsync(
+                        rootFull,
+                        scenarioResolved,
+                        streamVisualAssetIds,
+                        promptText,
+                        chatProject?.FocusEntityKey,
+                        async (type, payload) => await WriteSseAsync(new AgentStreamEvent { Type = type, Payload = payload })
+                            .ConfigureAwait(false),
+                        ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exExtract)
+            {
+                _logger.LogDebug(exExtract, "Playground: stream visual extract skipped");
+            }
+        }
+
+        if (hasAttachments && _visualAttachments != null && !string.IsNullOrWhiteSpace(scenarioResolved))
+        {
             try
             {
                 var linkedAttachments = await _visualAttachments
@@ -1198,10 +1230,10 @@ public sealed class ProjectMemoryController : ControllerBase
                         scenarioResolved,
                         sessionId,
                         turnGroupId,
-                        assetIds,
+                        body.Attachments,
                         userMessage: promptText,
                         focusEntityKey: chatProject?.FocusEntityKey,
-                        manualEntityByAsset: manualTags.Count > 0 ? manualTags : null,
+                        queueBackgroundExtract: false,
                         ct)
                     .ConfigureAwait(false);
                 foreach (var att in linkedAttachments)
@@ -1360,6 +1392,7 @@ public sealed class ProjectMemoryController : ControllerBase
                         messageId,
                         sessionId
                     };
+                    await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
                     await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadConfirm, JsonSse) + "\n\n", ct)
                         .ConfigureAwait(false);
                     await Response.Body.FlushAsync(ct).ConfigureAwait(false);
@@ -1412,6 +1445,7 @@ public sealed class ProjectMemoryController : ControllerBase
                     messageId,
                     sessionId
                 };
+                await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
                 await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadNoPending, JsonSse) + "\n\n", ct)
                     .ConfigureAwait(false);
                 await Response.Body.FlushAsync(ct).ConfigureAwait(false);
@@ -2020,6 +2054,7 @@ public sealed class ProjectMemoryController : ControllerBase
                 messageId,
                 sessionId
             };
+            await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
             await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadFlow, JsonSse) + "\n\n", ct)
                 .ConfigureAwait(false);
             await Response.Body.FlushAsync(ct).ConfigureAwait(false);
@@ -2344,6 +2379,7 @@ public sealed class ProjectMemoryController : ControllerBase
             messageId,
             sessionId
         };
+        await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
         await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayload, JsonSse) + "\n\n", ct).ConfigureAwait(false);
         await Response.Body.FlushAsync(ct).ConfigureAwait(false);
         SetStreamRootDetail(

@@ -16,15 +16,18 @@ namespace AgctorSDK.Host.Controllers
     {
         private readonly IToolInvoker _toolInvoker;
         private readonly IToolAgentsInsightService _toolAgentsInsight;
+        private readonly IPersonaHostToolsService _personaHostTools;
         private readonly ILogger<ToolsController> _logger;
 
         public ToolsController(
             IToolInvoker toolInvoker,
             IToolAgentsInsightService toolAgentsInsight,
+            IPersonaHostToolsService personaHostTools,
             ILogger<ToolsController> logger)
         {
             _toolInvoker = toolInvoker ?? throw new ArgumentNullException(nameof(toolInvoker));
             _toolAgentsInsight = toolAgentsInsight ?? throw new ArgumentNullException(nameof(toolAgentsInsight));
+            _personaHostTools = personaHostTools ?? throw new ArgumentNullException(nameof(personaHostTools));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -149,6 +152,43 @@ namespace AgctorSDK.Host.Controllers
                 {
                     Code = "INTERNAL_ERROR",
                     Message = "An internal error occurred while building tool associations"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Dashboard: host + semantic tool options for a project-memory persona (Agent Studio / flow designer).
+        /// </summary>
+        [HttpGet("for-persona/{personaId}")]
+        [ProducesResponseType(typeof(PersonaHostToolsResponseDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+        public async Task<ActionResult<PersonaHostToolsResponseDto>> GetToolsForPersonaAsync(
+            [FromRoute] string personaId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(personaId))
+            {
+                return BadRequest(new ErrorResponse
+                {
+                    Code = "INVALID_PERSONA_ID",
+                    Message = "personaId is required."
+                });
+            }
+
+            try
+            {
+                var dto = await _personaHostTools
+                    .GetForPersonaAsync(personaId.Trim(), cancellationToken)
+                    .ConfigureAwait(false);
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error building tools for persona {PersonaId}", personaId);
+                return StatusCode(500, new ErrorResponse
+                {
+                    Code = "INTERNAL_ERROR",
+                    Message = "An internal error occurred while building persona tools."
                 });
             }
         }

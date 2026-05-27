@@ -36,6 +36,7 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IMessageDispatcher, MessageDispatcher>();
         services.AddAgctorToolCatalog(configuration);
         services.AddSingleton<IToolAgentsInsightService, ToolAgentsInsightService>();
+        services.AddSingleton<IPersonaHostToolsService, PersonaHostToolsService>();
         services.AddSingleton<IToolInvoker, ToolInvoker>();
 
         var sessionStorePath = configuration.GetValue<string>("Agctor:SessionStorePath")
@@ -63,8 +64,10 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();
         services.AddSingleton<VisualTranscriptEnricher>();
         services.AddSingleton<VisualPlaygroundAttachmentService>();
+        services.AddSingleton<VisualPlaygroundStreamExtractService>();
         services.AddSingleton<GenericInboxVisualEnricher>();
         services.AddSingleton<VisualIngestToolBridge>();
+        services.AddSingleton<VisualExtractToolBridge>();
         services.AddSingleton<PlaygroundFocusPostHook>();
         services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
         services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();

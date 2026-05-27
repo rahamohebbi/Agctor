@@ -290,6 +290,20 @@ Set `Agctor:Visual:Endpoint` to `http://localhost:9000`, `AccessKey` / `SecretKe
 
 Catalog files: `scenarios/<scenarioId>/visual/assets/<assetId>.yaml`.
 
+**Vision model (Ollama):**
+
+```bash
+ollama pull gemma4:31b
+```
+
+Set `Agctor:LLM:VisionModel` (defaults to `DefaultModel`) for Gemma 4 `/api/chat` vision extract. Example layout under `samples/people-project/scenarios/<scenarioId>/visual/assets/*.yaml`.
+
+**Additional endpoints:**
+
+- `POST /api/visual/assets/{id}/annotate` — tag subjects, caption, privacy; optional `reExtract: true`
+- `POST /api/visual/assets/{id}/re-extract` — re-run vision extract
+- `DELETE /api/visual/assets/{id}?scenarioId=` — delete photo + blob
+
 ## Available Tools
 
 The Host provides access to these tools:

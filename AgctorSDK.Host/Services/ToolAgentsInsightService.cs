@@ -1,4 +1,3 @@
-using System.Text;
 using AgctorSDK.Core.Agents;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
@@ -65,7 +64,7 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
             var assoc = new List<ToolAgentAssociationDto>();
             foreach (var (spec, token) in yamlRows)
             {
-                if (TokenMatchesHostTool(token, entry))
+                if (HostToolYamlMatcher.TokenMatchesHostTool(token, entry))
                 {
                     assoc.Add(new ToolAgentAssociationDto
                     {
@@ -195,10 +194,10 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (spec, token) in yamlRows)
         {
-            if (IsKnownNonHostToken(token))
+            if (HostToolYamlMatcher.IsKnownSemanticToken(token))
                 continue;
 
-            if (catalogEntries.Any(e => TokenMatchesHostTool(token, e)))
+            if (catalogEntries.Any(e => HostToolYamlMatcher.TokenMatchesHostTool(token, e)))
                 continue;
 
             var key = spec.Id + "\0" + token;
@@ -228,42 +227,6 @@ public sealed class ToolAgentsInsightService : IToolAgentsInsightService
         }
 
         return list;
-    }
-
-    /// <summary>Project-memory semantic ops — not host <see cref="IToolActor"/> keys; omit from "unmapped" noise.</summary>
-    private static bool IsKnownNonHostToken(string token)
-    {
-        var t = token.Trim().ToLowerInvariant();
-        return t is "read_document" or "write_document" or "search_entities" or "load_schema" or "memory_intents_only";
-    }
-
-    private static bool TokenMatchesHostTool(string token, AgctorToolCatalog.ToolCatalogEntry entry)
-    {
-        var t = token.Trim();
-        if (string.Equals(t, entry.ClrTypeName, StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (entry.ExposeOnHttpApi && string.Equals(t, entry.PrimaryId, StringComparison.OrdinalIgnoreCase))
-            return true;
-        return AlphanumericKey(t) == AlphanumericKey(StripToolSuffix(entry.ClrTypeName));
-    }
-
-    private static string StripToolSuffix(string clrName)
-    {
-        if (clrName.EndsWith("Tool", StringComparison.OrdinalIgnoreCase) && clrName.Length > 4)
-            return clrName[..^4];
-        return clrName;
-    }
-
-    private static string AlphanumericKey(string s)
-    {
-        var sb = new StringBuilder(s.Length);
-        foreach (var c in s)
-        {
-            if (char.IsLetterOrDigit(c))
-                sb.Append(char.ToLowerInvariant(c));
-        }
-
-        return sb.ToString();
     }
 
     /// <summary>YAML personas that route to host tools via scenario-flow <c>toolIds</c> / playground (not always listed in <c>tools.allow</c>).</summary>

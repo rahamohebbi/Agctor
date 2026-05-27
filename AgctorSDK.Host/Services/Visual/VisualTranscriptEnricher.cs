@@ -57,6 +57,10 @@ public sealed class VisualTranscriptEnricher
                 var record = await _catalog.LoadAsync(projectRoot, scenarioId, att.AssetId, cancellationToken)
                     .ConfigureAwait(false);
                 if (record != null
+                    && string.Equals(record.State, VisualAssetStates.Deleted, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (record != null
                     && !string.Equals(record.State, VisualAssetStates.Deleted, StringComparison.OrdinalIgnoreCase)
                     && !string.Equals(record.State, VisualAssetStates.PendingUpload, StringComparison.OrdinalIgnoreCase))
                 {

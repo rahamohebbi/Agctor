@@ -50,9 +50,43 @@ public sealed class VisualAssetAnnotateRequestDto
 
     public string ScenarioId { get; set; } = "";
 
-    public string EntityKey { get; set; } = "";
+    /// <summary>Primary subject slug; optional when only updating caption or privacy.</summary>
+    public string? EntityKey { get; set; }
 
     public string? DisplayName { get; set; }
+
+    /// <summary>Second person in the photo (<c>also_in_photo</c> role).</summary>
+    public string? SecondaryEntityKey { get; set; }
+
+    public string? SecondaryDisplayName { get; set; }
+
+    public string? UserCaption { get; set; }
+
+    /// <summary><c>normal</c>, <c>sensitive</c>, or <c>do_not_infer</c>.</summary>
+    public string? Sensitivity { get; set; }
+
+    /// <summary>When true, re-run vision extract after annotate (late tag / correction).</summary>
+    public bool ReExtract { get; set; }
+}
+
+public sealed class VisualAssetReExtractRequestDto
+{
+    public string? ProjectRoot { get; set; }
+
+    public string ScenarioId { get; set; } = "";
+
+    public string? UserMessage { get; set; }
+
+    public string? FocusEntityKey { get; set; }
+}
+
+public sealed class VisualAssetDeleteResponseDto
+{
+    public string AssetId { get; set; } = "";
+
+    public bool Deleted { get; set; }
+
+    public bool BlobDeleted { get; set; }
 }
 
 public sealed class VisualAssetDto

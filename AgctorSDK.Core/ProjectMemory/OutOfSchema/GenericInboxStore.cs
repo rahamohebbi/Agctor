@@ -147,6 +147,8 @@ public sealed class GenericInboxStore : IGenericInboxStore
                     existing.ScenarioSegment = seg;
                     existing.QueuedAtUtc = now;
                     existing.UserPromptLine = p.UserPromptLine;
+                    if (!string.IsNullOrWhiteSpace(p.SourceAssetId))
+                        existing.SourceAssetId = p.SourceAssetId.Trim();
                     continue;
                 }
 
@@ -161,7 +163,8 @@ public sealed class GenericInboxStore : IGenericInboxStore
                     Disposition = p.Disposition == OutOfSchemaDisposition.ImmediateConfirmation ? "immediate" : "review",
                     ScenarioSegment = seg,
                     QueuedAtUtc = now,
-                    UserPromptLine = p.UserPromptLine
+                    UserPromptLine = p.UserPromptLine,
+                    SourceAssetId = string.IsNullOrWhiteSpace(p.SourceAssetId) ? null : p.SourceAssetId.Trim()
                 });
             }
 

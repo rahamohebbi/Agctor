@@ -4,6 +4,7 @@ using AgctorSDK.Core.ProjectMemory.Visual;
 using AgctorSDK.Core.ProjectMemory.Visual.Models;
 using AgctorSDK.Core.ProjectMemory.Visual.Storage;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Host.Models;
 using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Services.Visual;
@@ -33,20 +34,23 @@ public sealed class VisualPlaygroundAttachmentService
         string scenarioId,
         string sessionId,
         string turnGroupId,
-        IReadOnlyList<string> assetIds,
+        IReadOnlyList<PlaygroundStreamAttachmentDto>? attachmentRefs,
         string? userMessage = null,
         string? focusEntityKey = null,
-        IReadOnlyDictionary<string, string>? manualEntityByAsset = null,
+        bool queueBackgroundExtract = true,
         CancellationToken cancellationToken = default)
     {
         var result = new List<SessionAttachmentRef>();
         var linkedIds = new List<string>();
-        foreach (var assetId in assetIds)
-        {
-            if (string.IsNullOrWhiteSpace(assetId))
-                continue;
+        var byAssetId = (attachmentRefs ?? Array.Empty<PlaygroundStreamAttachmentDto>())
+            .Where(a => !string.IsNullOrWhiteSpace(a.AssetId))
+            .GroupBy(a => a.AssetId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-            var id = assetId.Trim();
+        foreach (var pair in byAssetId)
+        {
+            var id = pair.Key;
+            var dto = pair.Value;
             var record = await _catalog.LoadAsync(projectRoot, scenarioId, id, cancellationToken).ConfigureAwait(false);
             if (record == null)
                 continue;
@@ -54,12 +58,7 @@ public sealed class VisualPlaygroundAttachmentService
             record.UploadedBySessionId = sessionId;
             record.SourceTurnGroupId = turnGroupId;
 
-            if (manualEntityByAsset != null
-                && manualEntityByAsset.TryGetValue(id, out var manualKey)
-                && !string.IsNullOrWhiteSpace(manualKey))
-            {
-                ApplyManualSubject(record, manualKey.Trim());
-            }
+            ApplyManualAnnotation(record, dto);
 
             VisualMessageIdentityHints.TryApplyToRecord(record, userMessage, focusEntityKey, projectRoot, scenarioId);
             await _catalog.SaveAsync(projectRoot, scenarioId, record, cancellationToken).ConfigureAwait(false);
@@ -69,7 +68,8 @@ public sealed class VisualPlaygroundAttachmentService
                 AssetId = id,
                 Kind = "image",
                 Mime = record.Storage.ContentType,
-                State = record.State
+                State = record.State,
+                Caption = string.IsNullOrWhiteSpace(dto.Caption) ? record.Context.UserCaption : dto.Caption.Trim()
             };
 
             if (!string.Equals(record.State, VisualAssetStates.PendingUpload, StringComparison.OrdinalIgnoreCase)
@@ -113,7 +113,7 @@ public sealed class VisualPlaygroundAttachmentService
             linkedIds.Add(id);
         }
 
-        if (linkedIds.Count > 0)
+        if (linkedIds.Count > 0 && queueBackgroundExtract)
         {
             _pipeline.QueueExtractForAssets(projectRoot, scenarioId, linkedIds, userMessage, focusEntityKey);
         }
@@ -124,25 +124,50 @@ public sealed class VisualPlaygroundAttachmentService
     public static string SerializeSsePayload(object payload) =>
         JsonSerializer.Serialize(payload, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
-    private static void ApplyManualSubject(VisualAssetRecord record, string entityKey)
+    private static void ApplyManualAnnotation(VisualAssetRecord record, PlaygroundStreamAttachmentDto dto)
     {
-        record.Subjects =
-        [
-            new VisualAssetSubject
+        var subjects = new List<VisualAssetSubject>();
+        if (!string.IsNullOrWhiteSpace(dto.EntityKey))
+        {
+            subjects.Add(new VisualAssetSubject
             {
-                EntityKey = entityKey,
+                EntityKey = dto.EntityKey.Trim(),
                 Role = "primary",
-                DisplayName = entityKey.Length == 1
-                    ? entityKey.ToUpperInvariant()
-                    : char.ToUpperInvariant(entityKey[0]) + entityKey[1..]
-            }
-        ];
-        record.Inference ??= new VisualAssetInference();
-        record.Inference.Source = "manual_tag";
-        record.Inference.Confidence = 0.95;
-        record.Inference.EntityKeys = [entityKey];
-        record.Inference.Rationale = "Tagged in composer before send.";
-        if (string.Equals(record.State, VisualAssetStates.Uploaded, StringComparison.OrdinalIgnoreCase))
-            record.State = VisualAssetStates.ReadyForExtract;
+                DisplayName = FormatDisplayName(dto.EntityKey.Trim())
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.SecondaryEntityKey))
+        {
+            subjects.Add(new VisualAssetSubject
+            {
+                EntityKey = dto.SecondaryEntityKey.Trim(),
+                Role = "also_in_photo",
+                DisplayName = FormatDisplayName(dto.SecondaryEntityKey.Trim())
+            });
+        }
+
+        if (subjects.Count > 0)
+        {
+            record.Subjects = subjects;
+            record.Inference ??= new VisualAssetInference();
+            record.Inference.Source = "manual_tag";
+            record.Inference.Confidence = 0.95;
+            record.Inference.EntityKeys = subjects.Select(s => s.EntityKey).ToList();
+            record.Inference.Rationale = "Tagged in composer before send.";
+            if (string.Equals(record.State, VisualAssetStates.Uploaded, StringComparison.OrdinalIgnoreCase))
+                record.State = VisualAssetStates.ReadyForExtract;
+        }
+
+        if (!string.IsNullOrWhiteSpace(dto.Caption))
+            record.Context.UserCaption = dto.Caption.Trim();
+
+        if (!string.IsNullOrWhiteSpace(dto.Sensitivity))
+            record.Privacy.Sensitivity = dto.Sensitivity.Trim();
     }
+
+    private static string FormatDisplayName(string entityKey) =>
+        entityKey.Length == 1
+            ? entityKey.ToUpperInvariant()
+            : char.ToUpperInvariant(entityKey[0]) + entityKey[1..];
 }

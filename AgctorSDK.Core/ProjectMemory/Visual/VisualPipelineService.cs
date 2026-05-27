@@ -111,6 +111,9 @@ public sealed class VisualPipelineService : IVisualPipelineService
             };
         }
 
+        var hadManualTag = record.Subjects.Count > 0
+            && string.Equals(record.Inference?.Source, "manual_tag", StringComparison.OrdinalIgnoreCase);
+
         record.State = VisualAssetStates.Inferring;
         await _catalog.SaveAsync(root, scenario, record, cancellationToken).ConfigureAwait(false);
 
@@ -160,6 +163,8 @@ public sealed class VisualPipelineService : IVisualPipelineService
             }
 
             ApplyInferPayload(record, infer!, request.FocusEntityKey);
+            if (hadManualTag && record.Inference != null)
+                record.Inference.Source = "mixed";
             record.State = VisualAssetStates.ReadyForExtract;
             await _catalog.SaveAsync(root, scenario, record, cancellationToken).ConfigureAwait(false);
 
@@ -242,6 +247,18 @@ public sealed class VisualPipelineService : IVisualPipelineService
             var routed = _processor.Route(ctx, batch!.MemoryIntents, out var routeIssues);
             var proposals = OutOfSchemaProposalFactory
                 .FromRouteIssues(routeIssues, ctx.Runtime.OutOfSchema)
+                .Select(p => new OutOfSchemaFactProposal
+                {
+                    ProposalId = p.ProposalId,
+                    EntityKey = p.EntityKey,
+                    KnowledgeType = p.KnowledgeType,
+                    Attribute = p.Attribute,
+                    Value = p.Value,
+                    Confidence = p.Confidence,
+                    Disposition = p.Disposition,
+                    UserPromptLine = p.UserPromptLine,
+                    SourceAssetId = record.AssetId
+                })
                 .ToList();
 
             if (proposals.Count > 0)

@@ -34,6 +34,9 @@ public sealed class GenericInboxVisualEnricher
 
         foreach (var item in items)
         {
+            if (!string.IsNullOrWhiteSpace(item.SourceAssetId))
+                continue;
+
             if (string.IsNullOrWhiteSpace(item.EntityKey))
                 continue;
             if (visualByEntity.TryGetValue(item.EntityKey.Trim(), out var assetId))

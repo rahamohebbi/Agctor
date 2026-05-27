@@ -25,7 +25,7 @@ Phased delivery. Each phase should compile and have targeted tests before the ne
 | 4 | Transcript API returns attachments + signed `viewUrl` | Done |
 | 5 | **UX:** composer chips, drag/drop/paste, Send without tags ([prd-023-ux-spec.md](./prd-023-ux-spec.md)) | Done |
 | 6 | **UX:** user bubble inline images + footer states (`Analyzing…` / `Insights ready`) | Done (Analyzing… on send; full extract in 023d) |
-| 7 | Optional Tag popover (collapsed default); SSE wiring | Deferred |
+| 7 | Optional Tag popover (collapsed default); SSE wiring | Done |
 | 8 | SSE: `attachment_state`, `attachment_preview` | Done |
 
 **Tests:** Session store round-trip; stream with attachment-only body (no text); UX smoke checklist §12 in UX spec.
@@ -55,6 +55,8 @@ Phased delivery. Each phase should compile and have targeted tests before the ne
 | 6 | Wire extract → `IGenericInboxStore` proposals | Done |
 | 7 | Host startup health: vision model present (`gemma4:31b`) | Done |
 | 8 | Implement `PersonVisualExtractTool.Extract` + `InferFromPrompt` | Done |
+| 9 | Stream SSE: `visual_extract_started` / `visual_extract_done` / `visual_inbox` before `done` | Done |
+| 10 | Playground UI handles extract SSE (footer + inbox badge); polling fallback only | Done |
 
 **Tests:** Parser tests with fixture JSON; extract actor with mock vision client; optional live test `[Explicit]` if Ollama + gemma4 available.
 
@@ -109,10 +111,10 @@ Phased delivery. Each phase should compile and have targeted tests before the ne
 | --- | --- |
 | `PersonVisualIngestToolTests` | Core.Tests |
 | `PersonVisualContextToolTests` | Core.Tests |
-| `VisualExtractActorTests` (mock vision) | Core.Tests |
+| `VisualExtractPipelineTests` (mock vision, incl. actor pipeline) | Core.Tests |
 | `PlaygroundFlowPreRouterTests` | Core.Tests |
 | `PrivacyMemoryServiceVisualPurgeTests` | Core.Tests |
-| Playground stream + attachment | Host.IntegrationTests |
+| Playground stream + attachment | Host.IntegrationTests (`GenericInboxVisualEnricherTests`; stream SSE covered manually + Core extract tests) |
 
 ## Documentation (post-implementation)
 

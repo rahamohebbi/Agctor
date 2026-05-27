@@ -1,6 +1,6 @@
 # PRD-023 — Visual Person Memory (chat-integrated photos)
 
-**Status:** In progress — **023a–023c** delivered (upload, chat UX, visual tools). Next: **023d** Gemma 4 vision.
+**Status:** Delivered — phases **023a–023f** complete (blob store, composer, tools, Gemma 4 vision SSE, people flow, privacy, inbox thumbnails, re-extract).
 
 ## Summary
 

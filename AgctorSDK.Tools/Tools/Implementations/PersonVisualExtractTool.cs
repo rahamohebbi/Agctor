@@ -106,6 +106,8 @@ public sealed class PersonVisualExtractTool : ToolActorBase
 
                     .ConfigureAwait(false),
 
+                "inferfromprompt" => await InferFromPromptAsync(p, CancellationToken.None).ConfigureAwait(false),
+
                 "getextraction" => new ToolResult
 
                 {
@@ -215,6 +217,76 @@ public sealed class PersonVisualExtractTool : ToolActorBase
                 routedCount = result.RoutedCount,
 
                 state = result.Record?.State
+
+            })
+
+        };
+
+    }
+
+
+
+    private static async Task<ToolResult> InferFromPromptAsync(
+
+        IDictionary<string, object> p,
+
+        CancellationToken cancellationToken)
+
+    {
+
+        var pipeline = ProjectMemoryServiceAccessor.GetRequiredService<IVisualPipelineService>();
+
+        var root = VisualToolParams.ResolveProjectRoot(p);
+
+        var scenarioId = VisualToolParams.RequireScenarioId(p);
+
+        var assetId = VisualToolParams.RequireAssetId(p);
+
+
+
+        var result = await pipeline.InferFromPromptAsync(new VisualInferRequest
+
+        {
+
+            ProjectRoot = root,
+
+            ScenarioId = scenarioId,
+
+            AssetId = assetId,
+
+            UserMessage = VisualToolParams.GetString(p, "userMessage"),
+
+            FocusEntityKey = VisualToolParams.GetString(p, "focusEntityKey")
+
+        }, cancellationToken).ConfigureAwait(false);
+
+
+
+        if (!result.Success)
+
+            return new ToolResult { IsSuccess = false, Error = result.Error ?? "infer_failed" };
+
+
+
+        return new ToolResult
+
+        {
+
+            IsSuccess = true,
+
+            Output = VisualToolParams.ToJson(new
+
+            {
+
+                assetId,
+
+                skipped = result.Skipped,
+
+                model = result.ModelUsed,
+
+                state = result.Record?.State,
+
+                inference = result.Record?.Inference
 
             })
 

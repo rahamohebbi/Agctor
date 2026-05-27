@@ -182,8 +182,17 @@ public sealed class PlaygroundStreamAttachmentDto
 
     public string? Mime { get; set; }
 
-    /// <summary>Optional subject slug from Tag popover (applied before vision infer).</summary>
+    /// <summary>Optional primary subject from Tag popover (applied before vision infer).</summary>
     public string? EntityKey { get; set; }
+
+    /// <summary>Optional second person in the photo (role <c>also_in_photo</c>).</summary>
+    public string? SecondaryEntityKey { get; set; }
+
+    /// <summary>User caption from Tag popover (distinct from chat message text).</summary>
+    public string? Caption { get; set; }
+
+    /// <summary>Privacy sensitivity: <c>normal</c>, <c>sensitive</c>, or <c>do_not_infer</c>.</summary>
+    public string? Sensitivity { get; set; }
 }
 
 /// <summary>Body for SSE chat turns (same session store as CodeGraph chat).</summary>

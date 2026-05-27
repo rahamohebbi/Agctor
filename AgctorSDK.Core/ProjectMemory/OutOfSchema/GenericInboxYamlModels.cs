@@ -32,6 +32,9 @@ public sealed class GenericInboxPendingRow
     public string QueuedAtUtc { get; set; } = "";
 
     public string UserPromptLine { get; set; } = "";
+
+    /// <summary>Related photo asset id when proposal came from vision extract (PRD-023).</summary>
+    public string? SourceAssetId { get; set; }
 }
 
 /// <summary>On-disk shape for <c>.agctor/runtime/generic-inbox/confirmed.yaml</c>.</summary>
