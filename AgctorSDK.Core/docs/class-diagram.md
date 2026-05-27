@@ -20,6 +20,7 @@ UML class diagram for AgctorSDK.Core showing all core interfaces, their relation
 - **Messaging**: IMessageEnvelope, MessageEnvelope
 - **Tasks**: ITaskStore, ITaskExecutor, TaskFlowEngine, ProjectTask
 - **Goals**: IGoalStore, Goal
+- **Project memory**: IProjectMemoryPipelineRunner, ProjectMemoryIngestResult, MemoryIntentJson, **IngestUserMessageFormatter** (playground/API ingest summaries)
 - **Timeout**: ITimeoutSupervisor, ITimeoutPolicy
 - **Observability**: IMetricsCollector, IActivityTracker, IVisualizationService
 - **Code Generation**: ICodeGenerator

@@ -37,6 +37,9 @@ classDiagram
   class IEntityRegistry
   class RebuildCoordinator
   class IProjectMemoryPipelineRunner
+  class ProjectMemoryIngestResult
+  class MemoryIntentJson
+  class IngestUserMessageFormatter
 
   IActor <|-- IAgent
   IAgentFactory ..> IAgent : creates
@@ -44,5 +47,8 @@ classDiagram
   RebuildCoordinator --> IProjectLoader
   RebuildCoordinator --> IEntityRegistry
   IProjectMemoryPipelineRunner ..> RebuildCoordinator : may trigger rebuild
+  IProjectMemoryPipelineRunner ..> ProjectMemoryIngestResult : returns
+  IngestUserMessageFormatter ..> MemoryIntentJson : parses
+  IngestUserMessageFormatter ..> ProjectMemoryIngestResult : formats
   TaskFlowEngine --> ProjectTask
   Goal --> ProjectTask

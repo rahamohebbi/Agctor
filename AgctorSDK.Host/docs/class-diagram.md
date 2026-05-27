@@ -37,7 +37,16 @@ Razor **ViewComponents** under `ViewComponents/` render the CodeGraph dashboard 
 
 - **EmbeddingStoreViewComponent**, **AgentChatViewComponent**, **ActorTreeViewComponent** (includes file preview modal markup), **TraceTimelineViewComponent**, **EmbeddingDebugViewComponent**, **RawJsonViewComponent**
 
-Client orchestration for the page lives in **`wwwroot/js/dashboard/codegraph-page.js`** (stable element `id`s match the component partials).
+The **Project Memory Playground** page (`/Dashboard/ProjectMemory/Playground`) reuses **TraceTimelineViewComponent** and loads timelines via **VisualizationController**. UI logic in **`TraceTimeline/Default.cshtml`** nests tool spans under agent runs; **`TraceTimelineEventMapper`** adds `eventKind`, `status`, and `parentId` for the tree.
+
+Playground orchestration types under **`Services/ProjectMemory/`** and **`Services/Scenarios/`**:
+
+- **ProjectMemoryController** — SSE playground stream, ingest side-effects, **`IngestUserMessageFormatter`** final reply when extract-only
+- **ScenarioFlowGraphInterpreter** / **ScenarioFlowOutputComposer** — scenario graph execution and merge policies
+- **PlaygroundTraceTimelineDetail** — structured `timelineDetailJson` for persona, ingest, persist, and tool spans
+- **ProjectMemoryPersonaLlmRunner** — prompt envelope and ingest footer helpers
+
+Client orchestration for the page lives in **`wwwroot/js/dashboard/project-memory-playground.js`**.
 
 The **Agents** dashboard page uses **`wwwroot/js/dashboard/agents-page.js`** (PRD-010): loads **`/api/agents/definitions/tool-usage`** for the tool-access card grid, runtime chips, definitions column, and C# drawer.
 

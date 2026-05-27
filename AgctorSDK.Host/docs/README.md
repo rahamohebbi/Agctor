@@ -14,6 +14,13 @@ A read-only configuration dashboard is available at **/Dashboard** (Razor Pages 
 
 See [endpoints-diagram](./endpoints-diagram.md) for the full API including dashboard endpoints.
 
+## Project Memory Playground (`/Dashboard/ProjectMemory/Playground`)
+
+- **Streaming chat** via `POST /api/project-memory/playground/message/stream` (SSE: `flow_plan`, `flow_step`, `phase`, `llm_delta`, `done`).
+- **Scenario flows** (PRD-014): router modes, branch execution (`parallel` / `sequential` / `auto`), merge **outputPolicy** (`ranked`, `merge_sections`, `first_non_empty`).
+- **Extract replies**: after successful ingest, users see grouped facts from **`IngestUserMessageFormatter`** (see Core docs)—not only a single markdown path.
+- **Trace panel**: shared **`TraceTimeline`** component; nested agent/tool rows, tool summary chips, and drill-down for LLM I/O and tool parameters. Client: `wwwroot/js/dashboard/project-memory-playground.js`.
+
 ## Generating Images
 
 ```bash

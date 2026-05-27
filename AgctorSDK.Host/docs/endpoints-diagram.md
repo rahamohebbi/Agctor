@@ -132,10 +132,19 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | GET | `/api/project-memory/tree` | Project directory tree (JSON) |
 | GET | `/api/project-memory/file?path=` | Preview file under project root |
 | POST | `/api/project-memory/playground/run` | One-shot LLM test (optional `sessionId` for transcript context) |
-| POST | `/api/project-memory/playground/message/stream` | SSE chat turn; persists user/assistant to chat session store |
+| POST | `/api/project-memory/playground/message/stream` | SSE chat turn; scenario flow or single-agent path; persists user/assistant to chat session store. On extract-only flows, **`done.responseData`** uses **`IngestUserMessageFormatter`** (grouped facts + updated paths). Emits `flow_plan`, `flow_step`, `phase`, `llm_delta`, `done`. |
 | POST | `/api/project-memory/orchestrator/run` | Pipeline: extract → route/write → optional query (`mode`: auto, ingestOnly, queryOnly) |
 | POST | `/api/project-memory/generic-inbox/replay` | Replay generic inbox / routing (debug and recovery) |
 | GET | `/api/project-memory/workspace/git-changes` | Git working-tree summary for the configured project root |
+
+### Visualization trace timeline (`/api/Visualization`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/Visualization/trace/{traceId}/timeline` | **`TraceTimelineResponse`**: ordered **`TraceTimelineEventDto`** rows with `parentId`, `depth`, `eventKind` (`tool`, `llm`, `ingest`, …), `status`, and optional `timelineDetailJson` (LLM I/O, ingest paths, **`agctor.tool.invoke`**). Consumed by **`TraceTimeline`** view component (nested agent/tool UI). |
+| GET | `/api/Visualization/trace/{traceId}/message-flow` | Message-flow graph for a trace |
+| GET | `/api/Visualization/sessions/{sessionId}/messages/{turnId}/timeline` | Timeline for a historical message |
+| GET | `/api/Visualization/sessions/{sessionId}/turns/{turnId}/timeline` | Timeline for a historical turn |
 
 ### Entity resolution review (`/api/project-memory/resolution`) — PRD-018
 | Method | Path | Description |

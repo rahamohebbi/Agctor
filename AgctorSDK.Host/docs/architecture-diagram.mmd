@@ -32,6 +32,7 @@ graph TB
             ToolAgentsInsight[ToolAgentsInsightService]
             ScenarioServices[Scenario catalog factory application]
             PmServices[Project memory file YAML Ollama helpers]
+            PlaygroundTrace[Playground SSE plus trace timeline UX]
         end
 
         subgraph Background [Background work]
@@ -59,6 +60,7 @@ graph TB
     McpClient --> MCP
     AgentsCtrl --> MessageDispatcher
     PmCtrl --> PmServices
+    PmCtrl --> PlaygroundTrace
     ResCtrl --> Core
     DefsCtrl --> ToolAgentsInsight
     ToolsCtrl --> ToolInvoker
@@ -67,6 +69,7 @@ graph TB
     ToolAgentsInsight --> AgctorToolCatalog
     ChatSessCtrl --> SessionStore
     VizCtrl --> TraceStore
+    VizCtrl --> PlaygroundTrace
     MessageDispatcher --> Agents
     ToolInvoker --> Tools
     TaskScoper --> Core

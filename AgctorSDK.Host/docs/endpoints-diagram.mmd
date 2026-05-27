@@ -84,7 +84,7 @@ graph LR
         end
 
         subgraph "Visualization /api/Visualization"
-            GetTraceTimeline["GET /api/Visualization/trace/traceId/timeline<br/>Load trace timeline"]
+            GetTraceTimeline["GET /api/Visualization/trace/traceId/timeline<br/>TraceTimelineEventDto nested UI"]
             GetTraceFlow["GET /api/Visualization/trace/traceId/message-flow<br/>Trace message flow"]
             GetMessageTimeline["GET /api/Visualization/sessions/sessionId/messages/turnId/timeline<br/>Historical message trace"]
             GetTurnTimeline["GET /api/Visualization/sessions/sessionId/turns/turnId/timeline<br/>Historical turn trace"]
@@ -102,7 +102,7 @@ graph LR
             PmTree["GET /api/project-memory/tree"]
             PmFile["GET /api/project-memory/file"]
             PmPlayRun["POST /api/project-memory/playground/run"]
-            PmPlayStream["POST /api/project-memory/playground/message/stream<br/>SSE"]
+            PmPlayStream["POST /api/project-memory/playground/message/stream<br/>SSE plus IngestUserMessageFormatter"]
             PmOrch["POST /api/project-memory/orchestrator/run<br/>pipeline"]
             PmReplay["POST /api/project-memory/generic-inbox/replay"]
             PmGit["GET /api/project-memory/workspace/git-changes"]

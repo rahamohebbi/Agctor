@@ -27,6 +27,12 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 - **ChatProjectsController**, **ChatSessionsController**
 - **ProjectMemoryController** (`/api/project-memory`), **ResolutionReviewController** (`/api/project-memory/resolution`)
 
+### Project Memory Playground and trace timeline
+
+- **`POST /api/project-memory/playground/message/stream`**: SSE turn runner for scenario flows (router → persona LLM nodes → merge/output). After **person-extractor** ingest, the final assistant text uses **`IngestUserMessageFormatter`** (Core) when only extract/curator personas ran—listing saved facts by person instead of bare curator prose.
+- **`TraceTimelineViewComponent`** (`Pages/Shared/Components/TraceTimeline/`): Gantt chart + event cards loaded from **`GET /api/Visualization/trace/{traceId}/timeline`**. Tools and actor receive steps **nest under parent LLM/agent runs** (tree connector + emerald tool strip). Span metadata comes from **`TraceTimelineEventMapper`** and optional `timelineDetailJson` (including `agctor.tool.invoke` for tool drill-down).
+- **Activity nesting**: Context tools invoked inside the **`pm.playground.persona-llm`** activity scope so trace `parentId` links tools to the agent run that used them.
+
 ### MCP Protocol
 - **McpListener**: TCP server on `Mcp:Port` (default **8080**, configurable including `0` for ephemeral) routing JSON messages through **MessageDispatcher**
 

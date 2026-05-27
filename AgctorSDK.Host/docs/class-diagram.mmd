@@ -133,6 +133,35 @@ classDiagram
         +Invoke(componentId, title, emptyMessage, heightPx) IViewComponentResult
     }
 
+    class TraceTimelineEventMapper {
+        +Map(activity, sequence, traceStart, depthMap) TraceTimelineEventDto
+        +ClassifyKind(activity) string
+    }
+
+    class PlaygroundTraceTimelineDetail {
+        +BuildPersonaLlmJson(prompt, output, model, baseUrl) string
+        +BuildIngestJson(scenarioId, ingest, extractorOutput) string
+        +BuildPersistJson(sessionId, messageId, chars, ingest, root) string
+    }
+
+    class ProjectMemoryPersonaLlmRunner {
+        +FormatIngestFooter(ingest, rawExtractorOutput) string
+        +BuildPlaygroundFlowIngestHint(ingest) string
+    }
+
+    class ScenarioFlowGraphInterpreter {
+        +ExecuteAsync(flow, userMessage, invokePersona, ...) string
+    }
+
+    class ScenarioFlowOutputComposer {
+        +Compose(flow, map, store, toNodeId, outputPolicy) string
+        +PickTranscriptPersonaId(sections) string
+    }
+
+    class ProjectMemoryController {
+        +PlaygroundMessageStream(body) Task
+    }
+
     class EmbeddingDebugViewComponent {
         +Invoke(componentId, title, description) IViewComponentResult
     }
@@ -243,6 +272,12 @@ classDiagram
     AgentChatViewComponent ..> CodeGraphController : renders with
     ActorTreeViewComponent ..> CodeGraphController : renders with
     TraceTimelineViewComponent ..> CodeGraphController : renders with
+    TraceTimelineViewComponent ..> VisualizationController : timeline API
+    TraceTimelineEventMapper ..> TraceTimelineViewComponent : DTOs for UI
+    ProjectMemoryController --> ScenarioFlowGraphInterpreter : scenario playground
+    ProjectMemoryController --> ProjectMemoryPersonaLlmRunner : ingest footer
+    ProjectMemoryController --> PlaygroundTraceTimelineDetail : span JSON
+    ScenarioFlowGraphInterpreter --> ScenarioFlowOutputComposer : merge output
     EmbeddingDebugViewComponent ..> CodeGraphController : renders with
     RawJsonViewComponent ..> CodeGraphController : renders with
     TaskScoperHostedService --> IScenario : uses

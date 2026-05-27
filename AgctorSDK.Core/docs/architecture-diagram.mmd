@@ -18,6 +18,7 @@ flowchart TB
     Proj[DocumentProjectionService]
     Idx[IRuntimeIndexStore and RebuildCoordinator]
     Orch[ProjectMemory pipeline runners]
+    Fmt[IngestUserMessageFormatter]
     Coref[Coreference and out-of-schema handling]
     Res[Resolution subsystem registration]
   end
@@ -48,6 +49,8 @@ flowchart TB
   Loader --> Idx
   Orch --> Loader
   Orch --> Coref
+  Orch --> Fmt
+  Parse --> Fmt
   Res --> Idx
   PMExt --> pm
   ResExt --> Res

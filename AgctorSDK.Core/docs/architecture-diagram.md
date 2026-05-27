@@ -16,6 +16,10 @@
 
 AgctorSDK.Core is the foundational library defining all core interfaces, message types, task/goal management, timeout supervision, observability, and utility services for the Agctor framework. It also implements **PRD-013 project memory**: file-canonical `.agctor` packages, YAML schemas, memory intents, markdown projection, and rebuildable SQLite/Postgres indexes (`ProjectMemory` namespace).
 
+### Ingest user messaging
+
+After **person-extractor** JSON is applied to disk, **`IngestUserMessageFormatter`** (in `ProjectMemory/Orchestration/`) builds a **human-readable chat summary**: facts grouped by person with readable labels (Skill, Occupation, Name, …), optional **Updated files** paths, and a **Needs your confirmation** section for out-of-schema proposals. The Host playground calls this when an extract-only scenario turn completes so users see what was saved—not only a bare file path from the curator LLM.
+
 ## Key Components
 
 ### Interfaces
