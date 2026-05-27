@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Yaml;
 
 namespace AgctorSDK.Core.ProjectMemory.Coref;
@@ -45,7 +46,8 @@ public sealed class ConversationFocusStore : IConversationFocusStore
             try
             {
                 var focus = ProjectYamlSerializer.Deserialize<ConversationFocus>(text);
-                if (string.IsNullOrWhiteSpace(focus?.EntityKey))
+                if (string.IsNullOrWhiteSpace(focus?.EntityKey)
+                    || FocusEntityPolicy.IsPlaceholderSlug(focus.EntityKey))
                     return Task.FromResult<ConversationFocus?>(null);
                 return Task.FromResult<ConversationFocus?>(focus);
             }
@@ -60,6 +62,9 @@ public sealed class ConversationFocusStore : IConversationFocusStore
     public Task SaveAsync(string projectRoot, string? scenarioId, ConversationFocus focus, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(projectRoot) || focus == null || string.IsNullOrWhiteSpace(focus.EntityKey))
+            return Task.CompletedTask;
+
+        if (FocusEntityPolicy.IsPlaceholderSlug(focus.EntityKey))
             return Task.CompletedTask;
 
         var seg = SanitizeScenario(scenarioId);

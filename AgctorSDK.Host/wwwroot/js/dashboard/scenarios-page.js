@@ -757,6 +757,8 @@
         var routerPanel = document.getElementById('sc-flow-router-panel');
         var routerModeEl = document.getElementById('sc-flow-router-mode');
         var routerTargetPolicyEl = document.getElementById('sc-flow-router-target-policy');
+        var routerBranchExecEl = document.getElementById('sc-flow-router-branch-exec');
+        var routerBranchExecWrap = document.getElementById('sc-flow-router-branch-exec-wrap');
         var routerMaxEl = document.getElementById('sc-flow-router-max');
         var routerMinConfEl = document.getElementById('sc-flow-router-minconf');
         var routerFallbackEl = document.getElementById('sc-flow-router-fallback');
@@ -908,12 +910,100 @@
         }
         /** PRD-014 Phase 11: `id.toLowerCase()` → agent row from `GET /api/project-memory/agents`. */
         var flowModalAgentLabels = {};
+        var traverseHoverCleanup = null;
+
+        function clearTraverseHoverLink() {
+            if (traverseHoverCleanup) {
+                traverseHoverCleanup();
+                traverseHoverCleanup = null;
+            }
+            if (renderer && typeof renderer.clearTraverseHighlight === 'function') {
+                renderer.clearTraverseHighlight();
+            }
+        }
 
         function setFlowMsg(html) {
+            clearTraverseHoverLink();
             msgEl.innerHTML = html || '';
         }
 
+        /** Interactive traversal strip for Simulate order (node labels + hover link to canvas). */
+        function buildTraverseOrderHtml(steps, llmNote) {
+            var chips = (steps || []).map(function (s, i) {
+                var tip = String(s.label || s.id) + ' · ' + String(s.id);
+                if (s.type) tip += ' · ' + String(s.type);
+                return '<span class="sc-flow-traverse-chip" data-node-id="' + esc(s.id) + '" title="' + esc(tip) + '">' +
+                    '<span class="sc-flow-traverse-idx">' + (i + 1) + '</span>' +
+                    esc(s.label || s.id) +
+                    '</span>';
+            }).join('<span class="sc-flow-traverse-arrow" aria-hidden="true">→</span>');
+            return '<div class="sc-flow-traverse-wrap">' +
+                '<span class="font-medium text-gray-800 dark:text-gray-200">Traversal order</span>' +
+                '<div class="sc-flow-traverse-track">' + chips + '</div>' +
+                (llmNote || '') +
+                '<p class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">Hover a step or a graph node to highlight the match.</p>' +
+                '</div>';
+        }
+
+        function linkTraverseHover(steps) {
+            clearTraverseHoverLink();
+            if (!renderer || !steps || !steps.length) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+
+            function setHover(nodeId) {
+                if (!nodeId) return;
+                if (typeof renderer.setTraverseHighlight === 'function') {
+                    renderer.setTraverseHighlight(nodeId);
+                }
+                msgEl.querySelectorAll('.sc-flow-traverse-chip').forEach(function (chip) {
+                    chip.classList.toggle('is-hover', chip.getAttribute('data-node-id') === nodeId);
+                });
+            }
+
+            function clearHover() {
+                if (typeof renderer.clearTraverseHighlight === 'function') {
+                    renderer.clearTraverseHighlight();
+                }
+                msgEl.querySelectorAll('.sc-flow-traverse-chip.is-hover').forEach(function (chip) {
+                    chip.classList.remove('is-hover');
+                });
+            }
+
+            function onChipEnter(e) {
+                setHover(e.currentTarget.getAttribute('data-node-id'));
+            }
+
+            var chips = msgEl.querySelectorAll('.sc-flow-traverse-chip');
+            chips.forEach(function (chip) {
+                chip.addEventListener('mouseenter', onChipEnter);
+                chip.addEventListener('mouseleave', clearHover);
+            });
+
+            var cyHandlers = [];
+            cy.nodes().forEach(function (n) {
+                var nid = n.id();
+                var onEnter = function () { setHover(nid); };
+                var onLeave = function () { clearHover(); };
+                n.on('mouseover', onEnter);
+                n.on('mouseout', onLeave);
+                cyHandlers.push({ n: n, onEnter: onEnter, onLeave: onLeave });
+            });
+
+            traverseHoverCleanup = function () {
+                chips.forEach(function (chip) {
+                    chip.removeEventListener('mouseenter', onChipEnter);
+                    chip.removeEventListener('mouseleave', clearHover);
+                });
+                cyHandlers.forEach(function (h) {
+                    h.n.off('mouseover', h.onEnter);
+                    h.n.off('mouseout', h.onLeave);
+                });
+            };
+        }
+
         function closeModal() {
+            clearTraverseHoverLink();
             if (renderer) {
                 renderer.destroy();
                 renderer = null;
@@ -953,6 +1043,13 @@
             var r = String(row.role || '').trim();
             if (r) return r + ' — ' + pid;
             return pid;
+        }
+
+        /** Canvas label for LlmNode — same display name as the persona dropdown (without id suffix). */
+        function getLlmNodeCanvasLabel(personaId) {
+            var pid = normalizeType(personaId);
+            if (!pid) return 'LlmNode';
+            return getFlowPersonaLabel(pid) || pid;
         }
 
         /** Renders YAML-derived I/O, tools, memory paths, guardrails from bulk <code>GET /api/project-memory/agents</code>. */
@@ -1146,6 +1243,10 @@
                 routerMaxEl.disabled = single;
                 routerMaxEl.classList.toggle('opacity-50', single);
             }
+            if (routerBranchExecWrap && routerTargetPolicyEl) {
+                var allMatch = routerTargetPolicyEl.value === 'all_matching';
+                routerBranchExecWrap.classList.toggle('hidden', !allMatch);
+            }
         }
 
         function refreshFlowRouterInspector() {
@@ -1171,6 +1272,11 @@
             if (routerTargetPolicyEl) {
                 routerTargetPolicyEl.value =
                     cfg.routerTargetPolicy === 'single_best' ? 'single_best' : 'all_matching';
+            }
+            if (routerBranchExecEl) {
+                var be = String(cfg.routerBranchExecution || 'parallel').toLowerCase();
+                routerBranchExecEl.value =
+                    be === 'sequential' ? 'sequential' : be === 'auto' ? 'auto' : 'parallel';
             }
             routerMaxEl.value = cfg.maxTargets != null && cfg.maxTargets !== '' ? String(cfg.maxTargets) : '';
             routerMinConfEl.value = cfg.minConfidence != null && cfg.minConfidence !== '' ? String(cfg.minConfidence) : '';
@@ -1370,6 +1476,12 @@
             }
             var effectivePid = normalizeType(personaSelect.value || cur);
             renderFlowPersonaCapabilityPanel(effectivePid);
+            if (effectivePid) {
+                var expectedLabel = getLlmNodeCanvasLabel(effectivePid);
+                if (sel.data('label') !== expectedLabel) {
+                    sel.data('label', expectedLabel);
+                }
+            }
             if (pqContextWrap && pqContextStrategyEl) {
                 var showPq = effectivePid.toLowerCase() === 'person-query';
                 pqContextWrap.classList.toggle('hidden', !showPq);
@@ -1412,6 +1524,7 @@
             if (nextToolIds.length) cfg.toolIds = nextToolIds;
             else delete cfg.toolIds;
             n.data('agctorConfig', JSON.stringify(cfg));
+            n.data('label', getLlmNodeCanvasLabel(pid));
             setFlowMsg('');
             refreshFlowPersonaInspector();
         }
@@ -1432,6 +1545,13 @@
                 cfg.routerMode = 'llm';
                 if (routerTargetPolicyEl) {
                     cfg.routerTargetPolicy = routerTargetPolicyEl.value === 'single_best' ? 'single_best' : 'all_matching';
+                }
+                if (routerTargetPolicyEl && routerTargetPolicyEl.value === 'single_best') {
+                    delete cfg.routerBranchExecution;
+                } else if (routerBranchExecEl) {
+                    var bev = routerBranchExecEl.value;
+                    cfg.routerBranchExecution =
+                        bev === 'sequential' ? 'sequential' : bev === 'auto' ? 'auto' : 'parallel';
                 }
                 var mx = routerMaxEl.value.trim();
                 if (routerTargetPolicyEl && routerTargetPolicyEl.value === 'single_best') {
@@ -1458,6 +1578,7 @@
             } else {
                 delete cfg.routerMode;
                 delete cfg.routerTargetPolicy;
+                delete cfg.routerBranchExecution;
                 delete cfg.maxTargets;
                 delete cfg.minConfidence;
                 delete cfg.fallbackPersonaId;
@@ -1555,7 +1676,8 @@
                     if (pid0 === 'person-query') cfg.toolIds = ['person-memory-context'];
                     else if (pid0 === 'memory-curator') cfg.toolIds = ['apply-memory-intents'];
                 }
-                renderer.addNode(add, add, cfg);
+                var nodeLabel = add === 'LlmNode' ? getLlmNodeCanvasLabel(cfg.personaId) : add;
+                renderer.addNode(add, nodeLabel, cfg);
                 refreshFlowInspectors();
             }
         });
@@ -1607,7 +1729,12 @@
             var llmNote = (sim.ok && flowDocHasLlmRouter(doc))
                 ? ' <span class="text-amber-700 dark:text-amber-400">(LLM routers: order is illustrative only.)</span>'
                 : '';
-            setFlowMsg(sim.ok ? '<span class="text-gray-700 dark:text-gray-300">Traversal order: <strong>' + esc(sim.order.join(' → ')) + '</strong></span>' + llmNote : '<span class="text-red-600">' + esc(sim.errors.join('; ')) + '</span>');
+            if (sim.ok) {
+                setFlowMsg(buildTraverseOrderHtml(sim.steps, llmNote));
+                linkTraverseHover(sim.steps);
+            } else {
+                setFlowMsg('<span class="text-red-600">' + esc(sim.errors.join('; ')) + '</span>');
+            }
         });
 
         btnSaveFlow.addEventListener('click', function () {

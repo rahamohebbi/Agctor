@@ -445,6 +445,8 @@ namespace AgctorSDK.Host.Models
         /// <summary>Entity slug for coref focus (e.g. <c>ryan</c>).</summary>
         public string? FocusEntityKey { get; set; }
         public string? FocusDisplayName { get; set; }
+        /// <summary>Recent photos included in visual context (1–12). Stored in project settings_json.</summary>
+        public int? VisualMaxPhotos { get; set; }
     }
 
     /// <summary>Updates chat project metadata.</summary>
@@ -454,6 +456,7 @@ namespace AgctorSDK.Host.Models
         public string? ScenarioId { get; set; }
         public string? FocusEntityKey { get; set; }
         public string? FocusDisplayName { get; set; }
+        public int? VisualMaxPhotos { get; set; }
     }
 
     /// <summary>Updates a chat session (currently: title only).</summary>
@@ -513,5 +516,11 @@ namespace AgctorSDK.Host.Models
 
         /// <summary>Optional JSON for dashboard drill-down (e.g. playground LLM I/O, written paths).</summary>
         public string? TimelineDetailJson { get; set; }
+
+        /// <summary>UI category: tool, llm, ingest, persist, resolve, http, other.</summary>
+        public string? EventKind { get; set; }
+
+        /// <summary>ok | error | running — for badges and row styling.</summary>
+        public string? Status { get; set; }
     }
 } 

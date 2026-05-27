@@ -24,4 +24,4 @@
 
 ## Deferred
 
-- Calendar/contacts import → future PRD-023+
+- Calendar/contacts import → future PRD (after PRD-023 Visual Person Memory)

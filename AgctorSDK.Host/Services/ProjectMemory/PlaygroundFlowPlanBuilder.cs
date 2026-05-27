@@ -11,6 +11,9 @@ public static class PlaygroundFlowPlanBuilder
 {
     public const string IngestStepId = "ingest";
 
+    /// <summary>Playground-only chip between extractor ingest and curator when photos are attached (023e).</summary>
+    public const string VisualExtractStepId = "pm-visual-extract";
+
     /// <summary>Stable id prefix for a Playground-only <c>LlmNode</c> chip when the selected agent is not on the graph path.</summary>
     public const string SyntheticLlmNodeStepIdPrefix = "pm-play-llmnode-";
 
@@ -19,7 +22,14 @@ public static class PlaygroundFlowPlanBuilder
     /// </summary>
     public sealed class Step
     {
-        public Step(string id, string label, bool optional, bool active, string nodeKind, string? personaId = null)
+        public Step(
+            string id,
+            string label,
+            bool optional,
+            bool active,
+            string nodeKind,
+            string? personaId = null,
+            string? branchId = null)
         {
             Id = id;
             Label = label;
@@ -27,6 +37,7 @@ public static class PlaygroundFlowPlanBuilder
             Active = active;
             NodeKind = nodeKind;
             PersonaId = personaId;
+            BranchId = branchId;
         }
 
         public string Id { get; }
@@ -35,6 +46,36 @@ public static class PlaygroundFlowPlanBuilder
         public bool Active { get; }
         public string NodeKind { get; }
         public string? PersonaId { get; }
+        /// <summary>Parallel branch lane id for playground debug UI (null = shared / linear).</summary>
+        public string? BranchId { get; }
+    }
+
+    public sealed class BranchLane
+    {
+        public BranchLane(string id, string label, IReadOnlyList<string> stepIds)
+        {
+            Id = id;
+            Label = label;
+            StepIds = stepIds;
+        }
+
+        public string Id { get; }
+        public string Label { get; }
+        public IReadOnlyList<string> StepIds { get; }
+    }
+
+    public sealed class ParallelTailPlan
+    {
+        public ParallelTailPlan(IReadOnlyList<Step> steps, IReadOnlyList<BranchLane> branches, string? mergeStepId)
+        {
+            Steps = steps;
+            Branches = branches;
+            MergeStepId = mergeStepId;
+        }
+
+        public IReadOnlyList<Step> Steps { get; }
+        public IReadOnlyList<BranchLane> Branches { get; }
+        public string? MergeStepId { get; }
     }
 
     public sealed class Result
@@ -52,7 +93,12 @@ public static class PlaygroundFlowPlanBuilder
     }
 
     /// <param name="allowSyntheticLlmNode">False when the scenario flow is executed as-is (no extra synthetic LlmNode chip).</param>
-    public static Result Build(ScenarioDefinition? scenario, string selectedAgentId, bool ingestActive, bool allowSyntheticLlmNode = true)
+    public static Result Build(
+        ScenarioDefinition? scenario,
+        string selectedAgentId,
+        bool ingestActive,
+        bool allowSyntheticLlmNode = true,
+        bool includeVisualExtractStep = false)
     {
         var agent = (selectedAgentId ?? string.Empty).Trim();
         if (scenario?.Flow is not { } flow)
@@ -64,7 +110,7 @@ public static class PlaygroundFlowPlanBuilder
 
         var steps = new List<Step>();
         foreach (var node in path)
-            AppendGraphNodeWithOptionalIngest(steps, node, ingestActive);
+            AppendGraphNodeWithOptionalIngest(steps, node, ingestActive, includeVisualExtractStep);
 
         var personaIdsOnPath = steps
             .Where(s => string.Equals(s.NodeKind, "LlmNode", StringComparison.OrdinalIgnoreCase))
@@ -93,17 +139,24 @@ public static class PlaygroundFlowPlanBuilder
         IngestStepId + "-" + SanitizeStepIdSuffix(extractorGraphNodeId.Trim());
 
     /// <summary>Chips from ChatInput along a single sequential chain until Router, Output, or a branch.</summary>
-    public static IReadOnlyList<Step> BuildFlowExecutionPlanPrefix(ScenarioFlowDocument flow, bool ingestChipActive)
+    public static IReadOnlyList<Step> BuildFlowExecutionPlanPrefix(
+        ScenarioFlowDocument flow,
+        bool ingestChipActive,
+        bool includeVisualExtractStep = false)
     {
         var prefixNodes = CollectLinearPrefixNodes(flow);
-        return NodesToPlanSteps(prefixNodes, ingestChipActive);
+        return NodesToPlanSteps(prefixNodes, ingestChipActive, includeVisualExtractStep);
     }
 
     /// <summary>Chips from a post-router entry through Output (unique sequential path).</summary>
-    public static IReadOnlyList<Step> BuildFlowExecutionPlanLinearTail(ScenarioFlowDocument flow, string entryNodeId, bool ingestChipActive)
+    public static IReadOnlyList<Step> BuildFlowExecutionPlanLinearTail(
+        ScenarioFlowDocument flow,
+        string entryNodeId,
+        bool ingestChipActive,
+        bool includeVisualExtractStep = false)
     {
         var nodes = CollectLinearPathToOutput(flow, entryNodeId.Trim());
-        return NodesToPlanSteps(nodes, ingestChipActive);
+        return NodesToPlanSteps(nodes, ingestChipActive, includeVisualExtractStep);
     }
 
     /// <summary>Chips for parallel branch starts through a shared Merge then to Output.</summary>
@@ -111,37 +164,89 @@ public static class PlaygroundFlowPlanBuilder
         ScenarioFlowDocument flow,
         IReadOnlyList<string> orderedBranchStarts,
         string mergeNodeId,
-        bool ingestChipActive)
+        bool ingestChipActive,
+        bool includeVisualExtractStep = false) =>
+        BuildParallelTailPlan(flow, orderedBranchStarts, mergeNodeId, ingestChipActive, includeVisualExtractStep).Steps;
+
+    /// <summary>Parallel tail with branch lane metadata for the playground pipeline UI.</summary>
+    public static ParallelTailPlan BuildParallelTailPlan(
+        ScenarioFlowDocument flow,
+        IReadOnlyList<string> orderedBranchStarts,
+        string mergeNodeId,
+        bool ingestChipActive,
+        bool includeVisualExtractStep = false)
     {
         var map = (flow.Nodes ?? new List<ScenarioFlowNode>())
             .Where(n => !string.IsNullOrWhiteSpace(n.Id))
             .ToDictionary(n => n.Id.Trim(), n => n, StringComparer.OrdinalIgnoreCase);
         var mergeTrim = mergeNodeId.Trim();
         var steps = new List<Step>();
-        foreach (var start in orderedBranchStarts)
+        var branches = new List<BranchLane>();
+
+        for (var bi = 0; bi < orderedBranchStarts.Count; bi++)
         {
-            var seg = CollectLinearPathExclusive(flow, map, start.Trim(), mergeTrim);
+            var start = orderedBranchStarts[bi].Trim();
+            var branchId = "branch-" + bi;
+            var laneStepIds = new List<string>();
+            map.TryGetValue(start, out var startNode);
+            var laneLabel = TryGetPersonaId(startNode?.Config)?.Trim()
+                            ?? startNode?.Label?.Trim()
+                            ?? start;
+
+            var seg = CollectLinearPathExclusive(flow, map, start, mergeTrim);
             foreach (var node in seg)
-                AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive);
+            {
+                var before = steps.Count;
+                AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive, includeVisualExtractStep, branchId);
+                for (var si = before; si < steps.Count; si++)
+                    laneStepIds.Add(steps[si].Id);
+            }
+
+            branches.Add(new BranchLane(branchId, laneLabel, laneStepIds));
         }
 
         if (map.TryGetValue(mergeTrim, out var mergeNode))
-            AppendGraphNodeWithOptionalIngest(steps, mergeNode, ingestChipActive);
+        {
+            steps.Add(new Step(
+                mergeTrim,
+                string.IsNullOrWhiteSpace(mergeNode.Label) ? "Merge" : mergeNode.Label.Trim(),
+                optional: false,
+                active: true,
+                nodeKind: "Merge"));
+        }
 
         var afterMerge = UniqueSequentialTarget(flow, mergeTrim);
-        if (string.IsNullOrEmpty(afterMerge))
-            return steps;
+        if (!string.IsNullOrEmpty(afterMerge))
+        {
+            var tail = CollectLinearPathToOutput(flow, afterMerge);
+            foreach (var node in tail)
+                AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive, includeVisualExtractStep, branchId: null);
+        }
 
-        var tail = CollectLinearPathToOutput(flow, afterMerge);
-        foreach (var node in tail)
-            AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive);
-
-        return steps;
+        return new ParallelTailPlan(steps, branches, mergeTrim);
     }
 
-    private static void AppendGraphNodeWithOptionalIngest(List<Step> steps, ScenarioFlowNode node, bool ingestChipActive)
+    private static void AppendGraphNodeWithOptionalIngest(
+        List<Step> steps,
+        ScenarioFlowNode node,
+        bool ingestChipActive,
+        bool includeVisualExtractStep,
+        string? branchId = null)
     {
-        steps.Add(MapGraphNode(node));
+        var mapped = MapGraphNode(node);
+        if (branchId != null)
+        {
+            mapped = new Step(
+                mapped.Id,
+                mapped.Label,
+                mapped.Optional,
+                mapped.Active,
+                mapped.NodeKind,
+                mapped.PersonaId,
+                branchId);
+        }
+
+        steps.Add(mapped);
         if (!IsPersonaExtractorNode(node))
             return;
         steps.Add(new Step(
@@ -150,13 +255,25 @@ public static class PlaygroundFlowPlanBuilder
             optional: true,
             active: ingestChipActive,
             nodeKind: "Ingest"));
+        if (includeVisualExtractStep)
+        {
+            steps.Add(new Step(
+                VisualExtractStepId,
+                "Vision extract (background)",
+                optional: true,
+                active: true,
+                nodeKind: "VisualExtract"));
+        }
     }
 
-    private static IReadOnlyList<Step> NodesToPlanSteps(IReadOnlyList<ScenarioFlowNode> nodes, bool ingestChipActive)
+    private static IReadOnlyList<Step> NodesToPlanSteps(
+        IReadOnlyList<ScenarioFlowNode> nodes,
+        bool ingestChipActive,
+        bool includeVisualExtractStep)
     {
         var steps = new List<Step>();
         foreach (var node in nodes)
-            AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive);
+            AppendGraphNodeWithOptionalIngest(steps, node, ingestChipActive, includeVisualExtractStep);
         return steps;
     }
 

@@ -1,0 +1,81 @@
+schemaVersion: 1.0
+assetId: 3294ca456a3047e78782e4be125cdf9f
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/3294ca456a3047e78782e4be125cdf9f/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 26939
+state: inbox_pending
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779310756601-307fdfdc1cc958
+context:
+  userCaption: this is Raha
+  occasion: 
+subjects:
+- entityKey: raha
+  role: primary
+  displayName: Raha
+inference:
+  source: vision
+  confidence: 1
+  entityKeys:
+  - raha
+  rationale: User explicitly identified the subject as Raha in the caption and message.
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: completed
+  sceneSummary: Raha is posing for a portrait outdoors. He is wearing a grey suit jacket, a white shirt, and a black bow tie.
+  ollamaModel: gemma4:31b
+  promptVersion: visual-query-scene-v1
+  lastRunAt:
+    dateTime: 2026-05-25T06:47:00.5585529
+    utcDateTime: 2026-05-25T06:47:00.5585529Z
+    localDateTime: 2026-05-24T23:47:00.5585529-07:00
+    date: 2026-05-25T00:00:00.0000000
+    day: 25
+    dayOfWeek: Monday
+    dayOfYear: 145
+    hour: 6
+    millisecond: 558
+    microsecond: 552
+    nanosecond: 900
+    minute: 47
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 0
+    ticks: 639152884205585529
+    utcTicks: 639152884205585529
+    timeOfDay: 06:47:00.5585529
+    year: 2026

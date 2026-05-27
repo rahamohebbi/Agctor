@@ -11,6 +11,9 @@ public static class ProjectMemoryPersonaToolRouting
         {
             ("person-query", "PersonMemoryContextTool"),
             ("relationship-coach", "PersonMemoryContextTool"),
+            ("style-coach", "PersonVisualContextTool"),
+            ("fitness-coach", "PersonVisualContextTool"),
+            ("visual-intake", "PersonVisualIngestTool"),
             ("memory-curator", "ApplyMemoryIntentsTool")
         };
 }

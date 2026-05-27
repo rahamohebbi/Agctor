@@ -9,7 +9,8 @@ public sealed record ScenarioFlowRouterConfig(
     double? MinConfidence,
     string? FallbackPersonaId,
     string? LlmRoutingInstructions,
-    ScenarioFlowRouterTargetPolicy TargetPolicy = ScenarioFlowRouterTargetPolicy.AllMatching)
+    ScenarioFlowRouterTargetPolicy TargetPolicy = ScenarioFlowRouterTargetPolicy.AllMatching,
+    ScenarioFlowRouterBranchExecution BranchExecution = ScenarioFlowRouterBranchExecution.Parallel)
 {
     /// <summary>Default when <c>config</c> is empty or <c>routerMode</c> is not <c>llm</c>.</summary>
     public static ScenarioFlowRouterConfig Default { get; } =
@@ -53,7 +54,22 @@ public sealed record ScenarioFlowRouterConfig(
             llmInstr = null;
 
         var policy = ParseTargetPolicy(el);
-        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr, policy);
+        var branchExecution = ParseBranchExecution(el);
+        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr, policy, branchExecution);
+    }
+
+    private static ScenarioFlowRouterBranchExecution ParseBranchExecution(JsonElement el)
+    {
+        if (!el.TryGetProperty("routerBranchExecution", out var be) || be.ValueKind != JsonValueKind.String)
+            return ScenarioFlowRouterBranchExecution.Parallel;
+
+        return be.GetString()?.Trim().ToLowerInvariant() switch
+        {
+            "sequential" or "sequence" or "serial" or "one_by_one" => ScenarioFlowRouterBranchExecution.Sequential,
+            "auto" or "automatic" or "llm" => ScenarioFlowRouterBranchExecution.Auto,
+            "parallel" or "concurrent" => ScenarioFlowRouterBranchExecution.Parallel,
+            _ => ScenarioFlowRouterBranchExecution.Parallel
+        };
     }
 
     private static ScenarioFlowRouterTargetPolicy ParseTargetPolicy(JsonElement el)

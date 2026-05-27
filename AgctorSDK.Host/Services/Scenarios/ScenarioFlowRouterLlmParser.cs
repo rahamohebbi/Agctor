@@ -62,7 +62,17 @@ public static class ScenarioFlowRouterLlmParser
             ordered = ordered.Take(cap).ToList();
 
         if (ordered.Count > 0)
-            return ScenarioFlowRouterLlmResult.Success(ordered);
+        {
+            ScenarioFlowRouterBranchExecution? branchMode = null;
+            if (config.TargetPolicy == ScenarioFlowRouterTargetPolicy.AllMatching
+                && config.BranchExecution == ScenarioFlowRouterBranchExecution.Auto)
+            {
+                branchMode = ParseBranchExecutionMode(dto)
+                             ?? ScenarioFlowBranchExecutionPlanner.InferAuto(ordered);
+            }
+
+            return ScenarioFlowRouterLlmResult.Success(ordered, branchMode);
+        }
 
         if (!string.IsNullOrWhiteSpace(config.FallbackPersonaId) && allowed.Contains(config.FallbackPersonaId))
             return ScenarioFlowRouterLlmResult.Success(new[] { config.FallbackPersonaId });
@@ -90,6 +100,17 @@ public static class ScenarioFlowRouterLlmParser
         return t.Substring(a, b - a + 1);
     }
 
+    private static ScenarioFlowRouterBranchExecution? ParseBranchExecutionMode(RouterLlmDto dto)
+    {
+        var raw = dto.BranchExecutionMode?.Trim().ToLowerInvariant();
+        return raw switch
+        {
+            "sequential" or "sequence" or "serial" => ScenarioFlowRouterBranchExecution.Sequential,
+            "parallel" or "concurrent" => ScenarioFlowRouterBranchExecution.Parallel,
+            _ => null
+        };
+    }
+
     private sealed class RouterLlmDto
     {
         [JsonPropertyName("schemaVersion")]
@@ -103,6 +124,9 @@ public static class ScenarioFlowRouterLlmParser
 
         [JsonPropertyName("clarificationPrompt")]
         public string? ClarificationPrompt { get; set; }
+
+        [JsonPropertyName("branchExecutionMode")]
+        public string? BranchExecutionMode { get; set; }
     }
 
     private sealed class RouterLlmTargetDto

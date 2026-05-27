@@ -187,7 +187,13 @@ public static class PersonMemoryMarkdownContextBuilder
         }
         else
         {
-            sb.AppendLine("Use ONLY this text as factual context. Answer the latest user message in plain text.");
+            sb.AppendLine(
+                "Use stored markdown below together with factual statements in the latest user message.");
+            sb.AppendLine(
+                "When the user states a new fact and asks a follow-up in the same turn, treat those stated facts as authoritative for this reply.");
+            sb.AppendLine(
+                "You may apply reasonable inference from stated facts (e.g. chalk → drawing on outdoor surfaces) when the question follows directly.");
+            sb.AppendLine("Answer in plain text; prefer on-disk markdown for historical facts when it does not conflict with this turn.");
         }
 
         if (notes.Length > 0)

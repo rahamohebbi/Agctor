@@ -21,6 +21,19 @@ public sealed class ProjectMemoryPipelineRunnerTests
     {
         public readonly Queue<string> Responses = new();
 
+        /// <summary>Coordinator calls focus-subject before extract/query LLM steps.</summary>
+        public void EnqueueIngestPipeline(string extractJson, string focusSlug = "raha")
+        {
+            Responses.Enqueue($$"""{"activeSubject":"{{focusSlug}}","reason":"test"}""");
+            Responses.Enqueue(extractJson);
+        }
+
+        public void EnqueueQueryPipeline(string queryAnswer, string focusSlug = "raha")
+        {
+            Responses.Enqueue($$"""{"activeSubject":"{{focusSlug}}","reason":"test"}""");
+            Responses.Enqueue(queryAnswer);
+        }
+
         public Task<string> GenerateAsync(string prompt, CancellationToken cancellationToken = default) =>
             Task.FromResult(Responses.Count > 0 ? Responses.Dequeue() : "");
     }
@@ -78,6 +91,28 @@ public sealed class ProjectMemoryPipelineRunnerTests
             $"Could not find a people workspace under '{projectRoot}' for scenario '{scenarioId}'.");
     }
 
+    private static void EnsureRootPeopleWorkspace(string projectRoot)
+    {
+        var rootPeople = Path.Combine(projectRoot, "people");
+        if (Directory.Exists(rootPeople))
+            return;
+
+        var scenariosRoot = Path.Combine(projectRoot, "scenarios");
+        if (!Directory.Exists(scenariosRoot))
+            throw new DirectoryNotFoundException($"No people workspace under '{projectRoot}'.");
+
+        foreach (var scenarioDir in Directory.GetDirectories(scenariosRoot))
+        {
+            var scenarioPeople = Path.Combine(scenarioDir, "people");
+            if (!Directory.Exists(scenarioPeople))
+                continue;
+            CopyDir(scenarioPeople, rootPeople);
+            return;
+        }
+
+        throw new DirectoryNotFoundException($"No people workspace under '{projectRoot}'.");
+    }
+
     [TestMethod]
     public async Task IngestOnly_ValidOccupationIntent_UpdatesProfileOnDisk()
     {
@@ -88,10 +123,11 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             const string marker = "OrchestratorUnitTestOccupation";
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 $$"""{"memoryIntents":[{"entityKey":"raha","knowledgeType":"occupation","attribute":"","value":"{{marker}}","confidence":0.95}]}""");
 
             var services = new ServiceCollection();
@@ -138,7 +174,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
 
             const string marker = "ScopedScenarioOccupation";
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 $$"""{"memoryIntents":[{"entityKey":"raha","knowledgeType":"occupation","attribute":"","value":"{{marker}}","confidence":0.95}]}""");
 
             var services = new ServiceCollection();
@@ -336,9 +372,10 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue("Answer from test double.");
+            llm.EnqueueQueryPipeline("Answer from test double.");
 
             var services = new ServiceCollection();
             services.AddAgctorProjectMemory();
@@ -377,9 +414,10 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents":[
@@ -422,9 +460,10 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents":[
@@ -468,9 +507,10 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents": [
@@ -541,6 +581,7 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var services = new ServiceCollection();
             services.AddAgctorProjectMemory();
@@ -580,9 +621,10 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents": [
@@ -627,11 +669,12 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
             var inboxDir = Path.Combine(temp, ".agctor", "runtime", "generic-inbox");
             if (Directory.Exists(inboxDir)) Directory.Delete(inboxDir, recursive: true);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents": [
@@ -680,12 +723,13 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
             // Remove any pre-existing ryan folder so we're testing bootstrap, not reuse.
             var ryanDir = Path.Combine(temp, "people", "ryan");
             if (Directory.Exists(ryanDir)) Directory.Delete(ryanDir, true);
 
             var llm = new QueueLlm();
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents": [
@@ -728,12 +772,13 @@ public sealed class ProjectMemoryPipelineRunnerTests
         try
         {
             CopyDir(src, temp);
+            EnsureRootPeopleWorkspace(temp);
             var ryanDir = Path.Combine(temp, "people", "ryan");
             if (Directory.Exists(ryanDir)) Directory.Delete(ryanDir, true);
 
             var llm = new QueueLlm();
             // Extractor emits: raha name + raha last_name + family edge + ryan's spoken name + ryan DOB.
-            llm.Responses.Enqueue(
+            llm.EnqueueIngestPipeline(
                 """
                 {
                   "memoryIntents": [

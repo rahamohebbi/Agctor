@@ -28,6 +28,9 @@ using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Services.ProjectMemory;
 using AgctorSDK.Host.Services.Scenarios;
+using AgctorSDK.Host.Services.Visual;
+using AgctorSDK.Core.ProjectMemory.Visual;
+using AgctorSDK.Core.ProjectMemory.Visual.Storage;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -70,6 +73,13 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly IProactiveSignalsService _proactiveSignals;
     private readonly IGenericInboxDecisionService _inboxDecisions;
     private readonly IPrivacyMemoryService _privacy;
+    private readonly VisualPlaygroundAttachmentService? _visualAttachments;
+    private readonly GenericInboxVisualEnricher? _inboxVisualEnricher;
+    private readonly IOllamaVisionChatClient? _visionChat;
+    private readonly IBlobStore? _blobStore;
+    private readonly VisualAssetCatalogStore? _visualCatalog;
+    private readonly VisualStorageOptions _visualOptions;
+    private readonly PlaygroundFocusPostHook _focusPostHook;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -94,7 +104,14 @@ public sealed class ProjectMemoryController : ControllerBase
         IGenericInboxDecisionService inboxDecisions,
         IPrivacyMemoryService privacy,
         ILogger<ProjectMemoryController> logger,
-        IActivityTracker? activityTracker = null)
+        IActivityTracker? activityTracker = null,
+        VisualPlaygroundAttachmentService? visualAttachments = null,
+        GenericInboxVisualEnricher? inboxVisualEnricher = null,
+        IOllamaVisionChatClient? visionChat = null,
+        IBlobStore? blobStore = null,
+        VisualAssetCatalogStore? visualCatalog = null,
+        IOptions<VisualStorageOptions>? visualOptions = null,
+        PlaygroundFocusPostHook? focusPostHook = null)
     {
         _options = options;
         _loader = loader;
@@ -119,6 +136,13 @@ public sealed class ProjectMemoryController : ControllerBase
         _privacy = privacy ?? throw new ArgumentNullException(nameof(privacy));
         _activityTracker = activityTracker;
         _logger = logger;
+        _visualAttachments = visualAttachments;
+        _inboxVisualEnricher = inboxVisualEnricher;
+        _visionChat = visionChat;
+        _blobStore = blobStore;
+        _visualCatalog = visualCatalog;
+        _visualOptions = visualOptions?.Value ?? new VisualStorageOptions();
+        _focusPostHook = focusPostHook ?? throw new ArgumentNullException(nameof(focusPostHook));
     }
 
     private string? RootOrNull()
@@ -529,24 +553,40 @@ public sealed class ProjectMemoryController : ControllerBase
 
         var sid = string.IsNullOrWhiteSpace(scenarioId) ? "person_3" : scenarioId.Trim();
         var rows = await _inboxDecisions.ListPendingAsync(root, sid, cancellationToken).ConfigureAwait(false);
+        var items = rows.Select(r => new GenericInboxPendingItemDto
+        {
+            ProposalId = r.ProposalId,
+            EntityKey = r.EntityKey,
+            KnowledgeType = r.KnowledgeType,
+            Attribute = r.Attribute,
+            Value = r.Value,
+            Confidence = r.Confidence,
+            Disposition = r.Disposition,
+            ScenarioSegment = r.ScenarioSegment,
+            QueuedAtUtc = r.QueuedAtUtc,
+            UserPromptLine = string.IsNullOrWhiteSpace(r.UserPromptLine)
+                ? $"{r.EntityKey}: {r.Value}"
+                : r.UserPromptLine
+        }).ToList();
+
+        if (_inboxVisualEnricher != null)
+        {
+            try
+            {
+                await _inboxVisualEnricher
+                    .EnrichWithSourceAssetsAsync(root, sid, items, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exInboxVis)
+            {
+                _logger.LogDebug(exInboxVis, "Inbox visual thumbnail enrichment skipped");
+            }
+        }
+
         return Ok(new GenericInboxPendingListResponseDto
         {
             ScenarioId = sid,
-            Items = rows.Select(r => new GenericInboxPendingItemDto
-            {
-                ProposalId = r.ProposalId,
-                EntityKey = r.EntityKey,
-                KnowledgeType = r.KnowledgeType,
-                Attribute = r.Attribute,
-                Value = r.Value,
-                Confidence = r.Confidence,
-                Disposition = r.Disposition,
-                ScenarioSegment = r.ScenarioSegment,
-                QueuedAtUtc = r.QueuedAtUtc,
-                UserPromptLine = string.IsNullOrWhiteSpace(r.UserPromptLine)
-                    ? $"{r.EntityKey}: {r.Value}"
-                    : r.UserPromptLine
-            }).ToList()
+            Items = items
         });
     }
 
@@ -706,6 +746,8 @@ public sealed class ProjectMemoryController : ControllerBase
             var key = Path.GetFileName(dir);
             if (string.IsNullOrWhiteSpace(key) || key.StartsWith('.'))
                 continue;
+            if (FocusEntityPolicy.IsPlaceholderSlug(key))
+                continue;
 
             var display = key;
             var profilePath = Path.Combine(dir, "profile.md");
@@ -723,6 +765,189 @@ public sealed class ProjectMemoryController : ControllerBase
         list.Sort((a, b) => string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase));
         return Ok(list);
     }
+
+    /// <summary>
+    /// On session open: infer focus from project name when unset, persist to SQLite + conversation coref store.
+    /// </summary>
+    [HttpPost("playground/sync-focus")]
+    [ProducesResponseType(typeof(PlaygroundSyncFocusResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PlaygroundSyncFocusResponseDto>> SyncPlaygroundFocusAsync(
+        [FromBody] PlaygroundSyncFocusRequestDto? body,
+        CancellationToken cancellationToken)
+    {
+        if (body == null || string.IsNullOrWhiteSpace(body.SessionId))
+            return BadRequest(new ErrorResponse { Code = "SESSION_REQUIRED", Message = "sessionId is required." });
+
+        var root = RootOrNull();
+        if (root == null)
+            return BadRoot();
+
+        var session = await _sessions.GetSessionAsync(body.SessionId.Trim(), cancellationToken).ConfigureAwait(false);
+        if (session == null)
+            return NotFound(new ErrorResponse { Code = "SESSION_NOT_FOUND", Message = "Session not found." });
+
+        var projectId = !string.IsNullOrWhiteSpace(body.ProjectId)
+            ? body.ProjectId.Trim()
+            : session.ProjectId;
+        if (string.IsNullOrWhiteSpace(projectId))
+            return BadRequest(new ErrorResponse { Code = "PROJECT_REQUIRED", Message = "Session is not linked to a project." });
+
+        var project = await _sessions.GetProjectAsync(projectId, cancellationToken).ConfigureAwait(false);
+        if (project == null)
+            return NotFound(new ErrorResponse { Code = "PROJECT_NOT_FOUND", Message = "Project not found." });
+
+        var rootFull = Path.GetFullPath(root);
+        var entities = ListScenarioEntityTuples(rootFull, project.ScenarioId);
+        var inferred = false;
+        var fromConversation = false;
+        var focusKey = FocusEntityPolicy.NormalizeSlugOrNull(project.FocusEntityKey);
+        var focusDisplay = project.FocusDisplayName;
+
+        ConversationFocus? conversationFocus = null;
+        try
+        {
+            conversationFocus = await _focusStore.LoadAsync(rootFull, project.ScenarioId, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            /* best-effort */
+        }
+
+        var conversationKey = FocusEntityPolicy.NormalizeSlugOrNull(conversationFocus?.EntityKey);
+        if (!string.IsNullOrWhiteSpace(conversationKey)
+            && !string.Equals(conversationKey, focusKey, StringComparison.OrdinalIgnoreCase))
+        {
+            focusKey = conversationKey;
+            focusDisplay = conversationFocus!.DisplayName
+                           ?? entities.FirstOrDefault(e =>
+                               string.Equals(e.EntityKey, conversationKey, StringComparison.OrdinalIgnoreCase)).DisplayName
+                           ?? conversationKey;
+            fromConversation = true;
+            project = await UpdateProjectFocusAsync(project, focusKey, focusDisplay, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (string.IsNullOrWhiteSpace(focusKey))
+        {
+            var guess = FocusEntityPolicy.TryInferFromProjectName(project.Name, entities);
+            if (guess != null)
+            {
+                focusKey = guess.Value.EntityKey;
+                focusDisplay = guess.Value.DisplayName;
+                inferred = true;
+                project = await UpdateProjectFocusAsync(project, focusKey, focusDisplay, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(focusKey))
+            await ApplyChatProjectFocusAsync(rootFull, project, body.SessionId.Trim(), cancellationToken).ConfigureAwait(false);
+
+        return Ok(new PlaygroundSyncFocusResponseDto
+        {
+            FocusEntityKey = focusKey,
+            FocusDisplayName = focusDisplay,
+            InferredFromProjectName = inferred,
+            UpdatedFromConversation = fromConversation
+        });
+    }
+
+    private async Task<SessionProject> UpdateProjectFocusAsync(
+        SessionProject project,
+        string focusKey,
+        string? focusDisplay,
+        CancellationToken cancellationToken)
+    {
+        return await _sessions.UpdateProjectAsync(new SessionProject
+        {
+            ProjectId = project.ProjectId,
+            Name = project.Name,
+            ScenarioId = project.ScenarioId,
+            FocusEntityKey = focusKey,
+            FocusDisplayName = focusDisplay,
+            SettingsJson = project.SettingsJson,
+            CreatedAt = project.CreatedAt,
+            SessionCount = project.SessionCount
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>After extract/coref, mirror conversation focus into SQLite so the Focus person dropdown stays in sync.</summary>
+    private async Task ApplyPlaygroundFocusPostHookAsync(
+        string projectRoot,
+        string? scenarioId,
+        SessionProject? project,
+        string sessionId,
+        string? entityKey,
+        string? displayName,
+        string source,
+        Func<AgentStreamEvent, Task> writeSseAsync,
+        string agentId,
+        CancellationToken cancellationToken)
+    {
+        var payload = await _focusPostHook
+            .ApplyAsync(projectRoot, scenarioId, project, sessionId, entityKey, displayName, source, cancellationToken)
+            .ConfigureAwait(false);
+        if (payload == null)
+            return;
+
+        if (project != null && payload.UpdatedProject)
+        {
+            project.FocusEntityKey = payload.FocusEntityKey;
+            project.FocusDisplayName = payload.FocusDisplayName;
+        }
+
+        await writeSseAsync(PlaygroundFocusSse.FocusUpdated(payload, agentId)).ConfigureAwait(false);
+    }
+
+    private static List<(string EntityKey, string DisplayName)> ListScenarioEntityTuples(string projectRoot, string? scenarioId)
+    {
+        var sid = string.IsNullOrWhiteSpace(scenarioId) ? "people" : scenarioId.Trim();
+        var workspace = PersonaScenarioScope.GetEntityWorkspaceRoot(projectRoot, sid);
+        var peopleDir = Path.Combine(workspace, "people");
+        var list = new List<(string, string)>();
+        if (!Directory.Exists(peopleDir))
+            return list;
+
+        foreach (var dir in Directory.EnumerateDirectories(peopleDir))
+        {
+            var key = Path.GetFileName(dir);
+            if (string.IsNullOrWhiteSpace(key) || key.StartsWith('.') || FocusEntityPolicy.IsPlaceholderSlug(key))
+                continue;
+
+            var display = key;
+            var profilePath = Path.Combine(dir, "profile.md");
+            if (System.IO.File.Exists(profilePath))
+            {
+                var text = System.IO.File.ReadAllText(profilePath);
+                var m = System.Text.RegularExpressions.Regex.Match(text, @"(?im)^\s*[-*]?\s*name\s*:\s*(.+)$");
+                if (m.Success)
+                    display = m.Groups[1].Value.Trim();
+            }
+
+            list.Add((key, display));
+        }
+
+        return list;
+    }
+
+    private static (string? Key, string? Display) ResolvePlaygroundActiveSubject(
+        CoreferencePreprocessResult? coref,
+        SessionProject? chatProject)
+    {
+        var key = FocusEntityPolicy.CoalesceActiveSubject(coref?.ActiveSubjectKey, chatProject?.FocusEntityKey);
+        if (string.IsNullOrWhiteSpace(key))
+            return (null, null);
+
+        var display = coref?.ActiveSubjectDisplay ?? chatProject?.FocusDisplayName;
+        if (string.IsNullOrWhiteSpace(display))
+            display = key;
+        return (key, display);
+    }
+
+    private int ResolveProjectVisualMaxPhotos(SessionProject? chatProject) =>
+        ChatProjectSettings.ResolveVisualMaxPhotos(
+            chatProject?.VisualMaxPhotos,
+            _visualOptions.DefaultVisualContextPhotos,
+            _visualOptions.MaxVisualContextPhotos);
 
     private async Task ApplyChatProjectFocusAsync(
         string projectRoot,
@@ -784,7 +1009,9 @@ public sealed class ProjectMemoryController : ControllerBase
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(body.AgentId) || string.IsNullOrWhiteSpace(body.Payload))
+        var hasText = !string.IsNullOrWhiteSpace(body.Payload);
+        var hasAttachments = body.Attachments != null && body.Attachments.Count > 0;
+        if (string.IsNullOrWhiteSpace(body.AgentId) || (!hasText && !hasAttachments))
         {
             Response.StatusCode = StatusCodes.Status400BadRequest;
             return;
@@ -845,15 +1072,47 @@ public sealed class ProjectMemoryController : ControllerBase
         var scenarioDef = string.IsNullOrWhiteSpace(scenarioResolved) ? null : _scenarioCatalog.Get(scenarioResolved);
         var flowCatalogOk = scenarioDef?.Flow != null && ScenarioFlowValidator.Validate(scenarioDef).Count == 0;
         var useScenarioFlow = scenarioDef?.Flow != null && flowCatalogOk && !string.IsNullOrWhiteSpace(scenarioResolved);
+        var promptText = hasText ? body.Payload.Trim() : "(User attached image(s) without a caption.)";
         var prompt = useScenarioFlow
             ? ""
-            : ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(spec, prior, body.Payload, scenarioResolved);
-        var turnGroupId = Guid.NewGuid().ToString();
+            : ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(spec, prior, promptText, scenarioResolved);
+        var turnGroupId = string.IsNullOrWhiteSpace(body.TurnGroupId)
+            ? Guid.NewGuid().ToString()
+            : body.TurnGroupId.Trim();
         var messageId = Guid.NewGuid().ToString();
+
+        string? attachmentsJson = null;
+        if (hasAttachments)
+        {
+            var env = new SessionAttachmentEnvelope();
+            foreach (var att in body.Attachments!)
+            {
+                if (string.IsNullOrWhiteSpace(att.AssetId))
+                    continue;
+                env.Attachments.Add(new SessionAttachmentRef
+                {
+                    AssetId = att.AssetId.Trim(),
+                    State = string.IsNullOrWhiteSpace(att.State) ? "uploaded" : att.State.Trim(),
+                    FileName = att.FileName,
+                    Mime = att.Mime
+                });
+            }
+
+            attachmentsJson = SessionAttachmentJson.Serialize(env);
+        }
+
+        var userTurnContent = hasText ? body.Payload.Trim() : "";
 
         try
         {
-            await AppendPlaygroundTurnAsync(sessionId, SessionRole.User, body.Payload, agentId: null, turnGroupId, cancellationToken)
+            await AppendPlaygroundTurnAsync(
+                    sessionId,
+                    SessionRole.User,
+                    userTurnContent,
+                    agentId: null,
+                    turnGroupId,
+                    attachmentsJson,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -922,6 +1181,67 @@ public sealed class ProjectMemoryController : ControllerBase
             await Response.Body.FlushAsync(ct).ConfigureAwait(false);
         }
 
+        if (hasAttachments && _visualAttachments != null && !string.IsNullOrWhiteSpace(scenarioResolved))
+        {
+            var assetIds = body.Attachments!
+                .Where(a => !string.IsNullOrWhiteSpace(a.AssetId))
+                .Select(a => a.AssetId.Trim())
+                .ToList();
+            var manualTags = body.Attachments!
+                .Where(a => !string.IsNullOrWhiteSpace(a.AssetId) && !string.IsNullOrWhiteSpace(a.EntityKey))
+                .ToDictionary(a => a.AssetId.Trim(), a => a.EntityKey!.Trim(), StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                var linkedAttachments = await _visualAttachments
+                    .LinkAndEnrichAsync(
+                        rootFull,
+                        scenarioResolved,
+                        sessionId,
+                        turnGroupId,
+                        assetIds,
+                        userMessage: promptText,
+                        focusEntityKey: chatProject?.FocusEntityKey,
+                        manualEntityByAsset: manualTags.Count > 0 ? manualTags : null,
+                        ct)
+                    .ConfigureAwait(false);
+                foreach (var att in linkedAttachments)
+                {
+                    var tagDetail = att.EntityKeys is { Count: > 0 }
+                        ? "Tagged " + string.Join(", ", att.EntityKeys) + " · analyzing photo…"
+                        : "Analyzing photo…";
+                    await WriteSseAsync(new AgentStreamEvent
+                    {
+                        Type = "attachment_state",
+                        Payload = VisualPlaygroundAttachmentService.SerializeSsePayload(new
+                        {
+                            assetId = att.AssetId,
+                            state = att.State,
+                            detail = tagDetail,
+                            entityKeys = att.EntityKeys
+                        })
+                    }).ConfigureAwait(false);
+
+                    if (!string.IsNullOrWhiteSpace(att.ViewUrl))
+                    {
+                        await WriteSseAsync(new AgentStreamEvent
+                        {
+                            Type = "attachment_preview",
+                            Payload = VisualPlaygroundAttachmentService.SerializeSsePayload(new
+                            {
+                                assetId = att.AssetId,
+                                viewUrl = att.ViewUrl,
+                                expiresAt = att.ViewUrlExpiresAt
+                            })
+                        }).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch (Exception exAttach)
+            {
+                _logger.LogDebug(exAttach, "Playground: attachment SSE skipped");
+            }
+        }
+
         async Task WriteFlowStepAsync(string stepId, string status, string? detail = null)
         {
             var payload = JsonSerializer.Serialize(new { id = stepId, status, detail }, JsonSse);
@@ -949,7 +1269,10 @@ public sealed class ProjectMemoryController : ControllerBase
         {
             var personasSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var ingestChipActive = !string.IsNullOrWhiteSpace(scenarioResolved);
-            var prefixSteps = PlaygroundFlowPlanBuilder.BuildFlowExecutionPlanPrefix(scenarioDef!.Flow!, ingestChipActive);
+            var prefixSteps = PlaygroundFlowPlanBuilder.BuildFlowExecutionPlanPrefix(
+                scenarioDef!.Flow!,
+                ingestChipActive,
+                includeVisualExtractStep: hasAttachments);
             var prefixPayload = new
             {
                 steps = prefixSteps
@@ -1008,7 +1331,7 @@ public sealed class ProjectMemoryController : ControllerBase
                     {
                         try
                         {
-                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, confirmFinalText, spec.Id, turnGroupId, ct)
+                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, confirmFinalText, spec.Id, turnGroupId, null, ct)
                                 .ConfigureAwait(false);
                             try
                             {
@@ -1060,7 +1383,7 @@ public sealed class ProjectMemoryController : ControllerBase
                 {
                     try
                     {
-                        await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, noPendingText, spec.Id, turnGroupId, ct)
+                        await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, noPendingText, spec.Id, turnGroupId, null, ct)
                             .ConfigureAwait(false);
                         try
                         {
@@ -1133,14 +1456,29 @@ public sealed class ProjectMemoryController : ControllerBase
             var flowObserver = new PlaygroundScenarioFlowSseObserver(
                 scenarioDef.Flow!,
                 ingestChipActive,
+                hasAttachments,
                 GatedWriteSseAsync,
                 spec.Id,
                 JsonSse);
 
-            // Phase 1: chat project focus seeds scenario coref store so "he/she" and short questions scope correctly.
+            // Seed conversation focus from the project only when the scenario has no persisted focus yet.
+            // Overwriting every turn prevented chat-driven shifts (e.g. talking about Ryan while project is Raha).
             try
             {
-                await ApplyChatProjectFocusAsync(rootFull, chatProject, sessionId, ct).ConfigureAwait(false);
+                ConversationFocus? existingFocus = null;
+                try
+                {
+                    existingFocus = await _focusStore
+                        .LoadAsync(rootFull, scenarioResolved, ct)
+                        .ConfigureAwait(false);
+                }
+                catch
+                {
+                    /* best-effort */
+                }
+
+                if (existingFocus == null || string.IsNullOrWhiteSpace(existingFocus.EntityKey))
+                    await ApplyChatProjectFocusAsync(rootFull, chatProject, sessionId, ct).ConfigureAwait(false);
             }
             catch (Exception exFocusBootstrap)
             {
@@ -1167,10 +1505,38 @@ public sealed class ProjectMemoryController : ControllerBase
             {
                 _logger.LogDebug(exCoref, "Playground: coref preprocessing skipped");
             }
+
+            // FocusSubjectTool (via coordinator) picks active subject; post-hook syncs SQLite + UI.
+            if (!string.IsNullOrWhiteSpace(corefForFlow?.ActiveSubjectKey))
+            {
+                try
+                {
+                    await ApplyPlaygroundFocusPostHookAsync(
+                            rootFull,
+                            scenarioResolved,
+                            chatProject,
+                            sessionId,
+                            corefForFlow.ActiveSubjectKey,
+                            corefForFlow.ActiveSubjectDisplay,
+                            "focus-subject",
+                            GatedWriteSseAsync,
+                            spec.Id,
+                            ct)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exFocusCoref)
+                {
+                    _logger.LogDebug(exFocusCoref, "Playground: focus-subject post-hook skipped");
+                }
+            }
+
             var flowUserMessage = corefForFlow?.ResolvedUserMessage ?? body.Payload;
+            var (playgroundActiveKey, playgroundActiveDisplay) = ResolvePlaygroundActiveSubject(corefForFlow, chatProject);
+            var projectVisualMaxPhotos = ResolveProjectVisualMaxPhotos(chatProject);
 
             // memory-curator must see whether ingest actually wrote files (tools are not executed in playground).
             ProjectMemoryIngestResult? lastExtractorIngest = null;
+            string? lastExtractorRawOutput = null;
 
             ScenarioFlowGraphInterpreter.PersonaInvoker invokeFlow = async (personaId, promptText, cancellationToken, flowNodeId) =>
             {
@@ -1225,6 +1591,10 @@ public sealed class ProjectMemoryController : ControllerBase
                     return "No pending out-of-schema fact matched this scenario, or the confirmation window expired. Please re-enter the fact so I can ask for confirmation again.";
                 }
 
+                // Persona scope wraps context tools + LLM so trace timeline nests tools under the agent run.
+                OllamaStreamAccumulation flowStream;
+                using (var personaScopeFlow = _activityTracker?.StartActivity("pm.playground.persona-llm"))
+                {
                 string? flowAppendix = null;
                 if (string.Equals(personaId.Trim(), "memory-curator", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1241,12 +1611,13 @@ public sealed class ProjectMemoryController : ControllerBase
                     var flowNode = scenarioDef.Flow?.Nodes?.FirstOrDefault(n =>
                         !string.IsNullOrWhiteSpace(flowNodeId)
                         && string.Equals(n.Id, flowNodeId, StringComparison.OrdinalIgnoreCase));
+                    var appendixParts = new List<string>();
                     if (PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(pSpec, flowNode?.Config))
                     {
                         var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
                         try
                         {
-                            flowAppendix = await PlaygroundPersonQueryContextBuilder
+                            var memoryAppendix = await PlaygroundPersonQueryContextBuilder
                                 .BuildFlowAppendixAsync(
                                     _loader,
                                     _entities,
@@ -1259,13 +1630,77 @@ public sealed class ProjectMemoryController : ControllerBase
                                     flowUserMessage,
                                     cancellationToken)
                                 .ConfigureAwait(false);
+                            if (!string.IsNullOrWhiteSpace(memoryAppendix))
+                                appendixParts.Add(memoryAppendix);
                         }
                         catch (Exception exCtx)
                         {
                             _logger.LogWarning(exCtx, "Playground: person-memory-context load failed for {PersonaId}", personaId);
-                            flowAppendix = "---\nPerson-memory context failed to load: " + exCtx.Message + "\n";
+                            appendixParts.Add("---\nPerson-memory context failed to load: " + exCtx.Message + "\n");
                         }
                     }
+
+                    if (PlaygroundPersonQueryContextBuilder.ShouldLoadPersonVisualContext(pSpec, flowNode?.Config))
+                    {
+                        try
+                        {
+                            var visualContext = await PlaygroundPersonQueryContextBuilder
+                                .BuildVisualContextAsync(
+                                    _agentFactory,
+                                    pSpec,
+                                    personaId.Trim(),
+                                    rootFull,
+                                    scenarioResolved,
+                                    flowUserMessage,
+                                    chatProject?.FocusEntityKey,
+                                    projectVisualMaxPhotos,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                            if (!string.IsNullOrWhiteSpace(visualContext.Appendix))
+                                appendixParts.Add(visualContext.Appendix);
+
+                            var visionReady = _visionChat != null && _blobStore != null && _visualCatalog != null;
+                            if (VisualSceneSummary.ShouldUsePersonQueryVision(
+                                    personaId.Trim(),
+                                    flowUserMessage,
+                                    visualContext,
+                                    visionReady))
+                            {
+                                var queryAssetIds = VisualSceneSummary.ResolveQueryAssetIds(
+                                    hasAttachments,
+                                    body.Attachments?
+                                        .Where(a => !string.IsNullOrWhiteSpace(a.AssetId))
+                                        .Select(a => a.AssetId.Trim()),
+                                    visualContext,
+                                    maxAssets: 1);
+                                var liveScene = await PlaygroundPersonQueryVisionHelper
+                                    .DescribePrimaryAssetAsync(
+                                        _visionChat!,
+                                        _visualCatalog!,
+                                        _blobStore!,
+                                        rootFull,
+                                        scenarioResolved!,
+                                        queryAssetIds,
+                                        flowUserMessage,
+                                        chatProject?.FocusEntityKey,
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                                if (VisualSceneSummary.IsUseful(liveScene))
+                                {
+                                    appendixParts.Add(
+                                        "Visual scene (live vision, saved to catalog):\n  scene: " + liveScene);
+                                }
+                            }
+                        }
+                        catch (Exception exVisual)
+                        {
+                            _logger.LogWarning(exVisual, "Playground: person-visual-context load failed for {PersonaId}", personaId);
+                            appendixParts.Add("---\nPerson-visual context failed to load: " + exVisual.Message + "\n");
+                        }
+                    }
+
+                    if (appendixParts.Count > 0)
+                        flowAppendix = string.Join("\n\n", appendixParts);
                 }
 
                 // Flow mode is strict node-to-node chaining: each persona gets upstream payload as latest input.
@@ -1275,7 +1710,9 @@ public sealed class ProjectMemoryController : ControllerBase
                     priorTurns: null,
                     newUserText: promptText,
                     scenarioId: scenarioResolved,
-                    playgroundFlowAppendix: flowAppendix);
+                    playgroundFlowAppendix: flowAppendix,
+                    activeSubjectEntityKey: playgroundActiveKey,
+                    activeSubjectDisplayName: playgroundActiveDisplay);
                 await GatedWriteSseAsync(new AgentStreamEvent
                     {
                         Type = "phase",
@@ -1284,28 +1721,84 @@ public sealed class ProjectMemoryController : ControllerBase
                     })
                     .ConfigureAwait(false);
 
-                OllamaStreamAccumulation flowStream;
-                using (var personaScopeFlow = _activityTracker?.StartActivity("pm.playground.persona-llm"))
-                {
                     try
                     {
-                        flowStream = await OllamaGenerateHttp.StreamGenerateAsync(
-                                LlmHttp,
-                                ollamaBaseFlow,
-                                modelFlow,
-                                built,
-                                async (token, _) =>
+                        var useVision = hasAttachments
+                                        && PlaygroundPersonaMultimodalHelper.ShouldUseVision(personaId.Trim(), hasAttachments)
+                                        && _visionChat != null
+                                        && _blobStore != null
+                                        && _visualCatalog != null
+                                        && body.Attachments != null;
+                        if (useVision)
+                        {
+                            var assetIds = body.Attachments!
+                                .Where(a => !string.IsNullOrWhiteSpace(a.AssetId))
+                                .Select(a => a.AssetId.Trim())
+                                .ToList();
+                            var images = await PlaygroundPersonaMultimodalHelper
+                                .LoadTurnImagesBase64Async(
+                                    _visualCatalog!,
+                                    _blobStore!,
+                                    rootFull,
+                                    scenarioResolved!,
+                                    assetIds,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                            if (images.Count == 0)
+                            {
+                                flowStream = new OllamaStreamAccumulation(
+                                    "Could not load attached photo bytes for vision model.",
+                                    "No image bytes");
+                            }
+                            else
+                            {
+                                var visionResult = await PlaygroundPersonaMultimodalHelper
+                                    .RunVisionPersonaAsync(
+                                        _visionChat!,
+                                        systemPrompt: $"Agent: {pSpec.Id}\nRole: {pSpec.Role}\nName: {pSpec.Name}",
+                                        userText: built,
+                                        images,
+                                        cancellationToken)
+                                    .ConfigureAwait(false);
+                                var visionText = visionResult.Success
+                                    ? (visionResult.Content ?? "")
+                                    : ("Error: " + (visionResult.Error ?? "Vision model failed."));
+                                if (!string.IsNullOrEmpty(visionText))
                                 {
                                     await GatedWriteSseAsync(new AgentStreamEvent
                                         {
                                             Type = "llm_delta",
-                                            Payload = token,
+                                            Payload = visionText,
                                             AgentId = spec.Id
                                         })
                                         .ConfigureAwait(false);
-                                },
-                                cancellationToken)
-                            .ConfigureAwait(false);
+                                }
+
+                                flowStream = new OllamaStreamAccumulation(
+                                    visionText,
+                                    visionResult.Success ? null : visionResult.Error);
+                            }
+                        }
+                        else
+                        {
+                            flowStream = await OllamaGenerateHttp.StreamGenerateAsync(
+                                    LlmHttp,
+                                    ollamaBaseFlow,
+                                    modelFlow,
+                                    built,
+                                    async (token, _) =>
+                                    {
+                                        await GatedWriteSseAsync(new AgentStreamEvent
+                                            {
+                                                Type = "llm_delta",
+                                                Payload = token,
+                                                AgentId = spec.Id
+                                            })
+                                            .ConfigureAwait(false);
+                                    },
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                        }
                     }
                     catch (Exception exStream)
                     {
@@ -1339,8 +1832,17 @@ public sealed class ProjectMemoryController : ControllerBase
                     {
                         try
                         {
+                            var ingestRaw = rawFlow;
+                            if (MemoryIntentJson.TryRewritePlaceholderEntityKeys(
+                                    rawFlow,
+                                    playgroundActiveKey,
+                                    out var rewritten))
+                            {
+                                ingestRaw = rewritten;
+                            }
+
                             var ingestFlow = await _pipeline
-                                .IngestFromExtractorOutputAsync(rootFull, scenarioResolved!, rawFlow, cancellationToken)
+                                .IngestFromExtractorOutputAsync(rootFull, scenarioResolved!, ingestRaw, cancellationToken)
                                 .ConfigureAwait(false);
                             await GatedWriteFlowStepAsync(
                                     ingestStepId,
@@ -1360,6 +1862,7 @@ public sealed class ProjectMemoryController : ControllerBase
                             }
 
                             lastExtractorIngest = ingestFlow;
+                            lastExtractorRawOutput = rawFlow;
                             if (!ingestFlow.ParseSuccess)
                                 _logger.LogWarning(
                                     "Playground flow ingest parse failed (scenario {Scenario}): {Summary}. Output prefix: {Prefix}",
@@ -1367,25 +1870,44 @@ public sealed class ProjectMemoryController : ControllerBase
                                     ingestFlow.Summary ?? "",
                                     ProjectMemoryPersonaLlmRunner.TruncateForIngestLog(rawFlow));
 
+                            if (hasAttachments)
+                            {
+                                await GatedWriteFlowStepAsync(
+                                        PlaygroundFlowPlanBuilder.VisualExtractStepId,
+                                        "running",
+                                        "Background vision analysis…")
+                                    .ConfigureAwait(false);
+                                await GatedWriteFlowStepAsync(
+                                        PlaygroundFlowPlanBuilder.VisualExtractStepId,
+                                        "done",
+                                        "Vision extract queued (Gemma background pipeline)")
+                                    .ConfigureAwait(false);
+                            }
+
                             // PRD-019 Option B + F: persist active subject after the playground extractor turn
                             // so a brand-new browser session in the same scenario can still resolve "He/She"
                             // back to the right entity. Best-effort: never break the playground SSE flow here.
                             try
                             {
-                                await _corefCoordinator
-                                    .PersistFocusFromExtractAsync(
+                                var (focusSlug, _) = ProjectMemoryCoreferenceCoordinator.ResolveFocusFromExtract(
+                                    ingestRaw,
+                                    playgroundActiveKey ?? corefForFlow?.ActiveSubjectKey);
+                                await ApplyPlaygroundFocusPostHookAsync(
                                         rootFull,
                                         scenarioResolved,
-                                        rawFlow,
-                                        corefForFlow?.ActiveSubjectKey,
-                                        corefForFlow?.KnownEntities ?? System.Array.Empty<KnownEntity>(),
+                                        chatProject,
                                         sessionId,
+                                        focusSlug,
+                                        playgroundActiveDisplay ?? corefForFlow?.ActiveSubjectDisplay,
+                                        "extracted",
+                                        GatedWriteSseAsync,
+                                        spec.Id,
                                         cancellationToken)
                                     .ConfigureAwait(false);
                             }
                             catch (Exception exFocus)
                             {
-                                _logger.LogDebug(exFocus, "Playground: persist coreference focus skipped");
+                                _logger.LogDebug(exFocus, "Playground: extract focus post-hook skipped");
                             }
 
                             // Keep chain purity: downstream LlmNode receives extractor raw output,
@@ -1406,6 +1928,19 @@ public sealed class ProjectMemoryController : ControllerBase
             string fullTextFlow;
             try
             {
+                IScenarioFlowRouterLlmService flowRouter = _scenarioFlowRouterLlm;
+                string? routerAppendix = null;
+                if (hasAttachments)
+                {
+                    var routingCtx = PlaygroundFlowRoutingContextBuilder.Build(
+                        body.Attachments!.Count,
+                        flowUserMessage,
+                        chatProject?.FocusEntityKey,
+                        body.Attachments);
+                    flowRouter = new PlaygroundAttachmentRouterDecorator(_scenarioFlowRouterLlm, routingCtx);
+                    routerAppendix = PlaygroundFlowAttachmentRouting.BuildRoutingAppendix(routingCtx);
+                }
+
                 var interpreter = new ScenarioFlowGraphInterpreter();
                 fullTextFlow = await interpreter
                     .ExecuteAsync(
@@ -1414,9 +1949,10 @@ public sealed class ProjectMemoryController : ControllerBase
                         invokeFlow,
                         Timeout.InfiniteTimeSpan,
                         rootFull,
-                        _scenarioFlowRouterLlm,
+                        flowRouter,
                         flowObserver,
-                        ct)
+                        ct,
+                        routerAppendix)
                     .ConfigureAwait(false);
             }
             catch (ScenarioFlowExecutionException ex)
@@ -1438,11 +1974,24 @@ public sealed class ProjectMemoryController : ControllerBase
                 fullTextFlow = "Error: " + ex.Message;
             }
 
+            if (IngestUserMessageFormatter.ShouldPreferIngestSummary(lastExtractorIngest, personasSeen))
+            {
+                fullTextFlow = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(
+                    IngestUserMessageFormatter.Format(lastExtractorIngest!, lastExtractorRawOutput, rootFull),
+                    Request);
+            }
+            else
+            {
+                fullTextFlow = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(fullTextFlow, Request);
+            }
+
             using (var persistScopeFlow = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
             {
                 try
                 {
-                    await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullTextFlow, lastPersona, turnGroupId, ct)
+                    var transcriptPersona =
+                        ScenarioFlowOutputComposer.PickTranscriptPersonaId(personasSeen) ?? lastPersona;
+                    await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullTextFlow, transcriptPersona, turnGroupId, null, ct)
                         .ConfigureAwait(false);
                     try
                     {
@@ -1754,7 +2303,7 @@ public sealed class ProjectMemoryController : ControllerBase
                     {
                         try
                         {
-                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullText, agentId: spec.Id, turnGroupId, ct)
+                            await AppendPlaygroundTurnAsync(sessionId, SessionRole.Assistant, fullText, agentId: spec.Id, turnGroupId, null, ct)
                                 .ConfigureAwait(false);
                             await WriteFlowStepAsync(st.Id, "done", messageId).ConfigureAwait(false);
                         }
@@ -1818,6 +2367,7 @@ public sealed class ProjectMemoryController : ControllerBase
         string content,
         string? agentId,
         string turnGroupId,
+        string? attachmentsJson,
         CancellationToken cancellationToken)
     {
         var turn = new SessionTurn
@@ -1826,7 +2376,8 @@ public sealed class ProjectMemoryController : ControllerBase
             TurnGroupId = turnGroupId,
             Role = role,
             Content = content,
-            AgentId = agentId
+            AgentId = agentId,
+            AttachmentsJson = attachmentsJson
         };
         await _sessions.AppendTurnAsync(turn, cancellationToken).ConfigureAwait(false);
     }

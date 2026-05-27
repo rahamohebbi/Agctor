@@ -265,6 +265,59 @@ public sealed class ScenarioFlowGraphInterpreterTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_LlmRouter_Sequential_RunsWriteBranchBeforeReadBranch()
+    {
+        var flow = new ScenarioFlowDocument
+        {
+            SchemaVersion = "1.0",
+            GraphId = "llm-seq",
+            OutputPolicy = "ranked",
+            Nodes =
+            [
+                new ScenarioFlowNode { Id = "in1", Type = "ChatInput", Label = "In" },
+                new ScenarioFlowNode { Id = "r1", Type = "Router", Label = "R", Config = JsonRouterLlmSequential() },
+                new ScenarioFlowNode { Id = "pExtract", Type = "LlmNode", Label = "Extract", Config = JsonPersona("person-extractor") },
+                new ScenarioFlowNode { Id = "pQuery", Type = "LlmNode", Label = "Query", Config = JsonPersona("person-query") },
+                new ScenarioFlowNode { Id = "m1", Type = "Merge", Label = "M" },
+                new ScenarioFlowNode { Id = "out1", Type = "Output", Label = "Out" }
+            ],
+            Edges =
+            [
+                new ScenarioFlowEdge { Id = "e0", FromNodeId = "in1", ToNodeId = "r1", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e1", FromNodeId = "r1", ToNodeId = "pExtract", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e2", FromNodeId = "r1", ToNodeId = "pQuery", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e3", FromNodeId = "pExtract", ToNodeId = "m1", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e4", FromNodeId = "pQuery", ToNodeId = "m1", Mode = "sequential" },
+                new ScenarioFlowEdge { Id = "e5", FromNodeId = "m1", ToNodeId = "out1", Mode = "sequential" }
+            ]
+        };
+
+        var fake = new FakeScenarioFlowRouterLlmService
+        {
+            Next = ScenarioFlowRouterLlmResult.Success(new[] { "person-extractor", "person-query" })
+        };
+
+        var order = new List<string>();
+        var interpreter = new ScenarioFlowGraphInterpreter();
+        await interpreter.ExecuteAsync(
+            flow,
+            "Ryan can draw with chalk. Can Ryan draw outside?",
+            async (personaId, _, _, _) =>
+            {
+                order.Add(personaId);
+                await Task.Delay(personaId == "person-extractor" ? 30 : 0);
+                return personaId + ":ok";
+            },
+            Timeout.InfiniteTimeSpan,
+            "/tmp",
+            fake,
+            observer: null,
+            CancellationToken.None);
+
+        order.Should().Equal("person-extractor", "person-query");
+    }
+
+    [Fact]
     public async Task ExecuteAsync_LlmRouter_Clarification_ReturnsPrompt()
     {
         var flow = new ScenarioFlowDocument
@@ -371,6 +424,18 @@ public sealed class ScenarioFlowGraphInterpreterTests
     private static JsonElement? JsonRouterLlm()
     {
         var json = JsonSerializer.Serialize(new { routerMode = "llm" });
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.Clone();
+    }
+
+    private static JsonElement? JsonRouterLlmSequential()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            routerMode = "llm",
+            routerTargetPolicy = "all_matching",
+            routerBranchExecution = "sequential"
+        });
         using var doc = JsonDocument.Parse(json);
         return doc.RootElement.Clone();
     }

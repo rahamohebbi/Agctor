@@ -60,6 +60,8 @@ tools:
 
     - load_schema
 
+    - person-visual-context
+
   deny:
 
     - write_document
@@ -75,6 +77,8 @@ memoryAccess:
     - schemas/people/**
 
     - views/**
+
+    - scenarios/**/visual/**
 
   write:
 

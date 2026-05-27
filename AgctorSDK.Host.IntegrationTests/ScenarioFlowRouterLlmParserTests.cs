@@ -72,6 +72,55 @@ public sealed class ScenarioFlowRouterLlmParserTests
     }
 
     [Fact]
+    public void Parse_AutoBranchExecution_ReadsSequentialFromJson()
+    {
+        var raw = """
+            {"schemaVersion":"1.0","targets":[
+              {"personaId":"person-extractor","confidence":0.9},
+              {"personaId":"person-query","confidence":0.85}
+            ],"needsClarification":false,"branchExecutionMode":"sequential"}
+            """;
+        var cfg = new ScenarioFlowRouterConfig(
+            ScenarioFlowRouterMode.Llm,
+            null,
+            null,
+            null,
+            null,
+            ScenarioFlowRouterTargetPolicy.AllMatching,
+            ScenarioFlowRouterBranchExecution.Auto);
+        var r = ScenarioFlowRouterLlmParser.Parse(
+            raw,
+            new[] { "person-extractor", "person-query" },
+            cfg);
+        r.Ok.Should().BeTrue();
+        r.ResolvedBranchExecution.Should().Be(ScenarioFlowRouterBranchExecution.Sequential);
+    }
+
+    [Fact]
+    public void Parse_AutoBranchExecution_InfersSequentialWhenOmitted()
+    {
+        var raw = """
+            {"schemaVersion":"1.0","targets":[
+              {"personaId":"person-extractor","confidence":0.9},
+              {"personaId":"person-query","confidence":0.85}
+            ],"needsClarification":false}
+            """;
+        var cfg = new ScenarioFlowRouterConfig(
+            ScenarioFlowRouterMode.Llm,
+            null,
+            null,
+            null,
+            null,
+            ScenarioFlowRouterTargetPolicy.AllMatching,
+            ScenarioFlowRouterBranchExecution.Auto);
+        var r = ScenarioFlowRouterLlmParser.Parse(
+            raw,
+            new[] { "person-extractor", "person-query" },
+            cfg);
+        r.ResolvedBranchExecution.Should().Be(ScenarioFlowRouterBranchExecution.Sequential);
+    }
+
+    [Fact]
     public void Parse_ClarificationShortCircuitsTargets()
     {
         var raw = """

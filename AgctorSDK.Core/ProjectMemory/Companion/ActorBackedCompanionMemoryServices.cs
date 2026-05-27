@@ -7,6 +7,7 @@ using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory.Companion.Actors;
 using AgctorSDK.Core.ProjectMemory.LifeSignals;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory.Visual;
 
 namespace AgctorSDK.Core.ProjectMemory.Companion;
 
@@ -21,16 +22,22 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
     private readonly IActorRuntimeAdapter _runtime;
     private readonly ISessionStore _sessions;
     private readonly IProjectMemoryPipelineRunner _pipeline;
+    private readonly IVisualPipelineService? _visualPipeline;
+    private readonly VisualAssetCatalogStore? _visualCatalog;
     private readonly SemaphoreSlim _spawnLock = new(1, 1);
 
     public ActorBackedCompanionMemoryServices(
         IActorRuntimeAdapter runtime,
         ISessionStore sessions,
-        IProjectMemoryPipelineRunner pipeline)
+        IProjectMemoryPipelineRunner pipeline,
+        IVisualPipelineService? visualPipeline = null,
+        VisualAssetCatalogStore? visualCatalog = null)
     {
         _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _visualPipeline = visualPipeline;
+        _visualCatalog = visualCatalog;
     }
 
     public async Task<SessionEndIngestResult> TryIngestOnSessionEndAsync(
@@ -93,7 +100,7 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
     private Task<string> EnsureSessionEndIngestActorAsync(CancellationToken cancellationToken) =>
         EnsureActorAsync(
             "companion:session-end-ingest",
-            id => new SessionEndIngestActor(id, _sessions, _pipeline),
+            id => new SessionEndIngestActor(id, _sessions, _pipeline, _visualPipeline, _visualCatalog),
             cancellationToken);
 
     private Task<string> EnsureProactiveSignalsActorAsync(CancellationToken cancellationToken) =>

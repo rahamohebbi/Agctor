@@ -10,6 +10,7 @@ using AgctorSDK.Host.Services.ProjectMemory;
 using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Services.Sessions;
 using AgctorSDK.Host.Services.Traces;
+using AgctorSDK.Host.Services.Visual;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -60,6 +61,11 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IScenarioFlowRouterLlmService, ScenarioFlowRouterLlmService>();
         services.AddSingleton<IScenarioFlowExecutionService, ScenarioFlowExecutionService>();
         services.AddSingleton<IAgentTypeEnablementService, AgentTypeEnablementService>();
+        services.AddSingleton<VisualTranscriptEnricher>();
+        services.AddSingleton<VisualPlaygroundAttachmentService>();
+        services.AddSingleton<GenericInboxVisualEnricher>();
+        services.AddSingleton<VisualIngestToolBridge>();
+        services.AddSingleton<PlaygroundFocusPostHook>();
         services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
         services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.LLMAgentDetailProvider>();

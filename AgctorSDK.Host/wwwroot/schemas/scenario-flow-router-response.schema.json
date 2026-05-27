@@ -43,6 +43,11 @@
     "clarificationPrompt": {
       "type": ["string", "null"],
       "description": "Suggested follow-up question when needsClarification is true."
+    },
+    "branchExecutionMode": {
+      "type": "string",
+      "enum": ["parallel", "sequential"],
+      "description": "When Router uses all_matching + routerBranchExecution auto: run selected branches in parallel or one after another."
     }
   }
 }

@@ -12,6 +12,9 @@ public static class ScenarioFlowLlmNodeToolIds
 {
     public const string PersonMemoryContext = "person-memory-context";
     public const string ApplyMemoryIntents = "apply-memory-intents";
+    public const string PersonVisualContext = "person-visual-context";
+    public const string PersonVisualIngest = "person-visual-ingest";
+    public const string PersonVisualExtract = "person-visual-extract";
 
     /// <summary>Stable ids matching host HTTP tool primary ids in <c>AgctorToolCatalog</c>.</summary>
     public static IReadOnlyList<string> ParseFlowDeclaredToolIds(JsonElement? config)
@@ -46,6 +49,15 @@ public static class ScenarioFlowLlmNodeToolIds
                 case "person-memory-and-write":
                     AddDistinct(list, PersonMemoryContext);
                     AddDistinct(list, ApplyMemoryIntents);
+                    break;
+                case "person-visual-read":
+                case "person_visual_read":
+                    AddDistinct(list, PersonVisualContext);
+                    break;
+                case "person-visual-full":
+                case "person_visual_full":
+                    AddDistinct(list, PersonMemoryContext);
+                    AddDistinct(list, PersonVisualContext);
                     break;
             }
         }

@@ -212,20 +212,68 @@ namespace AgctorSDK.Core.Agents
         public bool IsToolActorType(string typeName) => _innerFactory.IsToolActorType(typeName);
 
         /// <inheritdoc/>
-        public Task<ToolResult> InvokeToolByPromptAsync(
+        public async Task<ToolResult> InvokeToolByPromptAsync(
             string toolTypeName,
             string prompt,
             string? invokingAgentId = null,
-            CancellationToken cancellationToken = default) =>
-            _innerFactory.InvokeToolByPromptAsync(toolTypeName, prompt, invokingAgentId, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            var request = new ToolRequest
+            {
+                Operation = "Prompt",
+                Parameters = new Dictionary<string, object> { ["prompt"] = prompt ?? "" }
+            };
+            return await InvokeToolRequestAsync(toolTypeName, request, invokingAgentId, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         /// <inheritdoc/>
-        public Task<ToolResult> InvokeToolRequestAsync(
+        public async Task<ToolResult> InvokeToolRequestAsync(
             string toolTypeName,
             ToolRequest request,
             string? invokingAgentId = null,
-            CancellationToken cancellationToken = default) =>
-            _innerFactory.InvokeToolRequestAsync(toolTypeName, request, invokingAgentId, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            var op = string.IsNullOrWhiteSpace(request.Operation) ? "Handle" : request.Operation.Trim();
+            using var activity = _activityTracker.StartActivity($"tool.{ToolTraceTimelineDetail.FriendlyToolLabel(toolTypeName)}");
+            activity.SetAttribute("display.name", ToolTraceTimelineDetail.FormatDisplayName(toolTypeName, op));
+            activity.SetAttribute("tool.id", toolTypeName);
+            activity.SetAttribute("tool.operation", op);
+            if (!string.IsNullOrWhiteSpace(invokingAgentId))
+                activity.SetAttribute("tool.invoking_agent", invokingAgentId);
+
+            try
+            {
+                var result = await _innerFactory
+                    .InvokeToolRequestAsync(toolTypeName, request, invokingAgentId, cancellationToken)
+                    .ConfigureAwait(false);
+                activity.SetTimelineDetailJson(
+                    ToolTraceTimelineDetail.BuildInvokeJson(
+                        toolTypeName,
+                        op,
+                        request.Parameters,
+                        result,
+                        invokingAgentId));
+                activity.SetStatus(
+                    result.IsSuccess ? ActivityStatus.Ok : ActivityStatus.Error,
+                    result.IsSuccess ? null : result.Error);
+                return result;
+            }
+            catch (Exception ex)
+            {
+                activity.SetTimelineDetailJson(
+                    ToolTraceTimelineDetail.BuildInvokeJson(
+                        toolTypeName,
+                        op,
+                        request.Parameters,
+                        result: null,
+                        invokingAgentId,
+                        exception: ex));
+                activity.SetStatus(ActivityStatus.Error);
+                activity.RecordException(ex);
+                throw;
+            }
+        }
 
         /// <inheritdoc/>
         public IAgent CreateAgent(string agentType, string id, AgentOptions options)

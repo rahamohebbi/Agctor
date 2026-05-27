@@ -9,6 +9,7 @@ items:
   scenarioSegment: person_1
   source: user_approved
   capturedAtUtc: 2026-05-06T03:31:44.7352018+00:00
+  replayedAtUtc: 
 - proposalId: 9da7f7a24d5c831cf7d82b1483d6f5676dfee55b728b0de3160be529cd8f6165
   entityKey: raha
   knowledgeType: profile_fact
@@ -18,3 +19,24 @@ items:
   scenarioSegment: person_1
   source: user_approved
   capturedAtUtc: 2026-05-06T04:18:08.3020595+00:00
+  replayedAtUtc: 
+- proposalId: 90a1557b844498bdabba33ca8c78c877015e6c804ec2a1dbbeb55e95050bd746
+  entityKey: raha
+  knowledgeType: profile_fact
+  attribute: appearance
+  value: man with dark hair wearing a suit and bowtie
+  confidence: 1
+  scenarioSegment: person_3
+  source: user_approved
+  capturedAtUtc: 2026-05-20T22:33:54.9717013+00:00
+  replayedAtUtc: 
+- proposalId: 6dcbac8ef95b6ccce4a6b42414c876bb8cbb09e392bcaf9a26883c53de8f5309
+  entityKey: me
+  knowledgeType: physical_attribute
+  attribute: accessories
+  value: wearing a blue sun hat and sunglasses
+  confidence: 1
+  scenarioSegment: person_3
+  source: user_approved
+  capturedAtUtc: 2026-05-24T17:14:27.8120733+00:00
+  replayedAtUtc: 

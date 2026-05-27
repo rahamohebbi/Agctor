@@ -33,17 +33,35 @@ public static class ProjectMemoryPromptBuilder
 
         if (!string.IsNullOrWhiteSpace(activeSubjectEntityKey))
         {
-            var displayBlock = string.IsNullOrWhiteSpace(activeSubjectDisplayName)
-                ? activeSubjectEntityKey!.Trim()
-                : activeSubjectDisplayName!.Trim() + " (" + activeSubjectEntityKey!.Trim() + ")";
-            sys += "\nActive subject for this scenario: " + displayBlock
-                + "\nWhen the user does not name a person explicitly (any language), set entityKey to '" + activeSubjectEntityKey!.Trim() + "'."
-                + "\nNever use the scenario id or folder name (e.g. 'person_1') as an entityKey.\n";
+            var sb = new StringBuilder(sys);
+            AppendActiveSubjectHint(sb, activeSubjectEntityKey, activeSubjectDisplayName);
+            sys = sb.ToString();
         }
 
         if (!string.IsNullOrWhiteSpace(conversationPrefix))
             sys += "\nPrior conversation:\n" + conversationPrefix.Trim() + "\n---\n";
         return sys + "\nInput:\n" + userMessage;
+    }
+
+    /// <summary>Shared active-subject block for extractor prompts (playground + pipeline).</summary>
+    public static void AppendActiveSubjectHint(
+        StringBuilder sb,
+        string? activeSubjectEntityKey,
+        string? activeSubjectDisplayName)
+    {
+        if (string.IsNullOrWhiteSpace(activeSubjectEntityKey))
+            return;
+
+        var key = activeSubjectEntityKey.Trim();
+        var displayBlock = string.IsNullOrWhiteSpace(activeSubjectDisplayName)
+            ? key
+            : activeSubjectDisplayName.Trim() + " (" + key + ")";
+        sb.Append("\n\nActive subject for this scenario: ").Append(displayBlock)
+            .Append("\nWhen the user does not name a person explicitly (any language), set entityKey to '")
+            .Append(key)
+            .Append("'.")
+            .Append("\nNever use placeholders such as user, unknown, or the scenario id as entityKey.")
+            .Append("\nFirst-person references (I, me, my) refer to this active subject.\n");
     }
 
     public static string BuildQueryPrompt(
@@ -56,7 +74,9 @@ public static class ProjectMemoryPromptBuilder
         var prefix = string.IsNullOrWhiteSpace(conversationPrefix)
             ? ""
             : "Prior conversation:\n" + conversationPrefix.Trim() + "\n---\n";
-        return instructions + "\nContext:\n" + entityContext + "\n" + prefix + "Question:\n" + userMessage;
+        return instructions + "\nContext:\n" + entityContext
+               + "\nUse stored context together with factual statements in the Question below."
+               + "\n" + prefix + "Question:\n" + userMessage;
     }
 
     public static string BuildEntityContext(IEnumerable<(string EntityKey, string Profile)> profiles)

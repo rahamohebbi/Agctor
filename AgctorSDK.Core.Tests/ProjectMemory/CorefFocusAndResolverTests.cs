@@ -91,7 +91,7 @@ public sealed class CorefFocusAndResolverTests
     }
 
     [TestMethod]
-    public async Task LlmCorefResolver_DoesNotCallLlm_WhenMessageNamesEntityExplicitly()
+    public async Task LlmCorefResolver_DoesNotCallLlm_WhenMessageHasNoImplicitReference()
     {
         var llm = new ScriptedLlm(throwIfCalled: true);
         var resolver = new LlmConversationCoreferenceResolver(llm);
@@ -99,7 +99,6 @@ public sealed class CorefFocusAndResolverTests
         {
             UserMessage = "Raha lives in Tehran now",
             ConversationPrefix = "User: hi\n",
-            // Simulate stale focus from a prior run/session: explicit naming in this turn must override it.
             CurrentFocus = new ConversationFocus { EntityKey = "person1", DisplayName = "Person 1" },
             KnownEntities = new[]
             {
@@ -108,7 +107,31 @@ public sealed class CorefFocusAndResolverTests
         }).ConfigureAwait(false);
 
         Assert.IsFalse(resolution.Changed);
-        Assert.AreEqual("raha", resolution.ActiveSubjectEntityKey);
+        Assert.AreEqual("person1", resolution.ActiveSubjectEntityKey,
+            "Explicit naming is resolved by FocusSubjectResolver upstream; coref keeps current focus.");
+        Assert.AreEqual(0, llm.CallCount);
+    }
+
+    [TestMethod]
+    public async Task LlmCorefResolver_DoesNotPinSubject_WhenMultiplePeopleNamedWithoutPronouns()
+    {
+        var llm = new ScriptedLlm(throwIfCalled: true);
+        var resolver = new LlmConversationCoreferenceResolver(llm);
+        var resolution = await resolver.ResolveAsync(new CoreferenceRequest
+        {
+            UserMessage = "Ryan is Raha's son. Ryan's imagination is amazing.",
+            ConversationPrefix = "",
+            CurrentFocus = new ConversationFocus { EntityKey = "raha", DisplayName = "Raha" },
+            KnownEntities = new[]
+            {
+                new KnownEntity { EntityKey = "raha", DisplayName = "Raha Mohebbi" },
+                new KnownEntity { EntityKey = "ryan", DisplayName = "Ryan" }
+            }
+        }).ConfigureAwait(false);
+
+        Assert.IsFalse(resolution.Changed);
+        Assert.AreEqual("raha", resolution.ActiveSubjectEntityKey,
+            "Subject disambiguation belongs to FocusSubjectResolver, not coref rewrite.");
         Assert.AreEqual(0, llm.CallCount);
     }
 
@@ -159,7 +182,8 @@ public sealed class CorefFocusAndResolverTests
             CopyDir(src, temp);
 
             // Use heuristic resolver to keep this test deterministic; we are validating focus persistence.
-            var llmExtract = new ScriptedLlm(
+            var focusJson = """{"activeSubject":"raha","reason":"self-intro"}""";
+            var llmExtract = new ScriptedLlm(focusJson,
                 """{"memoryIntents":[{"entityKey":"raha","knowledgeType":"profile_fact","attribute":"name","value":"Raha","confidence":1}]}""");
 
             var services = new ServiceCollection();
@@ -199,12 +223,12 @@ public sealed class CorefFocusAndResolverTests
     [TestMethod]
     public async Task Coordinator_RewritesPronoun_AndPersistsFocus_AcrossSessions()
     {
-        // First the resolver answers (rewrite "He" → "Raha"), then the extractor answers
-        // with a name intent. Pipeline ordering: coref LLM call -> extractor LLM call.
+        // LLM ordering: focus-subject -> coref rewrite -> (extract later in persist step).
+        var focusJson = "{\"activeSubject\":\"raha\",\"reason\":\"pronoun-turn\"}";
         var rewriteJson = "{\"changed\":true,\"rewrittenMessage\":\"Raha likes basketball\",\"activeSubject\":\"raha\"}";
         var extractJson =
             "{\"memoryIntents\":[{\"entityKey\":\"raha\",\"knowledgeType\":\"preference\",\"attribute\":\"sport\",\"value\":\"basketball\",\"confidence\":1}]}";
-        var llm = new ScriptedLlm(rewriteJson, extractJson);
+        var llm = new ScriptedLlm(focusJson, rewriteJson, extractJson);
 
         var src = Path.Combine(RepoRoot(), "samples", "people-project");
         var temp = Path.Combine(Path.GetTempPath(), "pm-coord-" + Guid.NewGuid().ToString("N"));

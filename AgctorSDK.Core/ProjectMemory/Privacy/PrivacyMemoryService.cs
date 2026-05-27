@@ -1,8 +1,10 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.ProjectMemory.Visual;
 
 namespace AgctorSDK.Core.ProjectMemory.Privacy;
 
@@ -10,6 +12,12 @@ namespace AgctorSDK.Core.ProjectMemory.Privacy;
 public sealed class PrivacyMemoryService : IPrivacyMemoryService
 {
     private readonly CompanionPrivacySettingsStore _settingsStore = new();
+    private readonly IVisualPersonPrivacyPurge? _visualPurge;
+
+    public PrivacyMemoryService(IVisualPersonPrivacyPurge? visualPurge = null)
+    {
+        _visualPurge = visualPurge;
+    }
 
     public Task<CompanionPrivacySettings> GetSettingsAsync(string projectRoot, CancellationToken cancellationToken = default) =>
         _settingsStore.LoadAsync(projectRoot, cancellationToken);
@@ -23,7 +31,7 @@ public sealed class PrivacyMemoryService : IPrivacyMemoryService
         return settings;
     }
 
-    public Task<bool> ForgetPersonAsync(
+    public async Task<bool> ForgetPersonAsync(
         string projectRoot,
         string scenarioId,
         string entityKey,
@@ -31,15 +39,19 @@ public sealed class PrivacyMemoryService : IPrivacyMemoryService
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(entityKey))
-            return Task.FromResult(false);
+            return false;
 
-        var workspace = PersonaScenarioScope.GetEntityWorkspaceRoot(projectRoot, scenarioId);
-        var entityDir = Path.Combine(workspace, "people", PersonaScenarioScope.SanitizeFolderSegment(entityKey));
-        if (!Directory.Exists(entityDir))
-            return Task.FromResult(false);
+        var removedPeople = TryDeletePeopleFolder(projectRoot, scenarioId, entityKey);
+        var visualRemoved = 0;
+        if (_visualPurge != null)
+        {
+            var purge = await _visualPurge
+                .PurgePersonAsync(projectRoot, scenarioId, entityKey, cancellationToken)
+                .ConfigureAwait(false);
+            visualRemoved = purge.AssetsRemoved;
+        }
 
-        Directory.Delete(entityDir, recursive: true);
-        return Task.FromResult(true);
+        return removedPeople || visualRemoved > 0;
     }
 
     public Task<Stream> ExportScenarioPeopleZipAsync(
@@ -50,24 +62,57 @@ public sealed class PrivacyMemoryService : IPrivacyMemoryService
         cancellationToken.ThrowIfCancellationRequested();
         var workspace = PersonaScenarioScope.GetEntityWorkspaceRoot(projectRoot, scenarioId);
         var peopleDir = Path.Combine(workspace, "people");
-        if (!Directory.Exists(peopleDir))
-            throw new InvalidOperationException("Scenario people folder does not exist.");
+        var visualAssetsDir = Path.Combine(workspace, "visual", "assets");
+        var hasPeople = Directory.Exists(peopleDir);
+        var hasVisual = Directory.Exists(visualAssetsDir)
+                        && Directory.EnumerateFiles(visualAssetsDir, "*.yaml", SearchOption.TopDirectoryOnly).Any();
+        if (!hasPeople && !hasVisual)
+            throw new InvalidOperationException("Scenario people and visual folders do not exist.");
 
         var ms = new MemoryStream();
         using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            foreach (var file in Directory.EnumerateFiles(peopleDir, "*", SearchOption.AllDirectories))
+            if (hasPeople)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var rel = Path.GetRelativePath(peopleDir, file).Replace('\\', '/');
-                var entry = zip.CreateEntry(rel, CompressionLevel.Fastest);
-                using var entryStream = entry.Open();
-                using var input = File.OpenRead(file);
-                input.CopyTo(entryStream);
+                foreach (var file in Directory.EnumerateFiles(peopleDir, "*", SearchOption.AllDirectories))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var rel = "people/" + Path.GetRelativePath(peopleDir, file).Replace('\\', '/');
+                    AddZipEntry(zip, rel, file);
+                }
+            }
+
+            if (hasVisual)
+            {
+                foreach (var file in Directory.EnumerateFiles(visualAssetsDir, "*.yaml", SearchOption.TopDirectoryOnly))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var name = Path.GetFileName(file);
+                    AddZipEntry(zip, "visual/assets/" + name, file);
+                }
             }
         }
 
         ms.Position = 0;
         return Task.FromResult<Stream>(ms);
+    }
+
+    private static bool TryDeletePeopleFolder(string projectRoot, string scenarioId, string entityKey)
+    {
+        var workspace = PersonaScenarioScope.GetEntityWorkspaceRoot(projectRoot, scenarioId);
+        var entityDir = Path.Combine(workspace, "people", PersonaScenarioScope.SanitizeFolderSegment(entityKey));
+        if (!Directory.Exists(entityDir))
+            return false;
+
+        Directory.Delete(entityDir, recursive: true);
+        return true;
+    }
+
+    private static void AddZipEntry(ZipArchive zip, string entryName, string filePath)
+    {
+        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+        using var entryStream = entry.Open();
+        using var input = File.OpenRead(filePath);
+        input.CopyTo(entryStream);
     }
 }

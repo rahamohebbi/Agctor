@@ -7,11 +7,13 @@
     <div class="flex flex-wrap items-center justify-between gap-2">
         <div>
             <h3 class="text-base font-semibold text-gray-900 dark:text-white">@Model.Title</h3>
-            <p class="text-xs text-gray-500 dark:text-gray-400">Time on X axis, event sequence on Y axis.</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">Time on X axis, nested agent runs on Y axis. Tools stack under their parent LLM with a tree connector.</p>
         </div>
         <span data-role="status" class="text-xs text-gray-500 dark:text-gray-400">Waiting for trace...</span>
     </div>
     <p data-role="selection" class="mt-2 text-sm text-gray-600 dark:text-gray-300">No trace selected.</p>
+    <div data-role="tools-summary" class="mt-3 hidden rounded-lg border border-emerald-200 bg-emerald-50/70 p-2 dark:border-emerald-800 dark:bg-emerald-950/30"></div>
+    <div data-role="legend" class="mt-2 flex flex-wrap gap-2 text-[10px]"></div>
     <div class="mt-4 overflow-x-auto">
         <svg data-role="chart"
              class="w-full min-w-[720px] rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40"
@@ -57,6 +59,289 @@
             if (depth === 1) return hasResult ? '#2563eb' : '#3b82f6';
             if (depth === 2) return hasResult ? '#0891b2' : '#06b6d4';
             return hasResult ? '#059669' : '#10b981';
+        }
+
+        function parseDetailKind(evt) {
+            var raw = evt.timelineDetailJson || evt.TimelineDetailJson;
+            if (!raw) return null;
+            try {
+                var o = JSON.parse(raw);
+                return o.kind || null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function inferEventMeta(evt) {
+            var kind = (evt.eventKind || evt.EventKind || '').toLowerCase();
+            if (!kind || kind === 'other') {
+                var dk = parseDetailKind(evt);
+                if (dk === 'agctor.tool.invoke') kind = 'tool';
+                else if (dk === 'pm.playground.persona-llm') kind = 'llm';
+                else if (dk === 'pm.playground.ingest-disk') kind = 'ingest';
+                else if (dk === 'pm.playground.persist-assistant') kind = 'persist';
+                else if (dk === 'pm.playground.resolve') kind = 'resolve';
+                else if (dk === 'pm.playground.stream-root') kind = 'http';
+            }
+            var name = (evt.name || evt.Name || evt.label || '').toLowerCase();
+            if (!kind || kind === 'other') {
+                if (name.indexOf('tool.') === 0 || name.indexOf('tool.handle') >= 0) kind = 'tool';
+                else if (name.indexOf('persona-llm') >= 0) kind = 'llm';
+                else if (name.indexOf('ingest') >= 0) kind = 'ingest';
+                else if (name.indexOf('persist') >= 0) kind = 'persist';
+                else if (name.indexOf('resolve') >= 0) kind = 'resolve';
+                else if (name.indexOf('http.') === 0) kind = 'http';
+                else kind = 'other';
+            }
+            var status = (evt.status || evt.Status || (evt.hasResult ? 'ok' : 'running')).toLowerCase();
+            var palette = {
+                tool: { bar: status === 'error' ? '#b45309' : '#059669', badge: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100', icon: '🔧', label: 'Tool' },
+                llm: { bar: status === 'error' ? '#b91c1c' : '#7c3aed', badge: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-100', icon: '✦', label: 'LLM' },
+                ingest: { bar: status === 'error' ? '#b45309' : '#d97706', badge: 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100', icon: '💾', label: 'Ingest' },
+                persist: { bar: '#6366f1', badge: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/50 dark:text-indigo-100', icon: '📝', label: 'Persist' },
+                resolve: { bar: '#0891b2', badge: 'bg-cyan-100 text-cyan-900 dark:bg-cyan-900/50 dark:text-cyan-100', icon: '◎', label: 'Resolve' },
+                http: { bar: '#64748b', badge: 'bg-slate-100 text-slate-800 dark:bg-slate-800/70 dark:text-slate-100', icon: '⇄', label: 'HTTP' },
+                other: { bar: colorForDepth(Number(evt.depth || 0), !!evt.hasResult), badge: 'bg-gray-100 text-gray-800 dark:bg-gray-800/70 dark:text-gray-100', icon: '•', label: 'Step' }
+            };
+            return Object.assign({ kind: kind, status: status }, palette[kind] || palette.other);
+        }
+
+        function evtId(evt) {
+            return evt.id || evt.Id || '';
+        }
+
+        function evtParentId(evt) {
+            return evt.parentId || evt.ParentId || '';
+        }
+
+        function isAgentKind(kind) {
+            return kind === 'llm';
+        }
+
+        function isNestableUnderAgent(kind) {
+            return kind === 'tool' || kind === 'other';
+        }
+
+        /** Resolve display parent: prefer trace parentId; orphan tools attach to the next LLM run. */
+        function resolveDisplayParentId(evt, events, byId, index) {
+            var pid = evtParentId(evt);
+            var meta = inferEventMeta(evt);
+            if (pid && byId[pid]) {
+                var parentMeta = inferEventMeta(byId[pid].evt);
+                if (isAgentKind(parentMeta.kind) && isNestableUnderAgent(meta.kind))
+                    return pid;
+                if (meta.kind === 'other' && parentMeta.kind === 'tool')
+                    return pid;
+                if (meta.kind === 'ingest' && parentMeta.kind === 'ingest')
+                    return pid;
+            }
+            if (meta.kind === 'tool') {
+                for (var j = index + 1; j < events.length; j++) {
+                    if (inferEventMeta(events[j]).kind === 'llm')
+                        return evtId(events[j]);
+                }
+                for (var k = index - 1; k >= 0; k--) {
+                    if (inferEventMeta(events[k]).kind === 'llm')
+                        return evtId(events[k]);
+                }
+            }
+            return pid;
+        }
+
+        /** Build forest of timeline nodes with tool/step children grouped under agent runs. */
+        function buildTimelineForest(events) {
+            var byId = {};
+            events.forEach(function (evt, index) {
+                byId[evtId(evt)] = { evt: evt, idx: index, children: [] };
+            });
+            var displayParent = {};
+            events.forEach(function (evt, index) {
+                displayParent[evtId(evt)] = resolveDisplayParentId(evt, events, byId, index);
+            });
+            var roots = [];
+            events.forEach(function (evt) {
+                var id = evtId(evt);
+                var node = byId[id];
+                var parentId = displayParent[id];
+                if (parentId && byId[parentId] && parentId !== id)
+                    byId[parentId].children.push(node);
+                else
+                    roots.push(node);
+            });
+            function sortNodes(nodes) {
+                nodes.sort(function (a, b) {
+                    return Number(a.evt.sequence || 0) - Number(b.evt.sequence || 0);
+                });
+                nodes.forEach(function (n) { sortNodes(n.children); });
+            }
+            sortNodes(roots);
+            return roots;
+        }
+
+        /** Depth-first flattening for gantt rows and grouped cards. */
+        function flattenTimelineForest(roots) {
+            var rows = [];
+            function walk(node, nestLevel, agentRootIdx) {
+                var meta = inferEventMeta(node.evt);
+                var isAgent = isAgentKind(meta.kind);
+                var rootIdx = isAgent ? node.idx : agentRootIdx;
+                rows.push({
+                    evt: node.evt,
+                    idx: node.idx,
+                    nestLevel: nestLevel,
+                    agentRootIdx: rootIdx,
+                    hasChildren: node.children.length > 0,
+                    childCount: node.children.length
+                });
+                node.children.forEach(function (child) {
+                    walk(child, nestLevel + 1, rootIdx != null ? rootIdx : (isAgent ? node.idx : agentRootIdx));
+                });
+            }
+            roots.forEach(function (root) { walk(root, 0, null); });
+            return rows;
+        }
+
+        function renderEventCard(evt, index, nestLevel, childCount) {
+            const meta = inferEventMeta(evt);
+            const startedAt = evt.startedAtUtc ? new Date(evt.startedAtUtc).toLocaleTimeString() : 'n/a';
+            const hasDetail = !!(evt.timelineDetailJson || evt.TimelineDetailJson);
+            const hint = meta.kind === 'tool'
+                ? 'Click to inspect tool parameters and output preview.'
+                : hasDetail
+                  ? 'Click for prompt/output or file previews.'
+                  : 'No drill-down payload.';
+            const border =
+                meta.kind === 'tool'
+                    ? 'border-emerald-300 dark:border-emerald-700 hover:border-emerald-500'
+                    : meta.kind === 'llm'
+                      ? 'border-violet-300 dark:border-violet-700 hover:border-violet-500'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-violet-400 dark:hover:border-violet-500';
+            const indent = nestLevel > 0 ? ' ml-' + Math.min(nestLevel * 4, 12) : '';
+            const treeLine = nestLevel > 0
+                ? ' border-l-2 ' + (meta.kind === 'tool' ? 'border-emerald-400/70' : 'border-gray-300 dark:border-gray-600') + ' pl-3'
+                : '';
+            const childBadge = childCount > 0 && meta.kind === 'llm'
+                ? '<span class="inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100">' +
+                  esc(String(childCount)) + ' tool' + (childCount === 1 ? '' : 's') + '</span>'
+                : '';
+            return '<div data-timeline-idx="' + index + '" tabindex="0" role="button" class="' + indent + treeLine + ' p-3 rounded border ' + border + ' bg-gray-50 dark:bg-gray-900/40 cursor-pointer focus:outline-none focus:ring-2 focus:ring-violet-400">' +
+                '<div class="flex flex-wrap items-center justify-between gap-2">' +
+                '<div class="flex flex-wrap items-center gap-2 min-w-0">' +
+                '<span class="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ' + meta.badge + '">' + esc(meta.icon + ' ' + meta.label) + '</span>' +
+                '<p class="text-sm font-medium text-gray-900 dark:text-white truncate">#' + esc(String(evt.sequence)) + ' ' + esc(evt.label || evt.name || 'Activity') + '</p>' +
+                childBadge +
+                '</div>' +
+                '<span class="text-xs text-gray-500 dark:text-gray-400">' + esc(startedAt) + '</span>' +
+                '</div>' +
+                '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">start ' + esc(Number(evt.startOffsetMs || 0).toFixed(1)) + 'ms, duration ' + esc(Number(evt.durationMs || 0).toFixed(1)) + 'ms</p>' +
+                '<p class="mt-1 text-[11px] text-violet-700 dark:text-violet-300">' + esc(hint) + '</p>' +
+                '</div>';
+        }
+
+        function renderDetailsHierarchy(roots) {
+            function renderNode(node, depth) {
+                var meta = inferEventMeta(node.evt);
+                var agentChildren = node.children.filter(function (c) {
+                    return isNestableUnderAgent(inferEventMeta(c.evt).kind);
+                });
+                var otherChildren = node.children.filter(function (c) {
+                    return agentChildren.indexOf(c) < 0;
+                });
+                var html = '';
+                if (isAgentKind(meta.kind) && agentChildren.length > 0) {
+                    html += '<div class="rounded-lg border border-violet-200 dark:border-violet-800 bg-white/50 dark:bg-gray-900/30 p-2 space-y-1">';
+                    html += renderEventCard(node.evt, node.idx, depth, agentChildren.length);
+                    html += '<div class="relative ml-3 pl-3 border-l-2 border-emerald-400/60 dark:border-emerald-700/70 space-y-1">';
+                    agentChildren.forEach(function (child) {
+                        html += renderEventCard(child.evt, child.idx, depth + 1, child.children.length);
+                        child.children.forEach(function (grand) {
+                            html += renderEventCard(grand.evt, grand.idx, depth + 2, 0);
+                        });
+                    });
+                    html += '</div></div>';
+                    otherChildren.forEach(function (child) {
+                        html += renderNode(child, depth);
+                    });
+                    return html;
+                }
+                html += renderEventCard(node.evt, node.idx, depth, node.children.length);
+                node.children.forEach(function (child) {
+                    html += renderNode(child, depth + 1);
+                });
+                return html;
+            }
+            return roots.map(function (root) { return renderNode(root, 0); }).join('');
+        }
+
+        function renderLegend(root) {
+            var legend = root.querySelector('[data-role="legend"]');
+            if (!legend) return;
+            var items = [
+                ['tool', '🔧 Tools', 'emerald'],
+                ['llm', '✦ LLM', 'violet'],
+                ['ingest', '💾 Ingest', 'amber'],
+                ['persist', '📝 Persist', 'indigo'],
+                ['resolve', '◎ Resolve', 'cyan']
+            ];
+            legend.innerHTML = items
+                .map(function (it) {
+                    return (
+                        '<span class="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2 py-0.5 dark:border-gray-600 dark:bg-gray-900/60">' +
+                        '<span aria-hidden="true">' +
+                        it[1].split(' ')[0] +
+                        '</span><span>' +
+                        esc(it[1].substring(2)) +
+                        '</span></span>'
+                    );
+                })
+                .join('');
+        }
+
+        function renderToolsSummary(root, events, displayRows) {
+            var box = root.querySelector('[data-role="tools-summary"]');
+            if (!box) return;
+            var tools = events.filter(function (e) {
+                return inferEventMeta(e).kind === 'tool';
+            });
+            if (tools.length === 0) {
+                box.classList.add('hidden');
+                box.innerHTML = '';
+                return;
+            }
+            box.classList.remove('hidden');
+            var agentLabelByIdx = {};
+            (displayRows || []).forEach(function (row) {
+                if (row.agentRootIdx != null && inferEventMeta(events[row.agentRootIdx]).kind === 'llm')
+                    agentLabelByIdx[row.idx] = events[row.agentRootIdx].label || events[row.agentRootIdx].name || 'Agent';
+            });
+            var chips = tools
+                .map(function (t) {
+                    var meta = inferEventMeta(t);
+                    var label = t.label || t.name || 'Tool';
+                    var agent = agentLabelByIdx[events.indexOf(t)] || '';
+                    var chipLabel = agent ? agent + ' → ' + label : label;
+                    var st =
+                        meta.status === 'error'
+                            ? 'border-amber-400 text-amber-900 dark:border-amber-600 dark:text-amber-200'
+                            : 'border-emerald-300 text-emerald-900 dark:border-emerald-700 dark:text-emerald-100';
+                    return (
+                        '<button type="button" data-timeline-idx="' +
+                        events.indexOf(t) +
+                        '" class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ' +
+                        st +
+                        ' bg-white/80 dark:bg-gray-950/50 hover:ring-2 hover:ring-emerald-400/60">' +
+                        '<span aria-hidden="true">🔧</span>' +
+                        esc(chipLabel) +
+                        '</button>'
+                    );
+                })
+                .join('');
+            box.innerHTML =
+                '<p class="text-[10px] font-semibold uppercase tracking-wide text-emerald-900 dark:text-emerald-200 mb-1.5">Tools used (' +
+                tools.length +
+                ')</p><div class="flex flex-wrap gap-1.5">' +
+                chips +
+                '</div>';
         }
 
         function renderEmpty(root, message, selectionLabel) {
@@ -217,6 +502,55 @@
                     detailCard('Persona chain summary', chainInner) +
                     '</div>';
             }
+            if (k === 'agctor.tool.invoke') {
+                var paramsHtml = '';
+                if (o.parameters && o.parameters.length) {
+                    paramsHtml = '<table class="mt-1 text-xs w-full"><thead><tr class="text-left text-gray-500 dark:text-gray-400"><th class="pr-2">param</th><th>value</th></tr></thead><tbody>';
+                    o.parameters.forEach(function (p) {
+                        paramsHtml +=
+                            '<tr class="align-top"><td class="pr-2 font-mono">' +
+                            esc(p.key) +
+                            '</td><td class="break-all">' +
+                            esc(p.value) +
+                            (p.truncated ? ' <span class="text-amber-700 dark:text-amber-300">(truncated)</span>' : '') +
+                            '</td></tr>';
+                    });
+                    paramsHtml += '</tbody></table>';
+                } else {
+                    paramsHtml = '<p class="text-xs text-gray-500 dark:text-gray-400">No parameters recorded.</p>';
+                }
+                var outcomeInner =
+                    '<p class="text-xs"><span class="font-medium">Success:</span> ' +
+                    esc(String(o.success)) +
+                    (o.error ? ' · <span class="text-red-700 dark:text-red-300">' + esc(o.error) + '</span>' : '') +
+                    '</p>';
+                if (o.outputType) outcomeInner += '<p class="text-xs text-gray-600 dark:text-gray-400">Output type: <code class="text-[11px]">' + esc(o.outputType) + '</code></p>';
+                if (o.outputChars != null) outcomeInner += '<p class="text-xs text-gray-600 dark:text-gray-400">Output length: ' + esc(String(o.outputChars)) + ' chars</p>';
+                if (o.outputTruncated) outcomeInner += '<p class="text-xs text-amber-700 dark:text-amber-300">Output preview truncated for trace size.</p>';
+                if (o.outputPreview) {
+                    outcomeInner +=
+                        '<pre class="max-h-72 overflow-auto text-xs bg-gray-50 dark:bg-black/40 p-2 rounded border border-gray-100 dark:border-gray-700 whitespace-pre-wrap break-words">' +
+                        esc(o.outputPreview) +
+                        '</pre>';
+                }
+                var inputInner =
+                    '<p class="text-xs"><span class="font-medium">Tool:</span> <code class="text-[11px]">' +
+                    esc(o.toolId || '') +
+                    '</code></p>' +
+                    '<p class="text-xs"><span class="font-medium">Operation:</span> <code class="text-[11px]">' +
+                    esc(o.operation || '') +
+                    '</code></p>';
+                if (o.invokingAgentId) {
+                    inputInner += '<p class="text-xs"><span class="font-medium">Invoked for agent:</span> <code class="text-[11px]">' + esc(o.invokingAgentId) + '</code></p>';
+                }
+                inputInner += paramsHtml;
+                return (
+                    '<div class="space-y-3">' +
+                    detailCard('Input (tool request)', inputInner) +
+                    detailCard('Outcome (tool result)', outcomeInner) +
+                    '</div>'
+                );
+            }
             if (k === 'pm.playground.resolve') {
                 const input = o.input || {};
                 const ev = o.evidence || {};
@@ -309,22 +643,35 @@
             }
 
             const width = 960;
-            const leftPad = 250;
+            const leftPad = 280;
             const rightPad = 24;
             const topPad = 42;
             const rowHeight = 34;
             const plotWidth = width - leftPad - rightPad;
             const events = data.events.slice();
+            const forest = buildTimelineForest(events);
+            const displayRows = flattenTimelineForest(forest);
             const totalDuration = Math.max(Number(data.totalDurationMs || 0), 1);
-            const chartHeight = Math.max(Number(root.dataset.heightPx || 360), topPad + (events.length * rowHeight) + 24);
+            const chartHeight = Math.max(Number(root.dataset.heightPx || 360), topPad + (displayRows.length * rowHeight) + 24);
+
+            applySelection(root, selectionLabel);
+            renderLegend(root);
+            renderToolsSummary(root, events, displayRows);
+
+            var toolCount = events.filter(function (e) {
+                return inferEventMeta(e).kind === 'tool';
+            }).length;
 
             if (status) {
                 const durationLabel = totalDuration >= 1000
                     ? (totalDuration / 1000).toFixed(2) + 's'
                     : totalDuration.toFixed(1) + 'ms';
-                status.textContent = events.length + ' events across ' + durationLabel;
+                status.textContent =
+                    events.length +
+                    ' events across ' +
+                    durationLabel +
+                    (toolCount > 0 ? ' · ' + toolCount + ' tool' + (toolCount === 1 ? '' : 's') : '');
             }
-            applySelection(root, selectionLabel);
 
             let svg = '';
             svg += '<rect x="0" y="0" width="' + width + '" height="' + chartHeight + '" fill="transparent"></rect>';
@@ -338,21 +685,35 @@
                 svg += '<text x="' + x + '" y="18" text-anchor="middle" fill="#6b7280" font-size="12">' + esc(label) + '</text>';
             }
 
-            events.forEach(function(evt, index) {
-                const rowTop = topPad + (index * rowHeight);
-                const labelX = 12 + (Math.max(0, Number(evt.depth || 0)) * 14);
+            displayRows.forEach(function(row, rowIndex) {
+                const evt = row.evt;
+                const index = row.idx;
+                const meta = inferEventMeta(evt);
+                const rowTop = topPad + (rowIndex * rowHeight);
+                const nest = Math.max(0, Number(row.nestLevel || 0));
+                const labelX = 36 + (nest * 18);
                 const barX = leftPad + ((Number(evt.startOffsetMs || 0) / totalDuration) * plotWidth);
                 const barW = Math.max(6, (Number(evt.durationMs || 0) / totalDuration) * plotWidth);
-                const fill = colorForDepth(Number(evt.depth || 0), !!evt.hasResult);
+                const fill = meta.bar;
                 const durationLabel = Number(evt.durationMs || 0).toFixed(1) + 'ms';
+                const rowLabel = (evt.label || evt.name || 'Activity');
+                const barH = nest > 0 ? 18 : 22;
+                const barY = rowTop + (nest > 0 ? 8 : 6);
+                const treeX = 24 + (nest * 18);
 
                 svg += '<line x1="' + leftPad + '" y1="' + (rowTop + 17) + '" x2="' + (width - rightPad) + '" y2="' + (rowTop + 17) + '" stroke="#e5e7eb"></line>';
+                if (nest > 0) {
+                    svg += '<line x1="' + treeX + '" y1="' + (rowTop + 2) + '" x2="' + treeX + '" y2="' + (rowTop + 30) + '" stroke="' + (meta.kind === 'tool' ? '#34d399' : '#d1d5db') + '" stroke-width="2"></line>';
+                    svg += '<line x1="' + treeX + '" y1="' + (rowTop + 17) + '" x2="' + (labelX - 6) + '" y2="' + (rowTop + 17) + '" stroke="' + (meta.kind === 'tool' ? '#34d399' : '#d1d5db') + '" stroke-width="2"></line>';
+                }
                 svg += '<text x="12" y="' + (rowTop + 14) + '" fill="#6b7280" font-size="11">#' + esc(String(evt.sequence)) + '</text>';
-                svg += '<text x="' + labelX + '" y="' + (rowTop + 28) + '" fill="#111827" font-size="12">' + esc(evt.label || evt.name || 'Activity') + '</text>';
+                svg += '<text x="28" y="' + (rowTop + 21) + '" fill="#374151" font-size="11">' + esc(meta.icon) + '</text>';
+                svg += '<text x="' + labelX + '" y="' + (rowTop + 14) + '" fill="#6b7280" font-size="9">' + esc(meta.label.toUpperCase()) + '</text>';
+                svg += '<text x="' + labelX + '" y="' + (rowTop + 28) + '" fill="#111827" font-size="12">' + esc(rowLabel) + '</text>';
                 svg += '<g data-timeline-idx="' + index + '" style="cursor:pointer" role="button" tabindex="-1">';
-                svg += '<title>' + esc((evt.label || evt.name || 'Activity') + ' | click for details | start ' + Number(evt.startOffsetMs || 0).toFixed(1) + 'ms | duration ' + durationLabel) + '</title>';
-                svg += '<rect x="' + barX + '" y="' + (rowTop + 6) + '" width="' + barW + '" height="22" rx="6" fill="' + fill + '" opacity="0.88"></rect>';
-                svg += '<text x="' + (barX + 8) + '" y="' + (rowTop + 21) + '" fill="white" font-size="11" pointer-events="none">' + esc(durationLabel) + '</text>';
+                svg += '<title>' + esc(rowLabel + ' [' + meta.label + '] | click for details | start ' + Number(evt.startOffsetMs || 0).toFixed(1) + 'ms | duration ' + durationLabel) + '</title>';
+                svg += '<rect x="' + barX + '" y="' + barY + '" width="' + barW + '" height="' + barH + '" rx="6" fill="' + fill + '" opacity="' + (nest > 0 ? '0.85' : '0.9') + '"></rect>';
+                svg += '<text x="' + (barX + 8) + '" y="' + (barY + 14) + '" fill="white" font-size="11" pointer-events="none">' + esc(durationLabel) + '</text>';
                 svg += '</g>';
             });
 
@@ -363,19 +724,8 @@
             }
 
             if (details) {
-                details.innerHTML = events.map(function(evt, index) {
-                    const startedAt = evt.startedAtUtc ? new Date(evt.startedAtUtc).toLocaleTimeString() : 'n/a';
-                    const hasDetail = !!(evt.timelineDetailJson || evt.TimelineDetailJson);
-                    const hint = hasDetail ? 'Click for prompt/output or file previews.' : 'No drill-down payload.';
-                    return '<div data-timeline-idx="' + index + '" tabindex="0" role="button" class="p-3 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 cursor-pointer hover:border-violet-400 dark:hover:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400">' +
-                        '<div class="flex flex-wrap items-center justify-between gap-2">' +
-                        '<p class="text-sm font-medium text-gray-900 dark:text-white">#' + esc(String(evt.sequence)) + ' ' + esc(evt.label || evt.name || 'Activity') + '</p>' +
-                        '<span class="text-xs text-gray-500 dark:text-gray-400">' + esc(startedAt) + '</span>' +
-                        '</div>' +
-                        '<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">start ' + esc(Number(evt.startOffsetMs || 0).toFixed(1)) + 'ms, duration ' + esc(Number(evt.durationMs || 0).toFixed(1)) + 'ms' + (evt.parentId ? ', parent ' + esc(evt.parentId) : '') + '</p>' +
-                        '<p class="mt-1 text-[11px] text-violet-700 dark:text-violet-300">' + esc(hint) + '</p>' +
-                        '</div>';
-                }).join('');
+                details.className = 'mt-4 space-y-3';
+                details.innerHTML = renderDetailsHierarchy(forest);
             }
 
             const panel = root.querySelector('[data-role="event-detail"]');

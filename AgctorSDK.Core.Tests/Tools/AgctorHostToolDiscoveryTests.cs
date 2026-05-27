@@ -20,6 +20,10 @@ public sealed class AgctorHostToolDiscoveryTests
 
         types.Should().Contain("person-memory-context");
         types.Should().Contain("apply-memory-intents");
+        types.Should().Contain("person-visual-ingest");
+        types.Should().Contain("person-visual-context");
+        types.Should().Contain("person-visual-extract");
+        types.Should().Contain("focus-subject");
         types.Should().Contain("file-system");
     }
 }

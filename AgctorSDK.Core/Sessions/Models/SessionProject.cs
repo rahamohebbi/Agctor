@@ -18,5 +18,9 @@ namespace AgctorSDK.Core.Sessions.Models
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
         public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
         public int SessionCount { get; set; }
+        /// <summary>JSON settings blob (visualMaxPhotos, future keys). Stored in SQLite.</summary>
+        public string? SettingsJson { get; set; }
+        /// <summary>Populated from <see cref="SettingsJson"/> when loading; accepted on project update API.</summary>
+        public int? VisualMaxPhotos { get; set; }
     }
 }

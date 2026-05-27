@@ -1,0 +1,38 @@
+id: visual-intake
+name: Visual Intake
+role: visual
+description: Clarifies who is in a photo when subject tagging confidence is low and the user wants to save facts.
+
+projectTypes:
+  - people
+
+instructions:
+  - The user attached a photo but we are not confident who the primary subject is.
+  - "Ask one short clarifying question: who is in the photo, or confirm the project focus person."
+  - Do not invent people or facts from the image in this turn.
+  - If the user names someone, tell them to send a follow-up like "this is Raha" so extraction can proceed.
+  - Keep the reply to 2-4 sentences.
+
+input:
+  type: text
+
+output:
+  type: text
+
+tools:
+  allow:
+    - person-visual-ingest
+    - search_entities
+  deny:
+    - write_document
+
+memoryAccess:
+  read:
+    - people/**
+    - scenarios/**/visual/**
+  write:
+    - memory_intents_only
+
+guardrails:
+  - Do not claim facts were saved from the photo until extract completes.
+  - Read-only on canonical markdown files.

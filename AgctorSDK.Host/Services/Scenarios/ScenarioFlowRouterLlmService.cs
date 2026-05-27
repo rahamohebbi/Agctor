@@ -120,7 +120,21 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         sb.AppendLine("  \"targets\": [ { \"personaId\": \"<id>\", \"confidence\": 0.0-1.0, \"reason\": \"optional\" } ],");
         sb.AppendLine("  \"needsClarification\": false,");
         sb.AppendLine("  \"clarificationPrompt\": null");
-        sb.AppendLine("}");
+        if (config.TargetPolicy == ScenarioFlowRouterTargetPolicy.AllMatching
+            && config.BranchExecution == ScenarioFlowRouterBranchExecution.Auto)
+        {
+            sb.AppendLine("  ,\"branchExecutionMode\": \"parallel\" | \"sequential\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("Branch execution (branchExecutionMode — required when multiple targets):");
+            sb.AppendLine("- sequential: one branch finishes before the next starts. Use when a write/save branch (e.g. person-extractor) and a read/answer branch (e.g. person-query) both apply in the SAME user message.");
+            sb.AppendLine("- parallel: branches run at the same time. Use when branches are independent and do not depend on each other's disk writes in this turn.");
+        }
+        else
+        {
+            sb.AppendLine("}");
+        }
+
         sb.AppendLine();
         sb.AppendLine("Rules:");
         sb.AppendLine("- schemaVersion must be \"1.0\".");

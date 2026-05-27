@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant UI as Playground UI
+    participant API as Host API
+    participant Ingest as person-visual-ingest
+    participant S3 as S3 blob store
+    participant Stream as message/stream
+    participant Pre as PreRouter
+    participant Flow as Scenario flow
+    participant Ctx as person-visual-context
+    participant Ext as person-visual-extract
+    participant Ollama as Ollama gemma4
+    participant Inbox as Generic inbox
+
+    U->>UI: Attach photo + caption
+    UI->>API: init-upload
+    API->>Ingest: InitUpload
+    Ingest-->>UI: assetId + presigned PUT
+    UI->>S3: PUT bytes
+    UI->>API: complete + annotate
+    API->>Ingest: CompleteUpload / Annotate
+    Ingest->>S3: verify
+
+    U->>UI: Send message
+    UI->>Stream: payload + attachments[]
+    Stream->>Pre: routingContext
+    Pre->>Flow: fitness-coach branch
+    Flow->>Ctx: BuildContext
+    Ctx->>S3: signed URLs
+    Ctx-->>Flow: visual appendix
+  par Async extract
+    Flow->>Ext: Extract
+    Ext->>S3: read image
+    Ext->>Ollama: POST /api/chat + images
+    Ollama-->>Ext: memoryIntents JSON
+    Ext->>Inbox: pending proposals
+    Stream-->>UI: SSE visual_extract_done
+  end
+    Flow->>Ollama: chat answer (optional images)
+    Stream-->>UI: SSE llm_delta / llm_done

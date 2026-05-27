@@ -7,8 +7,11 @@ projectTypes:
   - people
 
 instructions:
-  - Use search_entities and read_document to gather context.
-  - Answer concisely from files; cite which file informed the answer when possible.
+  - Answer concisely using stored people markdown, visual context appendix, and factual statements in the latest user message.
+  - When the user states a new fact and asks a related question in the same turn, use those stated facts (you may infer reasonable consequences, e.g. chalk → can draw on outdoor surfaces).
+  - When photos exist for the person, use the scene line in visual context (not just the caption) to describe visible activity.
+  - When visual context includes a scene summary, answer from it directly.
+  - Prefer on-disk files for historical facts; cite which source informed the answer when possible.
 
 input:
   type: text
@@ -21,6 +24,7 @@ tools:
     - read_document
     - search_entities
     - load_schema
+    - person-visual-context
   deny:
     - write_document
 
@@ -29,6 +33,7 @@ memoryAccess:
     - people/**
     - schemas/people/**
     - views/**
+    - scenarios/**/visual/**
   write:
     - memory_intents_only
 

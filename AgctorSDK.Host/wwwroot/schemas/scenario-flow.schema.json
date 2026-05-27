@@ -93,7 +93,7 @@
         },
         "config": {
           "type": "object",
-          "description": "Type-specific payload. Router (llm): routerMode, routerTargetPolicy (single_best | all_matching), maxTargets, minConfidence, fallbackPersonaId, llmRoutingInstructions. LlmNode: personaId (string); optional contextStrategy; optional toolIds / toolPreset.",
+          "description": "Type-specific payload. Router (llm): routerMode, routerTargetPolicy (single_best | all_matching), routerBranchExecution (parallel | sequential | auto), maxTargets, minConfidence, fallbackPersonaId, llmRoutingInstructions. LlmNode: personaId (string); optional contextStrategy; optional toolIds / toolPreset.",
           "additionalProperties": true
         }
       }

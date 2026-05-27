@@ -33,6 +33,10 @@
     var agentResetBtn = document.getElementById('pm-play-agent-reset');
     var sessionDetailEl = document.getElementById('pm-play-session-detail');
     var noSessionEl = document.getElementById('pm-play-no-session');
+    var attachChipsEl = document.getElementById('pm-play-attach-chips');
+    var attachBtn = document.getElementById('pm-play-attach');
+    var fileInput = document.getElementById('pm-play-file-input');
+    var composerEl = document.getElementById('pm-play-composer');
 
     if (
         !agentSel ||
@@ -74,6 +78,10 @@
     var confirmingDeleteSessionId = null;
     /** Last session list rendered (cached for in-place re-renders after rename). */
     var sessionsCache = [];
+    /** PRD-023b: visual upload helper (init after DOM ready). */
+    var visualUploader = null;
+    /** Shared turn group for pending attachments + next send. */
+    var streamTurnGroupId = null;
 
     /** Namespace prefix so we do not collide with other app keys. */
     var LS_LAST_SESSION_PREFIX = 'agctor.pm-play.lastSession.';
@@ -227,6 +235,81 @@
         return esc(source);
     }
 
+    function turnAttachments(turn) {
+        if (!turn) return [];
+        if (turn.attachments && turn.attachments.length) return turn.attachments;
+        if (turn.Attachments && turn.Attachments.length) return turn.Attachments;
+        var raw = turn.attachmentsJson || turn.AttachmentsJson;
+        if (!raw) return [];
+        try {
+            var env = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return env.attachments || env.Attachments || [];
+        } catch (eParse) {
+            return [];
+        }
+    }
+
+    function resolveAttachmentViewUrl(att) {
+        var url = att.viewUrl || att.ViewUrl || '';
+        if (url && url.indexOf('file://') !== 0) return url;
+        var assetId = att.assetId || att.AssetId;
+        if (assetId && activeProjectScenarioId) {
+            return (
+                '/api/visual/assets/' +
+                encodeURIComponent(assetId) +
+                '/view?scenarioId=' +
+                encodeURIComponent(activeProjectScenarioId)
+            );
+        }
+        return '';
+    }
+
+    function attachmentFooterLine(att, footerDetail) {
+        if (footerDetail) return footerDetail;
+        return att.statusDetail || att.StatusDetail || '';
+    }
+
+    function isAttachmentFailed(att) {
+        var st = String(att.state || att.State || '').toLowerCase();
+        var detail = attachmentFooterLine(att, null) || '';
+        return st === 'failed' || detail.toLowerCase().indexOf('failed') >= 0;
+    }
+
+    function renderAttachmentsBlock(attachments, footerDetail) {
+        if (!attachments || !attachments.length) return '';
+        var html = '<div class="mt-2 flex flex-wrap gap-2">';
+        attachments.forEach(function (att) {
+            var url = resolveAttachmentViewUrl(att);
+            if (url) {
+                html +=
+                    '<a href="' +
+                    esc(url) +
+                    '" target="_blank" rel="noopener" class="block"><img src="' +
+                    esc(url) +
+                    '" alt="" class="max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover" /></a>';
+            } else {
+                html +=
+                    '<span class="inline-flex items-center rounded border border-gray-200 px-2 py-1 text-xs text-gray-500 dark:border-gray-600">' +
+                    esc(att.fileName || att.assetId || 'image') +
+                    '</span>';
+            }
+            var line = attachmentFooterLine(att, footerDetail);
+            if (line) {
+                var warn = isAttachmentFailed(att);
+                html +=
+                    '<div class="w-full mt-1 text-[10px] ' +
+                    (warn
+                        ? 'text-amber-700 dark:text-amber-300 font-medium'
+                        : 'text-gray-500 dark:text-gray-400') +
+                    '">' +
+                    esc(line) +
+                    '</div>';
+            }
+        });
+        html += '</div>';
+        return html;
+    }
+
     function normalizeRole(roleRaw) {
         return typeof roleRaw === 'number'
             ? roleRaw === 0
@@ -248,7 +331,7 @@
         var turns = transcript && transcript.turns ? transcript.turns : [];
         if (turns.length === 0) {
             messages.innerHTML =
-                '<div class="text-gray-500 dark:text-gray-400 text-sm">No messages yet. Send a prompt below.</div>';
+                '<div class="text-gray-500 dark:text-gray-400 text-sm px-1">No messages yet. Send a prompt below.</div>';
             return;
         }
         var html = '';
@@ -256,20 +339,14 @@
             var role = normalizeRole(turn.role);
             var content = turn.content || '';
             var isUser = role === 'user';
-            var bubble = isUser
-                ? 'border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800 text-gray-800 dark:text-gray-100'
-                : 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 text-green-900 dark:text-green-100';
-            html += '<div class="rounded-lg border p-3 ' + bubble + '">';
-            html +=
-                '<div class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">' +
-                esc(roleLabel(role, turn)) +
-                '</div>';
             if (isUser) {
-                html += '<div class="whitespace-pre-wrap break-words">' + esc(content) + '</div>';
+                var userInner = content ? esc(content) : '';
+                var attachHtml = renderAttachmentsBlock(turnAttachments(turn), null);
+                html += buildUserTurnHtml(userInner, attachHtml, '');
             } else {
-                html += '<div class="pm-play-md">' + renderChatMarkdown(content) + '</div>';
+                var agentId = turn.agentId || 'assistant';
+                html += buildAssistantTurnHtml(agentId, '<div class="pm-play-md">' + renderChatMarkdown(content) + '</div>', {});
             }
-            html += '</div>';
         });
         messages.innerHTML = html;
         messages.scrollTop = messages.scrollHeight;
@@ -333,6 +410,223 @@
             }
         }
         return String(id || '');
+    }
+
+    /** Friendly display name (without id prefix). */
+    function agentShortName(id) {
+        var key = String(id || '').trim();
+        if (!key) return 'Assistant';
+        for (var i = 0; i < agentsCache.length; i++) {
+            if (agentsCache[i].id === key) {
+                return agentsCache[i].name || agentsCache[i].id;
+            }
+        }
+        return key.replace(/-/g, ' ');
+    }
+
+    function agentRoleText(id) {
+        var key = String(id || '').trim();
+        for (var i = 0; i < agentsCache.length; i++) {
+            if (agentsCache[i].id === key && agentsCache[i].role) {
+                return String(agentsCache[i].role);
+            }
+        }
+        return '';
+    }
+
+    function personaThemeKey(id) {
+        var key = String(id || '').trim().toLowerCase();
+        if (key.indexOf('extract') >= 0) return 'extractor';
+        if (key.indexOf('query') >= 0) return 'query';
+        if (key.indexOf('style') >= 0) return 'style';
+        if (key.indexOf('fitness') >= 0) return 'fitness';
+        if (key.indexOf('relationship') >= 0) return 'relationship';
+        if (key.indexOf('curator') >= 0) return 'curator';
+        return 'default';
+    }
+
+    function agentInitials(id) {
+        var name = agentShortName(id);
+        var parts = name.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        if (name.length >= 2) return name.slice(0, 2).toUpperCase();
+        return (name[0] || 'A').toUpperCase();
+    }
+
+    function parsePhasePersona(payload) {
+        if (!payload) return null;
+        var s = String(payload).trim();
+        if (s.indexOf('Running ') !== 0) return null;
+        return s.replace(/^Running\s+/i, '').replace(/[.…\u2026]+$/g, '').trim() || null;
+    }
+
+    function buildUserTurnHtml(content, attachmentsHtml, extraClass) {
+        return (
+            '<div class="pm-chat-turn pm-chat-turn--user ' +
+            (extraClass || '') +
+            '">' +
+            '<div class="pm-chat-avatar pm-chat-avatar--user" aria-hidden="true">You</div>' +
+            '<div class="pm-chat-body">' +
+            '<div class="pm-chat-head"><span class="pm-chat-name">You</span></div>' +
+            '<div class="pm-chat-bubble">' +
+            (content ? '<div class="whitespace-pre-wrap break-words">' + content + '</div>' : '') +
+            (attachmentsHtml || '') +
+            '</div></div></div>'
+        );
+    }
+
+    function buildAssistantTurnHtml(agentId, innerHtml, opts) {
+        opts = opts || {};
+        var theme = personaThemeKey(agentId);
+        var role = agentRoleText(agentId);
+        var phaseHtml = opts.phase
+            ? '<span class="pm-chat-phase' +
+              (opts.phaseLive ? ' pm-chat-phase--live' : '') +
+              '" data-role="chat-phase">' +
+              esc(opts.phase) +
+              '</span>'
+            : '';
+        return (
+            '<div class="pm-chat-turn pm-chat-turn--assistant pm-persona--' +
+            theme +
+            ' ' +
+            (opts.extraClass || '') +
+            '" data-agent-id="' +
+            esc(String(agentId || '')) +
+            '">' +
+            '<div class="pm-chat-avatar" aria-hidden="true" data-role="chat-avatar">' +
+            esc(agentInitials(agentId)) +
+            '</div>' +
+            '<div class="pm-chat-body">' +
+            '<div class="pm-chat-head">' +
+            '<span class="pm-chat-name" data-role="chat-name">' +
+            esc(agentShortName(agentId)) +
+            '</span>' +
+            (role ? '<span class="pm-chat-role" data-role="chat-role">' + esc(role) + '</span>' : '') +
+            phaseHtml +
+            '</div>' +
+            '<div class="pm-chat-bubble' +
+            (opts.streaming ? ' pm-chat-bubble--streaming' : '') +
+            '" data-role="chat-bubble">' +
+            innerHtml +
+            '</div></div></div>'
+        );
+    }
+
+    function typingIndicatorHtml() {
+        return (
+            '<div class="pm-typing" data-role="typing-indicator" aria-label="Assistant is typing">' +
+            '<span class="pm-typing-dot"></span><span class="pm-typing-dot"></span><span class="pm-typing-dot"></span>' +
+            '</div>'
+        );
+    }
+
+    /** Live streaming bubble with persona header + typing indicator. */
+    function createStreamingAssistantBubble(initialAgentId) {
+        var agentId = initialAgentId || defaultAgentIdForActive() || 'assistant';
+        var streamElId = 'pm-stream-' + Date.now();
+        var html =
+            '<div id="' +
+            streamElId +
+            '" class="pm-chat-turn pm-chat-turn--assistant pm-chat-turn--live pm-persona--' +
+            personaThemeKey(agentId) +
+            '" data-agent-id="' +
+            esc(String(agentId)) +
+            '">' +
+            '<div class="pm-chat-avatar" aria-hidden="true" data-role="chat-avatar">' +
+            esc(agentInitials(agentId)) +
+            '</div>' +
+            '<div class="pm-chat-body">' +
+            '<div class="pm-chat-head">' +
+            '<span class="pm-chat-name" data-role="chat-name">' +
+            esc(agentShortName(agentId)) +
+            '</span>' +
+            (agentRoleText(agentId)
+                ? '<span class="pm-chat-role" data-role="chat-role">' + esc(agentRoleText(agentId)) + '</span>'
+                : '') +
+            '<span class="pm-chat-phase pm-chat-phase--live" data-role="chat-phase">Connecting…</span>' +
+            '</div>' +
+            '<div class="pm-chat-bubble pm-chat-bubble--streaming" data-role="chat-bubble">' +
+            typingIndicatorHtml() +
+            '<div class="pm-play-md hidden" data-role="stream-body"></div>' +
+            '</div></div></div>';
+
+        messages.insertAdjacentHTML('beforeend', html);
+        messages.scrollTop = messages.scrollHeight;
+        var root = document.getElementById(streamElId);
+        var ui = {
+            root: root,
+            currentAgentId: agentId,
+            nameEl: root ? root.querySelector('[data-role="chat-name"]') : null,
+            roleEl: root ? root.querySelector('[data-role="chat-role"]') : null,
+            avatarEl: root ? root.querySelector('[data-role="chat-avatar"]') : null,
+            phaseEl: root ? root.querySelector('[data-role="chat-phase"]') : null,
+            typingEl: root ? root.querySelector('[data-role="typing-indicator"]') : null,
+            bodyEl: root ? root.querySelector('[data-role="stream-body"]') : null,
+            bubbleEl: root ? root.querySelector('[data-role="chat-bubble"]') : null,
+            setPhase: function (text, live) {
+                if (!ui.phaseEl) return;
+                ui.phaseEl.textContent = text || '';
+                ui.phaseEl.classList.toggle('pm-chat-phase--live', live !== false);
+            },
+            setPersona: function (nextId, phaseText) {
+                if (!nextId) return;
+                var changed =
+                    ui.currentAgentId &&
+                    String(nextId).toLowerCase() !== String(ui.currentAgentId).toLowerCase();
+                ui.currentAgentId = nextId;
+                if (root) {
+                    root.className =
+                        'pm-chat-turn pm-chat-turn--assistant pm-chat-turn--live pm-persona--' +
+                        personaThemeKey(nextId);
+                    root.setAttribute('data-agent-id', nextId);
+                }
+                if (ui.nameEl) ui.nameEl.textContent = agentShortName(nextId);
+                if (ui.roleEl) {
+                    var r = agentRoleText(nextId);
+                    ui.roleEl.textContent = r;
+                    ui.roleEl.style.display = r ? '' : 'none';
+                }
+                if (ui.avatarEl) ui.avatarEl.textContent = agentInitials(nextId);
+                if (phaseText) ui.setPhase(phaseText, true);
+                return changed;
+            },
+            appendPersonaDivider: function (nextId) {
+                if (!ui.bodyEl) return;
+                ui.bodyEl.classList.remove('hidden');
+                var div = document.createElement('div');
+                div.className = 'pm-persona-divider';
+                div.textContent = agentShortName(nextId);
+                ui.bodyEl.appendChild(div);
+            },
+            showTyping: function (visible) {
+                if (ui.typingEl) ui.typingEl.style.display = visible ? 'inline-flex' : 'none';
+            },
+            revealBody: function () {
+                if (ui.bodyEl) ui.bodyEl.classList.remove('hidden');
+            },
+            finalize: function () {
+                if (root) root.classList.remove('pm-chat-turn--live');
+                if (ui.bubbleEl) ui.bubbleEl.classList.remove('pm-chat-bubble--streaming');
+                ui.showTyping(false);
+                ui.setPhase('', false);
+            },
+        };
+        return ui;
+    }
+
+    var sendBtnDefaultHtml = sendBtn ? sendBtn.innerHTML : 'Send';
+
+    function setSendBusy(busy) {
+        if (!sendBtn) return;
+        sendBtn.disabled = busy;
+        if (input) input.disabled = busy;
+        if (busy) {
+            sendBtn.innerHTML =
+                '<span class="pm-send-loading"><span class="pm-send-spinner" aria-hidden="true"></span>Sending…</span>';
+        } else {
+            sendBtn.innerHTML = sendBtnDefaultHtml;
+        }
     }
 
     /**
@@ -792,7 +1086,40 @@
         syncUrl();
         syncSessionColumn();
         if (hint) hint.textContent = 'Sessions belong to this project only.';
-        return activeSessionId ? loadTranscript(activeSessionId) : Promise.resolve();
+        if (activeSessionId) {
+            return syncPlaygroundFocus().then(function () {
+                loadFocusEntityOptions();
+                return loadTranscript(activeSessionId);
+            });
+        }
+        return Promise.resolve();
+    }
+
+    /** Infer project focus from name when unset; sync conversation coref store on session open. */
+    function syncPlaygroundFocus() {
+        if (!activeSessionId || !activeProjectId) return Promise.resolve();
+        return fetch('/api/project-memory/playground/sync-focus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: activeSessionId, projectId: activeProjectId })
+        })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (!data || !data.focusEntityKey) return;
+                for (var i = 0; i < projectsCache.length; i++) {
+                    if (projectsCache[i].projectId === activeProjectId) {
+                        projectsCache[i].focusEntityKey = data.focusEntityKey;
+                        projectsCache[i].focusDisplayName = data.focusDisplayName || data.focusEntityKey;
+                        break;
+                    }
+                }
+                if (focusEntitySel) focusEntitySel.value = data.focusEntityKey;
+                syncVisualMaxPhotosInput();
+                if (data.inferredFromProjectName || data.updatedFromConversation) {
+                    status.textContent = 'Focus person set to ' + (data.focusDisplayName || data.focusEntityKey) + '.';
+                }
+            })
+            .catch(function () { /* best-effort */ });
     }
 
     function startSessionRename(sessionId) {
@@ -1057,26 +1384,94 @@
         if (flowDetailEl) flowDetailEl.textContent = '';
     }
 
+    function createFlowChip(s) {
+        var d = document.createElement('div');
+        d.className =
+            'pm-flow-node pm-flow-pending flex max-w-[220px] items-center gap-1.5 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-[10px] text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
+        d.setAttribute('data-flow-step', s.id);
+        d.innerHTML =
+            '<span class="pm-flow-dot inline-block h-2 w-2 shrink-0 rounded-full"></span><span class="leading-tight">' +
+            esc(s.label) +
+            '</span>';
+        if (s.optional && s.active === false) {
+            d.classList.add('opacity-40');
+        }
+        return d;
+    }
+
+    function appendFlowArrow(parent) {
+        var arr = document.createElement('span');
+        arr.className = 'text-gray-400 dark:text-gray-500 text-[10px] px-0.5 select-none';
+        arr.setAttribute('aria-hidden', 'true');
+        arr.textContent = '→';
+        (parent || flowStepsEl).appendChild(arr);
+        return arr;
+    }
+
     function appendFlowPlanSteps(plan) {
         if (!flowStepsEl || !plan || !Array.isArray(plan.steps) || plan.steps.length === 0) return;
-        plan.steps.forEach(function (s) {
-            var arr = document.createElement('span');
-            arr.className = 'text-gray-400 dark:text-gray-500 text-[10px] px-0.5 select-none';
-            arr.setAttribute('aria-hidden', 'true');
-            arr.textContent = '→';
-            flowStepsEl.appendChild(arr);
-            var d = document.createElement('div');
-            d.className =
-                'pm-flow-node pm-flow-pending flex max-w-[220px] items-center gap-1.5 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-[10px] text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
-            d.setAttribute('data-flow-step', s.id);
-            d.innerHTML =
-                '<span class="pm-flow-dot inline-block h-2 w-2 shrink-0 rounded-full"></span><span class="leading-tight">' +
-                esc(s.label) +
-                '</span>';
-            if (s.optional && s.active === false) {
-                d.classList.add('opacity-40');
+
+        if (plan.parallel && Array.isArray(plan.branches) && plan.branches.length > 0) {
+            appendFlowArrow();
+            var stepById = {};
+            plan.steps.forEach(function (s) {
+                stepById[s.id] = s;
+            });
+
+            var wrap = document.createElement('div');
+            wrap.className = 'pm-flow-parallel flex w-full flex-col gap-2';
+
+            var grid = document.createElement('div');
+            grid.className = 'grid w-full gap-2';
+            grid.style.gridTemplateColumns =
+                'repeat(' + Math.min(plan.branches.length, 3) + ', minmax(0, 1fr))';
+
+            plan.branches.forEach(function (branch) {
+                var lane = document.createElement('div');
+                lane.className =
+                    'pm-flow-lane rounded border border-dashed border-gray-300 p-2 dark:border-gray-600';
+                var lbl = document.createElement('div');
+                lbl.className =
+                    'mb-1 truncate text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400';
+                lbl.textContent = branch.label || branch.id;
+                lane.appendChild(lbl);
+                var laneSteps = document.createElement('div');
+                laneSteps.className = 'flex flex-wrap items-center gap-1';
+                (branch.stepIds || []).forEach(function (sid, idx) {
+                    if (idx > 0) appendFlowArrow(laneSteps);
+                    var s = stepById[sid];
+                    if (s) laneSteps.appendChild(createFlowChip(s));
+                });
+                lane.appendChild(laneSteps);
+                grid.appendChild(lane);
+            });
+            wrap.appendChild(grid);
+
+            var shared = plan.steps.filter(function (s) {
+                return !s.branchId;
+            });
+            if (shared.length > 0) {
+                var join = document.createElement('div');
+                join.className = 'flex flex-wrap items-center justify-center gap-1';
+                var down = document.createElement('span');
+                down.className = 'select-none px-1 text-[10px] text-gray-400 dark:text-gray-500';
+                down.setAttribute('aria-hidden', 'true');
+                down.textContent = '↓';
+                join.appendChild(down);
+                shared.forEach(function (s, idx) {
+                    if (idx > 0) appendFlowArrow(join);
+                    join.appendChild(createFlowChip(s));
+                });
+                wrap.appendChild(join);
             }
-            flowStepsEl.appendChild(d);
+
+            flowStepsEl.appendChild(wrap);
+            return;
+        }
+
+        plan.steps.forEach(function (s) {
+            appendFlowArrow();
+            flowStepsEl.appendChild(createFlowChip(s));
         });
     }
 
@@ -1084,25 +1479,8 @@
         if (!flowStepsEl || !plan || !Array.isArray(plan.steps)) return;
         resetFlowViz();
         plan.steps.forEach(function (s, idx) {
-            if (idx > 0) {
-                var arr = document.createElement('span');
-                arr.className = 'text-gray-400 dark:text-gray-500 text-[10px] px-0.5 select-none';
-                arr.setAttribute('aria-hidden', 'true');
-                arr.textContent = '→';
-                flowStepsEl.appendChild(arr);
-            }
-            var d = document.createElement('div');
-            d.className =
-                'pm-flow-node pm-flow-pending flex max-w-[220px] items-center gap-1.5 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-[10px] text-gray-800 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100';
-            d.setAttribute('data-flow-step', s.id);
-            d.innerHTML =
-                '<span class="pm-flow-dot inline-block h-2 w-2 shrink-0 rounded-full"></span><span class="leading-tight">' +
-                esc(s.label) +
-                '</span>';
-            if (s.optional && s.active === false) {
-                d.classList.add('opacity-40');
-            }
-            flowStepsEl.appendChild(d);
+            if (idx > 0) appendFlowArrow();
+            flowStepsEl.appendChild(createFlowChip(s));
         });
     }
 
@@ -1117,11 +1495,152 @@
         }
     }
 
+    function updateStreamUserAttachmentPreview(assetId, viewUrl) {
+        if (!assetId || !viewUrl) return;
+        var bubble = messages.querySelector('.pm-stream-user-turn:last-of-type');
+        if (!bubble) return;
+        var img = bubble.querySelector('img[data-asset-id="' + assetId + '"]');
+        if (img) img.src = viewUrl;
+    }
+
+    function updateStreamUserAttachmentDetail(assetId, detail) {
+        if (!detail) return;
+        var bubble = messages.querySelector('.pm-stream-user-turn:last-of-type');
+        if (!bubble) return;
+        var footer = bubble.querySelector('[data-pm-attach-footer]');
+        if (!footer) {
+            footer = document.createElement('div');
+            footer.setAttribute('data-pm-attach-footer', '1');
+            footer.className = 'mt-1 text-[10px] text-gray-500 dark:text-gray-400';
+            bubble.appendChild(footer);
+        }
+        var failed = String(detail).toLowerCase().indexOf('failed') >= 0;
+        footer.className = failed
+            ? 'mt-1 text-[10px] text-amber-700 dark:text-amber-300 font-medium'
+            : 'mt-1 text-[10px] text-gray-500 dark:text-gray-400';
+        footer.textContent = detail;
+    }
+
+    function userAskedToSave(text) {
+        if (!text) return false;
+        return /\b(remember|save|note|keep|store|memorize|don't forget|dont forget)\b/i.test(text);
+    }
+
+    var scenarioEntitiesCache = [];
+
+    function showClarifyChips(bubble, assetId, entities) {
+        if (!bubble || !assetId) return;
+        var existing = bubble.querySelector('[data-pm-clarify]');
+        if (existing) existing.remove();
+        if (!entities || !entities.length) return;
+
+        var row = document.createElement('div');
+        row.setAttribute('data-pm-clarify', '1');
+        row.className = 'mt-2 flex flex-wrap gap-1.5 items-center';
+        var label = document.createElement('span');
+        label.className = 'text-[10px] text-gray-600 dark:text-gray-400';
+        label.textContent = 'Who should we save this for?';
+        row.appendChild(label);
+        entities.slice(0, 4).forEach(function (e) {
+            var chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className =
+                'px-2 py-0.5 text-[10px] rounded-full border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100 dark:border-blue-600 dark:bg-blue-950/40 dark:text-blue-200';
+            chip.textContent = e.displayName || e.entityKey;
+            chip.addEventListener('click', function () {
+                if (!activeProjectScenarioId) return;
+                fetch('/api/visual/assets/' + encodeURIComponent(assetId) + '/annotate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scenarioId: activeProjectScenarioId,
+                        entityKey: e.entityKey,
+                        displayName: e.displayName || e.entityKey
+                    })
+                })
+                    .then(function (r) {
+                        return r.ok ? r.json() : Promise.reject(new Error('annotate'));
+                    })
+                    .then(function () {
+                        row.remove();
+                        updateStreamUserAttachmentDetail(assetId, 'Tagged ' + (e.displayName || e.entityKey) + ' · analyzing photo…');
+                    })
+                    .catch(function () {
+                        status.textContent = 'Could not tag photo';
+                    });
+            });
+            row.appendChild(chip);
+        });
+        bubble.appendChild(row);
+    }
+
+    /** Poll visual asset catalog until terminal state (failed / inbox) or timeout. */
+    function pollVisualAttachmentStatus(assetIds, attempt, userText) {
+        if (!assetIds || !assetIds.length || !activeProjectScenarioId) return Promise.resolve();
+        if (attempt > 12) return Promise.resolve();
+        var stillRunning = false;
+        return Promise.all(
+            assetIds.map(function (id) {
+                return fetch(
+                    '/api/visual/assets/' +
+                        encodeURIComponent(id) +
+                        '?scenarioId=' +
+                        encodeURIComponent(activeProjectScenarioId)
+                ).then(function (r) {
+                    return r.ok ? r.json() : null;
+                });
+            })
+        ).then(function (dtos) {
+            dtos.forEach(function (dto) {
+                if (!dto) return;
+                var st = String(dto.state || '').toLowerCase();
+                var detail = dto.statusDetail || '';
+                var conf = typeof dto.inferenceConfidence === 'number' ? dto.inferenceConfidence : null;
+                if (
+                    conf != null &&
+                    conf < 0.45 &&
+                    userAskedToSave(userText) &&
+                    (!dto.subjectEntityKeys || !dto.subjectEntityKeys.length)
+                ) {
+                    var bubble = messages.querySelector('.pm-stream-user-turn:last-of-type');
+                    showClarifyChips(bubble, dto.assetId, scenarioEntitiesCache);
+                }
+                if (st === 'failed') {
+                    status.textContent = detail || 'Vision analysis failed for photo.';
+                } else if (st === 'inbox_pending' || (detail && detail.indexOf('Insights ready') >= 0)) {
+                    updateStreamUserAttachmentDetail(dto.assetId, detail || 'Insights ready — check Confirmation inbox.');
+                    loadInbox();
+                } else if (
+                    st === 'inferring' ||
+                    st === 'extracting' ||
+                    st === 'ready_for_extract' ||
+                    st === 'uploaded'
+                ) {
+                    stillRunning = true;
+                }
+            });
+            if (stillRunning && attempt < 12) {
+                return new Promise(function (resolve) {
+                    setTimeout(function () {
+                        pollVisualAttachmentStatus(assetIds, attempt + 1, userText).then(resolve);
+                    }, 2000);
+                });
+            }
+            if (activeSessionId) return loadTranscript(activeSessionId);
+        });
+    }
+
     function sendStreaming() {
         // Effective agent = override (if still in the scoped list) else scenario default.
         var agentId = agentSel && agentSel.value ? agentSel.value : defaultAgentIdForActive();
         var sessionId = activeSessionId;
         var text = input.value.trim();
+        var pendingVisual = visualUploader ? visualUploader.getPending() : [];
+        var sentAssetIds = pendingVisual
+            .map(function (p) {
+                return p.assetId;
+            })
+            .filter(Boolean);
         if (!agentId) {
             status.textContent = 'No agent available for this scenario.';
             return;
@@ -1130,10 +1649,14 @@
             status.textContent = 'Pick or create a session.';
             return;
         }
-        if (!text) return;
+        if (!text && pendingVisual.length === 0) return;
+
+        var sentUserText = text;
+        streamTurnGroupId = streamTurnGroupId || 'tg-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 
         sendBtn.disabled = true;
-        status.textContent = 'Streaming…';
+        setSendBusy(true);
+        status.textContent = 'Connecting…';
         resetFlowViz();
         if (flowDetailEl) flowDetailEl.textContent = 'Connecting…';
         if (window.agctorTraceTimeline) {
@@ -1144,30 +1667,38 @@
             );
         }
 
+        var pendingHtml = '';
+        pendingVisual.forEach(function (p) {
+            if (p.previewUrl) {
+                pendingHtml +=
+                    '<img data-asset-id="' +
+                    esc(p.assetId || '') +
+                    '" src="' +
+                    esc(p.previewUrl) +
+                    '" alt="" class="max-h-32 rounded border border-gray-200 dark:border-gray-600 object-cover" />';
+            }
+        });
         messages.insertAdjacentHTML(
             'beforeend',
-            '<div class="rounded-lg border border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-800 p-3">' +
-                '<div class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">You</div>' +
-                '<div class="whitespace-pre-wrap break-words text-gray-800 dark:text-gray-100">' +
-                esc(text) +
-                '</div></div>'
+            buildUserTurnHtml(
+                text ? esc(text) : '',
+                (pendingHtml ? '<div class="mt-2 flex flex-wrap gap-2">' + pendingHtml + '</div>' : '') +
+                    (pendingVisual.length
+                        ? '<div class="mt-1 text-[10px] opacity-75" data-pm-attach-footer>Analyzing photo…</div>'
+                        : ''),
+                'pm-stream-user-turn'
+            )
         );
 
-        var streamElId = 'pm-stream-' + Date.now();
-        var bubbleHtml =
-            '<div id="' +
-            streamElId +
-            '" class="rounded-lg border border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-900/20 p-3">' +
-            '<div class="text-xs font-semibold text-green-800 dark:text-green-200 mb-1">Assistant</div>' +
-            '<div class="pm-play-md text-sm text-green-900 dark:text-green-100" data-role="stream-body"></div></div>';
-        messages.insertAdjacentHTML('beforeend', bubbleHtml);
-        messages.scrollTop = messages.scrollHeight;
-
-        var streamBody = document.querySelector('#' + streamElId + ' [data-role="stream-body"]');
+        var streamUi = createStreamingAssistantBubble(agentId);
+        var streamBody = streamUi.bodyEl;
         var acc = '';
+        var gotFirstToken = false;
         var markdownRaf = null;
         function applyMd() {
             if (!streamBody) return;
+            streamUi.revealBody();
+            streamUi.showTyping(false);
             try {
                 streamBody.innerHTML = renderChatMarkdown(acc);
             } catch (e) {
@@ -1183,9 +1714,46 @@
             });
         }
 
-        var postBody = { sessionId: sessionId, agentId: agentId, payload: text };
+        function updateStreamPersona(nextId, phaseText) {
+            if (!nextId) return;
+            var changed = streamUi.setPersona(nextId, phaseText);
+            if (changed && gotFirstToken && acc.length > 0) {
+                streamUi.appendPersonaDivider(nextId);
+            }
+            status.textContent = agentShortName(nextId) + (phaseText ? ' · ' + phaseText : '');
+        }
+
+        function onStreamToken(chunk) {
+            if (!chunk) return;
+            if (!gotFirstToken) {
+                gotFirstToken = true;
+                streamUi.revealBody();
+                streamUi.showTyping(false);
+                streamUi.setPhase('Writing…', true);
+            }
+            acc += chunk;
+            queueMd();
+        }
+
+        var postBody = {
+            sessionId: sessionId,
+            agentId: agentId,
+            payload: text,
+            turnGroupId: streamTurnGroupId
+        };
         if (activeProjectId && activeProjectScenarioId) {
             postBody.scenarioId = activeProjectScenarioId;
+        }
+        if (pendingVisual.length) {
+            postBody.attachments = pendingVisual.map(function (p) {
+                return {
+                    assetId: p.assetId,
+                    state: 'uploaded',
+                    fileName: p.fileName,
+                    mime: p.mime,
+                    entityKey: p.entityKey || null
+                };
+            });
         }
 
         fetch('/api/project-memory/playground/message/stream', {
@@ -1197,6 +1765,8 @@
                 if (!res.ok) return res.text().then(function (t) { throw new Error(t || String(res.status)); });
                 if (!res.body) throw new Error('No stream body');
                 input.value = '';
+                if (visualUploader) visualUploader.clear();
+                streamTurnGroupId = null;
                 var reader = res.body.getReader();
                 var dec = new TextDecoder();
                 var buf = '';
@@ -1207,6 +1777,30 @@
                         buf = ex.rest;
                         for (var i = 0; i < ex.events.length; i++) {
                             var evt = ex.events[i];
+                            if (evt.type === 'attachment_state' && evt.payload) {
+                                try {
+                                    var ast = JSON.parse(evt.payload);
+                                    if (visualUploader) {
+                                        visualUploader.setItemState(ast.assetId, ast.state, ast.detail);
+                                    }
+                                    updateStreamUserAttachmentDetail(ast.assetId, ast.detail);
+                                } catch (eAst) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'attachment_preview' && evt.payload) {
+                                try {
+                                    var apv = JSON.parse(evt.payload);
+                                    if (apv.viewUrl) {
+                                        updateStreamUserAttachmentPreview(apv.assetId, apv.viewUrl);
+                                        if (visualUploader) {
+                                            visualUploader.updatePreviewUrl(apv.assetId, apv.viewUrl);
+                                        }
+                                    }
+                                } catch (eApv) {
+                                    /* ignore */
+                                }
+                            }
                             if (evt.type === 'flow_plan' && evt.payload && flowStepsEl) {
                                 try {
                                     applyFlowPlan(JSON.parse(evt.payload));
@@ -1225,37 +1819,84 @@
                                 try {
                                     var fs = JSON.parse(evt.payload);
                                     setFlowStepStatus(fs.id, fs.status, fs.detail);
+                                    if (fs.status === 'running' && !gotFirstToken) {
+                                        var chip = flowStepsEl
+                                            ? flowStepsEl.querySelector('[data-flow-step="' + fs.id + '"] span')
+                                            : null;
+                                        var chipLabel = chip ? String(chip.textContent || '') : '';
+                                        var personaFromChip = chipLabel.match(/\(([^)]+)\)/);
+                                        if (personaFromChip && personaFromChip[1]) {
+                                            updateStreamPersona(
+                                                personaFromChip[1].trim(),
+                                                'Thinking…'
+                                            );
+                                        } else {
+                                            streamUi.setPhase('Working…', true);
+                                            status.textContent = 'Working…';
+                                        }
+                                    }
                                 } catch (eStep) {
                                     /* ignore */
                                 }
                             }
-                            if (evt.type === 'done' && window.agctorTraceTimeline) {
-                                var tid =
-                                    evt.traceId || evt.TraceId || evt.traceID || evt.trace_id;
-                                if (tid) {
-                                    window.agctorTraceTimeline.load('pm-play-trace-timeline', tid, {
-                                        selectionLabel: 'Latest playground request',
-                                        emptyMessage: 'No timeline is available for this request.',
-                                        errorMessage: 'Trace timeline is unavailable for this request.'
-                                    });
+                            if (evt.type === 'phase' && evt.payload) {
+                                var phasePersona = parsePhasePersona(evt.payload) || evt.agentId || agentId;
+                                updateStreamPersona(phasePersona, evt.payload);
+                            }
+                            if (evt.type === 'focus_updated' && evt.payload) {
+                                try {
+                                    var focusEvt = JSON.parse(evt.payload);
+                                    if (focusEvt.focusEntityKey) {
+                                        for (var fi = 0; fi < projectsCache.length; fi++) {
+                                            if (projectsCache[i].projectId === activeProjectId) {
+                                                projectsCache[fi].focusEntityKey = focusEvt.focusEntityKey;
+                                                projectsCache[fi].focusDisplayName = focusEvt.focusDisplayName || focusEvt.focusEntityKey;
+                                                break;
+                                            }
+                                        }
+                                        if (focusEntitySel) focusEntitySel.value = focusEvt.focusEntityKey;
+                                        syncVisualMaxPhotosInput();
+                                        status.textContent = 'Focus person set to ' + (focusEvt.focusDisplayName || focusEvt.focusEntityKey) + '.';
+                                    }
+                                } catch (eFocusEvt) {
+                                    /* ignore */
+                                }
+                            }
+                            if (evt.type === 'done') {
+                                var doneText = evt.responseData || evt.response_data || '';
+                                if (doneText) {
+                                    acc = doneText;
+                                    queueMd();
+                                }
+                                streamUi.finalize();
+                                status.textContent = 'Done';
+                                if (window.agctorTraceTimeline) {
+                                    var tid =
+                                        evt.traceId || evt.TraceId || evt.traceID || evt.trace_id;
+                                    if (tid) {
+                                        window.agctorTraceTimeline.load('pm-play-trace-timeline', tid, {
+                                            selectionLabel: 'Latest playground request',
+                                            emptyMessage: 'No timeline is available for this request.',
+                                            errorMessage: 'Trace timeline is unavailable for this request.'
+                                        });
+                                    }
                                 }
                             }
                             if (evt.type === 'assistant_tail' && evt.payload) {
-                                acc += evt.payload;
-                                queueMd();
+                                onStreamToken(evt.payload);
                             }
                             if (evt.type === 'llm_delta' && evt.payload) {
-                                acc += evt.payload;
-                                queueMd();
+                                onStreamToken(evt.payload);
                             }
                             if (evt.type === 'error' && evt.payload) {
-                                acc += '\n[error] ' + evt.payload + '\n';
-                                queueMd();
+                                onStreamToken('\n[error] ' + evt.payload + '\n');
+                                streamUi.setPhase('Error', false);
                             }
                         }
                         if (result.done) {
                             if (markdownRaf != null) cancelAnimationFrame(markdownRaf);
                             applyMd();
+                            streamUi.finalize();
                             return;
                         }
                         return pump();
@@ -1267,15 +1908,22 @@
                 status.textContent = 'Done';
                 loadLifeSignals();
                 loadInbox();
-                return loadTranscript(sessionId);
+                return loadTranscript(sessionId).then(function () {
+                    if (sentAssetIds.length) return pollVisualAttachmentStatus(sentAssetIds, 0, sentUserText);
+                }).then(function () {
+                    return syncPlaygroundFocus();
+                });
             })
             .catch(function (e) {
                 status.textContent = 'Error';
                 if (flowDetailEl) flowDetailEl.textContent = e.message || String(e);
+                streamUi.finalize();
+                streamUi.revealBody();
+                streamUi.showTyping(false);
                 if (streamBody) streamBody.textContent = e.message || String(e);
             })
             .finally(function () {
-                sendBtn.disabled = false;
+                setSendBusy(false);
             });
     }
 
@@ -1368,6 +2016,7 @@
     var inboxPanelEl = document.getElementById('pm-play-inbox');
     var inboxListEl = document.getElementById('pm-play-inbox-list');
     var inboxCountEl = document.getElementById('pm-play-inbox-count');
+    var inboxBadgeEl = document.getElementById('pm-play-inbox-badge');
     var refreshInboxBtn = document.getElementById('pm-play-refresh-inbox');
     var privacyPanelEl = document.getElementById('pm-play-privacy');
     var privacyAutoIngestEl = document.getElementById('pm-play-privacy-auto-ingest');
@@ -1382,6 +2031,21 @@
         if (show) loadInbox();
     }
 
+    function inboxThumbHtml(item) {
+        var assetId = item.sourceAssetId || item.SourceAssetId;
+        if (!assetId || !activeProjectScenarioId) return '';
+        var url =
+            '/api/visual/assets/' +
+            encodeURIComponent(assetId) +
+            '/view?scenarioId=' +
+            encodeURIComponent(activeProjectScenarioId);
+        return (
+            '<img src="' +
+            esc(url) +
+            '" alt="" class="h-14 w-14 rounded object-cover border border-amber-200/80 dark:border-amber-700 shrink-0" />'
+        );
+    }
+
     function loadInbox() {
         if (!inboxListEl || !activeProjectScenarioId) return;
         inboxListEl.innerHTML = '<li>Loading…</li>';
@@ -1394,6 +2058,14 @@
                 if (inboxCountEl) {
                     inboxCountEl.textContent = items.length ? '(' + items.length + ' pending)' : '';
                 }
+                if (inboxBadgeEl) {
+                    if (items.length) {
+                        inboxBadgeEl.textContent = String(items.length);
+                        inboxBadgeEl.classList.remove('hidden');
+                    } else {
+                        inboxBadgeEl.classList.add('hidden');
+                    }
+                }
                 if (!items.length) {
                     inboxListEl.innerHTML =
                         '<li class="list-none text-amber-900/70">Nothing waiting for review.</li>';
@@ -1403,9 +2075,13 @@
                     .map(function (item) {
                         var line = esc(item.userPromptLine || item.value || '');
                         var meta = esc(item.entityKey || '') + ' · ' + esc(item.knowledgeType || '');
+                        var thumb = inboxThumbHtml(item);
                         return (
                             '<li class="border border-amber-200/80 rounded p-2 dark:border-amber-800">' +
-                            '<div class="font-medium">' + line + '</div>' +
+                            '<div class="flex gap-2">' +
+                            (thumb ? '<div>' + thumb + '</div>' : '') +
+                            '<div class="min-w-0 flex-1">' +
+                            '<div class="font-medium text-[11px] leading-snug">' + line + '</div>' +
                             '<div class="text-[10px] opacity-80 mt-0.5">' + meta + '</div>' +
                             '<div class="mt-1.5 flex gap-2">' +
                             '<button type="button" class="pm-inbox-approve text-[10px] font-medium text-emerald-800 hover:underline" data-id="' +
@@ -1414,7 +2090,7 @@
                             '<button type="button" class="pm-inbox-reject text-[10px] font-medium text-red-800 hover:underline" data-id="' +
                             esc(item.proposalId) +
                             '">Reject</button>' +
-                            '</div></li>'
+                            '</div></div></div></li>'
                         );
                     })
                     .join('');
@@ -1549,6 +2225,32 @@
     }
 
     var focusEntitySel = document.getElementById('pm-play-focus-entity');
+    var visualMaxPhotosEl = document.getElementById('pm-play-visual-max-photos');
+    var visualMaxHintEl = document.getElementById('pm-play-visual-max-hint');
+
+    var DEFAULT_VISUAL_MAX_PHOTOS = 3;
+    var MAX_VISUAL_MAX_PHOTOS = 12;
+
+    function resolveVisualMaxPhotos(project) {
+        var n = project && project.visualMaxPhotos != null ? Number(project.visualMaxPhotos) : DEFAULT_VISUAL_MAX_PHOTOS;
+        if (!isFinite(n) || n < 1) n = DEFAULT_VISUAL_MAX_PHOTOS;
+        if (n > MAX_VISUAL_MAX_PHOTOS) n = MAX_VISUAL_MAX_PHOTOS;
+        return Math.floor(n);
+    }
+
+    function syncVisualMaxPhotosInput() {
+        if (!visualMaxPhotosEl) return;
+        var p = activeProject();
+        var n = resolveVisualMaxPhotos(p);
+        visualMaxPhotosEl.value = String(n);
+        if (visualMaxHintEl && p && p.focusEntityKey) {
+            visualMaxHintEl.textContent =
+                'Visual context uses the last ' + n + ' photo' + (n === 1 ? '' : 's') + ' for ' + (p.focusDisplayName || p.focusEntityKey) + '.';
+            visualMaxHintEl.classList.remove('hidden');
+        } else if (visualMaxHintEl) {
+            visualMaxHintEl.classList.add('hidden');
+        }
+    }
 
     function activeProject() {
         if (!activeProjectId) return null;
@@ -1563,6 +2265,7 @@
         return fetch('/api/project-memory/scenario-entities?scenarioId=' + encodeURIComponent(activeProjectScenarioId))
             .then(function (r) { return r.ok ? r.json() : []; })
             .then(function (entities) {
+                scenarioEntitiesCache = entities || [];
                 var current = activeProject();
                 var selected = current && current.focusEntityKey ? current.focusEntityKey : '';
                 focusEntitySel.innerHTML = '<option value="">(none — infer from chat)</option>';
@@ -1574,9 +2277,43 @@
                     focusEntitySel.appendChild(opt);
                 });
                 focusEntitySel.value = selected;
+                syncVisualMaxPhotosInput();
             })
             .catch(function () {
                 /* keep existing options */
+            })
+            .finally(function () {
+                syncVisualMaxPhotosInput();
+            });
+    }
+
+    function applyVisualMaxPhotosChange() {
+        if (!activeProjectId || !visualMaxPhotosEl) return Promise.resolve();
+        var raw = parseInt(String(visualMaxPhotosEl.value || ''), 10);
+        if (!isFinite(raw)) raw = DEFAULT_VISUAL_MAX_PHOTOS;
+        raw = Math.max(1, Math.min(MAX_VISUAL_MAX_PHOTOS, raw));
+        visualMaxPhotosEl.value = String(raw);
+        return fetch('/api/chat/projects/' + encodeURIComponent(activeProjectId), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ visualMaxPhotos: raw })
+        })
+            .then(function (r) {
+                if (!r.ok) throw new Error('Could not update photos in context');
+                return r.json();
+            })
+            .then(function (updated) {
+                for (var i = 0; i < projectsCache.length; i++) {
+                    if (projectsCache[i].projectId === activeProjectId) {
+                        projectsCache[i].visualMaxPhotos = updated.visualMaxPhotos != null ? updated.visualMaxPhotos : raw;
+                        break;
+                    }
+                }
+                syncVisualMaxPhotosInput();
+                status.textContent = 'Photos in context set to ' + raw + '.';
+            })
+            .catch(function (e) {
+                status.textContent = e.message || 'Photos setting failed';
             });
     }
 
@@ -1606,6 +2343,8 @@
                     }
                 }
                 status.textContent = key ? 'Focus person set.' : 'Focus cleared.';
+                syncVisualMaxPhotosInput();
+                return syncPlaygroundFocus();
             })
             .catch(function (e) {
                 status.textContent = e.message || 'Focus update failed';
@@ -1615,13 +2354,90 @@
     if (focusEntitySel) {
         focusEntitySel.addEventListener('change', applyFocusEntityChange);
     }
+    if (visualMaxPhotosEl) {
+        visualMaxPhotosEl.addEventListener('change', applyVisualMaxPhotosChange);
+        visualMaxPhotosEl.addEventListener('blur', applyVisualMaxPhotosChange);
+    }
 
     var _updateProjectHeaderOrig = updateProjectHeader;
     updateProjectHeader = function () {
         _updateProjectHeaderOrig();
         syncCompanionPanels();
         loadFocusEntityOptions();
+        loadScenarioEntitiesForTags();
+        syncVisualMaxPhotosInput();
     };
+
+
+    var scenarioEntitiesCache = [];
+
+    function loadScenarioEntitiesForTags() {
+        if (!activeProjectScenarioId) {
+            scenarioEntitiesCache = [];
+            return Promise.resolve([]);
+        }
+        return fetch(
+            '/api/project-memory/scenario-entities?scenarioId=' + encodeURIComponent(activeProjectScenarioId)
+        )
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (list) {
+                scenarioEntitiesCache = list || [];
+                return scenarioEntitiesCache;
+            })
+            .catch(function () {
+                scenarioEntitiesCache = [];
+                return [];
+            });
+    }
+
+    if (window.PMVisualUpload && attachBtn && fileInput && attachChipsEl) {
+        visualUploader = window.PMVisualUpload.init({
+            chipsEl: attachChipsEl,
+            fileInput: fileInput,
+            attachBtn: attachBtn,
+            dropZone: composerEl || input,
+            inputEl: input,
+            getScenarioId: function () {
+                return activeProjectScenarioId || '';
+            },
+            getSessionId: function () {
+                return activeSessionId || '';
+            },
+            getTurnGroupId: function () {
+                if (!streamTurnGroupId) {
+                    streamTurnGroupId = 'tg-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+                }
+                return streamTurnGroupId;
+            },
+            getEntities: function () {
+                return scenarioEntitiesCache;
+            },
+            onPlaceholderHint: function (hasAttachments) {
+                if (!input) return;
+                input.placeholder = hasAttachments
+                    ? 'Add a note (optional) — e.g. “this is Raha” or “leg day week 2”'
+                    : 'Type a message… (paste or drop images)';
+            },
+            onError: function (msg) {
+                status.textContent = msg || 'Upload failed';
+            }
+        });
+        input.addEventListener('paste', function (e) {
+            var items = e.clipboardData && e.clipboardData.items;
+            if (!items || !visualUploader) return;
+            var files = [];
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type && items[i].type.indexOf('image/') === 0) {
+                    var f = items[i].getAsFile();
+                    if (f) files.push(f);
+                }
+            }
+            if (files.length) {
+                e.preventDefault();
+                visualUploader.addFiles(files);
+            }
+        });
+    }
 
     sendBtn.addEventListener('click', sendStreaming);
     input.addEventListener('keydown', function (ev) {

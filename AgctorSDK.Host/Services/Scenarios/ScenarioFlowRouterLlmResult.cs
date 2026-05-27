@@ -14,8 +14,13 @@ public sealed class ScenarioFlowRouterLlmResult
 
     public string? ClarificationPrompt { get; init; }
 
-    public static ScenarioFlowRouterLlmResult Success(IReadOnlyList<string> selected) =>
-        new() { Ok = true, SelectedPersonaIds = selected };
+    /// <summary>When router config uses <see cref="ScenarioFlowRouterBranchExecution.Auto"/>.</summary>
+    public ScenarioFlowRouterBranchExecution? ResolvedBranchExecution { get; init; }
+
+    public static ScenarioFlowRouterLlmResult Success(
+        IReadOnlyList<string> selected,
+        ScenarioFlowRouterBranchExecution? branchExecution = null) =>
+        new() { Ok = true, SelectedPersonaIds = selected, ResolvedBranchExecution = branchExecution };
 
     public static ScenarioFlowRouterLlmResult Fail(string error) =>
         new() { Ok = false, Error = error };

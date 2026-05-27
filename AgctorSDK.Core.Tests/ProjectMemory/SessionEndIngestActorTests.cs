@@ -4,6 +4,10 @@ using AgctorSDK.Core.ProjectMemory.Companion;
 using AgctorSDK.Core.ProjectMemory.Companion.Actors;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
+using AgctorSDK.Core.ProjectMemory.Visual;
+using AgctorSDK.Core.ProjectMemory.Visual.Actors;
+using AgctorSDK.Core.ProjectMemory.Visual.Models;
+using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.Sessions.Models;
 using FluentAssertions;
 using Xunit;
@@ -82,6 +86,48 @@ public sealed class SessionEndIngestActorTests
         summary.Content.Should().Be("ingested");
     }
 
+    [Fact]
+    public async Task RunAsync_Queues_Extract_For_Unprocessed_Attachments()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "ingest-attach-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var catalog = new VisualAssetCatalogStore();
+        var scenarioId = "person_3";
+        await catalog.SaveAsync(root, scenarioId, new VisualAssetRecord
+        {
+            AssetId = "photo-a",
+            ScenarioId = scenarioId,
+            State = VisualAssetStates.Uploaded,
+            Storage = new VisualAssetStorageRef { Bucket = "b", Key = "k", ContentType = "image/jpeg" }
+        });
+
+        var store = new FakeSessionStore();
+        var session = await store.CreateSessionAsync(projectId: "proj-1");
+        await store.CreateProjectAsync("proj-1", "People", scenarioId, focusEntityKey: "raha");
+        var attachJson = SessionAttachmentJson.Serialize(SessionAttachmentJson.FromAssetIds(["photo-a"]));
+        await store.AppendTurnAsync(new SessionTurn
+        {
+            SessionId = session.SessionId,
+            Sequence = 1,
+            Role = SessionRole.User,
+            Content = "remember this gym photo",
+            AttachmentsJson = attachJson
+        });
+
+        var pipeline = new RecordingVisualPipeline();
+        var actor = new SessionEndIngestActor("test", store, new NoOpPipelineRunner(), pipeline, catalog);
+        await actor.InitializeAsync();
+        await SendIngestAsync(actor,
+            new SessionEndIngestWorkflowRequest(session.SessionId, root, null, SessionEndIngestTrigger.Delete));
+
+        pipeline.QueuedAssetIds.Should().Contain("photo-a");
+        pipeline.LastUserMessage.Should().Contain("remember");
+        pipeline.LastFocus.Should().Be("raha");
+
+        if (Directory.Exists(root))
+            Directory.Delete(root, recursive: true);
+    }
+
     private static async Task<SessionEndIngestWorkflowResult> SendIngestAsync(
         SessionEndIngestActor actor,
         SessionEndIngestWorkflowRequest request)
@@ -132,6 +178,34 @@ public sealed class SessionEndIngestActorTests
         public Task<GenericInboxPersistResult> PersistApprovedGenericFactsAsync(
             string projectRoot, string? scenarioId, IReadOnlyList<ApprovedGenericFact> approvals, CancellationToken cancellationToken = default) =>
             throw new NotImplementedException();
+    }
+
+    private sealed class RecordingVisualPipeline : IVisualPipelineService
+    {
+        public List<string> QueuedAssetIds { get; } = new();
+        public string? LastUserMessage { get; private set; }
+        public string? LastFocus { get; private set; }
+
+        public Task<VisualIngestEnrichResult> EnrichIngestAsync(VisualIngestEnrichRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<VisualInferResult> InferFromPromptAsync(VisualInferRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<VisualExtractResult> ExtractAsync(VisualExtractRequest request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public void QueueExtractForAssets(
+            string projectRoot,
+            string scenarioId,
+            IReadOnlyList<string> assetIds,
+            string? userMessage,
+            string? focusEntityKey)
+        {
+            QueuedAssetIds.AddRange(assetIds);
+            LastUserMessage = userMessage;
+            LastFocus = focusEntityKey;
+        }
     }
 
     private sealed class FakeSessionStore : ISessionStore
@@ -218,7 +292,14 @@ public sealed class SessionEndIngestActorTests
             CancellationToken cancellationToken = default)
         {
             var id = projectId ?? Guid.NewGuid().ToString("N");
-            var project = new SessionProject { ProjectId = id, Name = name ?? "p", ScenarioId = scenarioId ?? "people" };
+            var project = new SessionProject
+            {
+                ProjectId = id,
+                Name = name ?? "p",
+                ScenarioId = scenarioId ?? "people",
+                FocusEntityKey = focusEntityKey,
+                FocusDisplayName = focusDisplayName
+            };
             _projects[id] = project;
             return Task.FromResult(project);
         }

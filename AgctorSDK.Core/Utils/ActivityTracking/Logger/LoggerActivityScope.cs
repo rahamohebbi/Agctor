@@ -41,6 +41,8 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         public void SetStatus(ActivityStatus status, string? description = null)
         {
             _activityInfo.Status = status;
+            if (status is ActivityStatus.Ok or ActivityStatus.Error or ActivityStatus.Completed)
+                _activityInfo.HasResult = true;
             _logger.Debug($"Activity [{_activityInfo.Id}] status: {status} {description ?? ""}");
         }
         
@@ -73,6 +75,8 @@ namespace AgctorSDK.Core.Utils.ActivityTracking.Logger
         public void SetTimelineDetailJson(string? json)
         {
             _activityInfo.TimelineDetailJson = json;
+            if (!string.IsNullOrWhiteSpace(json))
+                _activityInfo.HasResult = true;
         }
         
         /// <inheritdoc/>

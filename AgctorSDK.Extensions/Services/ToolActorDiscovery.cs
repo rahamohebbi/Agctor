@@ -109,6 +109,48 @@ public static class ToolActorDiscovery
                 {
                     ["operation"] = "Apply",
                     ["batchJson"] = "string — full MemoryIntentBatch JSON"
+                },
+                ["person-visual-ingest"] = new()
+                {
+                    ["operation"] = "InitUpload | CompleteUpload | Annotate | InferFromPrompt | LinkToTurn | GetAsset",
+                    ["projectRoot"] = "string optional",
+                    ["scenarioId"] = "string required",
+                    ["contentType"] = "image/jpeg (InitUpload)",
+                    ["bytes"] = "long (InitUpload)",
+                    ["assetId"] = "string",
+                    ["sha256"] = "string optional (CompleteUpload)",
+                    ["subjects"] = "JSON array of { entityKey, role, displayName }",
+                    ["userMessage"] = "string (InferFromPrompt)",
+                    ["focusEntityKey"] = "string optional",
+                    ["sessionId"] = "string (LinkToTurn)",
+                    ["turnGroupId"] = "string (LinkToTurn)"
+                },
+                ["person-visual-context"] = new()
+                {
+                    ["operation"] = "BuildContext | RetrieveByIntent | ListForEntity",
+                    ["projectRoot"] = "string optional",
+                    ["scenarioId"] = "string required",
+                    ["userMessage"] = "string",
+                    ["visualIntent"] = "style | fitness | general",
+                    ["entityKeys"] = "comma-separated optional",
+                    ["maxAssets"] = "int default 3",
+                    ["entityKey"] = "string (ListForEntity)"
+                },
+                ["person-visual-extract"] = new()
+                {
+                    ["operation"] = "Extract | ReExtract | GetExtraction",
+                    ["projectRoot"] = "string optional",
+                    ["scenarioId"] = "string required",
+                    ["assetId"] = "string required"
+                },
+                ["focus-subject"] = new()
+                {
+                    ["operation"] = "Resolve",
+                    ["projectRoot"] = "string optional — defaults to Agctor:ProjectMemory:ProjectRoot",
+                    ["scenarioId"] = "string optional",
+                    ["userMessage"] = "string required",
+                    ["conversationPrefix"] = "string optional — recent turns for disambiguation",
+                    ["currentFocusEntityKey"] = "string optional — persisted focus slug"
                 }
             };
 

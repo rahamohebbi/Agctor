@@ -1,0 +1,80 @@
+schemaVersion: 1.0
+assetId: 47adcb49cc22462a8030f14f653f66d8
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/47adcb49cc22462a8030f14f653f66d8/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 124555
+state: inbox_pending
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779383771524-95e6972b9b831
+context:
+  userCaption: This is me
+  occasion: 
+subjects:
+- entityKey: me
+  role: primary
+  displayName: Me
+inference:
+  source: vision
+  confidence: 1
+  entityKeys:
+  - me
+  rationale: User explicitly stated 'This is me' in the caption and message.
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: completed
+  ollamaModel: gemma4:31b
+  promptVersion: visual-extract-v1
+  lastRunAt:
+    dateTime: 2026-05-21T17:17:45.3035928
+    utcDateTime: 2026-05-21T17:17:45.3035928Z
+    localDateTime: 2026-05-21T10:17:45.3035928-07:00
+    date: 2026-05-21T00:00:00.0000000
+    day: 21
+    dayOfWeek: Thursday
+    dayOfYear: 141
+    hour: 17
+    millisecond: 303
+    microsecond: 592
+    nanosecond: 800
+    minute: 17
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 45
+    ticks: 639149806653035928
+    utcTicks: 639149806653035928
+    timeOfDay: 17:17:45.3035928
+    year: 2026

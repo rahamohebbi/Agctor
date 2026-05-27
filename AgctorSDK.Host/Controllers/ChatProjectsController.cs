@@ -1,8 +1,11 @@
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.ProjectMemory.Visual;
+using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services.Scenarios;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Controllers;
 
@@ -16,12 +19,18 @@ public sealed class ChatProjectsController : ControllerBase
 {
     private readonly ISessionStore _sessionStore;
     private readonly IScenarioCatalog _scenarioCatalog;
+    private readonly VisualStorageOptions _visualOptions;
     private readonly ILogger<ChatProjectsController> _logger;
 
-    public ChatProjectsController(ISessionStore sessionStore, IScenarioCatalog scenarioCatalog, ILogger<ChatProjectsController> logger)
+    public ChatProjectsController(
+        ISessionStore sessionStore,
+        IScenarioCatalog scenarioCatalog,
+        IOptions<VisualStorageOptions> visualOptions,
+        ILogger<ChatProjectsController> logger)
     {
         _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
         _scenarioCatalog = scenarioCatalog ?? throw new ArgumentNullException(nameof(scenarioCatalog));
+        _visualOptions = visualOptions?.Value ?? new VisualStorageOptions();
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -44,6 +53,21 @@ public sealed class ChatProjectsController : ControllerBase
                     request?.FocusDisplayName,
                     cancellationToken)
                 .ConfigureAwait(false);
+
+            if (request?.VisualMaxPhotos is > 0)
+            {
+                var settingsJson = MergeProjectSettingsJson(null, request.VisualMaxPhotos, _visualOptions.MaxVisualContextPhotos);
+                created = await _sessionStore.UpdateProjectAsync(new SessionProject
+                {
+                    ProjectId = created.ProjectId,
+                    Name = created.Name,
+                    ScenarioId = created.ScenarioId,
+                    FocusEntityKey = created.FocusEntityKey,
+                    FocusDisplayName = created.FocusDisplayName,
+                    SettingsJson = settingsJson
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
             return Created($"/api/chat/projects/{created.ProjectId}", created);
         }
         catch (Exception ex)
@@ -125,12 +149,13 @@ public sealed class ChatProjectsController : ControllerBase
             if (request == null || (string.IsNullOrWhiteSpace(request.Name)
                                     && string.IsNullOrWhiteSpace(request.ScenarioId)
                                     && request.FocusEntityKey == null
-                                    && request.FocusDisplayName == null))
+                                    && request.FocusDisplayName == null
+                                    && !request.VisualMaxPhotos.HasValue))
             {
                 return BadRequest(new ErrorResponse
                 {
                     Code = "PROJECT_UPDATE_EMPTY",
-                    Message = "Provide at least one of name, scenarioId, focusEntityKey, or focusDisplayName."
+                    Message = "Provide at least one of name, scenarioId, focusEntityKey, focusDisplayName, or visualMaxPhotos."
                 });
             }
             var req = request;
@@ -146,6 +171,7 @@ public sealed class ChatProjectsController : ControllerBase
                 ScenarioId = scenarioId,
                 FocusEntityKey = req.FocusEntityKey == null ? existing.FocusEntityKey : (string.IsNullOrWhiteSpace(req.FocusEntityKey) ? null : req.FocusEntityKey.Trim()),
                 FocusDisplayName = req.FocusDisplayName == null ? existing.FocusDisplayName : (string.IsNullOrWhiteSpace(req.FocusDisplayName) ? null : req.FocusDisplayName.Trim()),
+                SettingsJson = MergeProjectSettingsJson(existing.SettingsJson, req.VisualMaxPhotos, _visualOptions.MaxVisualContextPhotos),
                 CreatedAt = existing.CreatedAt,
                 SessionCount = existing.SessionCount
             };
@@ -219,5 +245,13 @@ public sealed class ChatProjectsController : ControllerBase
         if (!string.IsNullOrWhiteSpace(scenarioId)) return scenarioId.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(fallback)) return fallback.Trim().ToLowerInvariant();
         return SessionProjectTypes.People;
+    }
+
+    private static string MergeProjectSettingsJson(string? existingJson, int? visualMaxPhotos, int maxCap)
+    {
+        var settings = ChatProjectSettings.FromJson(existingJson);
+        if (visualMaxPhotos.HasValue)
+            settings.ApplyVisualMaxPhotos(visualMaxPhotos, maxCap);
+        return settings.ToJson();
     }
 }

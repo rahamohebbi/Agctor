@@ -122,20 +122,9 @@ namespace AgctorSDK.Host.Controllers
 
             response.StartedAtUtc = start;
             response.TotalDurationMs = Math.Max(1, (end - start).TotalMilliseconds);
-            response.Events = ordered.Select((activity, index) => new TraceTimelineEventDto
-            {
-                Id = activity.Id,
-                ParentId = activity.ParentId,
-                Label = activity.DisplayName ?? activity.Name ?? "Activity",
-                Name = activity.Name,
-                Sequence = index + 1,
-                Depth = depthMap.TryGetValue(activity.Id, out var depth) ? depth : 0,
-                StartedAtUtc = activity.Timestamp,
-                StartOffsetMs = Math.Max(0, (activity.Timestamp - start).TotalMilliseconds),
-                DurationMs = Math.Max(1, activity.Duration.TotalMilliseconds),
-                HasResult = activity.HasResult,
-                TimelineDetailJson = activity.TimelineDetailJson
-            }).ToList();
+            response.Events = ordered
+                .Select((activity, index) => TraceTimelineEventMapper.Map(activity, index + 1, start, depthMap))
+                .ToList();
 
             return Ok(response);
         }

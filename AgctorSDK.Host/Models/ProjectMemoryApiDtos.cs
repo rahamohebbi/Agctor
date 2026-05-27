@@ -171,6 +171,21 @@ public sealed class ProjectMemoryPlaygroundRunRequestDto
     public string InputText { get; set; } = "";
 }
 
+/// <summary>Attachment reference on a playground stream request (PRD-023b).</summary>
+public sealed class PlaygroundStreamAttachmentDto
+{
+    public string AssetId { get; set; } = "";
+
+    public string State { get; set; } = "uploaded";
+
+    public string? FileName { get; set; }
+
+    public string? Mime { get; set; }
+
+    /// <summary>Optional subject slug from Tag popover (applied before vision infer).</summary>
+    public string? EntityKey { get; set; }
+}
+
 /// <summary>Body for SSE chat turns (same session store as CodeGraph chat).</summary>
 public sealed class ProjectMemoryPlaygroundStreamRequestDto
 {
@@ -180,6 +195,12 @@ public sealed class ProjectMemoryPlaygroundStreamRequestDto
 
     /// <summary>Optional scenario id for persona path hint in streamed prompts.</summary>
     public string? ScenarioId { get; set; }
+
+    /// <summary>Client-generated id grouping user + assistant turns; server generates if empty.</summary>
+    public string? TurnGroupId { get; set; }
+
+    /// <summary>Uploaded visual assets (state <c>uploaded</c> is enough — subjects inferred later).</summary>
+    public List<PlaygroundStreamAttachmentDto>? Attachments { get; set; }
 }
 
 public sealed class ProjectMemoryPlaygroundRunResponseDto
@@ -273,6 +294,9 @@ public sealed class GenericInboxPendingItemDto
     public string ScenarioSegment { get; set; } = "";
     public string QueuedAtUtc { get; set; } = "";
     public string UserPromptLine { get; set; } = "";
+
+    /// <summary>When set, playground inbox UI can show the related photo thumbnail.</summary>
+    public string? SourceAssetId { get; set; }
 }
 
 public sealed class GenericInboxPendingListResponseDto
@@ -321,6 +345,22 @@ public sealed class ScenarioEntityListItemDto
 {
     public string EntityKey { get; set; } = "";
     public string DisplayName { get; set; } = "";
+}
+
+/// <summary>Playground: infer project focus from name + sync conversation coref store on session open.</summary>
+public sealed class PlaygroundSyncFocusRequestDto
+{
+    public string SessionId { get; set; } = "";
+    public string? ProjectId { get; set; }
+}
+
+public sealed class PlaygroundSyncFocusResponseDto
+{
+    public string? FocusEntityKey { get; set; }
+    public string? FocusDisplayName { get; set; }
+    public bool InferredFromProjectName { get; set; }
+    /// <summary>True when focus was loaded from the scenario conversation store (chat-driven focus shift).</summary>
+    public bool UpdatedFromConversation { get; set; }
 }
 
 public sealed class PersonLifeSignalDto

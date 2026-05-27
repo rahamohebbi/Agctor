@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.Sessions.Models;
 using Microsoft.Data.Sqlite;
 
@@ -247,9 +248,9 @@ LIMIT $limit OFFSET $offset;";
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = lastTurns.HasValue
                 ? @"
-SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
+SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at, attachments_json
 FROM (
-  SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
+  SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at, attachments_json
   FROM session_turns
   WHERE session_id = $id
   ORDER BY sequence DESC
@@ -257,7 +258,7 @@ FROM (
 )
 ORDER BY sequence ASC;"
                 : @"
-SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at
+SELECT turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at, attachments_json
 FROM session_turns
 WHERE session_id = $id
 ORDER BY sequence ASC;";
@@ -271,17 +272,7 @@ ORDER BY sequence ASC;";
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                turns.Add(new SessionTurn
-                {
-                    TurnId = reader.GetString(0),
-                    TurnGroupId = reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1),
-                    SessionId = reader.GetString(2),
-                    Sequence = reader.GetInt32(3),
-                    Role = ParseRole(reader.GetString(4)),
-                    Content = reader.GetString(5),
-                    AgentId = reader.IsDBNull(6) ? null : reader.GetString(6),
-                    CreatedAt = DateTimeOffset.Parse(reader.GetString(7))
-                });
+                turns.Add(ReadSessionTurn(reader));
             }
 
             return turns;
@@ -294,9 +285,10 @@ ORDER BY sequence ASC;";
             {
                 throw new InvalidOperationException("SessionId is required.");
             }
-            if (string.IsNullOrWhiteSpace(turn.Content))
+            var hasAttachments = !string.IsNullOrWhiteSpace(turn.AttachmentsJson);
+            if (string.IsNullOrWhiteSpace(turn.Content) && !hasAttachments)
             {
-                throw new InvalidOperationException("Content is required.");
+                throw new InvalidOperationException("Content or attachments are required.");
             }
 
             await _dbLock.WaitAsync(cancellationToken);
@@ -325,16 +317,17 @@ ORDER BY sequence ASC;";
                     SessionId = turn.SessionId,
                     Sequence = nextSequence,
                     Role = turn.Role,
-                    Content = turn.Content,
+                    Content = string.IsNullOrWhiteSpace(turn.Content) && hasAttachments ? "" : turn.Content,
                     AgentId = string.IsNullOrWhiteSpace(turn.AgentId) ? null : turn.AgentId,
-                    CreatedAt = turn.CreatedAt == default ? DateTimeOffset.UtcNow : turn.CreatedAt
+                    CreatedAt = turn.CreatedAt == default ? DateTimeOffset.UtcNow : turn.CreatedAt,
+                    AttachmentsJson = turn.AttachmentsJson
                 };
 
                 await using (var insertCmd = conn.CreateCommand())
                 {
                     insertCmd.CommandText = @"
-INSERT INTO session_turns (turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at)
-VALUES ($turnId, $turnGroupId, $sessionId, $sequence, $role, $content, $agentId, $createdAt);";
+INSERT INTO session_turns (turn_id, turn_group_id, session_id, sequence, role, content, agent_id, created_at, attachments_json)
+VALUES ($turnId, $turnGroupId, $sessionId, $sequence, $role, $content, $agentId, $createdAt, $attachmentsJson);";
                     insertCmd.Parameters.AddWithValue("$turnId", normalized.TurnId);
                     insertCmd.Parameters.AddWithValue("$turnGroupId", normalized.TurnGroupId);
                     insertCmd.Parameters.AddWithValue("$sessionId", normalized.SessionId);
@@ -343,6 +336,7 @@ VALUES ($turnId, $turnGroupId, $sessionId, $sequence, $role, $content, $agentId,
                     insertCmd.Parameters.AddWithValue("$content", normalized.Content);
                     insertCmd.Parameters.AddWithValue("$agentId", (object?)normalized.AgentId ?? DBNull.Value);
                     insertCmd.Parameters.AddWithValue("$createdAt", normalized.CreatedAt.ToString("O"));
+                    insertCmd.Parameters.AddWithValue("$attachmentsJson", (object?)normalized.AttachmentsJson ?? DBNull.Value);
                     await insertCmd.ExecuteNonQueryAsync(cancellationToken);
                 }
 
@@ -582,19 +576,21 @@ DO UPDATE SET content = excluded.content,
                 await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
-INSERT INTO session_projects (project_id, name, scenario_id, focus_entity_key, focus_display_name, created_at, updated_at)
-VALUES ($id, $name, $scenarioId, $focusKey, $focusName, $createdAt, $updatedAt)
+INSERT INTO session_projects (project_id, name, scenario_id, focus_entity_key, focus_display_name, settings_json, created_at, updated_at)
+VALUES ($id, $name, $scenarioId, $focusKey, $focusName, $settingsJson, $createdAt, $updatedAt)
 ON CONFLICT(project_id) DO UPDATE SET
   scenario_id = excluded.scenario_id,
   name = excluded.name,
   focus_entity_key = excluded.focus_entity_key,
   focus_display_name = excluded.focus_display_name,
+  settings_json = excluded.settings_json,
   updated_at = excluded.updated_at;";
                 cmd.Parameters.AddWithValue("$id", id);
                 cmd.Parameters.AddWithValue("$name", resolvedName);
                 cmd.Parameters.AddWithValue("$scenarioId", resolvedScenarioId);
                 cmd.Parameters.AddWithValue("$focusKey", resolvedFocusKey is null ? DBNull.Value : resolvedFocusKey);
                 cmd.Parameters.AddWithValue("$focusName", resolvedFocusName is null ? DBNull.Value : resolvedFocusName);
+                cmd.Parameters.AddWithValue("$settingsJson", DBNull.Value);
                 cmd.Parameters.AddWithValue("$createdAt", now.ToString("O"));
                 cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -617,11 +613,11 @@ ON CONFLICT(project_id) DO UPDATE SET
             await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.settings_json, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
 FROM session_projects p
 LEFT JOIN sessions s ON s.project_id = p.project_id
 WHERE p.project_id = $id
-GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at;";
+GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.settings_json, p.created_at, p.updated_at;";
             cmd.Parameters.AddWithValue("$id", projectId.Trim());
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -640,10 +636,10 @@ GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_displa
             await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
-SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
+SELECT p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.settings_json, p.created_at, p.updated_at, COALESCE(COUNT(s.session_id), 0)
 FROM session_projects p
 LEFT JOIN sessions s ON s.project_id = p.project_id
-GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.created_at, p.updated_at
+GROUP BY p.project_id, p.name, p.scenario_id, p.focus_entity_key, p.focus_display_name, p.settings_json, p.created_at, p.updated_at
 ORDER BY p.updated_at DESC
 LIMIT $limit OFFSET $offset;";
             cmd.Parameters.AddWithValue("$limit", limit);
@@ -669,7 +665,7 @@ LIMIT $limit OFFSET $offset;";
                 await using var cmd = conn.CreateCommand();
                 cmd.CommandText = @"
 UPDATE session_projects
-SET name = $name, scenario_id = $scenarioId, focus_entity_key = $focusKey, focus_display_name = $focusName, updated_at = $updatedAt
+SET name = $name, scenario_id = $scenarioId, focus_entity_key = $focusKey, focus_display_name = $focusName, settings_json = $settingsJson, updated_at = $updatedAt
 WHERE project_id = $id;";
                 cmd.Parameters.AddWithValue("$name", (project.Name ?? "").Trim());
                 var scenarioId = string.IsNullOrWhiteSpace(project.ScenarioId) ? SessionProjectTypes.People : project.ScenarioId.Trim().ToLowerInvariant();
@@ -678,6 +674,7 @@ WHERE project_id = $id;";
                 cmd.Parameters.AddWithValue("$focusKey", focusKey is null ? DBNull.Value : focusKey);
                 var focusName = string.IsNullOrWhiteSpace(project.FocusDisplayName) ? null : project.FocusDisplayName.Trim();
                 cmd.Parameters.AddWithValue("$focusName", focusName is null ? DBNull.Value : focusName);
+                cmd.Parameters.AddWithValue("$settingsJson", string.IsNullOrWhiteSpace(project.SettingsJson) ? DBNull.Value : project.SettingsJson);
                 cmd.Parameters.AddWithValue("$updatedAt", now.ToString("O"));
                 cmd.Parameters.AddWithValue("$id", project.ProjectId.Trim());
                 var changed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -872,10 +869,12 @@ CREATE TABLE IF NOT EXISTS session_project_moves (
 ;";
             cmd.ExecuteNonQuery();
             EnsureTurnGroupColumn(conn);
+            EnsureAttachmentsJsonColumn(conn);
             // Index uses project_id — must run after legacy ALTER adds the column.
             EnsureSessionProjectColumn(conn);
             EnsureSessionProjectsSchema(conn);
             EnsureProjectFocusColumns(conn);
+            EnsureProjectSettingsColumn(conn);
             using var projIdx = conn.CreateCommand();
             projIdx.CommandText = @"
 CREATE INDEX IF NOT EXISTS idx_sessions_project_updated
@@ -934,6 +933,8 @@ VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
         private static SessionProject ReadProject(SqliteDataReader reader)
         {
             var scenarioId = reader.IsDBNull(2) ? SessionProjectTypes.People : reader.GetString(2);
+            var settingsJson = reader.IsDBNull(5) ? null : reader.GetString(5);
+            var settings = ChatProjectSettings.FromJson(settingsJson);
             return new SessionProject
             {
                 ProjectId = reader.GetString(0),
@@ -941,9 +942,11 @@ VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
                 ScenarioId = scenarioId,
                 FocusEntityKey = reader.IsDBNull(3) ? null : reader.GetString(3),
                 FocusDisplayName = reader.IsDBNull(4) ? null : reader.GetString(4),
-                CreatedAt = DateTimeOffset.Parse(reader.GetString(5)),
-                UpdatedAt = DateTimeOffset.Parse(reader.GetString(6)),
-                SessionCount = reader.GetInt32(7)
+                SettingsJson = settingsJson,
+                VisualMaxPhotos = settings.VisualMaxPhotos,
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(6)),
+                UpdatedAt = DateTimeOffset.Parse(reader.GetString(7)),
+                SessionCount = reader.GetInt32(8)
             };
         }
 
@@ -985,6 +988,28 @@ VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
             }
         }
 
+        private static void EnsureProjectSettingsColumn(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(session_projects);";
+            var hasSettings = false;
+            using (var reader = pragma.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), "settings_json", StringComparison.OrdinalIgnoreCase))
+                        hasSettings = true;
+                }
+            }
+
+            if (!hasSettings)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_projects ADD COLUMN settings_json TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
+        }
+
         private static void EnsureTurnGroupColumn(SqliteConnection conn)
         {
             using var pragma = conn.CreateCommand();
@@ -1009,6 +1034,47 @@ VALUES ($id, $title, NULL, $createdAt, $updatedAt, 0);";
                 alter.ExecuteNonQuery();
             }
 
+        }
+
+        private static void EnsureAttachmentsJsonColumn(SqliteConnection conn)
+        {
+            using var pragma = conn.CreateCommand();
+            pragma.CommandText = "PRAGMA table_info(session_turns);";
+            var hasColumn = false;
+            using (var reader = pragma.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    if (string.Equals(reader.GetString(1), "attachments_json", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasColumn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasColumn)
+            {
+                using var alter = conn.CreateCommand();
+                alter.CommandText = "ALTER TABLE session_turns ADD COLUMN attachments_json TEXT NULL;";
+                alter.ExecuteNonQuery();
+            }
+        }
+
+        private static SessionTurn ReadSessionTurn(Microsoft.Data.Sqlite.SqliteDataReader reader)
+        {
+            return new SessionTurn
+            {
+                TurnId = reader.GetString(0),
+                TurnGroupId = reader.IsDBNull(1) ? reader.GetString(0) : reader.GetString(1),
+                SessionId = reader.GetString(2),
+                Sequence = reader.GetInt32(3),
+                Role = ParseRole(reader.GetString(4)),
+                Content = reader.GetString(5),
+                AgentId = reader.IsDBNull(6) ? null : reader.GetString(6),
+                CreatedAt = DateTimeOffset.Parse(reader.GetString(7)),
+                AttachmentsJson = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null
+            };
         }
 
         private static void EnsureSessionProjectColumn(SqliteConnection conn)

@@ -1,0 +1,53 @@
+schemaVersion: 1.0
+assetId: 2729088aafba4ac38f022427c7a48fb7
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/2729088aafba4ac38f022427c7a48fb7/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 122508
+state: uploaded
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: d83155a4-4624-4ee7-a9c1-fdb275f9eab1
+sourceTurnGroupId: tg-1779691759135-267d1fd5129a28
+context:
+  userCaption: 
+  occasion: 
+subjects: []
+inference: 
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: pending
+  sceneSummary: 
+  ollamaModel: 
+  promptVersion: 
+  lastRunAt: 

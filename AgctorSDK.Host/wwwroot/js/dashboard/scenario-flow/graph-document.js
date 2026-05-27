@@ -154,7 +154,20 @@
                 }
             });
         }
-        return { ok: true, errors: [], order: order };
+        var nodeById = {};
+        nodes.forEach(function (n) {
+            if (n && n.id) nodeById[n.id] = n;
+        });
+        var steps = order.map(function (id, idx) {
+            var n = nodeById[id] || {};
+            return {
+                id: id,
+                label: n.label || id,
+                type: n.type || '',
+                index: idx + 1
+            };
+        });
+        return { ok: true, errors: [], order: order, steps: steps };
     }
 
     global.AgctorScenarioFlow = global.AgctorScenarioFlow || {};

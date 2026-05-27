@@ -1,0 +1,80 @@
+schemaVersion: 1.0
+assetId: 6251946779e4427a9996332adfc1bba5
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/6251946779e4427a9996332adfc1bba5/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 57212
+state: failed
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779234441039-8308eadebc54e
+context:
+  userCaption: Raha
+  occasion: 
+subjects:
+- entityKey: raha
+  role: primary
+  displayName: Raha
+inference:
+  source: caption
+  confidence: 0.88
+  entityKeys:
+  - raha
+  rationale: Linked from your message (this is me / project focus).
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: failed
+  ollamaModel: 
+  promptVersion: visual-extract-v1
+  lastRunAt:
+    dateTime: 2026-05-19T23:47:57.4294567
+    utcDateTime: 2026-05-19T23:47:57.4294567Z
+    localDateTime: 2026-05-19T16:47:57.4294567-07:00
+    date: 2026-05-19T00:00:00.0000000
+    day: 19
+    dayOfWeek: Tuesday
+    dayOfYear: 139
+    hour: 23
+    millisecond: 429
+    microsecond: 456
+    nanosecond: 700
+    minute: 47
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 57
+    ticks: 639148312774294567
+    utcTicks: 639148312774294567
+    timeOfDay: 23:47:57.4294567
+    year: 2026

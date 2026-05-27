@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Loading;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
@@ -21,17 +22,20 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
 {
     private readonly IProjectLoader _loader;
     private readonly IEntityRegistry _entities;
+    private readonly IFocusSubjectResolver _focusSubject;
     private readonly IConversationCoreferenceResolver _resolver;
     private readonly IConversationFocusStore _focusStore;
 
     public ProjectMemoryCoreferenceCoordinator(
         IProjectLoader loader,
         IEntityRegistry entities,
+        IFocusSubjectResolver focusSubject,
         IConversationCoreferenceResolver resolver,
         IConversationFocusStore focusStore)
     {
         _loader = loader ?? throw new ArgumentNullException(nameof(loader));
         _entities = entities ?? throw new ArgumentNullException(nameof(entities));
+        _focusSubject = focusSubject ?? throw new ArgumentNullException(nameof(focusSubject));
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         _focusStore = focusStore ?? throw new ArgumentNullException(nameof(focusStore));
     }
@@ -94,6 +98,30 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
             // Discovery failures degrade gracefully — no whitelist, resolver returns unchanged.
         }
 
+        FocusSubjectResult focusSubject;
+        try
+        {
+            focusSubject = await _focusSubject
+                .ResolveAsync(
+                    new FocusSubjectRequest
+                    {
+                        UserMessage = userMessage,
+                        ConversationPrefix = conversationPrefix,
+                        CurrentFocusEntityKey = focus?.EntityKey,
+                        KnownEntities = known
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            focusSubject = FocusSubjectResult.Unchanged(focus?.EntityKey, "focus-subject-error");
+        }
+
         CoreferenceResolution resolution;
         try
         {
@@ -115,8 +143,12 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
             resolution = CoreferenceResolution.Unchanged(userMessage, focus?.EntityKey, "resolver-error");
         }
 
-        var activeSubjectKey = resolution.ActiveSubjectEntityKey ?? focus?.EntityKey;
-        var activeSubjectDisplay = LookupDisplay(activeSubjectKey, known) ?? focus?.DisplayName;
+        var activeSubjectKey = FocusEntityPolicy.NormalizeSlugOrNull(focusSubject.EntityKey)
+                               ?? resolution.ActiveSubjectEntityKey
+                               ?? focus?.EntityKey;
+        var activeSubjectDisplay = LookupDisplay(activeSubjectKey, known)
+                                   ?? focusSubject.DisplayName
+                                   ?? focus?.DisplayName;
 
         return new CoreferencePreprocessResult
         {
@@ -124,7 +156,9 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
             Changed = resolution.Changed,
             ActiveSubjectKey = activeSubjectKey,
             ActiveSubjectDisplay = activeSubjectDisplay,
-            Reason = resolution.Reason,
+            Reason = string.IsNullOrWhiteSpace(focusSubject.Reason)
+                ? resolution.Reason
+                : focusSubject.Reason + ";" + resolution.Reason,
             FocusBefore = focus,
             KnownEntities = known
         };
@@ -146,6 +180,7 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
         try
         {
             var (slug, source) = ResolveFocusFromExtract(rawExtractorLlmText, activeSubjectFromPreprocess);
+            slug = FocusEntityPolicy.NormalizeSlugOrNull(slug);
             if (string.IsNullOrWhiteSpace(slug))
                 return;
 
@@ -170,8 +205,12 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
     /// Prefer the most recent <c>profile_fact/name</c> in this turn's extractor output; fall back to the
     /// resolver hint (or previous focus) so a pure pronoun turn still updates the persisted active subject.
     /// </summary>
-    internal static (string? Slug, string Source) ResolveFocusFromExtract(string? rawExtract, string? coreferenceSubject)
+    public static (string? Slug, string Source) ResolveFocusFromExtract(string? rawExtract, string? coreferenceSubject)
     {
+        var resolved = FocusEntityPolicy.NormalizeSlugOrNull(coreferenceSubject);
+        if (!string.IsNullOrWhiteSpace(resolved))
+            return (resolved, "resolved");
+
         if (!string.IsNullOrWhiteSpace(rawExtract)
             && MemoryIntentJson.TryParseBatch(rawExtract, out var batch, out _, out _)
             && batch != null
@@ -183,7 +222,8 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
                 if (intent == null) continue;
                 if (string.Equals(intent.KnowledgeType, "profile_fact", StringComparison.OrdinalIgnoreCase)
                     && string.Equals(intent.Attribute, "name", StringComparison.OrdinalIgnoreCase)
-                    && !string.IsNullOrWhiteSpace(intent.EntityKey))
+                    && !string.IsNullOrWhiteSpace(intent.EntityKey)
+                    && !FocusEntityPolicy.IsPlaceholderSlug(intent.EntityKey))
                 {
                     return (intent.EntityKey.Trim(), "extracted");
                 }
@@ -191,13 +231,12 @@ public sealed class ProjectMemoryCoreferenceCoordinator : IProjectMemoryCorefere
 
             foreach (var intent in batch.MemoryIntents)
             {
-                if (intent != null && !string.IsNullOrWhiteSpace(intent.EntityKey))
+                if (intent != null && !string.IsNullOrWhiteSpace(intent.EntityKey)
+                    && !FocusEntityPolicy.IsPlaceholderSlug(intent.EntityKey))
                     return (intent.EntityKey.Trim(), "extracted");
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(coreferenceSubject))
-            return (coreferenceSubject!.Trim(), "resolved");
         return (null, "none");
     }
 

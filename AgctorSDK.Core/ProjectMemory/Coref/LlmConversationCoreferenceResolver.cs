@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory;
 using Microsoft.Extensions.Logging;
 
 namespace AgctorSDK.Core.ProjectMemory.Coref;
@@ -50,14 +51,10 @@ public sealed class LlmConversationCoreferenceResolver : IConversationCoreferenc
         if (string.IsNullOrWhiteSpace(request.ConversationPrefix) && request.CurrentFocus == null)
             return CoreferenceResolution.Unchanged(request.UserMessage, null, "no-context");
 
-        // Pre-check: if the message already explicitly names a known entity (canonical or alias),
-        // skip the LLM since the extractor will pick it up directly, and pin activeSubject to that
-        // explicit person so stale focus cannot leak into this turn.
-        var knownAsArr = request.KnownEntities ?? Array.Empty<KnownEntity>();
-        var explicitSubject = TryMatchExplicitKnownEntity(request.UserMessage, knownAsArr);
-        if (!string.IsNullOrWhiteSpace(explicitSubject))
-            return CoreferenceResolution.Unchanged(request.UserMessage, explicitSubject, "explicit-name-detected");
+        if (!MayNeedRewrite(request.UserMessage))
+            return CoreferenceResolution.Unchanged(request.UserMessage, request.CurrentFocus?.EntityKey, "no-implicit-reference");
 
+        var knownAsArr = request.KnownEntities ?? Array.Empty<KnownEntity>();
         var allowed = knownAsArr
             .Where(k => !string.IsNullOrWhiteSpace(k.EntityKey) && !IsPronounLike(k.EntityKey))
             .ToList();
@@ -97,21 +94,6 @@ public sealed class LlmConversationCoreferenceResolver : IConversationCoreferenc
         return resolution;
     }
 
-    private static string? TryMatchExplicitKnownEntity(string message, IEnumerable<KnownEntity> entities)
-    {
-        if (string.IsNullOrWhiteSpace(message)) return null;
-        foreach (var e in entities)
-        {
-            if (IsPronounLike(e.EntityKey)) continue;
-            if (ContainsWordCaseInsensitive(message, e.EntityKey)) return e.EntityKey;
-            if (!IsPronounLike(e.DisplayName) && ContainsWordCaseInsensitive(message, e.DisplayName)) return e.EntityKey;
-            if (e.Aliases == null) continue;
-            foreach (var a in e.Aliases)
-                if (!IsPronounLike(a) && ContainsWordCaseInsensitive(message, a)) return e.EntityKey;
-        }
-        return null;
-    }
-
     private static bool ContainsWordCaseInsensitive(string haystack, string? needle)
     {
         if (string.IsNullOrWhiteSpace(needle)) return false;
@@ -123,6 +105,24 @@ public sealed class LlmConversationCoreferenceResolver : IConversationCoreferenc
         if (string.IsNullOrWhiteSpace(token)) return false;
         var t = token.Trim().ToLowerInvariant();
         return t is "he" or "him" or "his" or "she" or "her" or "hers" or "they" or "them" or "their" or "theirs";
+    }
+
+    /// <summary>Pronoun/implied-subject turns need rewrite; explicit naming is handled by FocusSubjectTool upstream.</summary>
+    private static bool MayNeedRewrite(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return false;
+
+        var padded = " " + message.ToLowerInvariant() + " ";
+        return padded.Contains(" he ")
+               || padded.Contains(" him ")
+               || padded.Contains(" his ")
+               || padded.Contains(" she ")
+               || padded.Contains(" her ")
+               || padded.Contains(" hers ")
+               || padded.Contains(" they ")
+               || padded.Contains(" them ")
+               || padded.Contains(" their ");
     }
 
     private static string BuildPrompt(CoreferenceRequest request, IReadOnlyList<KnownEntity> allowed)

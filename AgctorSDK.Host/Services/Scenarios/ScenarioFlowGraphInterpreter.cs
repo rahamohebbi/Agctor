@@ -36,7 +36,8 @@ public sealed class ScenarioFlowGraphInterpreter
         string projectRoot,
         IScenarioFlowRouterLlmService? routerLlm,
         IScenarioFlowExecutionObserver? observer = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? routerRoutingAppendix = null)
     {
         if (flow.Nodes == null || flow.Nodes.Count == 0)
             throw new ScenarioFlowExecutionException("Flow has no nodes.");
@@ -62,7 +63,7 @@ public sealed class ScenarioFlowGraphInterpreter
             {
                 await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
                     .ConfigureAwait(false);
-                return CombineIncoming(flow, store, current);
+                return ScenarioFlowOutputComposer.Compose(flow, map, store, current, flow.OutputPolicy);
             }
 
             await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, observer)
@@ -116,7 +117,7 @@ public sealed class ScenarioFlowGraphInterpreter
                         throw new ScenarioFlowExecutionException(
                             $"Router '{current}' (llm) has no sequential edges to LlmNode nodes.");
 
-                    var routingText = RouterInputText(flow, store, current, userMessage);
+                    var routingText = RouterInputText(flow, store, current, userMessage, routerRoutingAppendix);
                     var llmResult = await routerLlm
                         .RouteAsync(projectRoot ?? "", userMessage, candidates, rCfg, cancellationToken, routingText)
                         .ConfigureAwait(false);
@@ -143,16 +144,14 @@ public sealed class ScenarioFlowGraphInterpreter
                         throw new ScenarioFlowExecutionException(
                             "LLM router returned personaIds that do not map to Router candidates.");
 
-                    if (observer != null)
-                    {
-                        var picked = string.Join(", ", llmResult.SelectedPersonaIds);
-                        await observer.OnNodeCompletedAsync(rid, "Router", $"llm→[{picked}]", cancellationToken).ConfigureAwait(false);
-                    }
-
                     if (targetNodes.Count == 1)
                     {
                         if (observer != null)
                         {
+                            var pickedOne = string.Join(", ", llmResult.SelectedPersonaIds);
+                            await observer
+                                .OnNodeCompletedAsync(rid, "Router", $"llm→[{pickedOne}]", cancellationToken)
+                                .ConfigureAwait(false);
                             await observer
                                 .OnRouterBranchResolvedAsync(rid, new[] { targetNodes[0] }, null, cancellationToken)
                                 .ConfigureAwait(false);
@@ -179,26 +178,50 @@ public sealed class ScenarioFlowGraphInterpreter
 
                     if (observer != null)
                     {
+                        var picked = string.Join(", ", llmResult.SelectedPersonaIds);
+                        var branchExec = ScenarioFlowBranchExecutionPlanner.Resolve(
+                            rCfg,
+                            llmResult.ResolvedBranchExecution,
+                            llmResult.SelectedPersonaIds);
                         await observer
-                            .OnRouterBranchResolvedAsync(rid, targetNodes, mergeId, cancellationToken)
+                            .OnNodeCompletedAsync(
+                                rid,
+                                "Router",
+                                $"llm→[{picked}] {branchExec.ToString().ToLowerInvariant()}",
+                                cancellationToken)
                             .ConfigureAwait(false);
                     }
 
-                    var branchTasks = targetNodes.Select(t =>
-                            RunBranchToMergeAsync(
-                                flow,
-                                map,
-                                store,
-                                completed,
-                                t,
-                                mergeId,
-                                userMessage,
-                                invokePersona,
-                                llmNodeTimeout,
-                                cancellationToken,
-                                observer))
-                        .ToArray();
-                    await Task.WhenAll(branchTasks).ConfigureAwait(false);
+                    var branchExecution = ScenarioFlowBranchExecutionPlanner.Resolve(
+                        rCfg,
+                        llmResult.ResolvedBranchExecution,
+                        llmResult.SelectedPersonaIds);
+
+                    var orderedTargets = branchExecution == ScenarioFlowRouterBranchExecution.Sequential
+                        ? ScenarioFlowBranchExecutionPlanner.OrderBranchStarts(flow, map, targetNodes)
+                        : targetNodes;
+
+                    if (observer != null)
+                    {
+                        await observer
+                            .OnRouterBranchResolvedAsync(rid, orderedTargets, mergeId, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    await RunBranchesToMergeAsync(
+                            flow,
+                            map,
+                            store,
+                            completed,
+                            orderedTargets,
+                            mergeId,
+                            branchExecution,
+                            userMessage,
+                            invokePersona,
+                            llmNodeTimeout,
+                            cancellationToken,
+                            observer)
+                        .ConfigureAwait(false);
 
                     await EnsureProcessedAsync(
                             flow,
@@ -335,12 +358,11 @@ public sealed class ScenarioFlowGraphInterpreter
                 break;
             }
             case var t when string.Equals(t, "Merge", StringComparison.OrdinalIgnoreCase):
-                store[nodeId] = CombineIncoming(flow, store, nodeId);
-                completeDetail = $"{store[nodeId].Length} char(s) merged";
+                store[nodeId] = ScenarioFlowOutputComposer.Compose(flow, map, store, nodeId, flow.OutputPolicy);
+                completeDetail = $"{store[nodeId].Length} char(s) merged ({flow.OutputPolicy ?? "merge_sections"})";
                 break;
             case var t when string.Equals(t, "Output", StringComparison.OrdinalIgnoreCase):
-                // Output text is read from predecessors via CombineIncoming at return site; optional store mirror
-                store[nodeId] = CombineIncoming(flow, store, nodeId);
+                store[nodeId] = ScenarioFlowOutputComposer.Compose(flow, map, store, nodeId, flow.OutputPolicy);
                 completeDetail = $"{store[nodeId].Length} char(s)";
                 break;
             default:
@@ -386,6 +408,59 @@ public sealed class ScenarioFlowGraphInterpreter
 
             cur = next;
         }
+    }
+
+    private static async Task RunBranchesToMergeAsync(
+        ScenarioFlowDocument flow,
+        IReadOnlyDictionary<string, ScenarioFlowNode> map,
+        Dictionary<string, string> store,
+        HashSet<string> completed,
+        IReadOnlyList<string> branchStarts,
+        string mergeId,
+        ScenarioFlowRouterBranchExecution execution,
+        string userMessage,
+        PersonaInvoker invokePersona,
+        TimeSpan llmNodeTimeout,
+        CancellationToken cancellationToken,
+        IScenarioFlowExecutionObserver? observer = null)
+    {
+        if (execution == ScenarioFlowRouterBranchExecution.Sequential)
+        {
+            foreach (var start in branchStarts)
+            {
+                await RunBranchToMergeAsync(
+                        flow,
+                        map,
+                        store,
+                        completed,
+                        start,
+                        mergeId,
+                        userMessage,
+                        invokePersona,
+                        llmNodeTimeout,
+                        cancellationToken,
+                        observer)
+                    .ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        var branchTasks = branchStarts.Select(t =>
+                RunBranchToMergeAsync(
+                    flow,
+                    map,
+                    store,
+                    completed,
+                    t,
+                    mergeId,
+                    userMessage,
+                    invokePersona,
+                    llmNodeTimeout,
+                    cancellationToken,
+                    observer))
+            .ToArray();
+        await Task.WhenAll(branchTasks).ConfigureAwait(false);
     }
 
     /// <summary>Sequential Router→LlmNode edges in stable edge-id order (LLM candidate list).</summary>
@@ -604,8 +679,14 @@ public sealed class ScenarioFlowGraphInterpreter
         ScenarioFlowDocument flow,
         IReadOnlyDictionary<string, string> store,
         string routerNodeId,
-        string userMessage) =>
-        store.TryGetValue(routerNodeId, out var t) && t.Length > 0 ? t : userMessage;
+        string userMessage,
+        string? appendix = null)
+    {
+        var t = store.TryGetValue(routerNodeId, out var stored) && stored.Length > 0 ? stored : userMessage;
+        if (string.IsNullOrWhiteSpace(appendix))
+            return t;
+        return string.IsNullOrWhiteSpace(t) ? appendix.Trim() : t + "\n\n" + appendix.Trim();
+    }
 
     private static string PickRouterTarget(ScenarioFlowDocument flow, string routerId, string userMessage)
     {

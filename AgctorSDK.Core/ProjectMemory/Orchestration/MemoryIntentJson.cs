@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgctorSDK.Core.ProjectMemory.Models;
+using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Tools;
 
 namespace AgctorSDK.Core.ProjectMemory.Orchestration;
@@ -78,6 +79,41 @@ public static class MemoryIntentJson
             if (slug.Length > 0)
                 intent.EntityKey = slug;
         }
+    }
+
+    /// <summary>
+    /// Rewrites placeholder entityKey values (user, unknown, …) to the active project focus slug
+    /// before ingest. Returns false when parse fails.
+    /// </summary>
+    public static bool TryRewritePlaceholderEntityKeys(
+        string rawLlmText,
+        string? fallbackEntityKey,
+        out string rewrittenText)
+    {
+        rewrittenText = rawLlmText;
+        var fallback = FocusEntityPolicy.NormalizeSlugOrNull(fallbackEntityKey);
+        if (string.IsNullOrWhiteSpace(fallback))
+            return false;
+
+        if (!TryParseBatch(rawLlmText, out var batch, out _, out _) || batch?.MemoryIntents == null)
+            return false;
+
+        var changed = false;
+        foreach (var intent in batch.MemoryIntents)
+        {
+            if (intent == null || string.IsNullOrWhiteSpace(intent.EntityKey))
+                continue;
+            if (!FocusEntityPolicy.IsPlaceholderSlug(intent.EntityKey))
+                continue;
+            intent.EntityKey = fallback;
+            changed = true;
+        }
+
+        if (!changed)
+            return false;
+
+        rewrittenText = JsonSerializer.Serialize(batch, JsonOptions);
+        return true;
     }
 
     /// <summary>Models often prefix/suffix prose; pull the outermost <c>{"memoryIntents":…}</c> object.</summary>

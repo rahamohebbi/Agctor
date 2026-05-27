@@ -30,6 +30,8 @@
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
     <PackageReference Include="Npgsql" Version="8.0.3" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.410.12" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.7" />
   </ItemGroup>
 
   <ItemGroup>

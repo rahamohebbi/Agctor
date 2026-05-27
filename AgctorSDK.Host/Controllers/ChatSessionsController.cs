@@ -6,6 +6,7 @@ using AgctorSDK.Core.ProjectMemory.Resolution;
 using AgctorSDK.Core.ProjectMemory.Resolution.Bridge;
 using AgctorSDK.Core.Sessions.Models;
 using AgctorSDK.Host.Models;
+using AgctorSDK.Host.Services.Visual;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
@@ -27,6 +28,7 @@ namespace AgctorSDK.Host.Controllers
         private readonly ISessionEndIngestService? _sessionEndIngest;
         private readonly IPrivacyMemoryService? _privacy;
         private readonly IOptions<ProjectMemoryAgentOptions>? _projectMemoryOptions;
+        private readonly VisualTranscriptEnricher? _visualEnricher;
 
         public ChatSessionsController(
             ISessionStore sessionStore,
@@ -36,7 +38,8 @@ namespace AgctorSDK.Host.Controllers
             ResolutionBootstrapper? resolutionBootstrap = null,
             ISessionEndIngestService? sessionEndIngest = null,
             IPrivacyMemoryService? privacy = null,
-            IOptions<ProjectMemoryAgentOptions>? projectMemoryOptions = null)
+            IOptions<ProjectMemoryAgentOptions>? projectMemoryOptions = null,
+            VisualTranscriptEnricher? visualEnricher = null)
         {
             _sessionStore = sessionStore ?? throw new ArgumentNullException(nameof(sessionStore));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -46,6 +49,7 @@ namespace AgctorSDK.Host.Controllers
             _sessionEndIngest = sessionEndIngest;
             _privacy = privacy;
             _projectMemoryOptions = projectMemoryOptions;
+            _visualEnricher = visualEnricher;
         }
 
         [HttpPost]
@@ -381,6 +385,7 @@ namespace AgctorSDK.Host.Controllers
                 }
 
                 var turns = await _sessionStore.GetTurnsAsync(sessionId, lastTurns, cancellationToken);
+                await TryEnrichVisualAttachmentsAsync(session, turns, cancellationToken).ConfigureAwait(false);
                 var traceLinks = await _sessionStore.GetTraceLinksAsync(sessionId, cancellationToken);
                 var summary = await _sessionStore.GetSummaryAsync(sessionId, cancellationToken);
                 return Ok(new SessionTranscript
@@ -400,6 +405,33 @@ namespace AgctorSDK.Host.Controllers
                     Message = ex.Message
                 });
             }
+        }
+
+        private async Task TryEnrichVisualAttachmentsAsync(
+            SessionInfo session,
+            IReadOnlyList<SessionTurn> turns,
+            CancellationToken cancellationToken)
+        {
+            if (_visualEnricher == null || turns.Count == 0)
+                return;
+
+            var root = _projectMemoryOptions?.Value.ProjectRoot?.Trim();
+            if (string.IsNullOrWhiteSpace(root))
+                return;
+
+            string? scenarioId = null;
+            if (!string.IsNullOrWhiteSpace(session.ProjectId))
+            {
+                var project = await _sessionStore.GetProjectAsync(session.ProjectId, cancellationToken).ConfigureAwait(false);
+                scenarioId = project?.ScenarioId;
+            }
+
+            if (string.IsNullOrWhiteSpace(scenarioId))
+                return;
+
+            await _visualEnricher
+                .EnrichTurnsAsync(Path.GetFullPath(root), scenarioId, turns, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 }

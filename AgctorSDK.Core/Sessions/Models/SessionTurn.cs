@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace AgctorSDK.Core.Sessions.Models
 {
@@ -18,6 +20,14 @@ namespace AgctorSDK.Core.Sessions.Models
         public SessionRole Role { get; set; }
         public string Content { get; set; } = string.Empty;
         public string? AgentId { get; set; }
+
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+        /// <summary>JSON <see cref="SessionAttachmentEnvelope"/>; persisted in SQLite.</summary>
+        public string? AttachmentsJson { get; set; }
+
+        /// <summary>Enriched on API read only — not persisted (use <see cref="AttachmentsJson"/>).</summary>
+        [JsonPropertyName("attachments")]
+        public List<SessionAttachmentRef>? Attachments { get; set; }
     }
 }

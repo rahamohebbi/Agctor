@@ -86,7 +86,11 @@
       "personaAgentIds": [
         "person-extractor",
         "memory-curator",
-        "person-query"
+        "person-query",
+        "relationship-coach",
+        "style-coach",
+        "fitness-coach",
+        "visual-intake"
       ],
       "personaBindings": {
         "extractor": "person-extractor",
@@ -100,7 +104,7 @@
         "status": "active",
         "createdAtUtc": null,
         "updatedAtUtc": null,
-        "outputPolicy": "merge_sections",
+        "outputPolicy": "ranked",
         "nodes": [
           {
             "id": "in1",
@@ -150,7 +154,50 @@
               "personaId": "person-query",
               "contextStrategy": "markdown_all",
               "toolIds": [
-                "person-memory-context"
+                "person-memory-context",
+                "person-visual-context"
+              ]
+            }
+          },
+          {
+            "id": "n_people_coach",
+            "type": "LlmNode",
+            "label": "Relationship coach",
+            "config": {
+              "personaId": "relationship-coach",
+              "contextStrategy": "markdown_all",
+              "toolIds": [
+                "person-memory-context",
+                "person-visual-context"
+              ]
+            }
+          },
+          {
+            "id": "n_people_style",
+            "type": "LlmNode",
+            "label": "Style coach",
+            "config": {
+              "personaId": "style-coach",
+              "toolPreset": "person-visual-full"
+            }
+          },
+          {
+            "id": "n_people_fitness",
+            "type": "LlmNode",
+            "label": "Fitness coach",
+            "config": {
+              "personaId": "fitness-coach",
+              "toolPreset": "person-visual-full"
+            }
+          },
+          {
+            "id": "n_people_visual",
+            "type": "LlmNode",
+            "label": "Visual intake",
+            "config": {
+              "personaId": "visual-intake",
+              "toolIds": [
+                "person-visual-ingest"
               ]
             }
           },
@@ -197,6 +244,78 @@
             "condition": null,
             "conditionMatch": null,
             "llmRoutingHint": "Use when the user asks factual questions (who/what/when) without asking to save.\nExamples: Who is Ryan? What do we know about Mom? What is her favorite color?"
+          },
+          {
+            "id": "e_people_router_coach",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_coach",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use for relationship or friendship advice grounded in memory.\nExamples: gift ideas, reconnecting, conflict, supporting stress."
+          },
+          {
+            "id": "e_people_router_style",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_style",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear."
+          },
+          {
+            "id": "e_people_router_fitness",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_fitness",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress."
+          },
+          {
+            "id": "e_people_router_visual",
+            "fromNodeId": "n_people_router",
+            "toNodeId": "n_people_visual",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo."
+          },
+          {
+            "id": "e_people_coach_merge",
+            "fromNodeId": "n_people_coach",
+            "toNodeId": "n_people_merge",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_people_style_merge",
+            "fromNodeId": "n_people_style",
+            "toNodeId": "n_people_merge",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_people_fitness_merge",
+            "fromNodeId": "n_people_fitness",
+            "toNodeId": "n_people_merge",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_people_visual_merge",
+            "fromNodeId": "n_people_visual",
+            "toNodeId": "n_people_merge",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
           },
           {
             "id": "e_people_query_merge",
@@ -289,7 +408,7 @@
         "status": "active",
         "createdAtUtc": null,
         "updatedAtUtc": null,
-        "outputPolicy": "merge_sections",
+        "outputPolicy": "ranked",
         "nodes": [
           {
             "id": "in1",
@@ -315,7 +434,7 @@
           {
             "id": "n_3g8zdmai",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Extract",
             "config": {
               "personaId": "person-extractor"
             }
@@ -323,7 +442,7 @@
           {
             "id": "n_2g5asdod",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Curate",
             "config": {
               "personaId": "memory-curator",
               "toolIds": [
@@ -334,7 +453,7 @@
           {
             "id": "n_r5v0z426",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Query",
             "config": {
               "personaId": "person-query",
               "contextStrategy": "markdown_all",
@@ -465,7 +584,10 @@
         "person-extractor",
         "memory-curator",
         "person-query",
-        "relationship-coach"
+        "relationship-coach",
+        "style-coach",
+        "fitness-coach",
+        "visual-intake"
       ],
       "personaBindings": {
         "extractor": "person-extractor",
@@ -479,7 +601,7 @@
         "status": "active",
         "createdAtUtc": null,
         "updatedAtUtc": null,
-        "outputPolicy": "merge_sections",
+        "outputPolicy": "ranked",
         "nodes": [
           {
             "id": "in1",
@@ -499,13 +621,16 @@
             "label": "Router",
             "config": {
               "routerMode": "llm",
-              "routerTargetPolicy": "single_best"
+              "routerTargetPolicy": "all_matching",
+              "routerBranchExecution": "auto",
+              "maxTargets": 2,
+              "minConfidence": 0.55
             }
           },
           {
             "id": "n_3g8zdmai",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Person Extractor",
             "config": {
               "personaId": "person-extractor"
             }
@@ -513,7 +638,7 @@
           {
             "id": "n_2g5asdod",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Memory Curator",
             "config": {
               "personaId": "memory-curator",
               "toolIds": [
@@ -524,24 +649,55 @@
           {
             "id": "n_r5v0z426",
             "type": "LlmNode",
-            "label": "LlmNode",
+            "label": "Person Query Agent",
             "config": {
               "personaId": "person-query",
               "contextStrategy": "markdown_all",
               "toolIds": [
-                "person-memory-context"
+                "person-memory-context",
+                "person-visual-context"
               ]
             }
           },
           {
             "id": "n_coach_p3",
             "type": "LlmNode",
-            "label": "Relationship coach",
+            "label": "Relationship Coach",
             "config": {
               "personaId": "relationship-coach",
               "contextStrategy": "markdown_all",
               "toolIds": [
-                "person-memory-context"
+                "person-memory-context",
+                "person-visual-context"
+              ]
+            }
+          },
+          {
+            "id": "n_style_p3",
+            "type": "LlmNode",
+            "label": "Style Coach",
+            "config": {
+              "personaId": "style-coach",
+              "toolPreset": "person-visual-full"
+            }
+          },
+          {
+            "id": "n_fitness_p3",
+            "type": "LlmNode",
+            "label": "Fitness Coach",
+            "config": {
+              "personaId": "fitness-coach",
+              "toolPreset": "person-visual-full"
+            }
+          },
+          {
+            "id": "n_visual_p3",
+            "type": "LlmNode",
+            "label": "Visual Intake",
+            "config": {
+              "personaId": "visual-intake",
+              "toolIds": [
+                "person-visual-ingest"
               ]
             }
           },
@@ -578,7 +734,7 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "use when we are providing information about certain person. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog"
+            "llmRoutingHint": "Use when the user states new facts even if they also ask a question in the same message. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog\n4. she was born in 2020 so how old is he now?"
           },
           {
             "id": "e_36mzpt86",
@@ -587,7 +743,7 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user asks factual questions about someone (who/what/when), not for advice.\nExamples: Who is X? What does X do? What is X\u0027s favorite color?"
+            "llmRoutingHint": "Use when the user asks factual questions; still apply if they also stated facts in the same message.\nExamples: \n1. Who is X? What does X do? What is X\u0027s favorite color?"
           },
           {
             "id": "e_router_coach_p3",
@@ -599,8 +755,62 @@
             "llmRoutingHint": "Use when the user wants relationship or friendship help grounded in what we know about someone.\nExamples: gift ideas, how to reconnect, advice after an argument, supporting a stressed friend, planning a thoughtful message, improving the relationship."
           },
           {
+            "id": "e_router_style_p3",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_style_p3",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear."
+          },
+          {
+            "id": "e_router_fitness_p3",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_fitness_p3",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress."
+          },
+          {
+            "id": "e_router_visual_p3",
+            "fromNodeId": "n_lyrpqc0m",
+            "toNodeId": "n_visual_p3",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo."
+          },
+          {
             "id": "e_coach_merge_p3",
             "fromNodeId": "n_coach_p3",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_style_merge_p3",
+            "fromNodeId": "n_style_p3",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_fitness_merge_p3",
+            "fromNodeId": "n_fitness_p3",
+            "toNodeId": "n_i02xj4ob",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null
+          },
+          {
+            "id": "e_visual_merge_p3",
+            "fromNodeId": "n_visual_p3",
             "toNodeId": "n_i02xj4ob",
             "mode": "sequential",
             "condition": null,
@@ -642,32 +852,44 @@
               "y": 150.98350450178785
             },
             "out1": {
-              "x": 340.854110642452,
-              "y": 200.5118406707958
+              "x": 555.8181166109545,
+              "y": 315.562998794783
             },
             "n_lyrpqc0m": {
               "x": -213.06778316361158,
               "y": 164.51752970728333
             },
             "n_3g8zdmai": {
-              "x": -67.98839648896447,
-              "y": 118.23332635523252
+              "x": -59.55349119590579,
+              "y": 112.32889265009142
             },
             "n_2g5asdod": {
               "x": 133.08411926328856,
               "y": 116.88070318568845
             },
             "n_r5v0z426": {
-              "x": -11.251630241107634,
-              "y": 238.60889065328544
+              "x": 9.94200415015317,
+              "y": 175.02798747950303
             },
             "n_coach_p3": {
-              "x": -11.251630241107634,
-              "y": 320.6088906532854
+              "x": -15.79312332494922,
+              "y": 450.7983590567446
+            },
+            "n_style_p3": {
+              "x": 1.1554909059628695,
+              "y": 287.42326281401915
+            },
+            "n_fitness_p3": {
+              "x": -6.123845949203326,
+              "y": 360.08715215548483
+            },
+            "n_visual_p3": {
+              "x": 7.0659058754671875,
+              "y": 229.8976837520256
             },
             "n_i02xj4ob": {
-              "x": 222.87782733985364,
-              "y": 199.94861878141356
+              "x": 365.1779439668905,
+              "y": 311.9721148495064
             }
           }
         }

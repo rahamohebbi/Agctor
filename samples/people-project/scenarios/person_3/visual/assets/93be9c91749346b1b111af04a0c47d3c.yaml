@@ -1,0 +1,72 @@
+schemaVersion: 1.0
+assetId: 93be9c91749346b1b111af04a0c47d3c
+scenarioId: person_3
+projectId: sample-people-001
+storage:
+  bucket: agctor-visual
+  key: projects/sample-people-001/scenarios/person_3/assets/93be9c91749346b1b111af04a0c47d3c/original.jpg
+  contentType: image/jpeg
+  sha256: 
+  bytes: 124555
+state: failed
+capturedAt: 
+uploadedAt:
+  dateTime: 0001-01-01T00:00:00.0000000
+  utcDateTime: 0001-01-01T00:00:00.0000000Z
+  localDateTime: 0001-01-01T00:00:00.0000000-08:00
+  date: 0001-01-01T00:00:00.0000000
+  day: 1
+  dayOfWeek: Monday
+  dayOfYear: 1
+  hour: 0
+  millisecond: 0
+  microsecond: 0
+  nanosecond: 0
+  minute: 0
+  month: 1
+  offset: 00:00:00
+  totalOffsetMinutes: 0
+  second: 0
+  ticks: 0
+  utcTicks: 0
+  timeOfDay: 00:00:00
+  year: 1
+uploadedBySessionId: bfbd9747-c9b8-410b-b5c2-961dc1744339
+sourceTurnGroupId: tg-1779232091036-6d5c0b2537424
+context:
+  userCaption: 
+  occasion: 
+subjects: []
+inference: 
+privacy:
+  sensitivity: normal
+  allowAgentUse:
+  - general
+  - style
+  - fitness
+  - relationship
+extraction:
+  status: failed
+  ollamaModel: 
+  promptVersion: visual-extract-v1
+  lastRunAt:
+    dateTime: 2026-05-19T23:08:47.2426284
+    utcDateTime: 2026-05-19T23:08:47.2426284Z
+    localDateTime: 2026-05-19T16:08:47.2426284-07:00
+    date: 2026-05-19T00:00:00.0000000
+    day: 19
+    dayOfWeek: Tuesday
+    dayOfYear: 139
+    hour: 23
+    millisecond: 242
+    microsecond: 628
+    nanosecond: 400
+    minute: 8
+    month: 5
+    offset: 00:00:00
+    totalOffsetMinutes: 0
+    second: 47
+    ticks: 639148289272426284
+    utcTicks: 639148289272426284
+    timeOfDay: 23:08:47.2426284
+    year: 2026

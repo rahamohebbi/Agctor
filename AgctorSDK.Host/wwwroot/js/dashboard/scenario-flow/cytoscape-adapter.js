@@ -135,6 +135,16 @@
                     }
                 },
                 {
+                    selector: 'node.traverseHover',
+                    style: {
+                        'border-width': 6,
+                        'border-color': '#22d3ee',
+                        'border-opacity': 1,
+                        'background-blacken': -0.2,
+                        'z-index': 10000
+                    }
+                },
+                {
                     selector: 'edge:selected',
                     style: {
                         width: 4,
@@ -458,6 +468,20 @@
 
     CytoscapeRenderer.prototype.getCy = function () {
         return this._cy;
+    };
+
+    /** Highlights one node during “Simulate order” hover linking (does not change selection). */
+    CytoscapeRenderer.prototype.setTraverseHighlight = function (nodeId) {
+        if (!this._cy) return;
+        this._cy.nodes().removeClass('traverseHover');
+        if (!nodeId) return;
+        var n = this._cy.getElementById(String(nodeId));
+        if (n && n.nonempty()) n.addClass('traverseHover');
+    };
+
+    CytoscapeRenderer.prototype.clearTraverseHighlight = function () {
+        if (!this._cy) return;
+        this._cy.nodes().removeClass('traverseHover');
     };
 
     CytoscapeRenderer.prototype.destroy = function () {

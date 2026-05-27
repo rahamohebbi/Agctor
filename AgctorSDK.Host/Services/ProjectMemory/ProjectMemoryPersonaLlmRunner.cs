@@ -114,37 +114,23 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
     }
 
     /// <summary>Footer text after extractor JSON ingest (playground stream + persona runner).</summary>
-    public static string FormatIngestFooter(ProjectMemoryIngestResult ingest)
+    public static string FormatIngestFooter(ProjectMemoryIngestResult ingest, string? rawExtractorOutput = null)
     {
+        if (ingest.ParseSuccess && (ingest.WroteAnyFile || (ingest.OutOfSchemaProposals?.Count ?? 0) > 0))
+            return IngestUserMessageFormatter.Format(ingest, rawExtractorOutput);
+
         var sb = new StringBuilder();
         if (!ingest.ParseSuccess)
             sb.Append("Ingest (parse): ").Append(ingest.Summary ?? "failed");
-        else if (!ingest.WroteAnyFile)
-            sb.Append("Ingest: ").Append(ingest.Summary ?? "No files updated.");
         else
-        {
-            sb.AppendLine("Written:");
-            foreach (var f in ingest.UpdatedFiles)
-                sb.AppendLine(f);
-        }
-
-        if (ingest.OutOfSchemaProposals is { Count: > 0 })
-        {
-            sb.AppendLine();
-            sb.AppendLine("---");
-            sb.AppendLine("Out-of-schema facts — ask the user clearly before storing (generic inbox, PRD-019):");
-            foreach (var p in ingest.OutOfSchemaProposals.Take(12))
-                sb.AppendLine(p.UserPromptLine);
-            if (ingest.OutOfSchemaProposals.Count > 12)
-                sb.Append("(+").Append(ingest.OutOfSchemaProposals.Count - 12).AppendLine(" more)");
-        }
+            sb.Append("Ingest: ").Append(ingest.Summary ?? "No files updated.");
 
         return sb.ToString().TrimEnd();
     }
 
     /// <summary>Appends standard <c>---</c> ingest block to raw LLM output.</summary>
     public static string AppendIngestFooter(string extractorLlmOutput, ProjectMemoryIngestResult ingest) =>
-        extractorLlmOutput + "\n\n---\n" + FormatIngestFooter(ingest);
+        extractorLlmOutput + "\n\n---\n" + FormatIngestFooter(ingest, extractorLlmOutput);
 
     /// <summary>Optional appendix (e.g. ingest telemetry for memory-curator in scenario-flow playground).</summary>
     public static string BuildPlaygroundPrompt(
@@ -152,7 +138,9 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         IReadOnlyList<SessionTurn>? priorTurns,
         string newUserText,
         string? scenarioId = null,
-        string? playgroundFlowAppendix = null)
+        string? playgroundFlowAppendix = null,
+        string? activeSubjectEntityKey = null,
+        string? activeSubjectDisplayName = null)
     {
         var lines = (spec.Instructions ?? new List<string>()).Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
         var specHeader = $"Agent: {spec.Id}\nRole: {spec.Role}\nName: {spec.Name}\n";
@@ -170,6 +158,9 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
                 .Append(seg)
                 .Append("/people/` (not the project-root `people/` folder).");
         }
+
+        if (!string.IsNullOrWhiteSpace(activeSubjectEntityKey))
+            ProjectMemoryPromptBuilder.AppendActiveSubjectHint(sb, activeSubjectEntityKey, activeSubjectDisplayName);
 
         if (priorTurns is { Count: > 0 })
         {

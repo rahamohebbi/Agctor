@@ -6,6 +6,7 @@ using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.Inbox;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Privacy;
+using AgctorSDK.Core.ProjectMemory.Visual;
 using AgctorSDK.Core.ProjectMemory.Parsing;
 using AgctorSDK.Core.ProjectMemory.Processing;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,15 @@ public static class ProjectMemoryServiceExtensions
         // We always prefer the LLM resolver so consent/coref handling is multilingual and not heuristic-bound;
         // the heuristic fallback only kicks in when no IProjectMemoryLlmClient has been registered (rare).
         services.AddSingleton<IConversationFocusStore, ConversationFocusStore>();
+        services.TryAddSingleton<IFocusSubjectResolver>(sp =>
+        {
+            var llm = sp.GetService<IProjectMemoryLlmClient>();
+            if (llm == null)
+                return new HeuristicFocusSubjectResolver();
+
+            var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<FocusSubjectResolver>>();
+            return new FocusSubjectResolver(llm, logger);
+        });
         services.TryAddSingleton<IConversationCoreferenceResolver>(sp =>
         {
             var llm = sp.GetService<IProjectMemoryLlmClient>();
@@ -51,7 +61,11 @@ public static class ProjectMemoryServiceExtensions
         services.AddSingleton<IRuntimeIndexStoreFactory, SwitchingRuntimeIndexStoreFactory>();
         services.AddSingleton<RebuildCoordinator>();
         services.AddSingleton<IGenericInboxDecisionService, GenericInboxDecisionService>();
-        services.AddSingleton<IPrivacyMemoryService, PrivacyMemoryService>();
+        services.AddSingleton<IPrivacyMemoryService>(sp =>
+        {
+            var purge = sp.GetService<IVisualPersonPrivacyPurge>();
+            return new PrivacyMemoryService(purge);
+        });
         return services;
     }
 }

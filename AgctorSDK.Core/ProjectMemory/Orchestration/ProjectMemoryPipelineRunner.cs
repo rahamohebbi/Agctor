@@ -49,6 +49,7 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         IConfirmationIntentClassifier? confirmClassifier = null,
         IGenericInboxReplayService? replay = null,
         IConversationCoreferenceResolver? coref = null,
+        IFocusSubjectResolver? focusSubject = null,
         IConversationFocusStore? focusStore = null,
         IProjectMemoryCoreferenceCoordinator? coordinator = null,
         MentionObservationPublisher? mentions = null)
@@ -70,9 +71,12 @@ public sealed class ProjectMemoryPipelineRunner : IProjectMemoryPipelineRunner
         var resolver = coref ?? (_llm != null
             ? new LlmConversationCoreferenceResolver(_llm)
             : (IConversationCoreferenceResolver)new HeuristicConversationCoreferenceResolver());
+        var focusSubjectResolver = focusSubject ?? (_llm != null
+            ? new FocusSubjectResolver(_llm)
+            : (IFocusSubjectResolver)new HeuristicFocusSubjectResolver());
         var focus = focusStore ?? new ConversationFocusStore();
         _coordinator = coordinator
-            ?? new ProjectMemoryCoreferenceCoordinator(_loader, _entities, resolver, focus);
+            ?? new ProjectMemoryCoreferenceCoordinator(_loader, _entities, focusSubjectResolver, resolver, focus);
         _ingestService = new ProjectMemoryIngestService(_entities, _processor, _projection, _genericInbox, replay, _mentions);
     }
 

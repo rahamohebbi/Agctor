@@ -6,6 +6,7 @@ using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Mcp;
 using AgctorSDK.CodeGraph.Llm;
 using AgctorSDK.CodeGraph.Snippets;
+using AgctorSDK.Core.Ollama;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Hosting;
@@ -61,9 +62,13 @@ builder.Services.AddSwaggerGen(c =>
 var defaultProjectMemoryRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "samples", "people-project"));
 var llmApiUrl = builder.Configuration.GetValue<string>("Agctor:LLM:OllamaApiUrl", "http://localhost:11434");
 var llmModel = builder.Configuration.GetValue<string>("Agctor:LLM:DefaultModel", "mistral");
+var visionModel = builder.Configuration.GetValue<string>("Agctor:LLM:VisionModel");
+var visionFallbacks = builder.Configuration.GetSection("Agctor:LLM:VisionFallbackModels").Get<string[]>() ?? Array.Empty<string>();
+var visionTimeout = builder.Configuration.GetValue<int?>("Agctor:LLM:VisionTimeoutSeconds");
 var configuredMcpPort = builder.Configuration.GetValue<int?>("Mcp:Port") ?? 8080;
 LLMAgent.ConfigureDefaults(llmApiUrl, llmModel);
-Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfiguredOllamaApiUrl()}, model={LLMAgent.GetConfiguredDefaultModel()}");
+OllamaRuntimeConfiguration.ConfigureVision(visionModel ?? llmModel, visionFallbacks, visionTimeout);
+Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfiguredOllamaApiUrl()}, model={LLMAgent.GetConfiguredDefaultModel()}, vision={OllamaRuntimeConfiguration.GetVisionModel()}");
 
 builder.Services.AddAgctorHost(builder.Configuration, defaultProjectMemoryRoot);
 builder.Services.AddAgctorHostWeb(builder.Configuration, configuredMcpPort);
@@ -107,6 +112,17 @@ if (runtime.Name == "Proto.Actor")
 
 await runtime.InitializeAsync(runtimeConfig);
 Console.WriteLine("✅ Actor Runtime initialized successfully");
+
+try
+{
+    var ollamaCatalog = app.Services.GetRequiredService<IOllamaModelCatalog>();
+    var startupLog = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("OllamaVision");
+    await OllamaVisionStartupProbe.LogVisionModelAvailabilityAsync(ollamaCatalog, startupLog);
+}
+catch (Exception exVisionProbe)
+{
+    Console.WriteLine($"⚠️ Vision model probe skipped: {exVisionProbe.Message}");
+}
 
 // PRD-018: bootstrap the entity-resolution subsystem for the configured project root (if any).
 // Safe when the subsystem is disabled — the supervisor still spawns but does no work.

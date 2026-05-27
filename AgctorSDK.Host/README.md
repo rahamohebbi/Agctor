@@ -264,6 +264,32 @@ Configure via `appsettings.json`:
 }
 ```
 
+## Visual person photos (PRD-023)
+
+Configure blob storage under `Agctor:Visual`:
+
+| `Provider` | Use |
+| --- | --- |
+| `file` | Default in `appsettings.json` — uploads via `PUT /api/visual/assets/{id}/raw` (no MinIO required) |
+| `s3` | MinIO or AWS — presigned PUT from `POST /api/visual/assets/init-upload` |
+
+**MinIO (optional, when `Provider` is `s3`):**
+
+```bash
+docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ":9001"
+```
+
+Set `Agctor:Visual:Endpoint` to `http://localhost:9000`, `AccessKey` / `SecretKey` to your MinIO credentials (defaults `minioadmin` / `minioadmin` in code when unset).
+
+**API (project root from `Agctor:ProjectMemory:ProjectRoot`):**
+
+- `POST /api/visual/assets/init-upload` — body: `scenarioId`, `contentType`, `bytes`, optional `sessionId`, `turnGroupId`
+- `PUT /api/visual/assets/{assetId}/raw?scenarioId=` — file provider only
+- `POST /api/visual/assets/{assetId}/complete` — body: `scenarioId`, optional `sha256`
+- `GET /api/visual/assets?scenarioId=`
+
+Catalog files: `scenarios/<scenarioId>/visual/assets/<assetId>.yaml`.
+
 ## Available Tools
 
 The Host provides access to these tools:
