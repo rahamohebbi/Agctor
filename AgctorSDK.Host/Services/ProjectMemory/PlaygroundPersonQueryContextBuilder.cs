@@ -57,7 +57,8 @@ public static class PlaygroundPersonQueryContextBuilder
         string userMessage,
         string? focusEntityKey,
         int maxVisualPhotos,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? assetIds = null)
     {
         var intent = InferVisualIntent(personaId, userMessage);
         var entityKeys = string.IsNullOrWhiteSpace(focusEntityKey) ? null : focusEntityKey.Trim();
@@ -75,6 +76,8 @@ public static class PlaygroundPersonQueryContextBuilder
         };
         if (!string.IsNullOrWhiteSpace(entityKeys))
             toolReq.Parameters["entityKeys"] = entityKeys;
+        if (assetIds is { Count: > 0 })
+            toolReq.Parameters["assetIds"] = assetIds.ToList();
 
         try
         {

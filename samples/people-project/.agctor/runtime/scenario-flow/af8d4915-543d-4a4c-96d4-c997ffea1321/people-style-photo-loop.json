@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "n_ask",
+  "status": 2,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Since I don\u0027t have your style profile or a photo to reference yet, I can provide some general, practical suggestions for a friend\u0027s wedding:\n\n1. Check the invitation for the specific dress code (such as Black Tie, Cocktail, or Casual) to make sure your outfit matches the expected formality.\n2. Stick to a timeless color palette and avoid wearing colors that typically overlap with the wedding party, especially white.\n3. Ensure your chosen outfit is well-pressed or steamed and fits properly to keep the look polished.\n4. Select footwear that balances the formality of the event with the comfort needed for a full day of celebrating.",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true
+    },
+    "attachments": {
+      "newSinceLastResume": [],
+      "allInRun": [
+        "bfb3e50667f84e31bbc7483634b64d17",
+        "d45a6b44387147bf8e6f42147ecf5097",
+        "0e32420e0a114c0ebd587413ded69ad4",
+        "7a6e8f71f21247f2a3d9706e3dd67320"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": "To tailor wedding-guest style advice, please upload 2\u20133 full-body photos (outfit or mirror shots). I\u0027ll use them for fit, colors, and formality \u2014 then refine my suggestions for your friend\u0027s wedding.",
+  "awaitingEvent": null,
+  "lastOutput": null,
+  "failureReason": null,
+  "startedAtUtc": "2026-05-29T00:33:16.7429582+00:00",
+  "updatedAtUtc": "2026-05-29T00:37:12.1152499+00:00"
+}

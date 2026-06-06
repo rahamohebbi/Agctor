@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "",
+  "status": 5,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      }
+    },
+    "facts": {},
+    "attachments": {
+      "newSinceLastResume": [],
+      "allInRun": []
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": null,
+  "failureReason": "Node \u0027n_style\u0027 expected one predecessor for prompt text, found 2.",
+  "startedAtUtc": "2026-05-29T00:20:15.7994157+00:00",
+  "updatedAtUtc": "2026-05-29T00:20:15.8114584+00:00"
+}

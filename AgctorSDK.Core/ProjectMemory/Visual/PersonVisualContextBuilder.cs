@@ -35,11 +35,12 @@ public sealed class PersonVisualContextBuilder
         string visualIntent,
         IReadOnlyList<string>? entityKeys,
         int maxAssets,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? assetIds = null)
     {
         var scenarioSeg = PersonaScenarioScope.SanitizeFolderSegment(scenarioId);
         var all = await _catalog.ListAsync(projectRoot, scenarioSeg, cancellationToken).ConfigureAwait(false);
-        var filtered = FilterAssets(all, visualIntent, entityKeys, userMessage);
+        var filtered = FilterAssets(all, visualIntent, entityKeys, userMessage, assetIds);
         var take = Math.Clamp(maxAssets <= 0 ? 3 : maxAssets, 1, 12);
         var selected = filtered.Take(take).ToList();
 
@@ -79,7 +80,8 @@ public sealed class PersonVisualContextBuilder
         IReadOnlyList<VisualAssetRecord> all,
         string visualIntent,
         IReadOnlyList<string>? entityKeys,
-        string userMessage)
+        string userMessage,
+        IReadOnlyList<string>? assetIds = null)
     {
         var intent = (visualIntent ?? "general").Trim().ToLowerInvariant();
         var keys = entityKeys?
@@ -87,13 +89,30 @@ public sealed class PersonVisualContextBuilder
             .Select(k => PersonaScenarioScope.SanitizeFolderSegment(k).ToLowerInvariant())
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return all
+        IEnumerable<VisualAssetRecord> baseQuery = all
             .Where(a => !string.Equals(a.State, VisualAssetStates.Deleted, StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(a.State, VisualAssetStates.PendingUpload, StringComparison.OrdinalIgnoreCase)
                         && !string.Equals(a.State, VisualAssetStates.Failed, StringComparison.OrdinalIgnoreCase))
             .Where(a => keys == null || keys.Count == 0 || a.Subjects.Any(s => keys.Contains(s.EntityKey.ToLowerInvariant())))
-            .Where(a => IntentAllows(a, intent))
-            .OrderByDescending(a => a.UploadedAt);
+            .Where(a => IntentAllows(a, intent));
+
+        // When a session batch is specified, include every listed photo (preserves upload order).
+        if (assetIds != null && assetIds.Count > 0)
+        {
+            var byId = baseQuery.ToDictionary(a => a.AssetId, StringComparer.OrdinalIgnoreCase);
+            foreach (var rawId in assetIds)
+            {
+                if (string.IsNullOrWhiteSpace(rawId))
+                    continue;
+                if (byId.TryGetValue(rawId.Trim(), out var record))
+                    yield return record;
+            }
+
+            yield break;
+        }
+
+        foreach (var record in baseQuery.OrderByDescending(a => a.UploadedAt))
+            yield return record;
     }
 
     private static bool IntentAllows(VisualAssetRecord record, string intent)

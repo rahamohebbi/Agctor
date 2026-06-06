@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.ProjectMemory;
 using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Core.ProjectMemory.Visual.Storage;
@@ -12,10 +13,19 @@ namespace AgctorSDK.Core.ProjectMemory.Visual.Storage;
 public sealed class FileSystemBlobStore : IBlobStore
 {
     private readonly VisualStorageOptions _options;
+    private readonly IOptionsMonitor<ProjectMemoryAgentOptions>? _projectOptions;
 
     public FileSystemBlobStore(IOptions<VisualStorageOptions> options)
+        : this(options, projectOptions: null)
+    {
+    }
+
+    public FileSystemBlobStore(
+        IOptions<VisualStorageOptions> options,
+        IOptionsMonitor<ProjectMemoryAgentOptions>? projectOptions)
     {
         _options = options?.Value ?? new VisualStorageOptions();
+        _projectOptions = projectOptions;
     }
 
     public Task<PresignedBlobUpload> CreatePresignedUploadAsync(
@@ -126,11 +136,24 @@ public sealed class FileSystemBlobStore : IBlobStore
         await content.CopyToAsync(fs, cancellationToken).ConfigureAwait(false);
     }
 
-    private static string ResolvePath(string bucket, string key)
+    private string ResolvePath(string bucket, string key)
     {
         var safeBucket = bucket.Replace('\\', '_').Replace('/', '_');
         var safeKey = key.Replace('\\', '/').TrimStart('/');
-        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "data", "visual-blobs", safeBucket, safeKey.Replace('/', Path.DirectorySeparatorChar)));
+        var relKey = safeKey.Replace('/', Path.DirectorySeparatorChar);
+
+        var projectRoot = _projectOptions?.CurrentValue?.ProjectRoot?.Trim();
+        if (!string.IsNullOrWhiteSpace(projectRoot))
+        {
+            var rootFull = Path.GetFullPath(projectRoot);
+            if (Directory.Exists(Path.Combine(rootFull, ".agctor")))
+            {
+                return Path.GetFullPath(Path.Combine(rootFull, ".agctor", "visual-blobs", safeBucket, relKey));
+            }
+        }
+
+        // Fallback when no project root is configured (unit tests, ephemeral runs).
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "data", "visual-blobs", safeBucket, relKey));
     }
 
     private static string ComputeSha256Hex(string path)

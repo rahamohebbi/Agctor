@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "out1",
+  "status": 4,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Since you\u0027re getting ready for a friend\u0027s wedding, you\u0027ll want to move from the casual look in your photos toward something more polished and formal. Your grey shirt and dark jacket are great for everyday wear, but a wedding is the perfect time to elevate your style.\n\nHere are a few concrete suggestions for the occasion:\n\n1. **A Classic Suit:** A well-fitted suit in navy or charcoal is a timeless choice that works for almost any wedding. Pair it with a crisp white dress shirt and polished dress shoes.\n2. **The \u0022Smart Casual\u0022 Approach:** Since you already look comfortable in a jacket, you could pair a tailored blazer with dress trousers or chinos. This is a great middle-ground if the wedding is semi-formal.\n3. **Button-Down and Tailored Trousers:** If the event is more relaxed, a high-quality, tucked-in dress shirt paired with tailored trousers and a leather belt will keep you looking sharp and appropriate.\n\nFor the final touch, make sure your clothes are pressed and your shoes are clean to really pull the look together.",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      },
+      "out1": {
+        "text": "",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true,
+      "visual.extractedAssetCount": 4
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "2a58b47776da4227b46828a6b24e0fc9",
+        "d5617d8c7db246c990c60e933b511450",
+        "3592649aca6a405ab4b631fa2f199ede",
+        "99cf2979611045ea9ec591e080311c3b"
+      ],
+      "allInRun": [
+        "2a58b47776da4227b46828a6b24e0fc9",
+        "d5617d8c7db246c990c60e933b511450",
+        "3592649aca6a405ab4b631fa2f199ede",
+        "99cf2979611045ea9ec591e080311c3b"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": "",
+  "failureReason": null,
+  "startedAtUtc": "2026-06-01T21:55:32.9312293+00:00",
+  "updatedAtUtc": "2026-06-01T22:06:07.1491427+00:00"
+}

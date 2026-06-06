@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "out1",
+  "status": 4,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_curate": {
+        "text": "To give you personalized style advice, I still need those 2\u20133 full-body photos I mentioned! Once I can see your current fit and coloring, I can suggest specific silhouettes and colors that will work best for you.\n\nIn the meantime, here are some general guidelines to help you start preparing for a friend\u0027s wedding:\n\n1. **Confirm the Dress Code:** Check the invitation for terms like \u0022Black Tie,\u0022 \u0022Cocktail,\u0022 \u0022Semi-Formal,\u0022 or \u0022Casual.\u0022 This is the most important step to avoid being over- or under-dressed.\n2. **Mind the Colors:** Generally, avoid wearing white, ivory, or cream (to avoid competing with the couple). For colors, think about the season\u2014lighter, brighter tones for spring/summer and deeper, moodier tones for autumn/winter.\n3. **Focus on Fit:** A mid-range outfit that is perfectly tailored looks significantly better than a luxury outfit that doesn\u0027t fit correctly. If you have a suit or dress in mind, consider a quick trip to a tailor.\n4. **Footwear \u0026 Accessories:** Ensure your shoes are polished and appropriate for the venue (e.g., avoid stilettos for an outdoor garden wedding).\n\nUpload your photos whenever you\u0027re ready, and we can move from general tips to a specific look for you!",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "I\u0027m happy to help you get ready! Since I don\u0027t have your photos or specific style preferences yet, here are a few concrete suggestions to ensure you\u0027re wedding-ready:\n\n1. Check the invitation for a specific dress code (e.g., Cocktail, Black Tie, or Semi-Formal) so you can match the formality of the event.\n2. Opt for a classic, wedding-appropriate color palette like navy, charcoal, or jewel tones, and avoid wearing white.\n3. Prioritize a clean, tailored fit; a well-fitting outfit always looks more polished regardless of the style.\n4. Finish the look with polished shoes that match the formality of your attire.\n\nOnce you upload those photos, I can give you personalized advice on specific colors and fits that will work best for you!",
+        "scope": "run"
+      },
+      "out1": {
+        "text": "",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "0991d919b3094816a45d5fb799e41bad",
+        "94318d9ba1204a5e9e9c6c64455b179a",
+        "d4eef635cb8a4756a75bbb1412aa00e1",
+        "c324c03f7d7f48d6b2afdad7bdea27ff"
+      ],
+      "allInRun": [
+        "0991d919b3094816a45d5fb799e41bad",
+        "94318d9ba1204a5e9e9c6c64455b179a",
+        "d4eef635cb8a4756a75bbb1412aa00e1",
+        "c324c03f7d7f48d6b2afdad7bdea27ff"
+      ]
+    }
+  },
+  "loopRegions": [
+    {
+      "regionId": "style-refresh",
+      "attempt": 1,
+      "maxAttempts": 5
+    }
+  ],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": "",
+  "failureReason": null,
+  "startedAtUtc": "2026-05-31T14:50:00.3627432+00:00",
+  "updatedAtUtc": "2026-05-31T15:01:57.4169062+00:00"
+}

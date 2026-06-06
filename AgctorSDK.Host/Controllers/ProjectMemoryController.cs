@@ -17,6 +17,7 @@ using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Validation;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
+using AgctorSDK.Core.ProjectMemory.Scenarios.Messages;
 using AgctorSDK.Core.ProjectMemory.Companion;
 using AgctorSDK.Core.ProjectMemory.Inbox;
 using AgctorSDK.Core.ProjectMemory.LifeSignals;
@@ -33,6 +34,7 @@ using AgctorSDK.Core.ProjectMemory.Visual;
 using AgctorSDK.Core.ProjectMemory.Visual.Storage;
 using AgctorSDK.Core.Utils.ActivityTracking;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Controllers;
@@ -76,11 +78,15 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly VisualPlaygroundAttachmentService? _visualAttachments;
     private readonly VisualPlaygroundStreamExtractService? _streamVisualExtract;
     private readonly GenericInboxVisualEnricher? _inboxVisualEnricher;
+    private readonly PlaygroundScenarioFlowV2Runner? _playgroundFlowV2;
+    private readonly IScenarioFlowDomainEventPublisher? _flowDomainEvents;
+    private readonly IConfiguration _configuration;
     private readonly IOllamaVisionChatClient? _visionChat;
     private readonly IBlobStore? _blobStore;
     private readonly VisualAssetCatalogStore? _visualCatalog;
     private readonly VisualStorageOptions _visualOptions;
     private readonly PlaygroundFocusPostHook _focusPostHook;
+    private readonly PlaygroundStyleRefreshService? _styleRefresh;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -109,11 +115,15 @@ public sealed class ProjectMemoryController : ControllerBase
         VisualPlaygroundAttachmentService? visualAttachments = null,
         VisualPlaygroundStreamExtractService? streamVisualExtract = null,
         GenericInboxVisualEnricher? inboxVisualEnricher = null,
+        PlaygroundScenarioFlowV2Runner? playgroundFlowV2 = null,
+        IScenarioFlowDomainEventPublisher? flowDomainEvents = null,
+        IConfiguration? configuration = null,
         IOllamaVisionChatClient? visionChat = null,
         IBlobStore? blobStore = null,
         VisualAssetCatalogStore? visualCatalog = null,
         IOptions<VisualStorageOptions>? visualOptions = null,
-        PlaygroundFocusPostHook? focusPostHook = null)
+        PlaygroundFocusPostHook? focusPostHook = null,
+        PlaygroundStyleRefreshService? styleRefresh = null)
     {
         _options = options;
         _loader = loader;
@@ -141,11 +151,15 @@ public sealed class ProjectMemoryController : ControllerBase
         _visualAttachments = visualAttachments;
         _streamVisualExtract = streamVisualExtract;
         _inboxVisualEnricher = inboxVisualEnricher;
+        _playgroundFlowV2 = playgroundFlowV2;
+        _flowDomainEvents = flowDomainEvents;
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
         _visionChat = visionChat;
         _blobStore = blobStore;
         _visualCatalog = visualCatalog;
         _visualOptions = visualOptions?.Value ?? new VisualStorageOptions();
         _focusPostHook = focusPostHook ?? throw new ArgumentNullException(nameof(focusPostHook));
+        _styleRefresh = styleRefresh;
     }
 
     private string? RootOrNull()
@@ -616,13 +630,53 @@ public sealed class ProjectMemoryController : ControllerBase
             .ApplyDecisionsAsync(root, sid, decisions, cancellationToken)
             .ConfigureAwait(false);
 
+        string? styleRefreshText = null;
+        if (result.Approved > 0
+            && _styleRefresh != null
+            && !string.IsNullOrWhiteSpace(body.SessionId))
+        {
+            try
+            {
+                var pendingAfter = await _inboxDecisions
+                    .ListPendingAsync(root, sid, cancellationToken)
+                    .ConfigureAwait(false);
+                styleRefreshText = await _styleRefresh
+                    .TryRefreshStyleAdviceAsync(
+                        root,
+                        sid,
+                        body.SessionId.Trim(),
+                        result.Approved,
+                        pendingAfter.Count,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(styleRefreshText))
+                {
+                    await AppendPlaygroundTurnAsync(
+                            body.SessionId.Trim(),
+                            SessionRole.Assistant,
+                            styleRefreshText,
+                            "style-coach",
+                            Guid.NewGuid().ToString("N"),
+                            null,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Style refresh after inbox confirm skipped.");
+            }
+        }
+
         return Ok(new GenericInboxDecideResponseDto
         {
             Approved = result.Approved,
             Rejected = result.Rejected,
             RejectedMismatch = result.RejectedMismatch,
             UpdatedFiles = result.UpdatedFiles,
-            Errors = result.Errors
+            Errors = result.Errors,
+            StyleRefreshText = styleRefreshText
         });
     }
 
@@ -727,6 +781,31 @@ public sealed class ProjectMemoryController : ControllerBase
         }
 
         return null;
+    }
+
+    /// <summary>Picks assistant text after optional scenario-flow resume post visual extract.</summary>
+    private static string ChoosePlaygroundAssistantText(string initialText, ScenarioFlowRuntimeResult? resumeAfterExtract)
+    {
+        if (resumeAfterExtract == null)
+            return initialText;
+
+        if (!resumeAfterExtract.Success)
+        {
+            return string.IsNullOrWhiteSpace(resumeAfterExtract.ErrorMessage)
+                ? initialText
+                : "Error: " + resumeAfterExtract.ErrorMessage;
+        }
+
+        if (resumeAfterExtract.Completed && !string.IsNullOrWhiteSpace(resumeAfterExtract.Output))
+            return resumeAfterExtract.Output!;
+
+        if (!string.IsNullOrWhiteSpace(resumeAfterExtract.Output))
+            return resumeAfterExtract.Output!;
+
+        if (!string.IsNullOrWhiteSpace(resumeAfterExtract.PendingPrompt))
+            return resumeAfterExtract.PendingPrompt!;
+
+        return initialText;
     }
 
     /// <summary>Lists entity folder slugs under <c>scenarios/&lt;id&gt;/people/</c> for project focus picker.</summary>
@@ -1193,19 +1272,20 @@ public sealed class ProjectMemoryController : ControllerBase
                 .ToList()
             : new List<string>();
 
-        async Task RunStreamVisualExtractIfNeededAsync()
+        async Task<ScenarioFlowRuntimeResult?> RunStreamVisualExtractIfNeededAsync()
         {
             if (streamVisualAssetIds.Count == 0
                 || _streamVisualExtract == null
                 || string.IsNullOrWhiteSpace(scenarioResolved))
-                return;
+                return null;
 
             try
             {
-                await _streamVisualExtract
+                return await _streamVisualExtract
                     .RunAsync(
                         rootFull,
                         scenarioResolved,
+                        sessionId,
                         streamVisualAssetIds,
                         promptText,
                         chatProject?.FocusEntityKey,
@@ -1217,6 +1297,7 @@ public sealed class ProjectMemoryController : ControllerBase
             catch (Exception exExtract)
             {
                 _logger.LogDebug(exExtract, "Playground: stream visual extract skipped");
+                return null;
             }
         }
 
@@ -1323,10 +1404,12 @@ public sealed class ProjectMemoryController : ControllerBase
             // person-extractor (no memoryIntents JSON), ingest reports empty intents, and memory-curator narrates incorrectly.
             // Classifier mixes heuristic with LLM intent so natural consent (e.g. "yes I wish to save it") still routes here.
             var lastAssistantPriorPrompt = LastAssistantContent(prior);
+            var flowV2 = PlaygroundScenarioFlowV2Runner.AppliesTo(scenarioDef!.Flow);
+            var inboxInGraph = _configuration.GetValue<bool>("Agctor:ScenarioFlow:InboxInGraph");
             var inboxConfirmSignal = await _confirmClassifier
                 .ClassifyAsync(body.Payload, lastAssistantPriorPrompt, ct)
                 .ConfigureAwait(false);
-            if (inboxConfirmSignal != ConfirmationInputDetector.ConfirmationSignal.None)
+            if (inboxConfirmSignal != ConfirmationInputDetector.ConfirmationSignal.None && !(inboxInGraph && flowV2))
             {
                 await WriteFlowStepAsync("pm-generic-inbox-confirm", "running", "generic inbox confirm/reject…").ConfigureAwait(false);
                 var confirmPipelineReq = new ProjectMemoryPipelineRequest
@@ -1454,6 +1537,116 @@ public sealed class ProjectMemoryController : ControllerBase
                     personaChain: new[] { spec.Id },
                     responseChars: noPendingText.Length,
                     ingestAttempted: false);
+                return;
+            }
+
+            if (flowV2 && _playgroundFlowV2 != null && !string.IsNullOrWhiteSpace(scenarioResolved))
+            {
+                var v2Result = await _playgroundFlowV2
+                    .RunAsync(scenarioResolved, sessionId, promptText, streamVisualAssetIds, ct)
+                    .ConfigureAwait(false);
+
+                var interimText = v2Result.AssistantText;
+                var finalText = interimText;
+                ScenarioFlowRuntimeResult? resumeAfterExtract = null;
+
+                if (!v2Result.Completed)
+                {
+                    if (streamVisualAssetIds.Count > 0 && !string.IsNullOrWhiteSpace(interimText))
+                    {
+                        var interimLinked = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(interimText, Request);
+                        await WriteSseAsync(new AgentStreamEvent
+                        {
+                            Type = "llm_delta",
+                            Payload = interimLinked,
+                            AgentId = "visual-intake"
+                        }).ConfigureAwait(false);
+                        try
+                        {
+                            await AppendPlaygroundTurnAsync(
+                                    sessionId,
+                                    SessionRole.Assistant,
+                                    interimLinked,
+                                    "visual-intake",
+                                    turnGroupId,
+                                    null,
+                                    ct)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception exInterim)
+                        {
+                            _logger.LogWarning(exInterim, "Playground v2: append interim turn failed");
+                        }
+                    }
+
+                    resumeAfterExtract = await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
+                    finalText = ChoosePlaygroundAssistantText(interimText, resumeAfterExtract);
+                }
+                else if (hasAttachments)
+                {
+                    await RunStreamVisualExtractIfNeededAsync().ConfigureAwait(false);
+                }
+
+                finalText = ProjectMemoryUiLinkFormatter.WithAbsoluteWorkspaceLinks(finalText, Request);
+
+                if (!string.Equals(finalText, interimText, StringComparison.Ordinal)
+                    || streamVisualAssetIds.Count == 0
+                    || v2Result.Completed)
+                {
+                    await WriteSseAsync(new AgentStreamEvent
+                    {
+                        Type = "llm_delta",
+                        Payload = finalText,
+                        AgentId = resumeAfterExtract?.Completed == true ? "style-coach" : spec.Id
+                    }).ConfigureAwait(false);
+
+                    using (var persistScopeV2 = _activityTracker?.StartActivity("pm.playground.persist-assistant"))
+                    {
+                        try
+                        {
+                            var persistAgent = resumeAfterExtract?.Completed == true ? "style-coach" : spec.Id;
+                            await AppendPlaygroundTurnAsync(
+                                    sessionId,
+                                    SessionRole.Assistant,
+                                    finalText,
+                                    persistAgent,
+                                    turnGroupId,
+                                    null,
+                                    ct)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Playground v2: append assistant turn failed");
+                        }
+                    }
+                }
+
+                var donePayloadV2 = new
+                {
+                    type = "done",
+                    status = v2Result.Success && (resumeAfterExtract == null || resumeAfterExtract.Success)
+                        ? "Success"
+                        : "Failed",
+                    responseData = finalText,
+                    traceId = streamTraceId,
+                    errorMessage = v2Result.Success && (resumeAfterExtract == null || resumeAfterExtract.Success)
+                        ? (string?)null
+                        : finalText,
+                    messageId,
+                    sessionId,
+                    flowStatus = resumeAfterExtract?.Status.ToString() ?? v2Result.Status,
+                    executionNodeId = resumeAfterExtract?.ExecutionNodeId ?? v2Result.ExecutionNodeId
+                };
+                await Response.WriteAsync("data: " + JsonSerializer.Serialize(donePayloadV2, JsonSse) + "\n\n", ct)
+                    .ConfigureAwait(false);
+                await Response.Body.FlushAsync(ct).ConfigureAwait(false);
+                SetStreamRootDetail(
+                    status: v2Result.Success && (resumeAfterExtract == null || resumeAfterExtract.Success) ? "success" : "error",
+                    errorMessage: v2Result.Success && (resumeAfterExtract == null || resumeAfterExtract.Success) ? null : finalText,
+                    personaChain: new[] { spec.Id },
+                    responseChars: finalText.Length,
+                    ingestAttempted: hasAttachments);
                 return;
             }
 

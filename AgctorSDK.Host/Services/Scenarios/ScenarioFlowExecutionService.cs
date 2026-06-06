@@ -1,5 +1,6 @@
 using System.Threading;
 using AgctorSDK.Core.ProjectMemory;
+using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services.ProjectMemory;
 using Microsoft.Extensions.Options;
@@ -12,7 +13,9 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
     private readonly IScenarioCatalog _catalog;
     private readonly IProjectMemoryPersonaLlmRunner _personaRunner;
     private readonly IScenarioFlowRouterLlmService _routerLlm;
+    private readonly IScenarioFlowRuntimeOrchestrator? _runtimeOrchestrator;
     private readonly IOptionsMonitor<ProjectMemoryAgentOptions> _projectMemoryOptions;
+    private readonly IOptionsMonitor<ScenarioFlowHostOptions> _flowOptions;
     private readonly ILogger<ScenarioFlowExecutionService> _logger;
 
     public ScenarioFlowExecutionService(
@@ -20,13 +23,17 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
         IProjectMemoryPersonaLlmRunner personaRunner,
         IScenarioFlowRouterLlmService routerLlm,
         IOptionsMonitor<ProjectMemoryAgentOptions> projectMemoryOptions,
-        ILogger<ScenarioFlowExecutionService> logger)
+        IOptionsMonitor<ScenarioFlowHostOptions> flowOptions,
+        ILogger<ScenarioFlowExecutionService> logger,
+        IScenarioFlowRuntimeOrchestrator? runtimeOrchestrator = null)
     {
         _catalog = catalog;
         _personaRunner = personaRunner;
         _routerLlm = routerLlm;
         _projectMemoryOptions = projectMemoryOptions;
+        _flowOptions = flowOptions;
         _logger = logger;
+        _runtimeOrchestrator = runtimeOrchestrator;
     }
 
     /// <inheritdoc />
@@ -36,7 +43,8 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
             return ScenarioFlowRunResponse.Fail("INVALID_SCENARIO", "Scenario id is required.");
 
         var message = request.Message?.Trim() ?? "";
-        if (message.Length == 0)
+        var hasAttachments = request.AttachmentIds != null && request.AttachmentIds.Count > 0;
+        if (message.Length == 0 && !hasAttachments)
             return ScenarioFlowRunResponse.Fail("INVALID_MESSAGE", "message is required.");
 
         var def = _catalog.Get(scenarioId.Trim());
@@ -54,11 +62,44 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
         if (string.IsNullOrEmpty(root))
             return ScenarioFlowRunResponse.Fail("NO_PROJECT_ROOT", "Agctor:ProjectMemory:ProjectRoot is not set; LlmNode execution requires a project root.");
 
-        // Default 180s per LlmNode; 0 disables (only request cancellation applies).
-        var sec = request.LlmNodeTimeoutSeconds ?? 180;
+        // Default 600s per LlmNode for photo-loop curate/style; 0 disables (only request cancellation applies).
+        var sec = request.LlmNodeTimeoutSeconds ?? _flowOptions.CurrentValue.LlmNodeTimeoutSeconds;
         var llmNodeTimeout = sec <= 0
             ? Timeout.InfiniteTimeSpan
             : TimeSpan.FromSeconds(Math.Clamp(sec, 5, 3600));
+
+        if (_runtimeOrchestrator != null
+            && RequiresRuntimeActor(def.Flow))
+        {
+            request.ProjectRoot = root;
+            var runtimeResult = await _runtimeOrchestrator
+                .RunAsync(scenarioId.Trim(), def, request, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!runtimeResult.Success)
+            {
+                return ScenarioFlowRunResponse.Fail("FLOW_RUN_FAILED", runtimeResult.ErrorMessage ?? "Scenario flow runtime failed.");
+            }
+
+            if (runtimeResult.Completed)
+            {
+                _logger.LogInformation("Scenario flow v2 run completed for {ScenarioId} at {ExecutionNodeId}", scenarioId, runtimeResult.ExecutionNodeId);
+                return ScenarioFlowRunResponse.OkCompleted(runtimeResult.Output ?? string.Empty, runtimeResult.ExecutionNodeId, runtimeResult.Status.ToString());
+            }
+
+            _logger.LogInformation(
+                "Scenario flow v2 suspended for {ScenarioId} at {ExecutionNodeId} status {Status}",
+                scenarioId,
+                runtimeResult.ExecutionNodeId,
+                runtimeResult.Status);
+
+            return ScenarioFlowRunResponse.OkSuspended(
+                runtimeResult.PendingPrompt
+                ?? runtimeResult.Output
+                ?? ScenarioFlowInterimText.SuspendFallback(runtimeResult.Status),
+                runtimeResult.ExecutionNodeId,
+                runtimeResult.Status.ToString());
+        }
 
         var interpreter = new ScenarioFlowGraphInterpreter();
         try
@@ -81,7 +122,7 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
                 cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation("Scenario flow run completed for {ScenarioId}", scenarioId);
-            return ScenarioFlowRunResponse.Ok(output);
+            return ScenarioFlowRunResponse.OkCompleted(output);
         }
         catch (ScenarioFlowExecutionException ex)
         {
@@ -98,4 +139,10 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
             return ScenarioFlowRunResponse.Fail("INTERNAL_ERROR", ex.Message);
         }
     }
+
+    private static bool RequiresRuntimeActor(ScenarioFlowDocument flow) =>
+        ScenarioFlowCapabilities.RequiresRuntimeActor(
+            flow.SchemaVersion,
+            flow.Nodes.Select(n => n.Type),
+            (flow.Edges ?? new List<ScenarioFlowEdge>()).Select(e => e.Mode));
 }

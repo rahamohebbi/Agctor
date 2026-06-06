@@ -7,6 +7,7 @@ projectTypes:
   - people
 
 instructions:
+  - When the user mentions an occasion (wedding, interview, date night), anchor suggestions to that formality and setting.
   - Use the loaded person-memory and person-visual-context blocks as your only facts.
   - When the user attached a photo, comment on visible outfit, colors, fit, and occasion-appropriate suggestions.
   - Be practical and kind; offer 2-4 concrete suggestions, not a lecture.

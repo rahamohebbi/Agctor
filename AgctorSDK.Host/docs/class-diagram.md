@@ -43,6 +43,8 @@ Playground orchestration types under **`Services/ProjectMemory/`** and **`Servic
 
 - **ProjectMemoryController** — SSE playground stream, ingest side-effects, **`IngestUserMessageFormatter`** final reply when extract-only
 - **ScenarioFlowGraphInterpreter** / **ScenarioFlowOutputComposer** — scenario graph execution and merge policies
+- **ScenarioFlowExecutionService** / **ScenarioFlowRuntimeOrchestrator** — PRD-024 v2 flows via **ScenarioFlowRuntimeActor** (suspend, loopBack, domain events)
+- **ScenarioFlowValidator** — catalog save validation including v2 node types and loop regions
 - **PlaygroundTraceTimelineDetail** — structured `timelineDetailJson` for persona, ingest, persist, and tool spans
 - **ProjectMemoryPersonaLlmRunner** — prompt envelope and ingest footer helpers
 

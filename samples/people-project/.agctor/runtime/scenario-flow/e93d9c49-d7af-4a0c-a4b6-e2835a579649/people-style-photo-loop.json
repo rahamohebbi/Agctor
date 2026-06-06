@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "out1",
+  "status": 4,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Looking at your photos, your current style is very casual and relaxed, featuring pieces like your blue jacket, white t-shirt, and black and yellow striped shirt. Since you are getting ready for a friend\u0027s wedding, you\u0027ll want to shift from these everyday looks to something more formal.\n\nHere are a few concrete suggestions for the occasion:\n\n1. A tailored suit in a classic color like navy or charcoal, which would be a great step up from the casual jackets in your photos.\n2. A crisp, tucked-in dress shirt paired with tailored trousers if the wedding is semi-formal.\n3. Polished leather dress shoes and a matching belt to anchor the look.\n4. A simple tie or a pocket square to add a touch of elegance to the outfit.",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      },
+      "out1": {
+        "text": "",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true,
+      "visual.extractedAssetCount": 4
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "3770baeb523a450d8becf83235de972d",
+        "7384b52efb424668b271ef104d87dc1a",
+        "33d4fbb707d64e0a8627aeb603eeee1c",
+        "ce01a4036d7e4d69bb7b1968256d567c"
+      ],
+      "allInRun": [
+        "3770baeb523a450d8becf83235de972d",
+        "7384b52efb424668b271ef104d87dc1a",
+        "33d4fbb707d64e0a8627aeb603eeee1c",
+        "ce01a4036d7e4d69bb7b1968256d567c"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": "",
+  "failureReason": null,
+  "startedAtUtc": "2026-06-04T05:34:47.1338181+00:00",
+  "updatedAtUtc": "2026-06-06T04:35:06.2588236+00:00"
+}

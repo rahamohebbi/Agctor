@@ -1,0 +1,14 @@
+%% PRD-024 reference: People style coach + photo collection loop
+flowchart TD
+    A[ChatInput] --> B[Router]
+    B --> C[LlmNode: style-coach]
+    C --> D{Gate: visual.hasPhotos}
+    D -->|true| E[Output]
+    D -->|false| F[WaitForInput: Ask user upload photos]
+    F -->|loopBack| G[LlmNode: visual-intake]
+    G --> H[Trigger visual extract]
+    H --> I[AwaitEvent: visual.extract.completed]
+    I --> J[LlmNode: memory-curator]
+    J --> K[Notify: style-coach]
+    K -->|loopBack| C
+    C --> E

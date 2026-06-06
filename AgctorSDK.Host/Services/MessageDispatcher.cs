@@ -137,20 +137,30 @@ namespace AgctorSDK.Host.Services
                         if (scenarioDef?.Flow != null)
                         {
                             _logger.LogInformation("Running scenario flow for {ScenarioId} (session-coordinator path)", scn);
+                            var attachmentIds = ExtractAttachmentIdsFromRequest(request);
                             var fr = await _scenarioFlowExecution.RunAsync(
                                 scn,
-                                new ScenarioFlowRunRequest { Message = payloadStr, SessionId = sessionId },
+                                new ScenarioFlowRunRequest
+                                {
+                                    Message = payloadStr,
+                                    SessionId = sessionId,
+                                    AttachmentIds = attachmentIds.Count > 0 ? attachmentIds : null
+                                },
                                 cancellationToken).ConfigureAwait(false);
 
-                            if (fr.Success && fr.Output != null)
+                            if (fr.Success && (fr.Output != null || fr.PendingPrompt != null))
                             {
+                                var assistantText = fr.Completed
+                                    ? fr.Output!
+                                    : fr.PendingPrompt ?? fr.Output ?? "Waiting for your input.";
+
                                 SessionTurn? flowResponseTurn = null;
                                 if (!string.IsNullOrWhiteSpace(sessionId))
                                 {
                                     flowResponseTurn = await TryAppendSessionTurnAsync(
                                         sessionId,
                                         SessionRole.Assistant,
-                                        fr.Output,
+                                        assistantText,
                                         agentId,
                                         turnGroupId,
                                         cancellationToken).ConfigureAwait(false);
@@ -173,7 +183,7 @@ namespace AgctorSDK.Host.Services
                                     _streamRegistry.Publish(agentStreamId, new AgentStreamEvent
                                     {
                                         Type = "llm_delta",
-                                        Payload = fr.Output,
+                                        Payload = assistantText,
                                         TraceId = flowTraceId,
                                         AgentId = agentId
                                     });
@@ -183,7 +193,7 @@ namespace AgctorSDK.Host.Services
                                 {
                                     MessageId = envelope.Id,
                                     Status = MessageStatus.Success,
-                                    ResponseData = fr.Output,
+                                    ResponseData = assistantText,
                                     TraceId = flowTraceId,
                                     ErrorMessage = null
                                 };
@@ -707,6 +717,41 @@ namespace AgctorSDK.Host.Services
             }
 
             return GetDepth(parent, activities, cache) + 1;
+        }
+
+        /// <summary>PRD-024: optional attachment ids on coordinator flow runs (metadata.attachmentIds).</summary>
+        private static List<string> ExtractAttachmentIdsFromRequest(MessageRequest request)
+        {
+            var ids = new List<string>();
+            if (request.Metadata == null)
+                return ids;
+
+            if (!request.Metadata.TryGetValue("attachmentIds", out var raw) || raw == null)
+                return ids;
+
+            if (raw is System.Text.Json.JsonElement je && je.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var item in je.EnumerateArray())
+                {
+                    var s = item.GetString()?.Trim();
+                    if (!string.IsNullOrEmpty(s))
+                        ids.Add(s);
+                }
+
+                return ids;
+            }
+
+            if (raw is IEnumerable<object> objects)
+            {
+                foreach (var o in objects)
+                {
+                    var s = o?.ToString()?.Trim();
+                    if (!string.IsNullOrEmpty(s))
+                        ids.Add(s);
+                }
+            }
+
+            return ids;
         }
     }
 } 

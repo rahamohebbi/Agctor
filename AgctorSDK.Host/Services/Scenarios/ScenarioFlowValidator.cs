@@ -10,12 +10,18 @@ public static class ScenarioFlowValidator
 {
     private static readonly HashSet<string> NodeTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ChatInput", "Router", "LlmNode", "Merge", "Output"
+        "ChatInput", "Router", "LlmNode", "Merge", "Output",
+        "Gate", "WaitForInput", "AwaitEvent", "Notify"
     };
 
     private static readonly HashSet<string> EdgeModes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "sequential", "parallel"
+        "sequential", "parallel", "loopBack"
+    };
+
+    private static readonly HashSet<string> StoreInvalidationPolicies = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "fromTargetForward", "keepAll", "iterationScopeOnly"
     };
 
     private static readonly HashSet<string> OutputPolicies = new(StringComparer.OrdinalIgnoreCase)
@@ -90,9 +96,24 @@ public static class ScenarioFlowValidator
                 errors.Add($"Scenario '{scenario.Id}' flow: edge '{e.Id}' has unknown toNodeId '{e.ToNodeId}'.");
             if (string.IsNullOrWhiteSpace(e.Mode) || !EdgeModes.Contains(e.Mode))
                 errors.Add($"Scenario '{scenario.Id}' flow: edge '{e.Id}' has invalid mode '{e.Mode}'.");
+
+            if (string.Equals(e.Mode, "loopBack", StringComparison.OrdinalIgnoreCase))
+            {
+                if (e.LoopConfig == null)
+                    errors.Add($"Scenario '{scenario.Id}' flow: loopBack edge '{e.Id}' requires loopConfig.");
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(e.LoopConfig.LoopRegionId))
+                        errors.Add($"Scenario '{scenario.Id}' flow: loopBack edge '{e.Id}' requires loopConfig.loopRegionId.");
+                    if (e.LoopConfig.MaxAttempts < 1)
+                        errors.Add($"Scenario '{scenario.Id}' flow: loopBack edge '{e.Id}' requires loopConfig.maxAttempts >= 1.");
+                    if (!StoreInvalidationPolicies.Contains(e.LoopConfig.StoreInvalidation ?? string.Empty))
+                        errors.Add($"Scenario '{scenario.Id}' flow: loopBack edge '{e.Id}' has invalid storeInvalidation.");
+                }
+            }
         }
 
-        // Deterministic Router: at most one default sequential edge; validate regex conditions.
+        ValidateV2Nodes(scenario, flow, edgeList, errors);
         foreach (var n in flow.Nodes)
         {
             if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
@@ -287,6 +308,107 @@ public static class ScenarioFlowValidator
         }
 
         return errors;
+    }
+
+    /// <summary>PRD-024: Gate branches, suspend resume paths, loop region consistency.</summary>
+    private static void ValidateV2Nodes(
+        ScenarioDefinition scenario,
+        ScenarioFlowDocument flow,
+        List<ScenarioFlowEdge> edgeList,
+        List<string> errors)
+    {
+        var edgeIds = new HashSet<string>(
+            edgeList.Where(e => !string.IsNullOrWhiteSpace(e.Id)).Select(e => e.Id.Trim()),
+            StringComparer.OrdinalIgnoreCase);
+
+        var regionAttempts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in edgeList.Where(e => string.Equals(e.Mode, "loopBack", StringComparison.OrdinalIgnoreCase)))
+        {
+            var lc = e.LoopConfig;
+            if (lc == null || string.IsNullOrWhiteSpace(lc.LoopRegionId))
+                continue;
+            if (regionAttempts.TryGetValue(lc.LoopRegionId, out var existing) && existing != lc.MaxAttempts)
+            {
+                errors.Add(
+                    $"Scenario '{scenario.Id}' flow: loop region '{lc.LoopRegionId}' has conflicting maxAttempts across loopBack edges.");
+            }
+            else
+            {
+                regionAttempts[lc.LoopRegionId] = lc.MaxAttempts;
+            }
+        }
+
+        foreach (var n in flow.Nodes)
+        {
+            if (string.Equals(n.Type, "Gate", StringComparison.OrdinalIgnoreCase))
+            {
+                if (n.Config is not { ValueKind: JsonValueKind.Object } cfg)
+                {
+                    errors.Add($"Scenario '{scenario.Id}' flow: Gate '{n.Id}' requires config.");
+                    continue;
+                }
+
+                var fact = cfg.TryGetProperty("fact", out var f) ? f.GetString()?.Trim() : null;
+                if (string.IsNullOrEmpty(fact))
+                    errors.Add($"Scenario '{scenario.Id}' flow: Gate '{n.Id}' requires config.fact.");
+
+                var trueEdge = cfg.TryGetProperty("trueEdgeId", out var te) ? te.GetString()?.Trim() : null;
+                var falseEdge = cfg.TryGetProperty("falseEdgeId", out var fe) ? fe.GetString()?.Trim() : null;
+                if (string.IsNullOrEmpty(trueEdge) || string.IsNullOrEmpty(falseEdge))
+                {
+                    errors.Add($"Scenario '{scenario.Id}' flow: Gate '{n.Id}' requires trueEdgeId and falseEdgeId.");
+                }
+                else
+                {
+                    if (!edgeIds.Contains(trueEdge))
+                        errors.Add($"Scenario '{scenario.Id}' flow: Gate '{n.Id}' trueEdgeId '{trueEdge}' not found.");
+                    if (!edgeIds.Contains(falseEdge))
+                        errors.Add($"Scenario '{scenario.Id}' flow: Gate '{n.Id}' falseEdgeId '{falseEdge}' not found.");
+                }
+            }
+
+            if (string.Equals(n.Type, "WaitForInput", StringComparison.OrdinalIgnoreCase))
+            {
+                var prompt = TryGetStringConfig(n.Config, "promptTemplate");
+                if (string.IsNullOrWhiteSpace(prompt))
+                    errors.Add($"Scenario '{scenario.Id}' flow: WaitForInput '{n.Id}' requires config.promptTemplate.");
+
+                var hasResume = edgeList.Any(e =>
+                    string.Equals(e.FromNodeId, n.Id, StringComparison.OrdinalIgnoreCase)
+                    && (string.Equals(e.Mode, "loopBack", StringComparison.OrdinalIgnoreCase)
+                        || string.IsNullOrWhiteSpace(e.Mode)
+                        || string.Equals(e.Mode, "sequential", StringComparison.OrdinalIgnoreCase)));
+                if (!hasResume)
+                {
+                    errors.Add(
+                        $"Scenario '{scenario.Id}' flow: WaitForInput '{n.Id}' needs a loopBack or sequential outgoing edge.");
+                }
+            }
+
+            if (string.Equals(n.Type, "AwaitEvent", StringComparison.OrdinalIgnoreCase))
+            {
+                var eventType = TryGetStringConfig(n.Config, "eventType");
+                if (string.IsNullOrWhiteSpace(eventType))
+                    errors.Add($"Scenario '{scenario.Id}' flow: AwaitEvent '{n.Id}' requires config.eventType.");
+            }
+
+            if (string.Equals(n.Type, "Notify", StringComparison.OrdinalIgnoreCase))
+            {
+                var hasOut = edgeList.Any(e =>
+                    string.Equals(e.FromNodeId, n.Id, StringComparison.OrdinalIgnoreCase)
+                    && (string.IsNullOrWhiteSpace(e.Mode)
+                        || string.Equals(e.Mode, "sequential", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(e.Mode, "loopBack", StringComparison.OrdinalIgnoreCase)));
+                if (!hasOut)
+                    errors.Add($"Scenario '{scenario.Id}' flow: Notify '{n.Id}' requires an outgoing edge.");
+            }
+        }
+    }
+
+    private static string? TryGetStringConfig(JsonElement? config, string key)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } el) return null;
+        return el.TryGetProperty(key, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
     }
 
     private static bool NodeCanReachOutput(ScenarioFlowDocument flow, List<ScenarioFlowEdge> edges, string start)

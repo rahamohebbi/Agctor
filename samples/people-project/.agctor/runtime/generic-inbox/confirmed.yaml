@@ -70,3 +70,193 @@ items:
   source: user_approved
   capturedAtUtc: 2026-05-27T05:18:56.1914059+00:00
   replayedAtUtc: 
+- proposalId: 2fc1322da464b325301d61723b501005a837b7ef72a9a1317068a609defbde7b
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: eye_wear
+  value: sunglasses
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T00:41:55.4796478+00:00
+  replayedAtUtc: 
+- proposalId: 6c04ecaca794ae96ee4b1a453c07d6cc28ecbc3b65584f3a3acf5228520a34ab
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: grey beanie and brown jacket with faux fur collar
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T00:41:56.7964986+00:00
+  replayedAtUtc: 
+- proposalId: 49ddf884e05240fada2f9e18bc24cd52a05567e165b457068de16602c276f984
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: eye color
+  value: brown
+  confidence: 0.8
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T00:41:57.8588927+00:00
+  replayedAtUtc: 
+- proposalId: ec2eb729cdf9dcd297590d32754b9959520503c7cb6117f488e49e1da762bdd5
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: dark blue t-shirt, dark pants, and sunglasses
+  confidence: 0.9
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T00:41:58.9669849+00:00
+  replayedAtUtc: 
+- proposalId: 4632b27ce7302596454744d7ff2c0c99ccf2e7a2cdc0684aca26306ba8c7a5b2
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: black jacket and sunglasses
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T04:48:47.2017422+00:00
+  replayedAtUtc: 
+- proposalId: 54caf47df9a29f0bb89e32994a4f6f2ad14a0c2e1782d59c0a7653fbe4372fd3
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: fur_color
+  value: black
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T04:48:48.2964708+00:00
+  replayedAtUtc: 
+- proposalId: 6aa6e369669ecf3bb12d879a9c14abae3d0c537be194fd710e395327b5bb4dd2
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: purple sun hat and sunglasses
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T04:48:48.7765129+00:00
+  replayedAtUtc: 
+- proposalId: d9613ab27673adcbb73ddfc18da76e0f9e085a8ccca78f254082649b85bf8d1f
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: size
+  value: small
+  confidence: 0.9
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T04:48:49.5884989+00:00
+  replayedAtUtc: 
+- proposalId: 43f1475748706411555937a9194555cf6374b588b789f12a331cb51f3bced229
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: coat color
+  value: black
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T05:26:07.5516929+00:00
+  replayedAtUtc: 
+- proposalId: 65fec85e982628405a1bdf0932b5ca9ce66197846bc7b71eecafdb08cae9bc7d
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: eye_wear
+  value: black sunglasses
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T06:08:00.0803925+00:00
+  replayedAtUtc: 
+- proposalId: 28c6b1d47917120872158fab2e0dc3cda9c8d13cb59b0c6d09ab96159c07b33c
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: wearing a brown jacket and a grey beanie
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T06:08:01.0028003+00:00
+  replayedAtUtc: 
+- proposalId: 1432c3f9802d739c7894bf8d5dd4bd3b93021d73dda45114103489996894c637
+  entityKey: raha
+  knowledgeType: profile_fact
+  attribute: appearance
+  value: short dark hair and brown eyes
+  confidence: 0.9
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-05-29T06:08:01.7751463+00:00
+  replayedAtUtc: 
+- proposalId: 26cd2191a4db2b94446acfef02d667b7b9f1ca84d7363b4f9af9d0f6436335d0
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: eye_protection
+  value: wears dark sunglasses
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-01T21:57:15.8021855+00:00
+  replayedAtUtc: 
+- proposalId: 68bd829cacc3cbddf8502860b0b7ce96b801a66993c81908eb2a7f0246455e20
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: grey beanie and brown jacket with fur-lined hood
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-01T21:57:16.8714919+00:00
+  replayedAtUtc: 
+- proposalId: e97c4d6f6099de9f76f12843a1ff6c5726277471e75495206344ed7df1da07f6
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: hair color
+  value: dark brown/black
+  confidence: 0.9
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-01T21:57:17.8455122+00:00
+  replayedAtUtc: 
+- proposalId: b7f5f7ae3fb3b6620dd88020287ddcc38c1e7f444e4e9c93c03067cbe6653d08
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: species
+  value: dog
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-01T21:57:20.7610070+00:00
+  replayedAtUtc: 
+- proposalId: f3b91d91a354b90fbd89acd9eefaf83a8725d78135890c11546fb1927c25bde0
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: dark zip-up jacket over a white shirt
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-06T04:35:43.3177379+00:00
+  replayedAtUtc: 
+- proposalId: 59b5cd59bb4c6ce73585593d7bfb6b65f8ab111ff2eea1cf02c997e1d5899c83
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: clothing
+  value: black and yellow striped shirt
+  confidence: 1
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-06T04:35:44.0709949+00:00
+  replayedAtUtc: 
+- proposalId: 6570548a7b23c57bb3c014e25c97f11de433a6d73378c1884f5ab39e8226f18a
+  entityKey: raha
+  knowledgeType: physical_attribute
+  attribute: facial_hair
+  value: stubble/short beard
+  confidence: 0.9
+  scenarioSegment: people-style-photo-loop
+  source: user_approved
+  capturedAtUtc: 2026-06-06T04:35:44.6076884+00:00
+  replayedAtUtc: 

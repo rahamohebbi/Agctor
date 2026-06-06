@@ -76,10 +76,79 @@
     var renamingSessionId = null;
     /** Session id currently in inline-delete-confirm state (null = none). */
     var confirmingDeleteSessionId = null;
+    /** Session id currently being deleted on the server (shows progress UI). */
+    var deletingSessionId = null;
     /** Last session list rendered (cached for in-place re-renders after rename). */
     var sessionsCache = [];
-    /** PRD-023b: visual upload helper (init after DOM ready). */
-    var visualUploader = null;
+    function syncSessionListBusy() {
+        var busy = !!deletingSessionId;
+        if (newBtn) newBtn.disabled = busy;
+        if (refreshBtn) refreshBtn.disabled = busy;
+        if (sessionListEl) {
+            sessionListEl.setAttribute('aria-busy', busy ? 'true' : 'false');
+            sessionListEl.classList.toggle('pm-play-session-list--busy', busy);
+        }
+    }
+
+    function setSessionDeleteBusy(sessionId) {
+        deletingSessionId = sessionId || null;
+        syncSessionListBusy();
+        if (deletingSessionId) {
+            status.textContent = 'Deleting session…';
+            status.setAttribute('aria-busy', 'true');
+            syncSessionDeleteBanner(deletingSessionId === activeSessionId);
+            if (deletingSessionId === activeSessionId) {
+                if (input) input.disabled = true;
+                if (sendBtn) sendBtn.disabled = true;
+                if (agentSel) agentSel.disabled = true;
+                if (attachBtn) attachBtn.disabled = true;
+            }
+        } else {
+            status.removeAttribute('aria-busy');
+            syncSessionDeleteBanner(false);
+            if (activeSessionId) syncSessionColumn();
+        }
+    }
+
+    function sessionDeleteSpinnerHtml(extraClass) {
+        var cls = 'pm-session-delete-spinner' + (extraClass ? ' ' + extraClass : '');
+        return (
+            '<span class="pm-send-loading" aria-hidden="true">' +
+            '<span class="' +
+            cls +
+            '"></span></span>'
+        );
+    }
+
+    /** Banner above composer while the active session is being deleted. */
+    function syncSessionDeleteBanner(show) {
+        if (!composerEl) return;
+        var banner = document.getElementById('pm-play-session-delete-banner');
+        if (!show) {
+            if (banner) banner.classList.add('hidden');
+            return;
+        }
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'pm-play-session-delete-banner';
+            banner.className =
+                'mb-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 dark:border-red-500 dark:bg-red-900/25';
+            banner.setAttribute('role', 'status');
+            banner.setAttribute('aria-live', 'polite');
+            banner.setAttribute('aria-busy', 'true');
+            composerEl.parentNode.insertBefore(banner, composerEl);
+        }
+        banner.classList.remove('hidden');
+        banner.innerHTML =
+            '<div class="flex items-start gap-2 text-sm text-red-900 dark:text-red-100">' +
+            sessionDeleteSpinnerHtml() +
+            '<div><strong>Deleting this session…</strong>' +
+            '<p class="mt-1 text-xs text-red-800/90 dark:text-red-200/90 leading-snug">' +
+            'Saving transcript notes and cleaning up trace data. The chat is locked until deletion finishes (usually under 30 seconds).</p>' +
+            '</div></div>' +
+            '<div class="pm-session-delete-progress mt-2 ml-6" aria-hidden="true"></div>';
+    }
+
     /** Shared turn group for pending attachments + next send. */
     var streamTurnGroupId = null;
 
@@ -157,7 +226,11 @@
             scenarioChangeSel.appendChild(o2);
         });
         if (!scenarioNewSel.value && scenarioNewSel.options.length > 0) {
-            scenarioNewSel.value = 'people';
+            var preferred = 'people-style-photo-loop';
+            var hasPreferred = Array.prototype.some.call(scenarioNewSel.options, function (o) {
+                return o.value === preferred;
+            });
+            scenarioNewSel.value = hasPreferred ? preferred : 'people';
         }
     }
 
@@ -173,14 +246,18 @@
      */
     function syncSessionColumn() {
         var has = !!activeSessionId;
+        var deletingActive = !!(deletingSessionId && deletingSessionId === activeSessionId);
         if (has) {
             noSessionEl.classList.add('hidden');
             sessionDetailEl.classList.remove('hidden');
-            input.disabled = false;
-            sendBtn.disabled = false;
-            if (agentSel) agentSel.disabled = false;
-            syncComposerSendEnabled();
+            input.disabled = deletingActive;
+            sendBtn.disabled = deletingActive;
+            if (agentSel) agentSel.disabled = deletingActive;
+            if (attachBtn) attachBtn.disabled = deletingActive;
+            if (!deletingActive) syncComposerSendEnabled();
+            syncSessionDeleteBanner(deletingActive);
         } else {
+            syncSessionDeleteBanner(false);
             noSessionEl.classList.remove('hidden');
             sessionDetailEl.classList.add('hidden');
             messages.innerHTML = '';
@@ -988,6 +1065,7 @@
             esc(String(s.turnCount != null ? s.turnCount : 0)) +
             ' turns</div>';
         btn.addEventListener('click', function () {
+            if (deletingSessionId) return;
             renamingSessionId = null;
             confirmingDeleteSessionId = null;
             activeSessionId = s.sessionId;
@@ -1008,6 +1086,7 @@
             renameLink.setAttribute('aria-label', 'Rename session');
             renameLink.addEventListener('click', function (ev) {
                 ev.stopPropagation();
+                if (deletingSessionId) return;
                 startSessionRename(s.sessionId);
             });
 
@@ -1018,6 +1097,7 @@
             deleteLink.setAttribute('aria-label', 'Delete session');
             deleteLink.addEventListener('click', function (ev) {
                 ev.stopPropagation();
+                if (deletingSessionId) return;
                 startSessionDelete(s.sessionId);
             });
 
@@ -1025,11 +1105,49 @@
             actions.appendChild(deleteLink);
             row.appendChild(actions);
         }
+        if (deletingSessionId && deletingSessionId !== s.sessionId) {
+            row.classList.add('pm-play-session-row--disabled');
+        }
         return row;
+    }
+
+    /** Progress panel while DELETE is in flight (session-end ingest can take ~20s). */
+    function renderSessionDeletingProgress(s) {
+        var wrap = document.createElement('div');
+        wrap.className =
+            'pm-play-session-row pm-session-deleting-panel rounded-lg border border-red-300 bg-red-50 p-2 space-y-2 dark:border-red-500 dark:bg-red-900/20';
+        wrap.dataset.sessionId = s.sessionId;
+        wrap.setAttribute('role', 'status');
+        wrap.setAttribute('aria-live', 'polite');
+        wrap.setAttribute('aria-busy', 'true');
+
+        var head = document.createElement('div');
+        head.className = 'flex items-start gap-2 text-xs text-red-900 dark:text-red-100';
+        head.innerHTML =
+            sessionDeleteSpinnerHtml() +
+            '<span>Deleting <strong>' +
+            esc(s.title || s.sessionId) +
+            '</strong>…</span>';
+        wrap.appendChild(head);
+
+        var detail = document.createElement('p');
+        detail.className = 'text-[11px] text-red-800/90 dark:text-red-200/90 leading-snug pl-6';
+        detail.textContent =
+            'Saving any new transcript notes, then removing turns and trace links. This can take up to half a minute.';
+        wrap.appendChild(detail);
+
+        var bar = document.createElement('div');
+        bar.className = 'pm-session-delete-progress ml-6';
+        bar.setAttribute('aria-hidden', 'true');
+        wrap.appendChild(bar);
+
+        return wrap;
     }
 
     /** Inline delete-confirm row: "Delete 'title'? [Delete] [Cancel]" with red primary. */
     function renderSessionDeleteConfirm(s) {
+        if (deletingSessionId === s.sessionId) return renderSessionDeletingProgress(s);
+
         var wrap = document.createElement('div');
         wrap.className =
             'pm-play-session-row rounded-lg border border-red-300 bg-red-50 p-2 space-y-2 dark:border-red-500 dark:bg-red-900/20';
@@ -1050,15 +1168,18 @@
         confirm.className = 'px-2.5 py-1 text-xs font-medium text-white bg-red-600 rounded hover:bg-red-700';
         confirm.textContent = 'Delete';
         confirm.addEventListener('click', function () {
-            confirm.disabled = true;
-            applySessionDelete(s.sessionId).finally(function () { confirm.disabled = false; });
+            if (deletingSessionId) return;
+            applySessionDelete(s.sessionId);
         });
         var cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.className =
             'px-2.5 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 dark:bg-gray-600 dark:text-gray-100';
         cancel.textContent = 'Cancel';
-        cancel.addEventListener('click', cancelSessionDelete);
+        cancel.addEventListener('click', function () {
+            if (deletingSessionId) return;
+            cancelSessionDelete();
+        });
         actions.appendChild(confirm);
         actions.appendChild(cancel);
         wrap.appendChild(actions);
@@ -1165,11 +1286,13 @@
         }
         sessionsCache.forEach(function (s) {
             var node;
-            if (confirmingDeleteSessionId === s.sessionId) node = renderSessionDeleteConfirm(s);
+            if (deletingSessionId === s.sessionId) node = renderSessionDeletingProgress(s);
+            else if (confirmingDeleteSessionId === s.sessionId) node = renderSessionDeleteConfirm(s);
             else if (renamingSessionId === s.sessionId) node = renderSessionEditor(s);
             else node = renderSessionRow(s, s.sessionId === pick);
             sessionListEl.appendChild(node);
         });
+        syncSessionListBusy();
         activeSessionId = pick;
         persistLastSessionForProject(activeProjectId, activeSessionId);
         syncUrl();
@@ -1212,7 +1335,7 @@
     }
 
     function startSessionRename(sessionId) {
-        if (!sessionId) return;
+        if (!sessionId || deletingSessionId) return;
         confirmingDeleteSessionId = null;
         renamingSessionId = sessionId;
         renderSessionList(sessionsCache, activeSessionId);
@@ -1224,20 +1347,25 @@
     }
 
     function startSessionDelete(sessionId) {
-        if (!sessionId) return;
+        if (!sessionId || deletingSessionId) return;
         renamingSessionId = null;
         confirmingDeleteSessionId = sessionId;
         renderSessionList(sessionsCache, activeSessionId);
     }
 
     function cancelSessionDelete() {
+        if (deletingSessionId) return;
         confirmingDeleteSessionId = null;
         renderSessionList(sessionsCache, activeSessionId);
     }
 
     /** DELETEs the session, removes it from cache, and re-selects a neighbor or none. */
     function applySessionDelete(sessionId) {
-        if (!sessionId) return Promise.resolve();
+        if (!sessionId || deletingSessionId) return Promise.resolve();
+        confirmingDeleteSessionId = sessionId;
+        setSessionDeleteBusy(sessionId);
+        renderSessionList(sessionsCache, activeSessionId);
+
         return fetch('/api/chat/sessions/' + encodeURIComponent(sessionId), { method: 'DELETE' })
             .then(function (r) {
                 if (!r.ok && r.status !== 204) throw new Error('Could not delete session');
@@ -1255,11 +1383,17 @@
                     nextPick = neighbor ? neighbor.sessionId : sessionsCache[0].sessionId;
                 }
                 confirmingDeleteSessionId = null;
+                setSessionDeleteBusy(null);
                 activeSessionId = nextPick;
                 renderSessionList(sessionsCache, activeSessionId);
                 status.textContent = 'Session deleted.';
             })
-            .catch(function (e) { status.textContent = e.message || 'Delete failed'; });
+            .catch(function (e) {
+                setSessionDeleteBusy(null);
+                confirmingDeleteSessionId = sessionId;
+                renderSessionList(sessionsCache, activeSessionId);
+                status.textContent = e.message || 'Delete failed';
+            });
     }
 
     /** PUTs a new title for the session, updates cache + row in place. */
@@ -2240,7 +2374,12 @@
                 streamUi.finalize();
                 streamUi.revealBody();
                 streamUi.showTyping(false);
-                if (streamBody) streamBody.textContent = e.message || String(e);
+                var msg = e.message || String(e);
+                if (/failed to fetch|network error|connection reset|networkerror/i.test(msg)) {
+                    msg =
+                        'Connection lost while analyzing photos. If Ollama is running, wait a moment and refresh the transcript — analysis may still complete in the background.';
+                }
+                if (streamBody) streamBody.textContent = msg;
             })
             .finally(function () {
                 setSendBusy(false);
@@ -2437,13 +2576,17 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 scenarioId: activeProjectScenarioId,
+                sessionId: activeSessionId || undefined,
                 decisions: [{ proposalId: proposalId, approve: approve }]
             })
         })
             .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('decide')); })
-            .then(function () {
+            .then(function (data) {
                 loadInbox();
                 loadLifeSignals();
+                if (data && data.styleRefreshText && activeSessionId) {
+                    loadTranscript(activeSessionId);
+                }
             })
             .catch(function () {
                 status.textContent = 'Inbox action failed';

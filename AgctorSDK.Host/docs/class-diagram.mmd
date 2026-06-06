@@ -151,6 +151,30 @@ classDiagram
 
     class ScenarioFlowGraphInterpreter {
         +ExecuteAsync(flow, userMessage, invokePersona, ...) string
+        +ExecuteSegmentAsync(flow, startNodeId, ...) ScenarioFlowSegmentRunResult
+        +ResolveResumeTargetNode(flow, suspendedNodeId) string
+    }
+
+    class ScenarioFlowExecutionService {
+        +RunFlowAsync(scenarioId, request) ScenarioFlowRunResponse
+    }
+
+    class ScenarioFlowRuntimeOrchestrator {
+        +StartOrResumeAsync(sessionId, scenarioId, request) ScenarioFlowRunResponse
+    }
+
+    class ScenarioFlowSegmentExecutor {
+        +ExecuteSegmentAsync(...) ScenarioFlowSegmentRunResult
+    }
+
+    class ScenarioFlowValidator {
+        +Validate(scenario) IReadOnlyList
+    }
+
+    class ScenarioFlowRuntimeActor {
+        +HandleStartFlowAsync(...)
+        +HandleResumeUserInputAsync(...)
+        +HandleResumeDomainEventAsync(...)
     }
 
     class ScenarioFlowOutputComposer {
@@ -275,9 +299,13 @@ classDiagram
     TraceTimelineViewComponent ..> VisualizationController : timeline API
     TraceTimelineEventMapper ..> TraceTimelineViewComponent : DTOs for UI
     ProjectMemoryController --> ScenarioFlowGraphInterpreter : scenario playground
+    ProjectMemoryController --> ScenarioFlowExecutionService : v2 runtime flows
+    ScenarioFlowExecutionService --> ScenarioFlowRuntimeOrchestrator : runtime actor path
+    ScenarioFlowRuntimeOrchestrator --> ScenarioFlowSegmentExecutor : segment runs
+    ScenarioFlowSegmentExecutor --> ScenarioFlowGraphInterpreter : ExecuteSegmentAsync
+    ScenarioFlowGraphInterpreter --> ScenarioFlowOutputComposer : merge output
     ProjectMemoryController --> ProjectMemoryPersonaLlmRunner : ingest footer
     ProjectMemoryController --> PlaygroundTraceTimelineDetail : span JSON
-    ScenarioFlowGraphInterpreter --> ScenarioFlowOutputComposer : merge output
     EmbeddingDebugViewComponent ..> CodeGraphController : renders with
     RawJsonViewComponent ..> CodeGraphController : renders with
     TaskScoperHostedService --> IScenario : uses

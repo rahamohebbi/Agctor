@@ -50,8 +50,9 @@ public sealed class PersonVisualContextTool : ToolActorBase
                     var userMessage = VisualToolParams.GetString(p, "userMessage") ?? "";
                     var maxAssets = VisualToolParams.GetInt32(p, "maxAssets", 3);
                     var entityKeys = ParseEntityKeys(p);
+                    var assetIds = ParseAssetIds(p);
                     var result = await builder
-                        .BuildAsync(root, scenarioId, userMessage, intent, entityKeys, maxAssets, CancellationToken.None)
+                        .BuildAsync(root, scenarioId, userMessage, intent, entityKeys, maxAssets, CancellationToken.None, assetIds)
                         .ConfigureAwait(false);
                     return OkContext(result);
                 }
@@ -105,6 +106,25 @@ public sealed class PersonVisualContextTool : ToolActorBase
     private static IReadOnlyList<string>? ParseEntityKeys(IDictionary<string, object> p)
     {
         var raw = VisualToolParams.GetString(p, "entityKeys");
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(s => s.Length > 0)
+            .ToList();
+    }
+
+    private static IReadOnlyList<string>? ParseAssetIds(IDictionary<string, object> p)
+    {
+        if (p.TryGetValue("assetIds", out var val) && val is IEnumerable<object> list)
+        {
+            return list
+                .Select(x => Convert.ToString(x)?.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!)
+                .ToList();
+        }
+
+        var raw = VisualToolParams.GetString(p, "assetIds");
         if (string.IsNullOrWhiteSpace(raw))
             return null;
         return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

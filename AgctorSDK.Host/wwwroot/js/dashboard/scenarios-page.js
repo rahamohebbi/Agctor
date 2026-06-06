@@ -798,7 +798,41 @@
         var copyApproveBtn = document.getElementById('sc-flow-copy-approve');
         var copyOverrideBtn = document.getElementById('sc-flow-copy-override');
         var btnConnect = document.getElementById('sc-flow-connect');
+        var btnConnectLoop = document.getElementById('sc-flow-connect-loop');
         var btnDeleteEdges = document.getElementById('sc-flow-delete-edges');
+        var schemaBadge = document.getElementById('sc-flow-schema-badge');
+        var showLoopRegionsEl = document.getElementById('sc-flow-show-loop-regions');
+        var gatePanel = document.getElementById('sc-flow-gate-panel');
+        var gateFactEl = document.getElementById('sc-flow-gate-fact');
+        var gateOpEl = document.getElementById('sc-flow-gate-operator');
+        var gateTrueEdgeEl = document.getElementById('sc-flow-gate-true-edge');
+        var gateFalseEdgeEl = document.getElementById('sc-flow-gate-false-edge');
+        var waitPanel = document.getElementById('sc-flow-wait-panel');
+        var waitPromptEl = document.getElementById('sc-flow-wait-prompt');
+        var waitAttachmentsEl = document.getElementById('sc-flow-wait-attachments');
+        var waitPolicyEl = document.getElementById('sc-flow-wait-policy');
+        var awaitPanel = document.getElementById('sc-flow-await-panel');
+        var awaitEventEl = document.getElementById('sc-flow-await-event');
+        var awaitTimeoutEl = document.getElementById('sc-flow-await-timeout');
+        var notifyPanel = document.getElementById('sc-flow-notify-panel');
+        var notifyTargetEl = document.getElementById('sc-flow-notify-target');
+        var notifySignalEl = document.getElementById('sc-flow-notify-signal');
+        var execSummary = document.getElementById('sc-flow-exec-summary');
+        var execStatusEl = document.getElementById('sc-flow-exec-status');
+        var execNodeEl = document.getElementById('sc-flow-exec-node');
+        var execPromptEl = document.getElementById('sc-flow-exec-prompt');
+        var simulateTurnsBar = document.getElementById('sc-flow-simulate-turns');
+        var btnSimulateTurns = document.getElementById('sc-flow-simulate-turns-btn');
+        var turnMessageEl = document.getElementById('sc-flow-turn-message');
+        var turnAttachmentsEl = document.getElementById('sc-flow-turn-attachments');
+        var btnTurnRun = document.getElementById('sc-flow-turn-run');
+        var btnEventRun = document.getElementById('sc-flow-event-run');
+        var btnTurnReset = document.getElementById('sc-flow-turn-reset');
+        var edgeLoopBlock = document.getElementById('sc-flow-edge-loop-block');
+        var edgeConvertLoopBtn = document.getElementById('sc-flow-edge-convert-loop');
+        var loopRegionIdEl = document.getElementById('sc-flow-loop-region-id');
+        var loopMaxEl = document.getElementById('sc-flow-loop-max');
+        var loopInvalidationEl = document.getElementById('sc-flow-loop-invalidation');
         var routerPanel = document.getElementById('sc-flow-router-panel');
         var routerModeEl = document.getElementById('sc-flow-router-mode');
         var routerTargetPolicyEl = document.getElementById('sc-flow-router-target-policy');
@@ -830,6 +864,8 @@
 
         var renderer = null;
         var draftBase = null;
+        /** Client-side multi-turn simulate state (PRD-024). */
+        var flowSimState = null;
         /** Target scenario id when override step is shown (copy flow modal). */
         var copyPendingTargetId = null;
 
@@ -840,7 +876,238 @@
             persistFlowRouterInspector();
             persistFlowPersonaInspector();
             persistFlowEdgeInspector();
+            persistFlowV2NodeInspectors();
             return renderer.read(JSON.parse(JSON.stringify(draftBase)));
+        }
+
+        function hideAllV2Panels() {
+            if (gatePanel) gatePanel.classList.add('hidden');
+            if (waitPanel) waitPanel.classList.add('hidden');
+            if (awaitPanel) awaitPanel.classList.add('hidden');
+            if (notifyPanel) notifyPanel.classList.add('hidden');
+        }
+
+        function populateGateFactOptions(selected) {
+            if (!gateFactEl) return;
+            var facts = (window.AgctorScenarioFlow && window.AgctorScenarioFlow.knownFacts) || [];
+            gateFactEl.innerHTML = facts.map(function (f) {
+                return '<option value="' + esc(f) + '">' + esc(f) + '</option>';
+            }).join('');
+            if (selected) gateFactEl.value = selected;
+        }
+
+        function populateGateOperatorOptions(selected) {
+            if (!gateOpEl) return;
+            var ops = (window.AgctorScenarioFlow && window.AgctorScenarioFlow.gateOperators) || [];
+            gateOpEl.innerHTML = ops.map(function (o) {
+                return '<option value="' + esc(o) + '">' + esc(o) + '</option>';
+            }).join('');
+            if (selected) gateOpEl.value = selected;
+        }
+
+        function populateAwaitEventOptions(selected) {
+            if (!awaitEventEl) return;
+            var evs = (window.AgctorScenarioFlow && window.AgctorScenarioFlow.knownEvents) || [];
+            awaitEventEl.innerHTML = evs.map(function (ev) {
+                return '<option value="' + esc(ev) + '">' + esc(ev) + '</option>';
+            }).join('');
+            if (selected) awaitEventEl.value = selected;
+        }
+
+        function gateEdgeOptions(doc, gateNodeId, selectedTrue, selectedFalse) {
+            if (!gateTrueEdgeEl || !gateFalseEdgeEl) return;
+            var edges = (doc.edges || []).filter(function (e) {
+                return e && e.fromNodeId === gateNodeId;
+            });
+            var opts = edges.map(function (e) {
+                var tn = (doc.nodes || []).filter(function (n) { return n && n.id === e.toNodeId; })[0];
+                var label = e.id + ' → ' + (tn ? tn.label || tn.id : e.toNodeId);
+                return '<option value="' + esc(e.id) + '">' + esc(label) + '</option>';
+            }).join('');
+            gateTrueEdgeEl.innerHTML = opts || '<option value="">(connect gate first)</option>';
+            gateFalseEdgeEl.innerHTML = opts || '<option value="">(connect gate first)</option>';
+            if (selectedTrue) gateTrueEdgeEl.value = selectedTrue;
+            if (selectedFalse) gateFalseEdgeEl.value = selectedFalse;
+        }
+
+        function refreshFlowV2NodeInspectors() {
+            hideAllV2Panels();
+            if (!renderer) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var sel = cy.$('node:selected');
+            if (sel.length !== 1) return;
+            var type = String(sel.data('agctorType') || '');
+            var cfg = {};
+            try {
+                cfg = JSON.parse(sel.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            if (type === 'Gate' && gatePanel) {
+                gatePanel.classList.remove('hidden');
+                populateGateFactOptions(cfg.fact || 'visual.hasPhotos');
+                populateGateOperatorOptions(cfg.operator || 'isFalse');
+                gateEdgeOptions(doc, sel.id(), cfg.trueEdgeId, cfg.falseEdgeId);
+            } else if (type === 'WaitForInput' && waitPanel) {
+                waitPanel.classList.remove('hidden');
+                if (waitPromptEl) waitPromptEl.value = cfg.promptTemplate || '';
+                if (waitAttachmentsEl) waitAttachmentsEl.checked = cfg.acceptAttachments !== false;
+                if (waitPolicyEl) waitPolicyEl.value = cfg.attachmentPolicy || 'imagesOnly';
+            } else if (type === 'AwaitEvent' && awaitPanel) {
+                awaitPanel.classList.remove('hidden');
+                populateAwaitEventOptions(cfg.eventType || 'visual.extract.completed');
+                if (awaitTimeoutEl) awaitTimeoutEl.value = cfg.timeoutSeconds != null ? String(cfg.timeoutSeconds) : '120';
+            } else if (type === 'Notify' && notifyPanel) {
+                notifyPanel.classList.remove('hidden');
+                if (notifyTargetEl) notifyTargetEl.value = cfg.target || '';
+                if (notifySignalEl) notifySignalEl.value = cfg.signal || '';
+            }
+        }
+
+        function persistFlowV2NodeInspectors() {
+            if (!renderer) return;
+            var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+            if (!cy) return;
+            var n = cy.$('node:selected');
+            if (n.length !== 1) return;
+            var type = String(n.data('agctorType') || '');
+            var cfg = {};
+            try {
+                cfg = JSON.parse(n.data('agctorConfig') || '{}');
+            } catch (e) {
+                cfg = {};
+            }
+            if (type === 'Gate') {
+                if (gateFactEl) cfg.fact = gateFactEl.value;
+                if (gateOpEl) cfg.operator = gateOpEl.value;
+                if (gateTrueEdgeEl) cfg.trueEdgeId = gateTrueEdgeEl.value;
+                if (gateFalseEdgeEl) cfg.falseEdgeId = gateFalseEdgeEl.value;
+            } else if (type === 'WaitForInput') {
+                if (waitPromptEl) cfg.promptTemplate = waitPromptEl.value;
+                if (waitAttachmentsEl) cfg.acceptAttachments = !!waitAttachmentsEl.checked;
+                if (waitPolicyEl) cfg.attachmentPolicy = waitPolicyEl.value || 'imagesOnly';
+            } else if (type === 'AwaitEvent') {
+                if (awaitEventEl) cfg.eventType = awaitEventEl.value;
+                if (awaitTimeoutEl) {
+                    var ts = parseInt(awaitTimeoutEl.value, 10);
+                    cfg.timeoutSeconds = !isNaN(ts) && ts > 0 ? ts : 120;
+                }
+            } else if (type === 'Notify') {
+                if (notifyTargetEl) cfg.target = notifyTargetEl.value.trim();
+                if (notifySignalEl) cfg.signal = notifySignalEl.value.trim();
+            } else {
+                return;
+            }
+            n.data('agctorConfig', JSON.stringify(cfg));
+        }
+
+        function updateEdgeRouteCaption(e) {
+            if (!e || !window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.edgeRouteCaption !== 'function') return;
+            var lc = {};
+            try {
+                lc = JSON.parse(e.data('loopConfig') || '{}');
+            } catch (err) {
+                lc = {};
+            }
+            e.data(
+                'routeCaption',
+                window.AgctorScenarioFlow.edgeRouteCaption({
+                    mode: e.data('mode') || 'sequential',
+                    condition: e.data('condition') || '',
+                    conditionMatch: e.data('conditionMatch') || 'contains',
+                    llmRoutingHint: e.data('llmRoutingHint') || '',
+                    loopConfig: lc
+                })
+            );
+        }
+
+        function refreshLoopRegionOverlay() {
+            if (!renderer || typeof renderer.setLoopRegionOverlay !== 'function') return;
+            var on = showLoopRegionsEl && showLoopRegionsEl.checked;
+            renderer.setLoopRegionOverlay(!!on);
+        }
+
+        function updateV2StudioUi() {
+            if (!renderer || !draftBase) return;
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            var v2 = window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.isV2Flow === 'function'
+                ? window.AgctorScenarioFlow.isV2Flow(doc)
+                : false;
+            if (schemaBadge) {
+                if (v2) {
+                    schemaBadge.classList.remove('hidden');
+                    schemaBadge.textContent = 'Schema v2.0 — runtime actor, loop-back, suspend/resume';
+                } else {
+                    schemaBadge.classList.add('hidden');
+                    schemaBadge.textContent = '';
+                }
+            }
+            if (btnSimulateTurns) btnSimulateTurns.classList.toggle('hidden', !v2);
+            if (simulateTurnsBar) simulateTurnsBar.classList.toggle('hidden', !v2);
+            refreshLoopRegionOverlay();
+        }
+
+        function resetFlowSimState() {
+            flowSimState = null;
+            if (execSummary) execSummary.classList.add('hidden');
+            if (execStatusEl) execStatusEl.textContent = '';
+            if (execNodeEl) execNodeEl.textContent = '';
+            if (execPromptEl) {
+                execPromptEl.classList.add('hidden');
+                execPromptEl.textContent = '';
+            }
+            if (renderer && typeof renderer.setExecutionHighlight === 'function') {
+                renderer.setExecutionHighlight(null);
+            }
+        }
+
+        function renderExecSummary(state) {
+            if (!execSummary || !state) return;
+            execSummary.classList.remove('hidden');
+            if (execStatusEl) execStatusEl.textContent = 'Status: ' + String(state.status || '—');
+            if (execNodeEl) execNodeEl.textContent = 'At node: ' + String(state.executionNodeId || '—');
+            if (execPromptEl) {
+                if (state.pendingPrompt) {
+                    execPromptEl.classList.remove('hidden');
+                    execPromptEl.textContent = 'Pending: ' + String(state.pendingPrompt);
+                } else if (state.awaitingEvent) {
+                    execPromptEl.classList.remove('hidden');
+                    execPromptEl.textContent = 'Awaiting event: ' + String(state.awaitingEvent);
+                } else {
+                    execPromptEl.classList.add('hidden');
+                    execPromptEl.textContent = '';
+                }
+            }
+            if (renderer && typeof renderer.setExecutionHighlight === 'function') {
+                renderer.setExecutionHighlight(state.executionNodeId || null);
+            }
+        }
+
+        function runSimulateTurn(turnInput) {
+            if (!renderer || !draftBase) return;
+            var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
+            if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.simulateTurn !== 'function') return;
+            var result = window.AgctorScenarioFlow.simulateTurn(doc, turnInput || {}, flowSimState);
+            if (!result.ok) {
+                setFlowMsg('<span class="text-red-600">' + esc(result.errors.join('; ')) + '</span>');
+                if (result.state) {
+                    flowSimState = result.state;
+                    renderExecSummary(flowSimState);
+                }
+                return;
+            }
+            flowSimState = result.state;
+            renderExecSummary(flowSimState);
+            var steps = (flowSimState.steps || []).slice(-6);
+            var chips = steps.map(function (s, i) {
+                return esc(s.label || s.id) + (s.type ? ' (' + s.type + ')' : '');
+            }).join(' → ');
+            var done = flowSimState.completed
+                ? ' <span class="text-emerald-600">Completed.</span>'
+                : '';
+            setFlowMsg('<span class="text-gray-700 dark:text-gray-300">Turn trace: ' + chips + done + '</span>');
         }
 
         function flowDocForTargetScenario(doc, targetScenarioId) {
@@ -1051,6 +1318,7 @@
 
         function closeModal() {
             clearTraverseHoverLink();
+            resetFlowSimState();
             if (renderer) {
                 renderer.destroy();
                 renderer = null;
@@ -1059,6 +1327,7 @@
             if (routerPanel) routerPanel.classList.add('hidden');
             if (personaPanel) personaPanel.classList.add('hidden');
             if (edgePanel) edgePanel.classList.add('hidden');
+            hideAllV2Panels();
             if (personaCapEl) {
                 personaCapEl.innerHTML = '';
                 personaCapEl.classList.add('hidden');
@@ -1166,10 +1435,12 @@
             if (!renderer) return;
             var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
             if (!cy) return;
+            updateV2StudioUi();
             var esel = cy.$('edge:selected');
             if (esel.length === 1) {
                 if (routerPanel) routerPanel.classList.add('hidden');
                 if (personaPanel) personaPanel.classList.add('hidden');
+                hideAllV2Panels();
                 if (pqContextWrap) pqContextWrap.classList.add('hidden');
                 if (flowAgentToolsSection) flowAgentToolsSection.classList.add('hidden');
                 if (flowYamlToolsEl) flowYamlToolsEl.innerHTML = '';
@@ -1183,6 +1454,7 @@
             if (edgePanel) edgePanel.classList.add('hidden');
             refreshFlowRouterInspector();
             refreshFlowPersonaInspector();
+            refreshFlowV2NodeInspectors();
         }
 
         function refreshFlowEdgeInspector() {
@@ -1199,10 +1471,29 @@
             }
             edgePanel.classList.remove('hidden');
             var e = esel[0];
-            edgeMetaEl.textContent = e.data('source') + ' → ' + e.data('target') + '   id:' + e.id();
+            var edgeMode = String(e.data('mode') || 'sequential');
+            edgeMetaEl.textContent = e.data('source') + ' → ' + e.data('target') + '   id:' + e.id() + '   mode:' + edgeMode;
             edgeConditionEl.value = String(e.data('condition') || '');
             edgeMatchEl.value = String(e.data('conditionMatch') || 'contains').toLowerCase();
             edgeLlmHintEl.value = String(e.data('llmRoutingHint') || '');
+
+            var isLoop = edgeMode === 'loopBack';
+            if (edgeLoopBlock) edgeLoopBlock.classList.toggle('hidden', !isLoop);
+            if (isLoop && loopRegionIdEl && loopMaxEl && loopInvalidationEl) {
+                var lc = {};
+                try {
+                    lc = JSON.parse(e.data('loopConfig') || '{}');
+                } catch (err) {
+                    lc = {};
+                }
+                loopRegionIdEl.value = lc.loopRegionId || '';
+                loopMaxEl.value = lc.maxAttempts != null ? String(lc.maxAttempts) : '3';
+                loopInvalidationEl.value = lc.storeInvalidation || 'fromTargetForward';
+            }
+            if (edgeConvertLoopBtn) {
+                edgeConvertLoopBtn.textContent = isLoop ? 'Already loop back' : 'Convert to loop back';
+                edgeConvertLoopBtn.disabled = isLoop;
+            }
 
             var edgeCtx = document.getElementById('sc-flow-edge-router-context');
             var detBlock = document.getElementById('sc-flow-edge-det-block');
@@ -1220,7 +1511,10 @@
                 }
             }
             if (edgeCtx) {
-                if (fromRouter) {
+                if (isLoop) {
+                    edgeCtx.classList.remove('hidden');
+                    edgeCtx.textContent = 'Loop-back edge: configure region id and max attempts below. Routing conditions are ignored.';
+                } else if (fromRouter) {
                     edgeCtx.classList.remove('hidden');
                     edgeCtx.textContent = routerUsesLlm
                         ? 'This arrow leaves an LLM-mode router: describe when to take this branch (hint below). Conditions are hidden because they are not used in LLM mode.'
@@ -1231,7 +1525,10 @@
                 }
             }
             if (detBlock && llmBlock) {
-                if (!fromRouter) {
+                if (isLoop) {
+                    detBlock.classList.add('hidden');
+                    llmBlock.classList.add('hidden');
+                } else if (!fromRouter) {
                     detBlock.classList.remove('hidden');
                     llmBlock.classList.remove('hidden');
                 } else if (routerUsesLlm) {
@@ -1254,17 +1551,20 @@
             e.data('condition', edgeConditionEl.value);
             e.data('conditionMatch', edgeMatchEl.value || 'contains');
             e.data('llmRoutingHint', edgeLlmHintEl.value);
-            if (window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.edgeRouteCaption === 'function') {
+            if (String(e.data('mode') || '') === 'loopBack' && loopRegionIdEl && loopMaxEl && loopInvalidationEl) {
+                var maxA = parseInt(loopMaxEl.value, 10);
                 e.data(
-                    'routeCaption',
-                    window.AgctorScenarioFlow.edgeRouteCaption({
-                        mode: e.data('mode') || 'sequential',
-                        condition: e.data('condition') || '',
-                        conditionMatch: e.data('conditionMatch') || 'contains',
-                        llmRoutingHint: e.data('llmRoutingHint') || ''
+                    'loopConfig',
+                    JSON.stringify({
+                        loopRegionId: loopRegionIdEl.value.trim() || 'loop-' + e.data('source'),
+                        maxAttempts: !isNaN(maxA) && maxA > 0 ? maxA : 3,
+                        storeInvalidation: loopInvalidationEl.value || 'fromTargetForward',
+                        incrementAttempt: true
                     })
                 );
             }
+            updateEdgeRouteCaption(e);
+            refreshLoopRegionOverlay();
             setFlowMsg('');
         }
 
@@ -1662,6 +1962,10 @@
             if (!s) return;
             var existingFlow = getScenarioFlow(s);
             draftBase = existingFlow ? JSON.parse(JSON.stringify(existingFlow)) : window.AgctorScenarioFlow.emptyFlow(s.id);
+            resetFlowSimState();
+            populateGateFactOptions();
+            populateGateOperatorOptions();
+            populateAwaitEventOptions();
             renderer = window.AgctorScenarioFlow.createGraphRenderer();
             cyHost.innerHTML = '';
             modal.classList.remove('hidden');
@@ -1683,6 +1987,7 @@
                                 cy0.on('select unselect', refreshFlowInspectors);
                             }
                             refreshFlowInspectors();
+                            updateV2StudioUi();
                             loadFlowModalAgentLabels().finally(function () {
                                 refreshFlowInspectors();
                             });
@@ -1716,6 +2021,24 @@
         if (edgeMatchEl) edgeMatchEl.addEventListener('change', persistFlowEdgeInspector);
         if (edgeLlmHintEl) edgeLlmHintEl.addEventListener('change', persistFlowEdgeInspector);
         if (edgeLlmHintEl) edgeLlmHintEl.addEventListener('blur', persistFlowEdgeInspector);
+        if (loopRegionIdEl) loopRegionIdEl.addEventListener('change', persistFlowEdgeInspector);
+        if (loopMaxEl) loopMaxEl.addEventListener('change', persistFlowEdgeInspector);
+        if (loopInvalidationEl) loopInvalidationEl.addEventListener('change', persistFlowEdgeInspector);
+        if (gateFactEl) gateFactEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (gateOpEl) gateOpEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (gateTrueEdgeEl) gateTrueEdgeEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (gateFalseEdgeEl) gateFalseEdgeEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (waitPromptEl) waitPromptEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (waitPromptEl) waitPromptEl.addEventListener('blur', persistFlowV2NodeInspectors);
+        if (waitAttachmentsEl) waitAttachmentsEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (waitPolicyEl) waitPolicyEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (awaitEventEl) awaitEventEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (awaitTimeoutEl) awaitTimeoutEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (notifyTargetEl) notifyTargetEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (notifySignalEl) notifySignalEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (showLoopRegionsEl) {
+            showLoopRegionsEl.addEventListener('change', refreshLoopRegionOverlay);
+        }
 
         openBtn.addEventListener('click', openModal);
         modal.addEventListener('click', function (e) {
@@ -1728,6 +2051,7 @@
             var add = t.getAttribute('data-flow-add');
             if (add && renderer) {
                 var cfg = {};
+                var nodeLabel = add;
                 if (add === 'LlmNode') {
                     var s2 = currentScenario();
                     var ids = (s2 && s2.personaAgentIds) || [];
@@ -1742,10 +2066,19 @@
                     var pid0 = cfg.personaId ? normalizeType(cfg.personaId).toLowerCase() : '';
                     if (pid0 === 'person-query') cfg.toolIds = ['person-memory-context'];
                     else if (pid0 === 'memory-curator') cfg.toolIds = ['apply-memory-intents'];
+                    nodeLabel = getLlmNodeCanvasLabel(cfg.personaId);
+                } else if (window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.defaultConfigForNodeType === 'function') {
+                    var v2Types = window.AgctorScenarioFlow.nodeTypesV2 || [];
+                    if (v2Types.indexOf(add) >= 0) {
+                        cfg = window.AgctorScenarioFlow.defaultConfigForNodeType(add);
+                        if (typeof window.AgctorScenarioFlow.defaultLabelForNodeType === 'function') {
+                            nodeLabel = window.AgctorScenarioFlow.defaultLabelForNodeType(add);
+                        }
+                    }
                 }
-                var nodeLabel = add === 'LlmNode' ? getLlmNodeCanvasLabel(cfg.personaId) : add;
                 renderer.addNode(add, nodeLabel, cfg);
                 refreshFlowInspectors();
+                updateV2StudioUi();
             }
         });
 
@@ -1753,7 +2086,43 @@
             if (!renderer) return;
             var ok = renderer.connectSelected('sequential');
             setFlowMsg(ok ? '<span class="text-emerald-600">Connected selected nodes.</span>' : '<span class="text-amber-700">Select exactly two nodes (box-select).</span>');
+            refreshFlowInspectors();
         });
+
+        if (btnConnectLoop) {
+            btnConnectLoop.addEventListener('click', function () {
+                if (!renderer) return;
+                var ok = renderer.connectSelected('loopBack');
+                setFlowMsg(ok
+                    ? '<span class="text-emerald-600">Loop-back edge created — select it to configure region and max attempts.</span>'
+                    : '<span class="text-amber-700">Select exactly two nodes (typically Ask user → earlier step).</span>');
+                refreshFlowInspectors();
+            });
+        }
+
+        if (edgeConvertLoopBtn) {
+            edgeConvertLoopBtn.addEventListener('click', function () {
+                if (!renderer) return;
+                var cy = typeof renderer.getCy === 'function' ? renderer.getCy() : null;
+                if (!cy) return;
+                var esel = cy.$('edge:selected');
+                if (esel.length !== 1) return;
+                var e = esel[0];
+                if (String(e.data('mode') || '') === 'loopBack') return;
+                var fromId = e.data('source');
+                var lc =
+                    window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.defaultLoopConfig === 'function'
+                        ? window.AgctorScenarioFlow.defaultLoopConfig(fromId)
+                        : { loopRegionId: 'loop-' + fromId, maxAttempts: 3, storeInvalidation: 'fromTargetForward', incrementAttempt: true };
+                e.data('mode', 'loopBack');
+                e.data('loopConfig', JSON.stringify(lc));
+                updateEdgeRouteCaption(e);
+                refreshFlowEdgeInspector();
+                refreshLoopRegionOverlay();
+                updateV2StudioUi();
+                setFlowMsg('<span class="text-emerald-600">Edge converted to loop back.</span>');
+            });
+        }
 
         if (btnDeleteEdges) {
             btnDeleteEdges.addEventListener('click', function () {
@@ -1803,6 +2172,37 @@
                 setFlowMsg('<span class="text-red-600">' + esc(sim.errors.join('; ')) + '</span>');
             }
         });
+
+        if (btnSimulateTurns && simulateTurnsBar) {
+            btnSimulateTurns.addEventListener('click', function () {
+                simulateTurnsBar.classList.toggle('hidden');
+                if (!simulateTurnsBar.classList.contains('hidden') && turnMessageEl) {
+                    turnMessageEl.focus();
+                }
+            });
+        }
+        if (btnTurnRun) {
+            btnTurnRun.addEventListener('click', function () {
+                runSimulateTurn({
+                    message: turnMessageEl ? turnMessageEl.value : '',
+                    attachments: turnAttachmentsEl && turnAttachmentsEl.checked ? ['img1'] : []
+                });
+            });
+        }
+        if (btnEventRun) {
+            btnEventRun.addEventListener('click', function () {
+                var ev = flowSimState && flowSimState.awaitingEvent
+                    ? flowSimState.awaitingEvent
+                    : (awaitEventEl ? awaitEventEl.value : 'visual.extract.completed');
+                runSimulateTurn({ eventType: ev });
+            });
+        }
+        if (btnTurnReset) {
+            btnTurnReset.addEventListener('click', function () {
+                resetFlowSimState();
+                setFlowMsg('<span class="text-gray-500">Simulate reset — run a turn to start from ChatInput.</span>');
+            });
+        }
 
         btnSaveFlow.addEventListener('click', function () {
             var s = currentScenario();

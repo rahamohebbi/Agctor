@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agctor.local/schemas/scenario-flow-v2.schema.json",
+  "title": "ScenarioFlowGraphDocumentV2",
+  "description": "Canonical portable graph (PRD-014 v1 + PRD-024 loops). Embed as `flow` on scenario DTO/catalog entries. v1 graphs use schemaVersion 1.0; v2 adds Gate, WaitForInput, AwaitEvent, Notify and loopBack edges.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "graphId", "nodes", "edges", "outputPolicy"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "1.0 = PRD-014 only. 2.0 = PRD-024 loop nodes and loopBack edges.",
+      "pattern": "^\\d+\\.\\d+$"
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable id for this graph within a scenario."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable label (revisions UI)."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "archived", "deleted"]
+    },
+    "createdAtUtc": { "type": "string", "format": "date-time" },
+    "updatedAtUtc": { "type": "string", "format": "date-time" },
+    "outputPolicy": {
+      "type": "string",
+      "enum": ["first_non_empty", "merge_sections", "ranked"]
+    },
+    "sessionLoopCap": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 10,
+      "description": "PRD-024: max total loop attempts across all regions per run."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/flowNode" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/flowEdge" }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "nodeLayouts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            },
+            "required": ["x", "y"]
+          }
+        },
+        "loopRegionColors": {
+          "type": "object",
+          "description": "Presentation-only loop region highlight colors.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "flowNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "label", "config"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ChatInput",
+            "Router",
+            "LlmNode",
+            "Merge",
+            "Output",
+            "Gate",
+            "WaitForInput",
+            "AwaitEvent",
+            "Notify"
+          ]
+        },
+        "label": { "type": "string" },
+        "config": {
+          "type": ["object", "null"],
+          "description": "Type-specific payload. See PRD-024 §6.2.",
+          "additionalProperties": true
+        },
+        "reEntryPolicy": {
+          "type": "object",
+          "description": "PRD-024 optional dynamic re-entry on domain events.",
+          "additionalProperties": false,
+          "properties": {
+            "onEvent": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "default": { "type": "string" }
+          }
+        }
+      }
+    },
+    "flowEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fromNodeId", "toNodeId", "mode"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "fromNodeId": { "type": "string", "minLength": 1 },
+        "toNodeId": { "type": "string", "minLength": 1 },
+        "mode": {
+          "type": "string",
+          "enum": ["sequential", "parallel", "loopBack"]
+        },
+        "condition": { "type": "string" },
+        "conditionMatch": { "type": "string" },
+        "llmRoutingHint": { "type": "string" },
+        "loopConfig": {
+          "type": "object",
+          "description": "Required when mode is loopBack.",
+          "additionalProperties": false,
+          "properties": {
+            "loopRegionId": { "type": "string", "minLength": 1 },
+            "maxAttempts": { "type": "integer", "minimum": 1 },
+            "storeInvalidation": {
+              "type": "string",
+              "enum": ["fromTargetForward", "keepAll", "iterationScopeOnly"]
+            },
+            "incrementAttempt": { "type": "boolean", "default": true }
+          },
+          "required": ["loopRegionId", "maxAttempts", "storeInvalidation"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "const": "loopBack" } },
+            "required": ["mode"]
+          },
+          "then": { "required": ["loopConfig"] }
+        }
+      ]
+    },
+    "gateConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fact": { "type": "string", "minLength": 1 },
+        "operator": {
+          "type": "string",
+          "enum": ["isTrue", "isFalse", "equals", "gt", "lt"]
+        },
+        "value": {},
+        "trueEdgeId": { "type": "string" },
+        "falseEdgeId": { "type": "string" }
+      },
+      "required": ["fact", "operator", "trueEdgeId", "falseEdgeId"]
+    },
+    "waitForInputConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "promptTemplate": { "type": "string" },
+        "acceptAttachments": { "type": "boolean", "default": true },
+        "attachmentPolicy": {
+          "type": "string",
+          "enum": ["any", "imagesOnly"],
+          "default": "imagesOnly"
+        }
+      },
+      "required": ["promptTemplate"]
+    },
+    "awaitEventConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eventType": { "type": "string", "minLength": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "default": 120 },
+        "timeoutEdgeId": { "type": "string" },
+        "correlationKey": { "type": "string" }
+      },
+      "required": ["eventType"]
+    },
+    "notifyConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "signal": { "type": "string", "minLength": 1 },
+        "includeStoreKeys": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["target", "signal"]
+    }
+  }
+}

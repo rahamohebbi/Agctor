@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "n_curate",
+  "status": 5,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Since I don\u0027t have your style profile or a photo to reference yet, I will give you some general, practical tips for a wedding:\n\n1. Choose a polished outfit based on the dress code. If it\u0027s formal, a well-fitted suit or a cocktail dress is a safe bet. If it\u0027s semi-formal, you can opt for dress pants with a blazer or a midi dress.\n2. Stick to a versatile color palette. Mid-tones like navy, forest green, or plum are typically appropriate for weddings, but avoid wearing white or cream to ensure you don\u0027t clash with the wedding party.\n3. Focus on the fit. Ensure your clothes are pressed and tailored; a properly fitting outfit always looks more elevated than an expensive one that doesn\u0027t fit well.\n4. Prioritize comfortable but dressy footwear. Since weddings often involve standing or dancing, choose shoes that are polished but won\u0027t cause pain throughout the event.\n\nIf you\u0027d like more personalized advice, feel free to share a photo of the outfit you\u0027re considering!",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "1976b62f9ba841ebb5cddb71f6dda54d",
+        "11af4c65322d49fea2106dd69de2a91e",
+        "fbcee6dbe93d4f45b61b50715bb3e789"
+      ],
+      "allInRun": [
+        "1976b62f9ba841ebb5cddb71f6dda54d",
+        "11af4c65322d49fea2106dd69de2a91e",
+        "fbcee6dbe93d4f45b61b50715bb3e789"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": null,
+  "failureReason": "inputText is required.",
+  "startedAtUtc": "2026-05-29T05:33:27.8192092+00:00",
+  "updatedAtUtc": "2026-05-29T05:36:34.1993567+00:00"
+}

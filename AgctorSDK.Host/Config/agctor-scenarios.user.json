@@ -894,6 +894,165 @@
           }
         }
       }
+    },
+    {
+      "id": "people-style-photo-loop",
+      "displayName": "People — style photo loop",
+      "description": "PRD-024 reference: style coach asks for photos, visual intake + extract, loop back with updated advice (v2 runtime actor).",
+      "kind": "declarative",
+      "handler": null,
+      "agentTypes": [
+        "SessionCoordinatorAgent",
+        "SessionMemoryAgent"
+      ],
+      "personaAgentIds": [
+        "style-coach",
+        "visual-intake",
+        "memory-curator"
+      ],
+      "personaBindings": {
+        "extractor": "visual-intake",
+        "curator": "memory-curator",
+        "query": "style-coach"
+      },
+      "flow": {
+        "schemaVersion": "2.0",
+        "graphId": "people-style-photo-loop",
+        "name": "People style photo loop",
+        "status": "active",
+        "outputPolicy": "ranked",
+        "sessionLoopCap": 10,
+        "nodes": [
+          {
+            "id": "in1",
+            "type": "ChatInput",
+            "label": "Chat input",
+            "config": {}
+          },
+          {
+            "id": "n_style",
+            "type": "LlmNode",
+            "label": "Style coach",
+            "config": {
+              "personaId": "style-coach"
+            }
+          },
+          {
+            "id": "n_gate",
+            "type": "Gate",
+            "label": "Has photos?",
+            "config": {
+              "fact": "visual.hasPhotos",
+              "operator": "isTrue",
+              "trueEdgeId": "e_gate_ok",
+              "falseEdgeId": "e_gate_ask"
+            }
+          },
+          {
+            "id": "n_ask",
+            "type": "WaitForInput",
+            "label": "Ask for photos",
+            "config": {
+              "promptTemplate": "To tailor wedding-guest style advice, please upload 2–3 full-body photos (outfit or mirror shots). I'll use them for fit, colors, and formality — then refine my suggestions for your friend's wedding.",
+              "acceptAttachments": true,
+              "attachmentPolicy": "imagesOnly"
+            }
+          },
+          {
+            "id": "n_visual",
+            "type": "LlmNode",
+            "label": "Visual intake",
+            "config": {
+              "personaId": "visual-intake",
+              "toolIds": [
+                "person-visual-ingest"
+              ]
+            }
+          },
+          {
+            "id": "n_await",
+            "type": "AwaitEvent",
+            "label": "Extract complete",
+            "config": {
+              "eventType": "visual.extract.completed",
+              "timeoutSeconds": 600
+            }
+          },
+          {
+            "id": "out1",
+            "type": "Output",
+            "label": "Output",
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_start",
+            "fromNodeId": "in1",
+            "toNodeId": "n_style",
+            "mode": "sequential"
+          },
+          {
+            "id": "e_style_gate",
+            "fromNodeId": "n_style",
+            "toNodeId": "n_gate",
+            "mode": "sequential"
+          },
+          {
+            "id": "e_gate_ok",
+            "fromNodeId": "n_gate",
+            "toNodeId": "out1",
+            "mode": "sequential"
+          },
+          {
+            "id": "e_gate_ask",
+            "fromNodeId": "n_gate",
+            "toNodeId": "n_ask",
+            "mode": "sequential"
+          },
+          {
+            "id": "e_ask_loop",
+            "fromNodeId": "n_ask",
+            "toNodeId": "n_visual",
+            "mode": "loopBack",
+            "loopConfig": {
+              "loopRegionId": "photo-collection",
+              "maxAttempts": 3,
+              "storeInvalidation": "fromTargetForward",
+              "incrementAttempt": true
+            }
+          },
+          {
+            "id": "e_visual_await",
+            "fromNodeId": "n_visual",
+            "toNodeId": "n_await",
+            "mode": "sequential"
+          },
+          {
+            "id": "e_await_style",
+            "fromNodeId": "n_await",
+            "toNodeId": "n_style",
+            "mode": "loopBack",
+            "loopConfig": {
+              "loopRegionId": "style-refresh",
+              "maxAttempts": 5,
+              "storeInvalidation": "fromTargetForward",
+              "incrementAttempt": true
+            }
+          }
+        ],
+        "ui": {
+          "nodeLayouts": {
+            "in1": { "x": -420, "y": 200 },
+            "n_style": { "x": -220, "y": 200 },
+            "n_gate": { "x": -20, "y": 200 },
+            "out1": { "x": 200, "y": 80 },
+            "n_ask": { "x": 200, "y": 200 },
+            "n_visual": { "x": 400, "y": 200 },
+            "n_await": { "x": 600, "y": 200 }
+          }
+        }
+      }
     }
   ],
   "suppressedDefaultScenarioIds": []

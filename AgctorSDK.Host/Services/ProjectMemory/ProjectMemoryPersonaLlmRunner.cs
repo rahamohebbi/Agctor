@@ -106,6 +106,14 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
             var combined = AppendIngestFooter(output, ingest);
             return new ProjectMemoryPersonaRunResult(true, null, combined, paths, summary);
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Persona runner: LLM call cancelled or timed out for {AgentId}", agentId);
+            return new ProjectMemoryPersonaRunResult(
+                false,
+                "LLM request timed out or was cancelled. Try again or increase Agctor:ScenarioFlow:LlmNodeTimeoutSeconds.",
+                null);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Persona runner: LLM call failed for {AgentId}", agentId);

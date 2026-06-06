@@ -323,6 +323,10 @@ public sealed class GenericInboxDecisionItemDto
 public sealed class GenericInboxDecideRequestDto
 {
     public string? ScenarioId { get; set; }
+
+    /// <summary>PRD-024: session that owns the suspended scenario flow (for inbox.confirmed resume).</summary>
+    public string? SessionId { get; set; }
+
     public IReadOnlyList<GenericInboxDecisionItemDto> Decisions { get; set; } = Array.Empty<GenericInboxDecisionItemDto>();
 }
 
@@ -333,6 +337,9 @@ public sealed class GenericInboxDecideResponseDto
     public int RejectedMismatch { get; set; }
     public IReadOnlyList<string> UpdatedFiles { get; set; } = Array.Empty<string>();
     public IReadOnlyList<string> Errors { get; set; } = Array.Empty<string>();
+
+    /// <summary>When style photo loop refreshes advice after inbox approval.</summary>
+    public string? StyleRefreshText { get; set; }
 }
 
 /// <summary>PRD-022b companion privacy settings.</summary>

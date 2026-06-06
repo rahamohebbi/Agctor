@@ -113,5 +113,23 @@ namespace AgctorSDK.Host.IntegrationTests
             timeline!.TraceId.Should().Be(traceLink.PrimaryTraceId);
             timeline.Events.Should().NotBeEmpty();
         }
+
+        [Fact]
+        public async Task DeleteSession_Returns204_And_RemovesSession()
+        {
+            var createResponse = await _client.PostAsJsonAsync("/api/chat/sessions", new CreateChatSessionRequest
+            {
+                Title = "Delete me"
+            });
+            createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+            var created = await createResponse.Content.ReadFromJsonAsync<SessionInfo>();
+            created.Should().NotBeNull();
+
+            var deleteResponse = await _client.DeleteAsync($"/api/chat/sessions/{created!.SessionId}");
+            deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+            var getResponse = await _client.GetAsync($"/api/chat/sessions/{created.SessionId}");
+            getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
     }
 }

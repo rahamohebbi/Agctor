@@ -15,6 +15,7 @@
 
 - **PRD-013** introduced unified runtime vs non-runtime definition UX and scenario editing. **PRD-014** adds a visual orchestration modal on `/Dashboard/Scenarios` while preserving that runtime/non-runtime separation.
 - **PRD-012** provides the same documentation packaging pattern (readme + full PRD + implementation plan); PRD-014 follows that structure.
+- **PRD-024** extends PRD-014 with **multi-turn loops**, `ScenarioFlowRuntimeActor`, GraphDocument **2.0**, and renames the UI to **Agctor Scenario Flow Studio**. See [`Project/prd-024/`](../prd-024/prd-024-readme.md).
 
 ## Implemented summary (target v1)
 

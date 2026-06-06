@@ -271,6 +271,34 @@
         border-top-color: #fff; border-radius: 9999px; animation: pm-spin 0.7s linear infinite;
     }
     @@keyframes pm-spin { to { transform: rotate(360deg); } }
+    .pm-session-delete-spinner {
+        width: 1rem; height: 1rem; border: 2px solid rgba(185, 28, 28, 0.25);
+        border-top-color: rgb(185, 28, 28); border-radius: 9999px; animation: pm-spin 0.7s linear infinite;
+    }
+    .dark .pm-session-delete-spinner {
+        border-color: rgba(254, 202, 202, 0.25); border-top-color: rgb(254, 202, 202);
+    }
+    .pm-play-session-list--busy { pointer-events: none; }
+    .pm-play-session-list--busy .pm-session-deleting-panel { pointer-events: auto; }
+    .pm-play-session-row--disabled { opacity: 0.45; pointer-events: none; }
+    .pm-session-deleting-panel { box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.08); }
+    .pm-session-delete-progress {
+        height: 0.2rem; border-radius: 9999px; overflow: hidden;
+        background: rgba(185, 28, 28, 0.15);
+    }
+    .pm-session-delete-progress::after {
+        content: ""; display: block; height: 100%; width: 40%;
+        background: linear-gradient(90deg, rgba(185, 28, 28, 0.2), rgb(185, 28, 28));
+        border-radius: 9999px; animation: pm-delete-progress 1.2s ease-in-out infinite;
+    }
+    .dark .pm-session-delete-progress { background: rgba(254, 202, 202, 0.12); }
+    .dark .pm-session-delete-progress::after {
+        background: linear-gradient(90deg, rgba(254, 202, 202, 0.25), rgb(254, 202, 202));
+    }
+    @@keyframes pm-delete-progress {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(280%); }
+    }
 </style>
 
 @section Scripts {

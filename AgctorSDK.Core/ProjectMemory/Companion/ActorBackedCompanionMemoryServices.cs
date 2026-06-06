@@ -17,7 +17,8 @@ namespace AgctorSDK.Core.ProjectMemory.Companion;
 public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestService, IProactiveSignalsService
 {
     private const string SenderId = "companion-memory-facade";
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan DeleteIngestTimeout = TimeSpan.FromSeconds(30);
 
     private readonly IActorRuntimeAdapter _runtime;
     private readonly ISessionStore _sessions;
@@ -47,10 +48,12 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
         CancellationToken cancellationToken = default)
     {
         var actorId = await EnsureSessionEndIngestActorAsync(cancellationToken).ConfigureAwait(false);
+        var timeout = trigger == SessionEndIngestTrigger.Delete ? DeleteIngestTimeout : DefaultRequestTimeout;
         var workflow = await SendAsync<SessionEndIngestWorkflowResult>(
             actorId,
             new SessionEndIngestWorkflowRequest(sessionId, projectRoot, null, trigger),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            timeout).ConfigureAwait(false);
 
         return new SessionEndIngestResult(
             workflow.Success,
@@ -72,7 +75,8 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
         var workflow = await SendAsync<ProactiveSignalsWorkflowResult>(
             actorId,
             new ProactiveSignalsWorkflowRequest(projectRoot, scenarioId, staleContactDays, birthdayHorizonDays),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            DefaultRequestTimeout).ConfigureAwait(false);
 
         return workflow.Signals;
     }
@@ -80,7 +84,8 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
     private async Task<TResponse> SendAsync<TResponse>(
         string actorId,
         object payload,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan timeout)
         where TResponse : class
     {
         var headers = new Dictionary<string, string>
@@ -91,7 +96,7 @@ public sealed class ActorBackedCompanionMemoryServices : ISessionEndIngestServic
         return await _runtime.SendMessageAsync<TResponse>(
             actorId,
             payload,
-            RequestTimeout,
+            timeout,
             SenderId,
             headers,
             cancellationToken).ConfigureAwait(false);

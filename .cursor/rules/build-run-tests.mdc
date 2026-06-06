@@ -1,7 +1,8 @@
 ---
-description: 
+description: Development workflow
 globs: 
 alwaysApply: true
 ---
 every time a major feature if added or modified. build all the projects then run unit tests followed by integration tests.
 Make sure code is clear and simple to understand. Optimize when possible but prioritize simplicity.
+Keep your explainations and answers short and simple as if I am a 10 years old

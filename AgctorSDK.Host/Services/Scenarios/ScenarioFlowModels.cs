@@ -24,6 +24,9 @@ public sealed class ScenarioFlowDocument
 
     public string OutputPolicy { get; set; } = "merge_sections";
 
+    /// <summary>PRD-024: cap on total loop attempts across regions (default 10).</summary>
+    public int? SessionLoopCap { get; set; }
+
     public List<ScenarioFlowNode> Nodes { get; set; } = new();
 
     public List<ScenarioFlowEdge> Edges { get; set; } = new();
@@ -43,7 +46,7 @@ public sealed class ScenarioFlowNode
 {
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>ChatInput | Router | LlmNode | Merge | Output</summary>
+    /// <summary>ChatInput | Router | LlmNode | Merge | Output | Gate | WaitForInput | AwaitEvent | Notify</summary>
     public string Type { get; set; } = string.Empty;
 
     public string Label { get; set; } = string.Empty;
@@ -60,7 +63,7 @@ public sealed class ScenarioFlowEdge
 
     public string ToNodeId { get; set; } = string.Empty;
 
-    /// <summary>sequential | parallel</summary>
+    /// <summary>sequential | parallel | loopBack (PRD-024)</summary>
     public string Mode { get; set; } = "sequential";
 
     public string? Condition { get; set; }
@@ -73,6 +76,21 @@ public sealed class ScenarioFlowEdge
 
     /// <summary>Per-edge routing hint for <c>routerMode: llm</c> (included in router LLM prompt).</summary>
     public string? LlmRoutingHint { get; set; }
+
+    /// <summary>PRD-024: required when <see cref="Mode"/> is <c>loopBack</c>.</summary>
+    public ScenarioFlowLoopEdgeConfig? LoopConfig { get; set; }
+}
+
+public sealed class ScenarioFlowLoopEdgeConfig
+{
+    public string LoopRegionId { get; set; } = string.Empty;
+
+    public int MaxAttempts { get; set; } = 3;
+
+    /// <summary>fromTargetForward | keepAll | iterationScopeOnly</summary>
+    public string StoreInvalidation { get; set; } = "fromTargetForward";
+
+    public bool IncrementAttempt { get; set; } = true;
 }
 
 public sealed class ScenarioFlowUi

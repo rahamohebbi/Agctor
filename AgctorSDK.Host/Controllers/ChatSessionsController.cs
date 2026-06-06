@@ -266,15 +266,18 @@ namespace AgctorSDK.Host.Controllers
         [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> DeleteAsync([FromRoute] string sessionId, CancellationToken cancellationToken = default)
         {
+            _ = cancellationToken;
             try
             {
-                // PRD-021: ingest new transcript turns into people markdown before the session row is removed.
-                await TrySessionEndIngestAsync(sessionId, SessionEndIngestTrigger.Delete, cancellationToken);
-                // PRD-018: emit the session's accumulated mentions to the reconciler before we drop
-                // the session record. Best-effort so resolver failures never block a legitimate delete.
-                await TryEmitSessionSummaryAsync(sessionId, cancellationToken);
+                // PRD-021: best-effort ingest before delete — cap wait so DELETE is not held for LLM minutes.
+                using var ingestBudget = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                await TrySessionEndIngestAsync(sessionId, SessionEndIngestTrigger.Delete, ingestBudget.Token);
 
-                await _sessionStore.DeleteSessionAsync(sessionId, cancellationToken);
+                // PRD-018: emit mentions before the row is removed (best-effort).
+                await TryEmitSessionSummaryAsync(sessionId, CancellationToken.None);
+
+                // Always finish SQLite cleanup even if the browser disconnected during ingest.
+                await _sessionStore.DeleteSessionAsync(sessionId, CancellationToken.None);
                 return NoContent();
             }
             catch (Exception ex)
@@ -356,6 +359,10 @@ namespace AgctorSDK.Host.Controllers
                         trigger,
                         result.CorrelationId);
                 }
+            }
+            catch (OperationCanceledException ex)
+            {
+                _logger.LogDebug(ex, "Session-end ingest canceled for {SessionId}", sessionId);
             }
             catch (Exception ex)
             {

@@ -19,6 +19,23 @@
         }
     }
 
+    function parseLoopConfig(s) {
+        try {
+            var o = JSON.parse(s || '{}');
+            return typeof o === 'object' && o !== null ? o : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function loopConfigToString(lc) {
+        try {
+            return JSON.stringify(lc && typeof lc === 'object' ? lc : {});
+        } catch (e) {
+            return '{}';
+        }
+    }
+
     /** Model-space point at the center of the current canvas (stays on-screen after pan/zoom). */
     function modelAtViewportCenter(cy) {
         var w = cy.width();
@@ -107,6 +124,22 @@
                     style: { 'background-color': '#db2777' }
                 },
                 {
+                    selector: 'node[agctorType = "Gate"]',
+                    style: { 'background-color': '#0d9488', shape: 'diamond' }
+                },
+                {
+                    selector: 'node[agctorType = "WaitForInput"]',
+                    style: { 'background-color': '#ea580c' }
+                },
+                {
+                    selector: 'node[agctorType = "AwaitEvent"]',
+                    style: { 'background-color': '#4f46e5', shape: 'hexagon' }
+                },
+                {
+                    selector: 'node[agctorType = "Notify"]',
+                    style: { 'background-color': '#64748b', shape: 'round-rectangle' }
+                },
+                {
                     selector: 'edge',
                     style: {
                         width: 2,
@@ -145,6 +178,15 @@
                     }
                 },
                 {
+                    selector: 'edge[mode = "loopBack"]',
+                    style: {
+                        'line-color': '#f59e0b',
+                        'target-arrow-color': '#f59e0b',
+                        'line-style': 'dashed',
+                        width: 3
+                    }
+                },
+                {
                     selector: 'edge:selected',
                     style: {
                         width: 4,
@@ -153,6 +195,24 @@
                         'font-size': '8px',
                         color: '#475569',
                         'text-background-color': '#fffbeb'
+                    }
+                },
+                {
+                    selector: 'node.executionActive',
+                    style: {
+                        'border-width': 6,
+                        'border-color': '#22c55e',
+                        'border-opacity': 1,
+                        'background-blacken': -0.25,
+                        'z-index': 10001
+                    }
+                },
+                {
+                    selector: 'node.loopRegionMember',
+                    style: {
+                        'border-width': 3,
+                        'border-color': '#fcd34d',
+                        'border-opacity': 0.85
                     }
                 }
             ],
@@ -321,13 +381,15 @@
             var condition = e.condition || '';
             var conditionMatch = e.conditionMatch || 'contains';
             var llmRoutingHint = e.llmRoutingHint || '';
+            var loopConfig = e.loopConfig || {};
             var cap =
                 global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.edgeRouteCaption === 'function'
                     ? global.AgctorScenarioFlow.edgeRouteCaption({
                           mode: mode,
                           condition: condition,
                           conditionMatch: conditionMatch,
-                          llmRoutingHint: llmRoutingHint
+                          llmRoutingHint: llmRoutingHint,
+                          loopConfig: loopConfig
                       })
                     : mode;
             out.push({
@@ -340,6 +402,7 @@
                     condition: condition,
                     conditionMatch: conditionMatch,
                     llmRoutingHint: llmRoutingHint,
+                    loopConfig: loopConfigToString(loopConfig),
                     routeCaption: cap
                 }
             });
@@ -383,8 +446,15 @@
             if (cm && String(cm).trim() && String(cm).toLowerCase() !== 'contains') row.conditionMatch = String(cm).trim();
             var hint = e.data('llmRoutingHint');
             if (hint && String(hint).trim()) row.llmRoutingHint = String(hint).trim();
+            if (String(row.mode) === 'loopBack') {
+                var lc = parseLoopConfig(e.data('loopConfig'));
+                if (lc && Object.keys(lc).length) row.loopConfig = lc;
+            }
             doc.edges.push(row);
         });
+        if (global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.normalizeSchemaVersion === 'function') {
+            global.AgctorScenarioFlow.normalizeSchemaVersion(doc);
+        }
         return doc;
     };
 
@@ -416,17 +486,25 @@
         return id;
     };
 
-    CytoscapeRenderer.prototype.connect = function (fromId, toId, mode) {
+    CytoscapeRenderer.prototype.connect = function (fromId, toId, mode, loopConfig) {
         if (!this._cy || !fromId || !toId) return;
         var eid = 'e_' + Math.random().toString(36).slice(2, 10);
         var edgeMode = mode || 'sequential';
+        var lc = loopConfig;
+        if (edgeMode === 'loopBack' && (!lc || !Object.keys(lc).length)) {
+            lc =
+                global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.defaultLoopConfig === 'function'
+                    ? global.AgctorScenarioFlow.defaultLoopConfig(fromId)
+                    : { loopRegionId: 'loop-' + fromId, maxAttempts: 3, storeInvalidation: 'fromTargetForward', incrementAttempt: true };
+        }
         var cap =
             global.AgctorScenarioFlow && typeof global.AgctorScenarioFlow.edgeRouteCaption === 'function'
                 ? global.AgctorScenarioFlow.edgeRouteCaption({
                       mode: edgeMode,
                       condition: '',
                       conditionMatch: 'contains',
-                      llmRoutingHint: ''
+                      llmRoutingHint: '',
+                      loopConfig: lc || {}
                   })
                 : edgeMode;
         this._cy.add({
@@ -439,6 +517,7 @@
                 condition: '',
                 conditionMatch: 'contains',
                 llmRoutingHint: '',
+                loopConfig: loopConfigToString(lc || {}),
                 routeCaption: cap
             }
         });
@@ -482,6 +561,43 @@
     CytoscapeRenderer.prototype.clearTraverseHighlight = function () {
         if (!this._cy) return;
         this._cy.nodes().removeClass('traverseHover');
+    };
+
+    /** PRD-024: highlight current execution node during simulate turns. */
+    CytoscapeRenderer.prototype.setExecutionHighlight = function (nodeId) {
+        if (!this._cy) return;
+        this._cy.nodes().removeClass('executionActive');
+        if (!nodeId) return;
+        var n = this._cy.getElementById(String(nodeId));
+        if (n && n.nonempty()) n.addClass('executionActive');
+    };
+
+    /** PRD-024: outline nodes touched by loopBack edges sharing a region id. */
+    CytoscapeRenderer.prototype.setLoopRegionOverlay = function (enabled) {
+        if (!this._cy) return;
+        this._cy.nodes().removeClass('loopRegionMember');
+        if (!enabled) return;
+        var regions = {};
+        this._cy.edges().forEach(function (e) {
+            if (String(e.data('mode') || '') !== 'loopBack') return;
+            var lc = parseLoopConfig(e.data('loopConfig'));
+            var rid = lc.loopRegionId;
+            if (!rid) return;
+            if (!regions[rid]) regions[rid] = [];
+            regions[rid].push(e);
+        });
+        Object.keys(regions).forEach(function (rid) {
+            var edges = regions[rid];
+            var nodeIds = {};
+            edges.forEach(function (e) {
+                nodeIds[e.data('source')] = true;
+                nodeIds[e.data('target')] = true;
+            });
+            Object.keys(nodeIds).forEach(function (nid) {
+                var n = this._cy.getElementById(nid);
+                if (n && n.nonempty()) n.addClass('loopRegionMember');
+            }, this);
+        }, this);
     };
 
     CytoscapeRenderer.prototype.destroy = function () {

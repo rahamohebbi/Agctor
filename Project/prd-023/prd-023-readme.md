@@ -31,6 +31,7 @@
 | --- | --- |
 | **PRD-013** | Chat projects, sessions, playground SSE (`playground/message/stream`) |
 | **PRD-014** | Scenario flow graph (`Router`, `LlmNode`, `toolIds`) |
+| **PRD-024** | Flow loops, runtime actor, style-photo loop template (extends PRD-014) |
 | **PRD-019** | Generic inbox for visual fact proposals |
 | **PRD-020** | Actor/tool patterns |
 | **PRD-021** | Session-end ingest (extended for attachment manifests) |

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgctorSDK.Core.ProjectMemory.Scenarios;
 
 namespace AgctorSDK.Host.Services.Scenarios;
 
@@ -640,7 +641,11 @@ public sealed class ScenarioFlowGraphInterpreter
         string toNodeId,
         string userMessage)
     {
-        var preds = IncomingAllModes(flow, toNodeId).ToList();
+        // Prefer sequential/parallel upstream; loopBack-only targets (e.g. n_visual after WaitForInput) use loopBack.
+        var preds = IncomingSequentialOrParallel(flow, toNodeId).ToList();
+        if (preds.Count == 0)
+            preds = IncomingLoopBack(flow, toNodeId).ToList();
+
         if (preds.Count == 0)
             return userMessage;
 
@@ -650,7 +655,44 @@ public sealed class ScenarioFlowGraphInterpreter
         var from = preds[0];
         if (store.TryGetValue(from, out var v) && v.Length > 0)
             return v;
+
+        // AwaitEvent / Notify predecessors often have no stored text — reuse ChatInput from this run.
+        var chatInput = TryGetChatInputText(flow, store);
+        if (!string.IsNullOrWhiteSpace(chatInput))
+            return chatInput;
+
         return userMessage;
+    }
+
+    private static string? TryGetChatInputText(ScenarioFlowDocument flow, IReadOnlyDictionary<string, string> store)
+    {
+        var chatNode = flow.Nodes?.FirstOrDefault(n =>
+            string.Equals(n.Type, "ChatInput", StringComparison.OrdinalIgnoreCase));
+        if (chatNode == null || string.IsNullOrWhiteSpace(chatNode.Id))
+            return null;
+
+        return store.TryGetValue(chatNode.Id.Trim(), out var text) && text.Length > 0
+            ? text
+            : null;
+    }
+
+    private static IEnumerable<string> IncomingSequentialOrParallel(ScenarioFlowDocument flow, string toNodeId)
+    {
+        foreach (var e in flow.Edges ?? new List<ScenarioFlowEdge>())
+        {
+            if ((IsSequential(e) || IsParallel(e))
+                && string.Equals(e.ToNodeId, toNodeId, StringComparison.OrdinalIgnoreCase))
+                yield return e.FromNodeId.Trim();
+        }
+    }
+
+    private static IEnumerable<string> IncomingLoopBack(ScenarioFlowDocument flow, string toNodeId)
+    {
+        foreach (var e in flow.Edges ?? new List<ScenarioFlowEdge>())
+        {
+            if (IsLoopBack(e) && string.Equals(e.ToNodeId, toNodeId, StringComparison.OrdinalIgnoreCase))
+                yield return e.FromNodeId.Trim();
+        }
     }
 
     private static IEnumerable<string> IncomingAllModes(ScenarioFlowDocument flow, string toNodeId)
@@ -728,6 +770,367 @@ public sealed class ScenarioFlowGraphInterpreter
 
     private static bool IsParallel(ScenarioFlowEdge e) =>
         string.Equals(e.Mode, "parallel", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsLoopBack(ScenarioFlowEdge e) =>
+        string.Equals(e.Mode, "loopBack", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Follow a configured loopBack edge (attempt limits + store invalidation).</summary>
+    private static bool TryAdvanceLoopBack(
+        ScenarioFlowDocument flow,
+        ScenarioFlowRuntimeSnapshot runtimeSnapshot,
+        string fromNodeId,
+        out string? targetNodeId,
+        out string? failureReason)
+    {
+        targetNodeId = null;
+        failureReason = null;
+        var loopEdge = (flow.Edges ?? new List<ScenarioFlowEdge>()).FirstOrDefault(e =>
+            IsLoopBack(e) && string.Equals(e.FromNodeId, fromNodeId, StringComparison.OrdinalIgnoreCase));
+        if (loopEdge?.LoopConfig == null)
+            return false;
+
+        var cfg = loopEdge.LoopConfig;
+        var region = ScenarioFlowLoopTraversal.GetOrCreateRegion(runtimeSnapshot, cfg.LoopRegionId, cfg.MaxAttempts);
+        var attemptErr = ScenarioFlowLoopTraversal.TryIncrementAttempt(region, cfg.IncrementAttempt);
+        if (attemptErr != null)
+        {
+            failureReason = attemptErr;
+            return true;
+        }
+
+        var nodeOrder = flow.Nodes.Select(n => n.Id.Trim()).ToList();
+        ScenarioFlowLoopTraversal.ApplyStoreInvalidation(runtimeSnapshot, loopEdge.ToNodeId.Trim(), nodeOrder, cfg.StoreInvalidation);
+        targetNodeId = loopEdge.ToNodeId.Trim();
+        runtimeSnapshot.ExecutionNodeId = targetNodeId;
+        return true;
+    }
+
+    /// <summary>PRD-024: run from <paramref name="startNodeId"/> until Output, WaitForInput, or AwaitEvent.</summary>
+    public async Task<ScenarioFlowSegmentRunResult> ExecuteSegmentAsync(
+        ScenarioFlowDocument flow,
+        string startNodeId,
+        Dictionary<string, string> store,
+        HashSet<string> completed,
+        ScenarioFlowRuntimeSnapshot runtimeSnapshot,
+        string userMessage,
+        PersonaInvoker invokePersona,
+        TimeSpan llmNodeTimeout,
+        string projectRoot,
+        IScenarioFlowRouterLlmService? routerLlm,
+        CancellationToken cancellationToken = default,
+        string? routerRoutingAppendix = null)
+    {
+        if (flow.Nodes == null || flow.Nodes.Count == 0)
+            throw new ScenarioFlowExecutionException("Flow has no nodes.");
+
+        var map = flow.Nodes.ToDictionary(n => n.Id.Trim(), n => n, StringComparer.OrdinalIgnoreCase);
+        if (!map.TryGetValue(startNodeId.Trim(), out _))
+            throw new ScenarioFlowExecutionException($"Unknown start node id '{startNodeId}'.");
+
+        var current = startNodeId.Trim();
+        var maxSteps = flow.Nodes.Count * 4 + 32;
+
+        for (var step = 0; step < maxSteps; step++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!map.TryGetValue(current, out var node))
+                throw new ScenarioFlowExecutionException($"Unknown node id '{current}'.");
+
+            var nodeType = (node.Type ?? string.Empty).Trim();
+
+            if (string.Equals(nodeType, "Gate", StringComparison.OrdinalIgnoreCase))
+            {
+                var pass = ScenarioFlowGateEvaluator.Evaluate(node.Config, runtimeSnapshot.Store.Facts);
+                var edgeId = ScenarioFlowGateEvaluator.ResolveBranchEdgeId(node.Config, pass);
+                var edge = (flow.Edges ?? new List<ScenarioFlowEdge>()).FirstOrDefault(e =>
+                    string.Equals(e.Id, edgeId, StringComparison.OrdinalIgnoreCase));
+                if (edge == null)
+                    throw new ScenarioFlowExecutionException($"Gate '{current}' branch edge '{edgeId}' not found.");
+
+                runtimeSnapshot.ExecutionNodeId = current;
+                current = edge.ToNodeId.Trim();
+                continue;
+            }
+
+            if (string.Equals(nodeType, "WaitForInput", StringComparison.OrdinalIgnoreCase))
+            {
+                runtimeSnapshot.ExecutionNodeId = current;
+                runtimeSnapshot.PendingPrompt = TryGetPromptTemplate(node.Config)
+                    ?? node.Label
+                    ?? "Please provide more input.";
+                return ScenarioFlowSegmentRunResult.WaitForInput(runtimeSnapshot);
+            }
+
+            if (string.Equals(nodeType, "AwaitEvent", StringComparison.OrdinalIgnoreCase))
+            {
+                runtimeSnapshot.ExecutionNodeId = current;
+                var eventType = TryGetEventType(node.Config) ?? "unknown";
+                var timeoutSec = TryGetTimeoutSeconds(node.Config) ?? 120;
+                runtimeSnapshot.AwaitingEvent = new ScenarioFlowAwaitingEventState
+                {
+                    EventType = eventType,
+                    TimeoutAtUtc = DateTimeOffset.UtcNow.AddSeconds(timeoutSec)
+                };
+                return ScenarioFlowSegmentRunResult.AwaitEvent(runtimeSnapshot);
+            }
+
+            if (string.Equals(nodeType, "Notify", StringComparison.OrdinalIgnoreCase))
+            {
+                completed.Add(current);
+                runtimeSnapshot.ExecutionNodeId = current;
+                if (TryAdvanceLoopBack(flow, runtimeSnapshot, current, out var loopTarget, out var loopFail))
+                {
+                    if (loopFail != null)
+                        return ScenarioFlowSegmentRunResult.Failed(runtimeSnapshot, loopFail);
+                    current = loopTarget!;
+                    continue;
+                }
+
+                current = UniqueOutgoingSequentialOrThrow(flow, current);
+                if (string.IsNullOrEmpty(current))
+                    throw new ScenarioFlowExecutionException($"No outgoing edge from Notify '{node.Id}'.");
+                continue;
+            }
+
+            if (string.Equals(nodeType, "Output", StringComparison.OrdinalIgnoreCase))
+            {
+                await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, null)
+                    .ConfigureAwait(false);
+                runtimeSnapshot.ExecutionNodeId = current;
+                var output = ScenarioFlowOutputComposer.Compose(flow, map, store, current, flow.OutputPolicy);
+                SyncStoreToSnapshot(store, runtimeSnapshot, "run");
+                return ScenarioFlowSegmentRunResult.Completed(runtimeSnapshot, output);
+            }
+
+            await EnsureProcessedAsync(flow, map, store, completed, current, userMessage, invokePersona, llmNodeTimeout, cancellationToken, null)
+                .ConfigureAwait(false);
+            SyncStoreToSnapshot(store, runtimeSnapshot, "run");
+
+            var parallelOut = OutgoingParallelEdges(flow, current);
+            if (parallelOut.Count >= 2)
+            {
+                if (OutgoingSequentialEdges(flow, current).Count > 0)
+                    throw new ScenarioFlowExecutionException($"Node '{current}' mixes parallel and sequential outgoing edges.");
+
+                var targets = parallelOut.Select(e => e.ToNodeId.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var mergeId = FindCommonMergeId(flow, map, targets)
+                              ?? throw new ScenarioFlowExecutionException("Parallel branches must converge at one Merge.");
+
+                var branchTasks = targets.Select(t =>
+                    RunBranchToMergeAsync(flow, map, store, completed, t, mergeId, userMessage, invokePersona, llmNodeTimeout, cancellationToken, null)).ToArray();
+                await Task.WhenAll(branchTasks).ConfigureAwait(false);
+                await EnsureProcessedAsync(flow, map, store, completed, mergeId, userMessage, invokePersona, llmNodeTimeout, cancellationToken, null)
+                    .ConfigureAwait(false);
+                SyncStoreToSnapshot(store, runtimeSnapshot, "run");
+
+                current = UniqueOutgoingSequentialOrThrow(flow, mergeId);
+                if (string.IsNullOrEmpty(current))
+                    throw new ScenarioFlowExecutionException($"No outgoing sequential edge from Merge '{mergeId}'.");
+                continue;
+            }
+
+            if (string.Equals(nodeType, "Router", StringComparison.OrdinalIgnoreCase))
+            {
+                var rid = current;
+                var rCfg = ScenarioFlowRouterConfig.Parse(map[current].Config);
+                if (rCfg.Mode == ScenarioFlowRouterMode.Llm)
+                {
+                    if (routerLlm == null)
+                        throw new ScenarioFlowExecutionException(
+                            $"Router '{current}' uses routerMode llm but no router LLM service was provided.");
+
+                    var candidates = ListRouterPersonaCandidates(flow, map, current);
+                    if (candidates.Count == 0)
+                        throw new ScenarioFlowExecutionException(
+                            $"Router '{current}' (llm) has no sequential edges to LlmNode nodes.");
+
+                    var routingText = RouterInputText(flow, store, current, userMessage, routerRoutingAppendix);
+                    var llmResult = await routerLlm
+                        .RouteAsync(projectRoot ?? "", userMessage, candidates, rCfg, cancellationToken, routingText)
+                        .ConfigureAwait(false);
+
+                    if (llmResult.NeedsClarification)
+                    {
+                        runtimeSnapshot.ExecutionNodeId = current;
+                        runtimeSnapshot.PendingPrompt = string.IsNullOrWhiteSpace(llmResult.ClarificationPrompt)
+                            ? "Please clarify your request."
+                            : llmResult.ClarificationPrompt!;
+                        return ScenarioFlowSegmentRunResult.WaitForInput(runtimeSnapshot);
+                    }
+
+                    if (!llmResult.Ok || llmResult.SelectedPersonaIds == null || llmResult.SelectedPersonaIds.Count == 0)
+                        throw new ScenarioFlowExecutionException(llmResult.Error ?? "LLM router failed.");
+
+                    var targetNodes = MapPersonaPicksToNodeIds(candidates, llmResult.SelectedPersonaIds);
+                    if (targetNodes.Count == 0)
+                        throw new ScenarioFlowExecutionException(
+                            "LLM router returned personaIds that do not map to Router candidates.");
+
+                    if (targetNodes.Count == 1)
+                    {
+                        current = await RunLinearBranchUntilOutputAsync(
+                                flow,
+                                map,
+                                store,
+                                completed,
+                                targetNodes[0],
+                                userMessage,
+                                invokePersona,
+                                llmNodeTimeout,
+                                cancellationToken,
+                                observer: null)
+                            .ConfigureAwait(false);
+                        continue;
+                    }
+
+                    var mergeId = FindCommonMergeId(flow, map, targetNodes)
+                                  ?? throw new ScenarioFlowExecutionException(
+                                      "LLM Router: selected LlmNodes must reach exactly one shared Merge node.");
+
+                    var branchExecution = ScenarioFlowBranchExecutionPlanner.Resolve(
+                        rCfg,
+                        llmResult.ResolvedBranchExecution,
+                        llmResult.SelectedPersonaIds);
+
+                    var orderedTargets = branchExecution == ScenarioFlowRouterBranchExecution.Sequential
+                        ? ScenarioFlowBranchExecutionPlanner.OrderBranchStarts(flow, map, targetNodes)
+                        : targetNodes;
+
+                    await RunBranchesToMergeAsync(
+                            flow,
+                            map,
+                            store,
+                            completed,
+                            orderedTargets,
+                            mergeId,
+                            branchExecution,
+                            userMessage,
+                            invokePersona,
+                            llmNodeTimeout,
+                            cancellationToken,
+                            observer: null)
+                        .ConfigureAwait(false);
+
+                    await EnsureProcessedAsync(
+                            flow,
+                            map,
+                            store,
+                            completed,
+                            mergeId,
+                            userMessage,
+                            invokePersona,
+                            llmNodeTimeout,
+                            cancellationToken,
+                            observer: null)
+                        .ConfigureAwait(false);
+                    SyncStoreToSnapshot(store, runtimeSnapshot, "run");
+
+                    current = UniqueOutgoingSequentialOrThrow(flow, mergeId);
+                    if (string.IsNullOrEmpty(current))
+                        throw new ScenarioFlowExecutionException($"No outgoing sequential edge from Merge '{mergeId}'.");
+                    continue;
+                }
+
+                current = PickRouterTarget(flow, current, RouterInputText(flow, store, current, userMessage));
+                continue;
+            }
+
+            var loopEdge = (flow.Edges ?? new List<ScenarioFlowEdge>()).FirstOrDefault(e =>
+                IsLoopBack(e) && string.Equals(e.FromNodeId, current, StringComparison.OrdinalIgnoreCase));
+            if (loopEdge?.LoopConfig != null)
+            {
+                if (TryAdvanceLoopBack(flow, runtimeSnapshot, current, out var loopTarget, out var loopFail))
+                {
+                    if (loopFail != null)
+                        return ScenarioFlowSegmentRunResult.Failed(runtimeSnapshot, loopFail);
+                    current = loopTarget!;
+                    continue;
+                }
+            }
+            else if (loopEdge != null)
+            {
+                current = loopEdge.ToNodeId.Trim();
+                runtimeSnapshot.ExecutionNodeId = current;
+                continue;
+            }
+
+            current = UniqueOutgoingSequentialOrThrow(flow, current);
+            if (string.IsNullOrEmpty(current))
+                throw new ScenarioFlowExecutionException($"No outgoing sequential edge from node '{node.Id}'.");
+        }
+
+        throw new ScenarioFlowExecutionException("Flow segment exceeded step limit (possible graph bug).");
+    }
+
+    /// <summary>Resolve next node when resuming from WaitForInput or AwaitEvent.</summary>
+    public static string ResolveResumeTargetNode(ScenarioFlowDocument flow, string suspendedNodeId)
+    {
+        var edges = flow.Edges ?? new List<ScenarioFlowEdge>();
+        var loop = edges.FirstOrDefault(e =>
+            IsLoopBack(e) && string.Equals(e.FromNodeId, suspendedNodeId, StringComparison.OrdinalIgnoreCase));
+        if (loop != null)
+            return loop.ToNodeId.Trim();
+
+        var seq = edges.FirstOrDefault(e =>
+            IsSequential(e) && string.Equals(e.FromNodeId, suspendedNodeId, StringComparison.OrdinalIgnoreCase));
+        if (seq != null)
+            return seq.ToNodeId.Trim();
+
+        throw new ScenarioFlowExecutionException($"Suspend node '{suspendedNodeId}' has no loopBack or sequential outgoing edge.");
+    }
+
+    /// <summary>JSON overload shared with <see cref="ScenarioFlowGraphNavigation"/> in Core.</summary>
+    public static string ResolveResumeTargetNode(string flowJson, string suspendedNodeId) =>
+        ScenarioFlowGraphNavigation.ResolveResumeTargetNode(flowJson, suspendedNodeId);
+
+    public static Dictionary<string, string> BuildTextStore(ScenarioFlowRuntimeSnapshot snapshot)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, val) in snapshot.Store.NodeOutputs)
+            dict[key] = val.Text;
+        return dict;
+    }
+
+    public static void SyncStoreToSnapshot(
+        Dictionary<string, string> store,
+        ScenarioFlowRuntimeSnapshot snapshot,
+        string defaultScope)
+    {
+        foreach (var (key, text) in store)
+        {
+            snapshot.Store.NodeOutputs[key] = new ScenarioFlowNodeOutputState
+            {
+                Text = text,
+                Scope = snapshot.Store.NodeOutputs.TryGetValue(key, out var existing)
+                    ? existing.Scope
+                    : defaultScope
+            };
+        }
+    }
+
+    private static string? TryGetPromptTemplate(JsonElement? config)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } el) return null;
+        return el.TryGetProperty("promptTemplate", out var p) && p.ValueKind == JsonValueKind.String
+            ? p.GetString()
+            : null;
+    }
+
+    private static string? TryGetEventType(JsonElement? config)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } el) return null;
+        return el.TryGetProperty("eventType", out var p) && p.ValueKind == JsonValueKind.String
+            ? p.GetString()
+            : null;
+    }
+
+    private static int? TryGetTimeoutSeconds(JsonElement? config)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } el) return null;
+        return el.TryGetProperty("timeoutSeconds", out var p) && p.ValueKind == JsonValueKind.Number
+            ? p.GetInt32()
+            : null;
+    }
 
     private static string? TryGetPersonaId(JsonElement? config)
     {

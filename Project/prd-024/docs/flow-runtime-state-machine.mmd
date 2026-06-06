@@ -1,0 +1,15 @@
+%% PRD-024: ScenarioFlowRuntimeActor states
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Running: StartFlow
+    Running --> Running: ContinueFrom(executionNodeId)
+    Running --> WaitingForUserInput: WaitForInput node
+    Running --> WaitingForDomainEvent: AwaitEvent node
+    Running --> Completed: Output reached
+    Running --> Failed: error / maxAttempts
+    WaitingForUserInput --> Running: ResumeWithUserInput
+    WaitingForDomainEvent --> Running: ResumeWithDomainEvent
+    WaitingForUserInput --> Failed: timeout / cancel
+    WaitingForDomainEvent --> Failed: timeout / cancel
+    Completed --> Idle: new StartFlow replaces run
+    Failed --> Idle: explicit reset

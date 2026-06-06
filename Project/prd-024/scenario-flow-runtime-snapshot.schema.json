@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agctor.local/schemas/scenario-flow-runtime-snapshot.schema.json",
+  "title": "ScenarioFlowRuntimeSnapshot",
+  "description": "PRD-024 persisted execution state for ScenarioFlowRuntimeActor (one per session + applied scenario).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "flowId",
+    "executionNodeId",
+    "status",
+    "store",
+    "loopRegions",
+    "startedAtUtc",
+    "updatedAtUtc"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "flowId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "GraphDocument graphId."
+    },
+    "executionNodeId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Node id where execution is active or suspended (PRD-024: not 'cursor')."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Idle",
+        "Running",
+        "WaitingForUserInput",
+        "WaitingForDomainEvent",
+        "Completed",
+        "Failed"
+      ]
+    },
+    "store": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeOutputs", "facts", "attachments"],
+      "properties": {
+        "nodeOutputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["text", "scope"],
+            "properties": {
+              "text": { "type": "string" },
+              "scope": {
+                "type": "string",
+                "enum": ["run", "iteration", "session"]
+              }
+            }
+          }
+        },
+        "facts": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "attachments": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "newSinceLastResume": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Asset ids uploaded since last resume (delta ingest)."
+            },
+            "allInRun": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "loopRegions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["regionId", "attempt", "maxAttempts"],
+        "properties": {
+          "regionId": { "type": "string", "minLength": 1 },
+          "attempt": { "type": "integer", "minimum": 0 },
+          "maxAttempts": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "pendingPrompt": {
+      "type": ["string", "null"],
+      "description": "User-visible prompt when status is WaitingForUserInput."
+    },
+    "awaitingEvent": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "eventType": { "type": "string", "minLength": 1 },
+        "timeoutAtUtc": { "type": "string", "format": "date-time" },
+        "correlationKey": { "type": "string" }
+      },
+      "required": ["eventType"]
+    },
+    "lastOutput": {
+      "type": ["string", "null"],
+      "description": "Set when status is Completed."
+    },
+    "failureReason": {
+      "type": ["string", "null"],
+      "description": "Set when status is Failed."
+    },
+    "startedAtUtc": { "type": "string", "format": "date-time" },
+    "updatedAtUtc": { "type": "string", "format": "date-time" }
+  }
+}

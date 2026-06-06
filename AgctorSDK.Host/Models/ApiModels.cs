@@ -350,21 +350,59 @@ namespace AgctorSDK.Host.Models
 
         /// <summary>Per <c>LlmNode</c> wall-clock timeout (seconds). Default 180 when omitted; use 0 to disable (only HTTP cancellation).</summary>
         public int? LlmNodeTimeoutSeconds { get; set; }
+
+        /// <summary>PRD-024: visual asset ids for delta ingest on resume.</summary>
+        public List<string>? AttachmentIds { get; set; }
+
+        /// <summary>Set by execution service from project memory options.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? ProjectRoot { get; set; }
     }
 
     /// <summary>Result of <see cref="ScenarioFlowRunRequest"/>.</summary>
     public sealed class ScenarioFlowRunResponse
     {
         public bool Success { get; set; }
+        public bool Completed { get; set; } = true;
         public string? Output { get; set; }
         public string? ErrorCode { get; set; }
         public string? ErrorMessage { get; set; }
 
-        public static ScenarioFlowRunResponse Ok(string output) =>
-            new() { Success = true, Output = output };
+        /// <summary>PRD-024: Running | WaitingForUserInput | WaitingForDomainEvent | Completed | Failed</summary>
+        public string? Status { get; set; }
+
+        /// <summary>PRD-024: node id where execution is active or suspended.</summary>
+        public string? ExecutionNodeId { get; set; }
+
+        /// <summary>PRD-024: prompt shown when <see cref="Completed"/> is false and status is WaitingForUserInput.</summary>
+        public string? PendingPrompt { get; set; }
+
+        public static ScenarioFlowRunResponse OkCompleted(string output) =>
+            OkCompleted(output, null, "Completed");
+
+        public static ScenarioFlowRunResponse OkCompleted(string output, string? executionNodeId, string? status) =>
+            new()
+            {
+                Success = true,
+                Completed = true,
+                Output = output,
+                Status = status ?? "Completed",
+                ExecutionNodeId = executionNodeId
+            };
+
+        public static ScenarioFlowRunResponse OkSuspended(string pendingPrompt, string? executionNodeId, string? status) =>
+            new()
+            {
+                Success = true,
+                Completed = false,
+                PendingPrompt = pendingPrompt,
+                Output = pendingPrompt,
+                Status = status,
+                ExecutionNodeId = executionNodeId
+            };
 
         public static ScenarioFlowRunResponse Fail(string code, string message) =>
-            new() { Success = false, ErrorCode = code, ErrorMessage = message };
+            new() { Success = false, Completed = false, ErrorCode = code, ErrorMessage = message };
     }
 
     public record ScenarioSetupResponse(

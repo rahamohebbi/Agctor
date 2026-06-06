@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "n_await",
+  "status": 3,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Since you\u0027re heading to a friend\u0027s wedding, you\u0027ll want a look that is polished and celebratory. Here are a few practical suggestions to get you ready:\n\n1. **Confirm the Dress Code:** Check the invitation for keywords like \u0022Black Tie,\u0022 \u0022Cocktail,\u0022 or \u0022Garden Casual.\u0022 This is the best way to ensure your level of formality matches the setting.\n2. **Choose a Celebratory Color:** Opt for a sophisticated color palette that fits the season, but remember to avoid white, ivory, or cream to ensure the focus stays on the couple.\n3. **Focus on Fit:** Regardless of what you wear, ensuring your outfit is tailored or well-fitted makes the biggest difference in looking put-together for a formal event.\n4. **Prioritize Comfortable Footwear:** Weddings involve a lot of standing and dancing. Choose a dress shoe or heel that you\u0027ve already broken in, or bring a comfortable alternative for the reception.",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true
+    },
+    "attachments": {
+      "newSinceLastResume": [],
+      "allInRun": [
+        "9fcbb175edaa458c9e250d51aee080f9",
+        "01958cd9ec344751aa751bf1209315dc",
+        "be1241d540174f97a2b6269cc2e47af7",
+        "6b94081c556b4c249341433cd944d5bc"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": {
+    "eventType": "visual.extract.completed",
+    "timeoutAtUtc": "2026-05-29T04:47:45.3637743+00:00",
+    "correlationKey": null
+  },
+  "lastOutput": null,
+  "failureReason": null,
+  "startedAtUtc": "2026-05-29T04:39:52.6374059+00:00",
+  "updatedAtUtc": "2026-05-29T04:45:45.3638832+00:00"
+}

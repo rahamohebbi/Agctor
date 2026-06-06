@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "n_await",
+  "status": 3,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "Since I don\u0027t have your style profile or a photo to work with yet, I can\u0027t give you personalized advice based on your current wardrobe. However, for a friend\u0027s wedding, I suggest focusing on these practical steps:\n\n1. Check the invitation for a specific dress code (such as Black Tie, Cocktail, or Semi-Formal) to make sure your level of formality matches the event.\n2. Choose celebratory colors that suit the season, but avoid wearing white or cream to ensure the focus remains on the couple.\n3. Prioritize fit over everything else; ensuring your outfit is tailored or fits well is the fastest way to look polished.\n4. Select dress shoes that are polished and comfortable enough to wear for several hours of standing and dancing.\n\nIf you\u0027d like more specific advice, feel free to share a photo of the options you\u0027re considering!",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "65317b22bc0e435392b05b52943d0e0c",
+        "4e88848cf2ea4ed59267fa797f1c2f5a",
+        "28787d42cc1d4378930d935adc0d3320",
+        "4dd6be94d1154e35af623918b27f91d4",
+        "753e3e3c27854cb49e5aa4609ea15a86"
+      ],
+      "allInRun": [
+        "65317b22bc0e435392b05b52943d0e0c",
+        "4e88848cf2ea4ed59267fa797f1c2f5a",
+        "28787d42cc1d4378930d935adc0d3320",
+        "4dd6be94d1154e35af623918b27f91d4",
+        "753e3e3c27854cb49e5aa4609ea15a86"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": {
+    "eventType": "visual.extract.completed",
+    "timeoutAtUtc": "2026-05-29T05:14:15.1470445+00:00",
+    "correlationKey": null
+  },
+  "lastOutput": null,
+  "failureReason": null,
+  "startedAtUtc": "2026-05-29T05:02:59.3652978+00:00",
+  "updatedAtUtc": "2026-05-29T05:12:15.1471242+00:00"
+}

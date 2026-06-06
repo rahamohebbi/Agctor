@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "1.0",
+  "flowId": "people-style-photo-loop",
+  "executionNodeId": "n_curate",
+  "status": 5,
+  "store": {
+    "nodeOutputs": {
+      "in1": {
+        "text": "advice me on my style and how I can get ready for a friend\u0027s wedding",
+        "scope": "run"
+      },
+      "n_style": {
+        "text": "For a friend\u0027s wedding, you\u0027ll want to balance elegance with the specific formality of the event. Since I don\u0027t have your style profile or a photo to reference yet, here are a few concrete suggestions to get you started:\n\n1. For a formal or evening wedding, a well-tailored suit or a cocktail dress is a timeless and appropriate choice.\n2. If the wedding is semi-formal or takes place during the day, consider a blazer paired with chinos or a midi dress in a lighter palette.\n3. Focus on your footwear; polished dress shoes or elegant heels instantly elevate the entire look.\n4. Keep accessories simple and classic, such as a clean watch or a piece of minimal jewelry, to add a polished touch without overdoing it.\n\nIf you\u0027d like more specific advice, feel free to share a photo of the outfit you\u0027re considering or let me know the dress code!",
+        "scope": "run"
+      },
+      "n_visual": {
+        "text": "Thanks for the photos \u2014 I\u0027m analyzing them now. You\u0027ll see insights on each image and in the confirmation inbox when ready.",
+        "scope": "run"
+      }
+    },
+    "facts": {
+      "user.hasAttachments": true,
+      "visual.extract.completed": true,
+      "visual.hasPhotos": true
+    },
+    "attachments": {
+      "newSinceLastResume": [
+        "8ad05a2cdd674833bf822c1bcd584a36",
+        "d08c7031822749f2b1893b113de56527",
+        "c6e15f18950c49fab50f6714631adf73"
+      ],
+      "allInRun": [
+        "8ad05a2cdd674833bf822c1bcd584a36",
+        "d08c7031822749f2b1893b113de56527",
+        "c6e15f18950c49fab50f6714631adf73"
+      ]
+    }
+  },
+  "loopRegions": [],
+  "pendingPrompt": null,
+  "awaitingEvent": null,
+  "lastOutput": null,
+  "failureReason": "The operation was canceled.",
+  "startedAtUtc": "2026-05-29T06:03:04.2174499+00:00",
+  "updatedAtUtc": "2026-05-29T06:10:28.2494851+00:00"
+}
