@@ -50,6 +50,11 @@
         );
     }
 
+    // Explicit light + dark classes so fields stay readable when OS theme differs from dashboard theme.
+    const fieldCls =
+        'mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm ' +
+        'focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white';
+
     function render(data, bannerHtml) {
         const cur = data.current || {};
         const cfg = data.configured || {};
@@ -128,7 +133,7 @@
             '<form id="runtime-save-form" class="mt-4 space-y-4 max-w-xl">' +
             '<div>' +
             '<label for="rt-default" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Default runtime</label>' +
-            '<select id="rt-default" name="defaultRuntime" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm">' +
+            '<select id="rt-default" name="defaultRuntime" class="' + fieldCls + '">' +
             available
                 .map(
                     (a) =>
@@ -146,13 +151,13 @@
             '<label for="rt-proto-host" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Proto host (optional)</label>' +
             '<input type="text" id="rt-proto-host" name="protoHost" value="' +
             esc(protoHostVal) +
-            '" placeholder="127.0.0.1" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm text-sm" />' +
+            '" placeholder="127.0.0.1" class="' + fieldCls + '" />' +
             '</div>' +
             '<div>' +
             '<label for="rt-proto-port" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Proto port (optional)</label>' +
             '<input type="number" id="rt-proto-port" name="protoPort" min="1" max="65535" value="' +
             esc(protoVal) +
-            '" placeholder="12000" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm text-sm" />' +
+            '" placeholder="12000" class="' + fieldCls + '" />' +
             '</div>' +
             '<button type="submit" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Save</button>' +
             '</form></div>' +
