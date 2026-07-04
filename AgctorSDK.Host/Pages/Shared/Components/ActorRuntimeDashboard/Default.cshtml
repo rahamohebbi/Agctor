@@ -39,7 +39,7 @@
 
     <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Select actor model</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Pick a backend and configure settings specific to that model.</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Click a model to save it to appsettings.User.json. Tune settings below if needed.</p>
 
         <div class="grid gap-4 md:grid-cols-3 mb-6" role="list">
             @foreach (var runtime in Model.Status.Available)
@@ -131,7 +131,7 @@
                 }
 
                 <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                    Save for next boot
+                    Save settings to appsettings.User.json
                 </button>
             </form>
 

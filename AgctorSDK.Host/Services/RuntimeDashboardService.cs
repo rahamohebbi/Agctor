@@ -95,23 +95,27 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
         if (!RuntimeSelectionNormalizer.TryNormalize(body.DefaultRuntime, _runtimeFactory, out var canonical, out var err))
             throw new InvalidOperationException(err ?? "Invalid runtime.");
 
+        // Merge with effective config so picking a model card does not wipe other Agctor keys.
+        var configured = BuildConfiguredDto(
+            _configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory") ?? "InMemory");
+
         await _userRuntimeSettings.PersistAsync(new RuntimeSettingsUpdate
         {
             CanonicalRuntimeId = canonical,
-            AllowExperimentalRuntimes = body.AllowExperimentalRuntimes,
-            ProtoHost = body.ProtoHost,
-            ProtoPort = body.ProtoPort,
-            OrleansClusterId = body.OrleansClusterId,
-            OrleansServiceId = body.OrleansServiceId,
-            OrleansGatewayHost = body.OrleansGatewayHost,
-            OrleansGatewayPort = body.OrleansGatewayPort
+            AllowExperimentalRuntimes = body.AllowExperimentalRuntimes ?? configured.AllowExperimentalRuntimes,
+            ProtoHost = body.ProtoHost ?? configured.ProtoHost,
+            ProtoPort = body.ProtoPort ?? configured.ProtoPort,
+            OrleansClusterId = body.OrleansClusterId ?? configured.OrleansClusterId,
+            OrleansServiceId = body.OrleansServiceId ?? configured.OrleansServiceId,
+            OrleansGatewayHost = body.OrleansGatewayHost ?? configured.OrleansGatewayHost,
+            OrleansGatewayPort = body.OrleansGatewayPort ?? configured.OrleansGatewayPort
         }, cancellationToken).ConfigureAwait(false);
 
         return new UpdateRuntimeSelectionResponseDto
         {
             RequiresRestart = true,
             PersistedCanonicalRuntime = canonical,
-            Message = "Settings saved. Restart the Host process to apply the new actor runtime."
+            Message = "Settings saved to appsettings.User.json. Restart the Host to apply the new actor runtime."
         };
     }
 

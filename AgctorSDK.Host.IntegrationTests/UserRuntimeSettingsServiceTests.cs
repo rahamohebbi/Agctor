@@ -53,6 +53,24 @@ public class UserRuntimeSettingsServiceTests
         agctor["Other"]!.GetValue<string>().Should().Be("keep");
         agctor["AgentTypeEnablement"]!.AsObject()["LLMAgent"]!.GetValue<bool>().Should().BeFalse();
 
+        await svc.PersistAsync(new RuntimeSettingsUpdate
+        {
+            CanonicalRuntimeId = "Orleans",
+            ProtoHost = "10.0.0.5",
+            ProtoPort = 13000,
+            AllowExperimentalRuntimes = true,
+            OrleansClusterId = "agctor-dev",
+            OrleansGatewayPort = 30000
+        });
+
+        await svc.PersistAsync(new RuntimeSettingsUpdate { CanonicalRuntimeId = "Proto.Actor" });
+
+        var afterSwitch = JsonNode.Parse(await File.ReadAllTextAsync(userPath))!.AsObject();
+        var agctorAfter = afterSwitch["Agctor"]!.AsObject();
+        agctorAfter["DefaultRuntime"]!.GetValue<string>().Should().Be("Proto.Actor");
+        agctorAfter["ProtoHost"]!.GetValue<string>().Should().Be("10.0.0.5");
+        agctorAfter["AllowExperimentalRuntimes"]!.GetValue<bool>().Should().BeTrue();
+
         try
         {
             Directory.Delete(dir, true);

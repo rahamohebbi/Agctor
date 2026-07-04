@@ -156,12 +156,48 @@
     }
 
     root.querySelectorAll('[data-runtime-select]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', async function () {
             var id = btn.getAttribute('data-runtime-select');
             if (!id) return;
-            var url = new URL(window.location.href);
-            url.searchParams.set('runtime', id);
-            window.location.href = url.toString();
+
+            btn.disabled = true;
+            try {
+                var statusRes = await fetch('/api/runtime');
+                if (!statusRes.ok) {
+                    alert('Could not load current settings.');
+                    return;
+                }
+                var status = await statusRes.json();
+                var cfg = status.configured || {};
+                var body = {
+                    defaultRuntime: id,
+                    allowExperimentalRuntimes: cfg.allowExperimentalRuntimes,
+                    protoHost: cfg.protoHost,
+                    protoPort: cfg.protoPort,
+                    orleansClusterId: cfg.orleansClusterId,
+                    orleansServiceId: cfg.orleansServiceId,
+                    orleansGatewayHost: cfg.orleansGatewayHost,
+                    orleansGatewayPort: cfg.orleansGatewayPort
+                };
+
+                var res = await fetch('/api/runtime', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                var payload = await res.json().catch(function () { return {}; });
+                if (!res.ok) {
+                    alert('Save failed: ' + (payload.message || payload.Message || res.statusText));
+                    return;
+                }
+
+                showBanner(payload.message || payload.Message || 'Saved to appsettings.User.json.');
+                window.location.href = '/Dashboard/ActorRuntime';
+            } catch (_) {
+                alert('Request failed.');
+            } finally {
+                btn.disabled = false;
+            }
         });
     });
 

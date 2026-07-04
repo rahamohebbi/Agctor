@@ -41,33 +41,37 @@ public sealed class UserRuntimeSettingsService : IUserRuntimeSettingsService
         var agctor = root["Agctor"]?.AsObject() ?? new JsonObject();
         root["Agctor"] = agctor;
 
+        // Machine-local file only — not appsettings.json (actor backend varies per host).
         agctor["DefaultRuntime"] = update.CanonicalRuntimeId;
 
         if (update.AllowExperimentalRuntimes.HasValue)
             agctor["AllowExperimentalRuntimes"] = update.AllowExperimentalRuntimes.Value;
 
-        SetOrRemove(agctor, "ProtoHost", update.ProtoHost);
-        SetOrRemoveInt(agctor, "ProtoPort", update.ProtoPort);
-        SetOrRemove(agctor, "OrleansClusterId", update.OrleansClusterId);
-        SetOrRemove(agctor, "OrleansServiceId", update.OrleansServiceId);
-        SetOrRemove(agctor, "OrleansGatewayHost", update.OrleansGatewayHost);
-        SetOrRemoveInt(agctor, "OrleansGatewayPort", update.OrleansGatewayPort);
+        // Only touch keys that were supplied so partial saves keep other Agctor settings.
+        SetIfPresent(agctor, "ProtoHost", update.ProtoHost);
+        SetIfPresentInt(agctor, "ProtoPort", update.ProtoPort);
+        SetIfPresent(agctor, "OrleansClusterId", update.OrleansClusterId);
+        SetIfPresent(agctor, "OrleansServiceId", update.OrleansServiceId);
+        SetIfPresent(agctor, "OrleansGatewayHost", update.OrleansGatewayHost);
+        SetIfPresentInt(agctor, "OrleansGatewayPort", update.OrleansGatewayPort);
 
         var json = root.ToJsonString(JsonWriteOptions);
         await File.WriteAllTextAsync(UserSettingsPath, json, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("Updated runtime selection: DefaultRuntime={Runtime} in {Path}", update.CanonicalRuntimeId, UserSettingsPath);
     }
 
-    private static void SetOrRemove(JsonObject parent, string key, string? value)
+    private static void SetIfPresent(JsonObject parent, string key, string? value)
     {
-        if (!string.IsNullOrWhiteSpace(value))
-            parent[key] = value.Trim();
-        else
+        if (value == null) return;
+        if (string.IsNullOrWhiteSpace(value))
             parent.Remove(key);
+        else
+            parent[key] = value.Trim();
     }
 
-    private static void SetOrRemoveInt(JsonObject parent, string key, int? value)
+    private static void SetIfPresentInt(JsonObject parent, string key, int? value)
     {
+        if (value == null) return;
         if (value is > 0 and <= 65535)
             parent[key] = value.Value;
         else
