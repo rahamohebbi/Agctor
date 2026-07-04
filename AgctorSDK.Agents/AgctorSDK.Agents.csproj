@@ -7,12 +7,16 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />
+    <ProjectReference Include="..\AgctorSDK.Orleans.Contracts\AgctorSDK.Orleans.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Proto.Actor" Version="1.5.0" />
     <PackageReference Include="Proto.Cluster" Version="1.5.0" />
     <PackageReference Include="Proto.Remote" Version="1.5.0" />
+    <PackageReference Include="Microsoft.Orleans.Client" Version="8.2.0" />
+    <PackageReference Include="Microsoft.Orleans.Sdk" Version="8.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
   </ItemGroup>
 
 </Project> 

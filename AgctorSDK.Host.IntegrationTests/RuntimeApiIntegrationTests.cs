@@ -72,11 +72,45 @@ public class RuntimeApiIntegrationTests : IClassFixture<AgctorWebApplicationFact
     }
 
     [Fact]
+    public async Task GetRuntimeHealth_ReturnsOk()
+    {
+        var response = await _client.GetAsync("/api/runtime/health");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.TryGetProperty("liveRuntimeId", out _).Should().BeTrue();
+        json.TryGetProperty("overallStatus", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetRuntime_ReturnsMaturityOnAvailable()
+    {
+        var response = await _client.GetAsync("/api/runtime");
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var first = json.GetProperty("available")[0];
+        first.TryGetProperty("maturity", out _).Should().BeTrue();
+        first.TryGetProperty("configFields", out _).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task PutRuntime_ProtoAlias_NormalizesToProtoActor()
     {
         var res = await _client.PutAsJsonAsync("/api/runtime", new { defaultRuntime = "Proto", protoHost = "127.0.0.1", protoPort = 12000 });
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("persistedCanonicalRuntime").GetString().Should().Be("Proto.Actor");
+    }
+
+    [Fact]
+    public async Task GetDockerStatus_Orleans_ReturnsStatusShape()
+    {
+        var response = await _client.GetAsync("/api/runtime/docker/Orleans");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.TryGetProperty("runtimeId", out var id).Should().BeTrue();
+        id.GetString().Should().Be("Orleans");
+        json.TryGetProperty("state", out _).Should().BeTrue();
+        json.TryGetProperty("statusText", out _).Should().BeTrue();
+        json.TryGetProperty("serviceName", out var svc).Should().BeTrue();
+        svc.GetString().Should().Be("orleans-silo");
     }
 }

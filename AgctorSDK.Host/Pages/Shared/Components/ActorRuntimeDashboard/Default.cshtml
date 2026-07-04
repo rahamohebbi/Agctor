@@ -1,0 +1,258 @@
+@model AgctorSDK.Host.Models.ActorRuntimeDashboardModel
+@using AgctorSDK.Host.Models
+
+<div id="actor-runtime-dashboard" class="space-y-6" data-selected-runtime="@Model.SelectedRuntimeId">
+    @if (Model.Mismatch)
+    {
+        <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" role="status">
+            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Live vs next boot</p>
+            <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">
+                Running <strong>@Model.Status.Current.CanonicalId</strong> but configuration requests
+                <strong>@Model.Status.Configured.DefaultRuntime</strong> after restart.
+            </p>
+        </div>
+    }
+
+    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Current process</h2>
+        <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+            <div><dt class="text-gray-500 dark:text-gray-400">Canonical id</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.CanonicalId</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400">Adapter</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.AdapterName</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400">Version</dt><dd class="text-gray-900 dark:text-white">@Model.Status.Current.Version</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400">Initialized</dt><dd class="text-gray-900 dark:text-white">@(Model.Status.Current.IsInitialized ? "Yes" : "No")</dd></div>
+        </dl>
+        @if (Model.Health != null)
+        {
+            var healthCls = Model.Health.OverallStatus == "healthy"
+                ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
+                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+            <p class="mt-3 text-sm">
+                <span class="font-medium text-gray-700 dark:text-gray-300">Health:</span>
+                <span class="ml-2 text-xs font-medium px-2 py-0.5 rounded @healthCls">@Model.Health.OverallStatus</span>
+                @if (!string.IsNullOrEmpty(Model.Health.Detail))
+                {
+                    <span class="text-gray-500 dark:text-gray-400 ml-2">@Model.Health.Detail</span>
+                }
+            </p>
+        }
+    </div>
+
+    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Select actor model</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Pick a backend and configure settings specific to that model.</p>
+
+        <div class="grid gap-4 md:grid-cols-3 mb-6" role="list">
+            @foreach (var runtime in Model.Status.Available)
+            {
+                var selected = string.Equals(runtime.Id, Model.SelectedRuntimeId, StringComparison.OrdinalIgnoreCase);
+                var cardCls = selected
+                    ? "border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-400"
+                    : "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600";
+                <button type="button" role="listitem"
+                        class="text-left p-4 rounded-lg shadow-sm w-full @cardCls"
+                        data-runtime-select="@runtime.Id">
+                    <div class="flex items-start justify-between gap-2">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">@runtime.DisplayName</h3>
+                        @if (selected)
+                        {
+                            <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">Selected</span>
+                        }
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">@runtime.Id</p>
+                    <p class="text-xs mt-2 text-gray-600 dark:text-gray-300">@runtime.Maturity</p>
+                    @if (!string.IsNullOrWhiteSpace(runtime.Summary))
+                    {
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@runtime.Summary</p>
+                    }
+                    @if (runtime.RequiresDocker)
+                    {
+                        <p class="text-xs text-indigo-700 dark:text-indigo-300 mt-2">Docker sidecar available</p>
+                    }
+                </button>
+            }
+        </div>
+
+        @if (Model.SelectedModel != null)
+        {
+            var cfg = Model.Status.Configured;
+            <form id="runtime-save-form" class="space-y-4 max-w-xl border-t border-gray-200 dark:border-gray-700 pt-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">Configuration — @Model.SelectedModel.DisplayName</h3>
+                <input type="hidden" name="defaultRuntime" value="@Model.SelectedRuntimeId" />
+
+                @foreach (var field in Model.SelectedModel.ConfigFields)
+                {
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">@field.Label</label>
+                        @if (field.FieldType == "checkbox")
+                        {
+                            <div class="mt-2 flex items-center gap-2">
+                                <input type="checkbox" name="allowExperimentalRuntimes" value="true"
+                                       class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                       @(cfg.AllowExperimentalRuntimes ? "checked" : null) />
+                                <span class="text-sm text-gray-600 dark:text-gray-400">Enable Proto.Actor and Orleans at startup</span>
+                            </div>
+                        }
+                        else if (field.Key == "ProtoHost")
+                        {
+                            <input type="text" name="protoHost" value="@(cfg.ProtoHost ?? field.DefaultValue)"
+                                   class="@InputClass" placeholder="@field.Placeholder" />
+                        }
+                        else if (field.Key == "ProtoPort")
+                        {
+                            <input type="number" name="protoPort" min="1" max="65535" value="@(cfg.ProtoPort ?? int.Parse(field.DefaultValue ?? "12000"))"
+                                   class="@InputClass" />
+                        }
+                        else if (field.Key == "OrleansClusterId")
+                        {
+                            <input type="text" name="orleansClusterId" value="@(cfg.OrleansClusterId ?? field.DefaultValue)"
+                                   class="@InputClass" placeholder="@field.Placeholder" />
+                        }
+                        else if (field.Key == "OrleansServiceId")
+                        {
+                            <input type="text" name="orleansServiceId" value="@(cfg.OrleansServiceId ?? field.DefaultValue)"
+                                   class="@InputClass" placeholder="@field.Placeholder" />
+                        }
+                        else if (field.Key == "OrleansGatewayHost")
+                        {
+                            <input type="text" name="orleansGatewayHost" value="@(cfg.OrleansGatewayHost ?? field.DefaultValue)"
+                                   class="@InputClass" placeholder="@field.Placeholder" />
+                        }
+                        else if (field.Key == "OrleansGatewayPort")
+                        {
+                            <input type="number" name="orleansGatewayPort" min="1" max="65535"
+                                   value="@(cfg.OrleansGatewayPort ?? int.Parse(field.DefaultValue ?? "30000"))"
+                                   class="@InputClass" />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(field.HelpText))
+                        {
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">@field.HelpText</p>
+                        }
+                    </div>
+                }
+
+                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                    Save for next boot
+                </button>
+            </form>
+
+            @if (Model.SelectedModel.RequiresDocker)
+            {
+                var docker = Model.DockerStatus;
+                var stateCls = docker?.State?.Equals("running", StringComparison.OrdinalIgnoreCase) == true
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
+                    : docker?.State is "stopped" or "exited"
+                        ? "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+                <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4"
+                     id="docker-sidecar-panel"
+                     data-docker-runtime-id="@Model.SelectedRuntimeId">
+                    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 dark:text-white">Docker sidecar</h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Start, stop, or pull without typing commands.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" data-docker-action="start"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50">
+                                Start
+                            </button>
+                            <button type="button" data-docker-action="stop"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">
+                                Stop
+                            </button>
+                            <button type="button" data-docker-action="install"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+                                Pull
+                            </button>
+                            <button type="button" data-docker-action="refresh"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="docker-action-status" class="text-xs text-gray-600 dark:text-gray-300 mb-3 hidden" role="status"></p>
+
+                    @if (docker != null)
+                    {
+                        <dl id="docker-status-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-2">
+                            <div><dt class="text-gray-500 dark:text-gray-400">Docker</dt><dd id="docker-status-available" class="text-gray-900 dark:text-white">@(docker.DockerAvailable ? "Available" : "Not available")</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">State</dt><dd><span id="docker-status-state" class="text-xs font-medium px-2 py-0.5 rounded @stateCls">@docker.State</span></dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Service</dt><dd id="docker-status-service" class="font-mono text-gray-900 dark:text-white">@docker.ServiceName</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Health</dt><dd id="docker-status-health" class="text-gray-900 dark:text-white">@(docker.Health ?? "—")</dd></div>
+                            @if (!string.IsNullOrWhiteSpace(docker.StatusText))
+                            {
+                                <div class="sm:col-span-2"><dt class="text-gray-500 dark:text-gray-400">Status</dt><dd id="docker-status-text" class="font-mono text-gray-900 dark:text-white">@docker.StatusText</dd></div>
+                            }
+                            else
+                            {
+                                <div class="sm:col-span-2 hidden"><dt class="text-gray-500 dark:text-gray-400">Status</dt><dd id="docker-status-text" class="font-mono text-gray-900 dark:text-white"></dd></div>
+                            }
+                        </dl>
+                        <p id="docker-status-message" class="text-xs text-gray-600 dark:text-gray-300 mb-4">@(docker.Message ?? "")</p>
+                    }
+                    else
+                    {
+                        <dl id="docker-status-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-2">
+                            <div><dt class="text-gray-500 dark:text-gray-400">Docker</dt><dd id="docker-status-available" class="text-gray-900 dark:text-white">—</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">State</dt><dd><span id="docker-status-state" class="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200">unknown</span></dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Service</dt><dd id="docker-status-service" class="font-mono text-gray-900 dark:text-white">—</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Health</dt><dd id="docker-status-health" class="text-gray-900 dark:text-white">—</dd></div>
+                            <div class="sm:col-span-2 hidden"><dt class="text-gray-500 dark:text-gray-400">Status</dt><dd id="docker-status-text" class="font-mono text-gray-900 dark:text-white"></dd></div>
+                        </dl>
+                        <p id="docker-status-message" class="text-xs text-gray-600 dark:text-gray-300 mb-4"></p>
+                    }
+
+                    @await Component.InvokeAsync("TerminalCommandPanel", new
+                    {
+                        componentId = "actor-runtime-terminal-" + Model.SelectedModel.Id.Replace('.', '-').ToLowerInvariant(),
+                        title = "Docker terminal — " + Model.SelectedModel.DisplayName,
+                        description = "Pick a preset or edit the command, then click Run. Commands run from the repo root.",
+                        contextType = "actor-runtime",
+                        contextKey = Model.SelectedModel.Id
+                    })
+                </div>
+            }
+        }
+    </div>
+
+    <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Runtime catalog</h2>
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            @foreach (var runtime in Model.Status.Available)
+            {
+                <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">@runtime.DisplayName</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">@runtime.Id</p>
+                    @if (!string.IsNullOrWhiteSpace(runtime.Summary))
+                    {
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@runtime.Summary</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(runtime.Limitations))
+                    {
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2"><span class="font-medium">Limits:</span> @runtime.Limitations</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(runtime.DeploymentNotes))
+                    {
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"><span class="font-medium">Deploy:</span> @runtime.DeploymentNotes</p>
+                    }
+                    @if (runtime.Capabilities?.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            @foreach (var cap in runtime.Capabilities)
+                            {
+                                <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">@cap</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@functions {
+    private const string InputClass =
+        "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm " +
+        "focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+}

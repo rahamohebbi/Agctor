@@ -110,6 +110,14 @@ if (runtime.Name == "Proto.Actor")
     runtimeConfig["remotePort"] = builder.Configuration.GetValue("Agctor:ProtoPort", 12000);
 }
 
+if (runtime.Name == "Orleans")
+{
+    runtimeConfig["clusterId"] = builder.Configuration.GetValue<string>("Agctor:OrleansClusterId", "agctor-dev") ?? "agctor-dev";
+    runtimeConfig["serviceId"] = builder.Configuration.GetValue<string>("Agctor:OrleansServiceId", "agctor-host") ?? "agctor-host";
+    runtimeConfig["gatewayHost"] = builder.Configuration.GetValue<string>("Agctor:OrleansGatewayHost", "127.0.0.1") ?? "127.0.0.1";
+    runtimeConfig["gatewayPort"] = builder.Configuration.GetValue("Agctor:OrleansGatewayPort", 30000);
+}
+
 await runtime.InitializeAsync(runtimeConfig);
 Console.WriteLine("✅ Actor Runtime initialized successfully");
 

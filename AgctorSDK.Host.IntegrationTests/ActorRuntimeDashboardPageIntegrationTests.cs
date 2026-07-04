@@ -35,10 +35,13 @@ public class ActorRuntimeDashboardPageIntegrationTests : IClassFixture<AgctorWeb
     [Fact]
     public async Task Get_ActorRuntimePage_Contains_Shell_And_Script()
     {
-        var response = await _client.GetAsync("/Dashboard/ActorRuntime");
+        var response = await _client.GetAsync("/Dashboard/ActorRuntime?runtime=Orleans");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var html = await response.Content.ReadAsStringAsync();
-        html.Should().Contain("id=\"actor-runtime-content\"");
-        html.Should().Contain("actor-runtime-page.js");
+        html.Should().Contain("id=\"actor-runtime-dashboard\"");
+        html.Should().Contain("actor-runtime-dashboard.js");
+        html.Should().Contain("terminal-command-panel.js");
+        html.Should().Contain("data-terminal-command-panel");
+        html.Should().Contain("Select actor model");
     }
 }

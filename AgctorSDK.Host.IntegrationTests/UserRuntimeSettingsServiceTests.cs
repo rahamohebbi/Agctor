@@ -33,13 +33,23 @@ public class UserRuntimeSettingsServiceTests
         env.SetupGet(e => e.ContentRootPath).Returns(dir);
         var svc = new UserRuntimeSettingsService(env.Object, NullLogger<UserRuntimeSettingsService>.Instance);
 
-        await svc.PersistAsync("Orleans", "10.0.0.5", 13000);
+        await svc.PersistAsync(new RuntimeSettingsUpdate
+        {
+            CanonicalRuntimeId = "Orleans",
+            ProtoHost = "10.0.0.5",
+            ProtoPort = 13000,
+            AllowExperimentalRuntimes = true,
+            OrleansClusterId = "agctor-dev",
+            OrleansGatewayPort = 30000
+        });
 
         var after = JsonNode.Parse(await File.ReadAllTextAsync(userPath))!.AsObject();
         var agctor = after["Agctor"]!.AsObject();
         agctor["DefaultRuntime"]!.GetValue<string>().Should().Be("Orleans");
         agctor["ProtoHost"]!.GetValue<string>().Should().Be("10.0.0.5");
-        agctor["ProtoPort"]!.GetValue<int>().Should().Be(13000);
+        agctor["OrleansClusterId"]!.GetValue<string>().Should().Be("agctor-dev");
+        agctor["OrleansGatewayPort"]!.GetValue<int>().Should().Be(30000);
+        agctor["AllowExperimentalRuntimes"]!.GetValue<bool>().Should().BeTrue();
         agctor["Other"]!.GetValue<string>().Should().Be("keep");
         agctor["AgentTypeEnablement"]!.AsObject()["LLMAgent"]!.GetValue<bool>().Should().BeFalse();
 

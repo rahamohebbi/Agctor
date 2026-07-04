@@ -32,12 +32,12 @@ public static class ActorRuntimeCatalog
             SupportsProtoRemoting: true),
         new ActorRuntimeDescriptor(
             Id: "Orleans",
-            DisplayName: "Orleans (placeholder)",
-            Maturity: "placeholder",
-            Summary: "Orleans-style grain hosting adapter; maturity depends on implementation in the Agents assembly.",
-            Limitations: "May be incomplete relative to InMemory/Proto; verify before production.",
-            DeploymentNotes: "Future: silos, clustering, Azure/AWS hosting. Not fully wired in all demos.",
-            Capabilities: new[] { "cluster_ready", "cloud_friendly" },
+            DisplayName: "Orleans (distributed)",
+            Maturity: "experimental",
+            Summary: "Connects to a local or remote Orleans silo cluster. Run the silo via Docker from the dashboard, then restart the Host with Orleans selected.",
+            Limitations: "Grain bridge for IActor is early; verify agent flows before production. Requires AllowExperimentalRuntimes.",
+            DeploymentNotes: "Local: docker compose service orleans-silo (gateway 30000). Cloud: Azure Container Apps, AKS, or silo clusters.",
+            Capabilities: new[] { "cluster_ready", "cloud_friendly", "distributed" },
             SupportsProtoRemoting: false)
     };
 

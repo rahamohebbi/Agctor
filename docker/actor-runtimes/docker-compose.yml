@@ -1,0 +1,32 @@
+# Local actor runtime sidecars for AGCTOR dashboard (Orleans silo, optional Proto node).
+# Usage from repo root:
+#   docker compose -f docker/actor-runtimes/docker-compose.yml up -d orleans-silo
+services:
+  orleans-silo:
+    build:
+      context: ../..
+      dockerfile: docker/actor-runtimes/orleans/Dockerfile
+    container_name: agctor-orleans-silo
+    ports:
+      - "${ORLEANS_GATEWAY_PORT:-30000}:30000"
+      - "${ORLEANS_SILO_PORT:-11111}:11111"
+      - "${ORLEANS_HEALTH_PORT:-8088}:8080"
+    environment:
+      ORLEANS_CLUSTER_ID: ${ORLEANS_CLUSTER_ID:-agctor-dev}
+      ORLEANS_SERVICE_ID: ${ORLEANS_SERVICE_ID:-agctor-host}
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  proto-actor-node:
+    image: mcr.microsoft.com/dotnet/aspnet:8.0
+    container_name: agctor-proto-placeholder
+    profiles: ["proto"]
+    command: ["sleep", "infinity"]
+    ports:
+      - "${PROTO_PORT:-12000}:12000"

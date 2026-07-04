@@ -39,7 +39,7 @@ public class ActorRuntimeCatalogTests
     [Theory]
     [InlineData("InMemory", "supported")]
     [InlineData("Proto.Actor", "experimental")]
-    [InlineData("Orleans", "placeholder")]
+    [InlineData("Orleans", "experimental")]
     public void Maturity_Reflects_Runtime_Conformance_Status(string id, string maturity)
     {
         ActorRuntimeCatalog.GetById(id)!.Maturity.Should().Be(maturity);

@@ -80,6 +80,9 @@ public static class HostWebServiceExtensions
         services.AddSingleton<PlaygroundFocusPostHook>();
         services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
         services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
+        services.AddSingleton<IActorRuntimeDockerService, ActorRuntimeDockerService>();
+        services.AddSingleton<ITerminalCommandService, TerminalCommandService>();
+        services.AddSingleton<IRuntimeDashboardService, RuntimeDashboardService>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.LLMAgentDetailProvider>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.CoderAgentDetailProvider>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProviderRegistry, AgentDetailProviderRegistry>();

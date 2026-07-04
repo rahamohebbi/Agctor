@@ -1,5 +1,3 @@
-using AgctorSDK.Core.Interfaces;
-using AgctorSDK.Core.Runtime;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -7,111 +5,45 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgctorSDK.Host.Controllers;
 
 /// <summary>
-/// Actor runtime dashboard API (PRD-012): live status, catalog, and Tier A persistence.
+/// Actor runtime dashboard API (PRD-012): live status, catalog, Docker sidecars, and Tier A persistence.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
 public class RuntimeController : ControllerBase
 {
-    private readonly IActorRuntimeAdapter _runtime;
-    private readonly IActorRuntimeAdapterFactory _runtimeFactory;
-    private readonly IConfiguration _configuration;
-    private readonly IUserRuntimeSettingsService _userRuntimeSettings;
+    private readonly IRuntimeDashboardService _dashboard;
+    private readonly IActorRuntimeDockerService _docker;
     private readonly ILogger<RuntimeController> _logger;
 
     public RuntimeController(
-        IActorRuntimeAdapter runtime,
-        IActorRuntimeAdapterFactory runtimeFactory,
-        IConfiguration configuration,
-        IUserRuntimeSettingsService userRuntimeSettings,
+        IRuntimeDashboardService dashboard,
+        IActorRuntimeDockerService docker,
         ILogger<RuntimeController> logger)
     {
-        _runtime = runtime;
-        _runtimeFactory = runtimeFactory;
-        _configuration = configuration;
-        _userRuntimeSettings = userRuntimeSettings;
+        _dashboard = dashboard;
+        _docker = docker;
         _logger = logger;
     }
 
     /// <summary>Live adapter, configured next-boot values, and catalog.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(RuntimeStatusResponseDto), StatusCodes.Status200OK)]
-    public async Task<ActionResult<RuntimeStatusResponseDto>> GetStatus(CancellationToken cancellationToken = default)
+    public Task<ActionResult<RuntimeStatusResponseDto>> GetStatus(CancellationToken cancellationToken = default)
+        => GetStatusInternal(cancellationToken);
+
+    private async Task<ActionResult<RuntimeStatusResponseDto>> GetStatusInternal(CancellationToken cancellationToken)
     {
-        var canonical = RuntimeCanonicalId.FromAdapter(_runtime);
-        RuntimeStatisticsDto? stats = null;
-        try
-        {
-            var s = await _runtime.GetStatisticsAsync(cancellationToken).ConfigureAwait(false);
-            stats = new RuntimeStatisticsDto
-            {
-                ActiveActorCount = s.ActiveActorCount,
-                TotalMessagesProcessed = s.TotalMessagesProcessed,
-                MessagesPerSecond = s.MessagesPerSecond,
-                AverageMessageProcessingTimeMs = s.AverageMessageProcessingTime,
-                UptimeSeconds = s.Uptime.TotalSeconds,
-                MemoryUsageBytes = s.MemoryUsageBytes
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "GetStatisticsAsync not available for dashboard");
-        }
+        var dto = await _dashboard.GetStatusAsync(cancellationToken).ConfigureAwait(false);
+        return Ok(dto);
+    }
 
-        var configuredRuntime = _configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory") ?? "InMemory";
-        var available = _runtimeFactory.GetAvailableRuntimes()
-            .Select(id =>
-            {
-                var cat = ActorRuntimeCatalog.GetById(id);
-                if (cat != null)
-                {
-                    return new AvailableRuntimeDto
-                    {
-                        Id = cat.Id,
-                        DisplayName = cat.DisplayName,
-                        Summary = cat.Summary,
-                        Limitations = cat.Limitations,
-                        DeploymentNotes = cat.DeploymentNotes,
-                        Capabilities = cat.Capabilities.ToList(),
-                        SupportsProtoRemoting = cat.SupportsProtoRemoting,
-                        HasCatalogEntry = true
-                    };
-                }
-
-                return new AvailableRuntimeDto
-                {
-                    Id = id,
-                    DisplayName = id,
-                    Summary = "",
-                    Limitations = "",
-                    DeploymentNotes = "",
-                    Capabilities = Array.Empty<string>(),
-                    SupportsProtoRemoting = string.Equals(id, "Proto.Actor", StringComparison.OrdinalIgnoreCase),
-                    HasCatalogEntry = false
-                };
-            })
-            .ToList();
-
-        var dto = new RuntimeStatusResponseDto
-        {
-            Current = new CurrentRuntimeDto
-            {
-                CanonicalId = canonical,
-                AdapterName = _runtime.Name,
-                Version = _runtime.Version,
-                IsInitialized = _runtime.IsInitialized,
-                Statistics = stats
-            },
-            Configured = new ConfiguredRuntimeDto
-            {
-                DefaultRuntime = configuredRuntime,
-                ProtoHost = _configuration.GetValue<string>("Agctor:ProtoHost"),
-                ProtoPort = _configuration.GetValue<int?>("Agctor:ProtoPort")
-            },
-            Available = available
-        };
-
+    /// <summary>Combined adapter + Docker health for monitoring.</summary>
+    [HttpGet("health")]
+    [ProducesResponseType(typeof(RuntimeHealthResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RuntimeHealthResponseDto>> GetHealth(CancellationToken cancellationToken = default)
+    {
+        var dto = await _dashboard.GetHealthAsync(cancellationToken).ConfigureAwait(false);
         return Ok(dto);
     }
 
@@ -127,13 +59,14 @@ public class RuntimeController : ControllerBase
         if (body == null)
             return BadRequest(new ErrorResponse { Code = "INVALID_BODY", Message = "Request body is required." });
 
-        if (!RuntimeSelectionNormalizer.TryNormalize(body.DefaultRuntime, _runtimeFactory, out var canonical, out var err))
-            return BadRequest(new ErrorResponse { Code = "UNKNOWN_RUNTIME", Message = err ?? "Invalid runtime." });
-
         try
         {
-            await _userRuntimeSettings.PersistAsync(canonical, body.ProtoHost, body.ProtoPort, cancellationToken)
-                .ConfigureAwait(false);
+            var result = await _dashboard.SaveSelectionAsync(body, cancellationToken).ConfigureAwait(false);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ErrorResponse { Code = "UNKNOWN_RUNTIME", Message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -144,12 +77,45 @@ public class RuntimeController : ControllerBase
                 Message = "Could not write appsettings.User.json. Check host permissions."
             });
         }
+    }
 
-        return Ok(new UpdateRuntimeSelectionResponseDto
+    /// <summary>Docker sidecar status for a runtime id (Orleans, Proto.Actor).</summary>
+    [HttpGet("docker/{runtimeId}")]
+    [ProducesResponseType(typeof(RuntimeDockerStatusDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RuntimeDockerStatusDto>> GetDockerStatus(string runtimeId, CancellationToken cancellationToken = default)
+    {
+        var status = await _docker.GetStatusAsync(runtimeId, cancellationToken).ConfigureAwait(false);
+        return Ok(RuntimeDashboardService.MapDocker(status));
+    }
+
+    /// <summary>Pull/build Docker image for the runtime sidecar.</summary>
+    [HttpPost("docker/{runtimeId}/install")]
+    [ProducesResponseType(typeof(RuntimeDockerActionResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RuntimeDockerActionResponseDto>> InstallDocker(string runtimeId, CancellationToken cancellationToken = default)
+        => await RunDockerActionAsync(runtimeId, _docker.InstallAsync, cancellationToken);
+
+    /// <summary>Start Docker sidecar for the runtime.</summary>
+    [HttpPost("docker/{runtimeId}/start")]
+    [ProducesResponseType(typeof(RuntimeDockerActionResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RuntimeDockerActionResponseDto>> StartDocker(string runtimeId, CancellationToken cancellationToken = default)
+        => await RunDockerActionAsync(runtimeId, _docker.StartAsync, cancellationToken);
+
+    /// <summary>Stop Docker sidecar for the runtime.</summary>
+    [HttpPost("docker/{runtimeId}/stop")]
+    [ProducesResponseType(typeof(RuntimeDockerActionResponseDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<RuntimeDockerActionResponseDto>> StopDocker(string runtimeId, CancellationToken cancellationToken = default)
+        => await RunDockerActionAsync(runtimeId, _docker.StopAsync, cancellationToken);
+
+    private async Task<ActionResult<RuntimeDockerActionResponseDto>> RunDockerActionAsync(
+        string runtimeId,
+        Func<string, CancellationToken, Task<AgctorSDK.Core.Runtime.ActorRuntimeDockerActionResult>> action,
+        CancellationToken cancellationToken)
+    {
+        var result = await action(runtimeId, cancellationToken).ConfigureAwait(false);
+        return Ok(new RuntimeDockerActionResponseDto
         {
-            RequiresRestart = true,
-            PersistedCanonicalRuntime = canonical,
-            Message = "Settings saved. Restart the Host process to apply the new actor runtime."
+            Success = result.Success,
+            Message = result.Message
         });
     }
 }

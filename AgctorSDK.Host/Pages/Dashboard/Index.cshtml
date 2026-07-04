@@ -46,7 +46,7 @@
                     </div>
                     <div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
                         <h2 class="mb-4 text-lg font-semibold text-gray-900 dark:text-white">LLM (Ollama)</h2>
-                        <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Global default for Host LLM usage. Base URL is set in appsettings; model can be changed here (PRD-015).</p>
+                        <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">Global default for Host LLM usage. Base URL is set in appsettings; model is saved to <code class="text-[11px] bg-gray-100 dark:bg-gray-800 px-1 rounded">appsettings.json</code> when you click Set as default.</p>
                         <dl class="space-y-2 text-sm">
                             <div><dt class="text-gray-500 dark:text-gray-400">Ollama URL</dt><dd id="llm-ollama-url" class="font-mono text-gray-900 dark:text-white break-all">${esc(llm.ollamaApiUrl)}</dd></div>
                             <div><dt class="text-gray-500 dark:text-gray-400">Default model</dt><dd id="llm-default-model" class="font-medium text-gray-900 dark:text-white">${esc(llm.defaultModel)}</dd></div>
@@ -190,7 +190,7 @@
                 const body = await r.json().catch(function () { return {}; });
                 await reloadLlmSummary();
                 if (body.warning) showWarn('Saved. ' + body.warning);
-                else showMsg('Default model updated.', false);
+                else showMsg('Default model updated in appsettings.json.', false);
             } catch (e) {
                 showMsg('Request failed.', true);
             } finally {

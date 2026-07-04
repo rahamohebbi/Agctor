@@ -6,7 +6,20 @@ namespace AgctorSDK.Host.Services;
 public interface IUserRuntimeSettingsService
 {
     /// <summary>
-    /// Merges Agctor:DefaultRuntime and optional Proto settings into appsettings.User.json.
+    /// Merges Agctor runtime keys into appsettings.User.json.
     /// </summary>
-    Task PersistAsync(string canonicalRuntimeId, string? protoHost, int? protoPort, CancellationToken cancellationToken = default);
+    Task PersistAsync(RuntimeSettingsUpdate update, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Values written to appsettings.User.json for the next Host boot.</summary>
+public sealed class RuntimeSettingsUpdate
+{
+    public string CanonicalRuntimeId { get; set; } = null!;
+    public bool? AllowExperimentalRuntimes { get; set; }
+    public string? ProtoHost { get; set; }
+    public int? ProtoPort { get; set; }
+    public string? OrleansClusterId { get; set; }
+    public string? OrleansServiceId { get; set; }
+    public string? OrleansGatewayHost { get; set; }
+    public int? OrleansGatewayPort { get; set; }
 }

@@ -22,9 +22,10 @@ public sealed class UserRuntimeSettingsService : IUserRuntimeSettingsService
     private string UserSettingsPath => Path.Combine(_environment.ContentRootPath, "appsettings.User.json");
 
     /// <inheritdoc />
-    public async Task PersistAsync(string canonicalRuntimeId, string? protoHost, int? protoPort, CancellationToken cancellationToken = default)
+    public async Task PersistAsync(RuntimeSettingsUpdate update, CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(canonicalRuntimeId);
+        ArgumentNullException.ThrowIfNull(update);
+        ArgumentException.ThrowIfNullOrWhiteSpace(update.CanonicalRuntimeId);
 
         JsonObject root;
         if (File.Exists(UserSettingsPath))
@@ -40,20 +41,36 @@ public sealed class UserRuntimeSettingsService : IUserRuntimeSettingsService
         var agctor = root["Agctor"]?.AsObject() ?? new JsonObject();
         root["Agctor"] = agctor;
 
-        agctor["DefaultRuntime"] = canonicalRuntimeId;
+        agctor["DefaultRuntime"] = update.CanonicalRuntimeId;
 
-        if (!string.IsNullOrWhiteSpace(protoHost))
-            agctor["ProtoHost"] = protoHost.Trim();
-        else
-            agctor.Remove("ProtoHost");
+        if (update.AllowExperimentalRuntimes.HasValue)
+            agctor["AllowExperimentalRuntimes"] = update.AllowExperimentalRuntimes.Value;
 
-        if (protoPort is > 0 and <= 65535)
-            agctor["ProtoPort"] = protoPort.Value;
-        else
-            agctor.Remove("ProtoPort");
+        SetOrRemove(agctor, "ProtoHost", update.ProtoHost);
+        SetOrRemoveInt(agctor, "ProtoPort", update.ProtoPort);
+        SetOrRemove(agctor, "OrleansClusterId", update.OrleansClusterId);
+        SetOrRemove(agctor, "OrleansServiceId", update.OrleansServiceId);
+        SetOrRemove(agctor, "OrleansGatewayHost", update.OrleansGatewayHost);
+        SetOrRemoveInt(agctor, "OrleansGatewayPort", update.OrleansGatewayPort);
 
         var json = root.ToJsonString(JsonWriteOptions);
         await File.WriteAllTextAsync(UserSettingsPath, json, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("Updated runtime selection: DefaultRuntime={Runtime} in {Path}", canonicalRuntimeId, UserSettingsPath);
+        _logger.LogInformation("Updated runtime selection: DefaultRuntime={Runtime} in {Path}", update.CanonicalRuntimeId, UserSettingsPath);
+    }
+
+    private static void SetOrRemove(JsonObject parent, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            parent[key] = value.Trim();
+        else
+            parent.Remove(key);
+    }
+
+    private static void SetOrRemoveInt(JsonObject parent, string key, int? value)
+    {
+        if (value is > 0 and <= 65535)
+            parent[key] = value.Value;
+        else
+            parent.Remove(key);
     }
 }

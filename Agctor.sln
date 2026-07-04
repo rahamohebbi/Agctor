@@ -24,6 +24,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.CodeGraph", "Agct
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.CodeGraph.Tests", "AgctorSDK.CodeGraph.Tests\AgctorSDK.CodeGraph.Tests.csproj", "{F4A652F1-8F84-4BC6-A6CD-D77E5E4FC4F4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.Orleans.Contracts", "AgctorSDK.Orleans.Contracts\AgctorSDK.Orleans.Contracts.csproj", "{322198E6-4F6C-4B1C-AF82-B34C28FCE1B1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AgctorSDK.OrleansSilo", "AgctorSDK.OrleansSilo\AgctorSDK.OrleansSilo.csproj", "{E54A399A-0AC9-4CD2-BE18-BBC715759340}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -77,5 +81,13 @@ Global
 		{F4A652F1-8F84-4BC6-A6CD-D77E5E4FC4F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4A652F1-8F84-4BC6-A6CD-D77E5E4FC4F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F4A652F1-8F84-4BC6-A6CD-D77E5E4FC4F4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{322198E6-4F6C-4B1C-AF82-B34C28FCE1B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{322198E6-4F6C-4B1C-AF82-B34C28FCE1B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{322198E6-4F6C-4B1C-AF82-B34C28FCE1B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{322198E6-4F6C-4B1C-AF82-B34C28FCE1B1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E54A399A-0AC9-4CD2-BE18-BBC715759340}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E54A399A-0AC9-4CD2-BE18-BBC715759340}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E54A399A-0AC9-4CD2-BE18-BBC715759340}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E54A399A-0AC9-4CD2-BE18-BBC715759340}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
