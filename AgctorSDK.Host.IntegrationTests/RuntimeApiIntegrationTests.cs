@@ -66,7 +66,7 @@ public class RuntimeApiIntegrationTests : IClassFixture<AgctorWebApplicationFact
         res.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         body.TryGetProperty("requiresRestart", out var rr).Should().BeTrue();
-        rr.GetBoolean().Should().BeTrue();
+        rr.GetBoolean().Should().BeFalse();
         body.TryGetProperty("persistedCanonicalRuntime", out var pr).Should().BeTrue();
         pr.GetString().Should().Be("InMemory");
     }

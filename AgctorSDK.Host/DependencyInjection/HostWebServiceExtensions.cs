@@ -29,6 +29,7 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IProjectMemoryFileService, ProjectMemoryFileService>();
         services.AddSingleton<IProjectMemoryAgentYamlPersistence, ProjectMemoryAgentYamlPersistence>();
         services.AddSingleton<IUserProjectMemorySettingsService, UserProjectMemorySettingsService>();
+        services.AddSingleton<IPlaygroundChatSettingsService, PlaygroundChatSettingsService>();
         services.AddSingleton<ILlmUserSettingsService, LlmUserSettingsService>();
         services.AddSingleton<IOllamaModelCatalog, OllamaModelCatalog>();
 
@@ -82,6 +83,7 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
         services.AddSingleton<IActorRuntimeDockerService, ActorRuntimeDockerService>();
         services.AddSingleton<ITerminalCommandService, TerminalCommandService>();
+        services.AddSingleton<IActorRuntimeSwitchService, ActorRuntimeSwitchService>();
         services.AddSingleton<IRuntimeDashboardService, RuntimeDashboardService>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.LLMAgentDetailProvider>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.CoderAgentDetailProvider>();

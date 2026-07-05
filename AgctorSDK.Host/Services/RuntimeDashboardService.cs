@@ -23,6 +23,7 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
     private readonly IConfiguration _configuration;
     private readonly IUserRuntimeSettingsService _userRuntimeSettings;
     private readonly IActorRuntimeDockerService _docker;
+    private readonly IActorRuntimeSwitchService _runtimeSwitch;
     private readonly ILogger<RuntimeDashboardService> _logger;
 
     public RuntimeDashboardService(
@@ -31,6 +32,7 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
         IConfiguration configuration,
         IUserRuntimeSettingsService userRuntimeSettings,
         IActorRuntimeDockerService docker,
+        IActorRuntimeSwitchService runtimeSwitch,
         ILogger<RuntimeDashboardService> logger)
     {
         _runtime = runtime;
@@ -38,6 +40,7 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
         _configuration = configuration;
         _userRuntimeSettings = userRuntimeSettings;
         _docker = docker;
+        _runtimeSwitch = runtimeSwitch;
         _logger = logger;
     }
 
@@ -99,10 +102,15 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
         var configured = BuildConfiguredDto(
             _configuration.GetValue<string>("Agctor:DefaultRuntime", "InMemory") ?? "InMemory");
 
+        // Selecting Orleans/Proto implies experimental is allowed unless the form explicitly unchecked it.
+        var allowExperimental = AgctorRuntimeCatalog.IsExperimental(canonical)
+            ? (body.AllowExperimentalRuntimes ?? true)
+            : (body.AllowExperimentalRuntimes ?? configured.AllowExperimentalRuntimes);
+
         await _userRuntimeSettings.PersistAsync(new RuntimeSettingsUpdate
         {
             CanonicalRuntimeId = canonical,
-            AllowExperimentalRuntimes = body.AllowExperimentalRuntimes ?? configured.AllowExperimentalRuntimes,
+            AllowExperimentalRuntimes = allowExperimental,
             ProtoHost = body.ProtoHost ?? configured.ProtoHost,
             ProtoPort = body.ProtoPort ?? configured.ProtoPort,
             OrleansClusterId = body.OrleansClusterId ?? configured.OrleansClusterId,
@@ -111,11 +119,28 @@ public sealed class RuntimeDashboardService : IRuntimeDashboardService
             OrleansGatewayPort = body.OrleansGatewayPort ?? configured.OrleansGatewayPort
         }, cancellationToken).ConfigureAwait(false);
 
+        if (_configuration is IConfigurationRoot configRoot)
+            configRoot.Reload();
+
+        var switchResult = await _runtimeSwitch.SwitchToAsync(
+            canonical,
+            allowExperimentalRuntimes: allowExperimental,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!switchResult.Success)
+        {
+            return new UpdateRuntimeSelectionResponseDto
+            {
+                RequiresRestart = true,
+                PersistedCanonicalRuntime = canonical,
+                Message = $"Saved to appsettings.User.json, but live switch failed: {switchResult.Message} Restart the Host or fix the issue (e.g. start the Orleans Docker silo)."
+            };
+        }
+
         return new UpdateRuntimeSelectionResponseDto
         {
-            RequiresRestart = true,
+            RequiresRestart = false,
             PersistedCanonicalRuntime = canonical,
-            Message = "Settings saved to appsettings.User.json. Restart the Host to apply the new actor runtime."
+            Message = switchResult.Message
         };
     }
 

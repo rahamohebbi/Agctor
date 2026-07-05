@@ -30,6 +30,9 @@
     var scenarioCancelBtn = document.getElementById('pm-play-scenario-cancel');
     var advancedEl = document.getElementById('pm-play-advanced');
     var agentAutoLabelEl = document.getElementById('pm-play-agent-auto-label');
+    var chatContextLabelEl = document.getElementById('pm-play-chat-context-label');
+    var chatContextTurnsEl = document.getElementById('pm-play-chat-context-turns');
+    var chatContextSavedEl = document.getElementById('pm-play-chat-context-saved');
     var agentResetBtn = document.getElementById('pm-play-agent-reset');
     var sessionDetailEl = document.getElementById('pm-play-session-detail');
     var noSessionEl = document.getElementById('pm-play-no-session');
@@ -56,6 +59,76 @@
         !noSessionEl
     ) {
         return;
+    }
+
+    /** Machine-local cap for transcript turns sent to the LLM (appsettings.User.json). */
+    var chatContextMin = 1;
+    var chatContextMax = 100;
+    var chatContextDefault = 25;
+    var chatContextSaveTimer = null;
+
+    function clampChatContextTurns(raw) {
+        var n = Math.floor(Number(raw));
+        if (!isFinite(n)) n = chatContextDefault;
+        if (n < chatContextMin) n = chatContextMin;
+        if (n > chatContextMax) n = chatContextMax;
+        return n;
+    }
+
+    function updateChatContextSummary(n) {
+        if (chatContextLabelEl) {
+            chatContextLabelEl.textContent = 'context: ' + n + ' turn' + (n === 1 ? '' : 's');
+        }
+    }
+
+    function loadPlaygroundSettings() {
+        return fetch('/api/project-memory/playground/settings')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (s) {
+                if (!s) return;
+                chatContextMin = s.minMaxConversationTurns || 1;
+                chatContextMax = s.maxMaxConversationTurns || 100;
+                chatContextDefault = s.maxConversationTurns || 25;
+                if (chatContextTurnsEl) {
+                    chatContextTurnsEl.min = String(chatContextMin);
+                    chatContextTurnsEl.max = String(chatContextMax);
+                    var n = clampChatContextTurns(s.maxConversationTurns);
+                    chatContextTurnsEl.value = String(n);
+                    updateChatContextSummary(n);
+                }
+            })
+            .catch(function () { /* defaults */ });
+    }
+
+    function savePlaygroundChatSettings() {
+        if (!chatContextTurnsEl) return;
+        var n = clampChatContextTurns(chatContextTurnsEl.value);
+        chatContextTurnsEl.value = String(n);
+        fetch('/api/project-memory/playground/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ maxConversationTurns: n })
+        })
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('save failed')); })
+            .then(function (s) {
+                var saved = clampChatContextTurns(s && s.maxConversationTurns != null ? s.maxConversationTurns : n);
+                chatContextTurnsEl.value = String(saved);
+                updateChatContextSummary(saved);
+                if (chatContextSavedEl) {
+                    chatContextSavedEl.classList.remove('hidden');
+                    window.setTimeout(function () {
+                        chatContextSavedEl.classList.add('hidden');
+                    }, 2000);
+                }
+            })
+            .catch(function () {
+                status.textContent = 'Could not save chat context settings';
+            });
+    }
+
+    function schedulePlaygroundChatSettingsSave() {
+        if (chatContextSaveTimer) window.clearTimeout(chatContextSaveTimer);
+        chatContextSaveTimer = window.setTimeout(savePlaygroundChatSettings, 400);
     }
 
     /** Last project list from API; used for labels without an extra round-trip. */
@@ -2938,6 +3011,11 @@
         });
     }
 
+    if (chatContextTurnsEl) {
+        chatContextTurnsEl.addEventListener('change', savePlaygroundChatSettings);
+        chatContextTurnsEl.addEventListener('input', schedulePlaygroundChatSettingsSave);
+    }
+
     var qs = new URLSearchParams(window.location.search);
     var qProject = qs.get('projectId');
     var qSession = qs.get('sessionId');
@@ -2946,6 +3024,7 @@
 
     loadAgents()
         .then(loadScenarios)
+        .then(loadPlaygroundSettings)
         .then(function () {
             // Resolve owning project from the session whenever sessionId is present (fixes stale or missing projectId in URL).
             if (qSession) {

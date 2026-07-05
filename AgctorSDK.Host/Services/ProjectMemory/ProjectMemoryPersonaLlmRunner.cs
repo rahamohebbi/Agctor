@@ -4,7 +4,9 @@ using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.Yaml;
+using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Host.Services;
 
 namespace AgctorSDK.Host.Services.ProjectMemory;
 
@@ -15,6 +17,7 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
     private readonly ISessionStore _sessions;
     private readonly IProjectMemoryPipelineRunner _pipeline;
     private readonly IProjectMemoryLlmClient _llm;
+    private readonly IPlaygroundChatSettingsService _chatSettings;
     private readonly ILogger<ProjectMemoryPersonaLlmRunner> _logger;
 
     public ProjectMemoryPersonaLlmRunner(
@@ -22,12 +25,14 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         ISessionStore sessions,
         IProjectMemoryPipelineRunner pipeline,
         IProjectMemoryLlmClient llm,
+        IPlaygroundChatSettingsService chatSettings,
         ILogger<ProjectMemoryPersonaLlmRunner> logger)
     {
         _loader = loader;
         _sessions = sessions;
         _pipeline = pipeline;
         _llm = llm;
+        _chatSettings = chatSettings;
         _logger = logger;
     }
 
@@ -68,7 +73,9 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         {
             try
             {
-                prior = await _sessions.GetTurnsAsync(sessionId.Trim(), null, cancellationToken).ConfigureAwait(false);
+                var maxTurns = _chatSettings.GetMaxConversationTurns();
+                prior = await _sessions.GetTurnsAsync(sessionId.Trim(), maxTurns, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -76,7 +83,7 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
             }
         }
 
-        var prompt = BuildPlaygroundPrompt(spec, prior, inputText, scenarioId);
+        var prompt = BuildPlaygroundPrompt(spec, prior, inputText, scenarioId, maxConversationTurns: _chatSettings.GetMaxConversationTurns());
         try
         {
             var output = await _llm.GenerateAsync(prompt, cancellationToken).ConfigureAwait(false);
@@ -148,7 +155,8 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         string? scenarioId = null,
         string? playgroundFlowAppendix = null,
         string? activeSubjectEntityKey = null,
-        string? activeSubjectDisplayName = null)
+        string? activeSubjectDisplayName = null,
+        int? maxConversationTurns = null)
     {
         var lines = (spec.Instructions ?? new List<string>()).Where(i => !string.IsNullOrWhiteSpace(i)).ToList();
         var specHeader = $"Agent: {spec.Id}\nRole: {spec.Role}\nName: {spec.Name}\n";
@@ -170,16 +178,26 @@ public sealed class ProjectMemoryPersonaLlmRunner : IProjectMemoryPersonaLlmRunn
         if (!string.IsNullOrWhiteSpace(activeSubjectEntityKey))
             ProjectMemoryPromptBuilder.AppendActiveSubjectHint(sb, activeSubjectEntityKey, activeSubjectDisplayName);
 
+        priorTurns = SessionTranscriptFormatter.TakeRecentTurns(
+            priorTurns,
+            maxConversationTurns ?? SessionTranscriptFormatter.DefaultMaxConversationTurns);
+        var cap = maxConversationTurns ?? SessionTranscriptFormatter.DefaultMaxConversationTurns;
         if (priorTurns is { Count: > 0 })
         {
-            sb.Append("\n\n---\nConversation so far:\n");
+            sb.Append("\n\n---\nConversation so far (most recent ")
+                .Append(Math.Min(priorTurns.Count, cap))
+                .Append(" turns):\n");
             foreach (var t in priorTurns.OrderBy(x => x.Sequence))
             {
                 if (t.Role is SessionRole.System or SessionRole.Tool)
                     continue;
                 var label = t.Role == SessionRole.User ? "User" : "Assistant";
+                if (t.Role == SessionRole.Assistant && !string.IsNullOrWhiteSpace(t.AgentId))
+                    label = "Assistant (" + t.AgentId.Trim() + ")";
                 sb.Append(label).Append(": ").Append(t.Content).Append('\n');
             }
+
+            sb.Append("Short follow-ups like \"try again\" or \"yes\" refer to this conversation.\n");
         }
 
         sb.Append("\n---\nLatest user message:\n").Append(newUserText);

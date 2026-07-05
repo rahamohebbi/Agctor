@@ -6,6 +6,8 @@ using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Core.Sessions;
+using AgctorSDK.Core.Sessions.Models;
+using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Services.ProjectMemory;
 
 namespace AgctorSDK.Host.Services.Scenarios;
@@ -20,6 +22,8 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
     private readonly IAgentFactory _agentFactory;
     private readonly IProjectMemoryLlmClient _llm;
     private readonly IConversationFocusStore _focusStore;
+    private readonly ISessionStore _sessions;
+    private readonly IPlaygroundChatSettingsService _chatSettings;
     private readonly ILogger<ScenarioFlowPersonaLlmRunner> _logger;
 
     public ScenarioFlowPersonaLlmRunner(
@@ -28,6 +32,8 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         IAgentFactory agentFactory,
         IProjectMemoryLlmClient llm,
         IConversationFocusStore focusStore,
+        ISessionStore sessions,
+        IPlaygroundChatSettingsService chatSettings,
         ILogger<ScenarioFlowPersonaLlmRunner> logger)
     {
         _loader = loader;
@@ -35,6 +41,8 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         _agentFactory = agentFactory;
         _llm = llm;
         _focusStore = focusStore;
+        _sessions = sessions;
+        _chatSettings = chatSettings;
         _logger = logger;
     }
 
@@ -153,13 +161,44 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         }
 
         var flowAppendix = appendixParts.Count > 0 ? string.Join("\n\n", appendixParts) : null;
+
+        IReadOnlyList<SessionTurn>? prior = null;
+        if (!string.IsNullOrWhiteSpace(request.SessionId))
+        {
+            try
+            {
+                var maxTurns = _chatSettings.GetMaxConversationTurns();
+                var raw = await _sessions
+                    .GetTurnsAsync(request.SessionId.Trim(), maxTurns + 2, cancellationToken)
+                    .ConfigureAwait(false);
+                // Playground persists the user turn before flow runs — drop it from prefix when it matches this input.
+                prior = SessionTranscriptFormatter.ForPromptContext(
+                    raw,
+                    excludeTurnGroupId: null);
+                if (prior.Count > 0
+                    && prior[^1].Role == SessionRole.User
+                    && string.Equals(prior[^1].Content.Trim(), request.InputText.Trim(), StringComparison.Ordinal))
+                {
+                    prior = SessionTranscriptFormatter.ForPromptContext(
+                        prior.Take(prior.Count - 1).ToList());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Scenario flow persona: could not load session {SessionId}", request.SessionId);
+            }
+        }
+
+        var input = SessionTranscriptFormatter.ExpandFollowUpFromHistory(request.InputText, prior);
+
         var prompt = ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(
             spec,
-            priorTurns: null,
-            newUserText: request.InputText,
+            priorTurns: prior,
+            newUserText: input,
             scenarioId: scenarioId,
             playgroundFlowAppendix: flowAppendix,
-            activeSubjectEntityKey: focusEntityKey);
+            activeSubjectEntityKey: focusEntityKey,
+            maxConversationTurns: _chatSettings.GetMaxConversationTurns());
 
         try
         {

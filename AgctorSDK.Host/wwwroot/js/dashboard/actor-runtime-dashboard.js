@@ -16,6 +16,46 @@
         banner.classList.remove('hidden');
     }
 
+    function overallHealthBadgeClass(status) {
+        if ((status || '').toLowerCase() === 'healthy') {
+            return 'text-xs font-medium px-2 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200';
+        }
+        return 'text-xs font-medium px-2 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200';
+    }
+
+    function applyRuntimeHealth(data) {
+        if (!data) return;
+
+        var badge = document.getElementById('runtime-health-badge');
+        if (badge) {
+            badge.textContent = data.overallStatus || 'unknown';
+            badge.className = overallHealthBadgeClass(data.overallStatus);
+        }
+
+        var detail = document.getElementById('runtime-health-detail');
+        if (detail) {
+            var text = data.detail || '';
+            detail.textContent = text;
+            detail.classList.toggle('hidden', !text);
+        }
+    }
+
+    async function refreshRuntimeHealth() {
+        var btn = document.getElementById('runtime-health-refresh');
+        if (btn) btn.disabled = true;
+        try {
+            var res = await fetch('/api/runtime/health');
+            if (!res.ok) return null;
+            var data = await res.json();
+            applyRuntimeHealth(data);
+            return data;
+        } catch (_) {
+            return null;
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     function stateBadgeClass(state) {
         var s = (state || 'unknown').toLowerCase();
         if (s === 'running') {
@@ -111,6 +151,7 @@
         if (action === 'refresh') {
             setDockerActionMessage('Refreshing…');
             await refreshDockerStatus();
+            await refreshRuntimeHealth();
             setDockerActionMessage('');
             return;
         }
@@ -127,6 +168,7 @@
             var msg = payload.message || payload.Message || (ok ? 'Done.' : 'Action failed.');
             setDockerActionMessage(msg, !ok);
             await refreshDockerStatus();
+            await refreshRuntimeHealth();
         } catch (err) {
             setDockerActionMessage(String(err), true);
         } finally {
@@ -144,15 +186,29 @@
 
         // Live status on load and every 10s so terminal/manual docker changes show up.
         refreshDockerStatus();
-        setInterval(refreshDockerStatus, 10000);
+        refreshRuntimeHealth();
+        setInterval(function () {
+            refreshDockerStatus();
+            refreshRuntimeHealth();
+        }, 10000);
 
         document.addEventListener('agctor-docker-changed', function (ev) {
             var key = ev.detail && ev.detail.contextKey;
             var runtimeId = dockerPanel.getAttribute('data-docker-runtime-id');
             if (!key || !runtimeId || key.toLowerCase() === runtimeId.toLowerCase()) {
                 refreshDockerStatus();
+                refreshRuntimeHealth();
             }
         });
+    }
+
+    var healthRefreshBtn = document.getElementById('runtime-health-refresh');
+    if (healthRefreshBtn) {
+        healthRefreshBtn.addEventListener('click', refreshRuntimeHealth);
+    } else if (document.getElementById('runtime-health-badge')) {
+        // No Docker panel but health row is shown (e.g. InMemory).
+        refreshRuntimeHealth();
+        setInterval(refreshRuntimeHealth, 10000);
     }
 
     root.querySelectorAll('[data-runtime-select]').forEach(function (btn) {
@@ -169,9 +225,10 @@
                 }
                 var status = await statusRes.json();
                 var cfg = status.configured || {};
+                var experimental = id === 'Orleans' || id === 'Proto.Actor';
                 var body = {
                     defaultRuntime: id,
-                    allowExperimentalRuntimes: cfg.allowExperimentalRuntimes,
+                    allowExperimentalRuntimes: experimental ? true : cfg.allowExperimentalRuntimes,
                     protoHost: cfg.protoHost,
                     protoPort: cfg.protoPort,
                     orleansClusterId: cfg.orleansClusterId,
@@ -191,7 +248,7 @@
                     return;
                 }
 
-                showBanner(payload.message || payload.Message || 'Saved to appsettings.User.json.');
+                showBanner(payload.message || payload.Message || 'Saved.');
                 window.location.href = '/Dashboard/ActorRuntime';
             } catch (_) {
                 alert('Request failed.');
@@ -234,8 +291,12 @@
                 return;
             }
             showBanner(payload.message || payload.Message || 'Saved.');
+            window.location.href = '/Dashboard/ActorRuntime';
         });
     }
 
-    window.AgctorActorRuntimeDashboard = { refreshDockerStatus: refreshDockerStatus };
+    window.AgctorActorRuntimeDashboard = {
+        refreshDockerStatus: refreshDockerStatus,
+        refreshRuntimeHealth: refreshRuntimeHealth
+    };
 })();

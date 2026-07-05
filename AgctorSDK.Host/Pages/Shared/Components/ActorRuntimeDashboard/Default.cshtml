@@ -5,10 +5,11 @@
     @if (Model.Mismatch)
     {
         <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" role="status">
-            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Live vs next boot</p>
+            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Saved runtime not active</p>
             <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">
-                Running <strong>@Model.Status.Current.CanonicalId</strong> but configuration requests
-                <strong>@Model.Status.Configured.DefaultRuntime</strong> after restart.
+                Running <strong>@Model.Status.Current.CanonicalId</strong> but
+                <strong>@Model.Status.Configured.DefaultRuntime</strong> is saved.
+                Start the Docker silo if needed, then click the model card again.
             </p>
         </div>
     }
@@ -26,20 +27,23 @@
             var healthCls = Model.Health.OverallStatus == "healthy"
                 ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
                 : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
-            <p class="mt-3 text-sm">
+            <p class="mt-3 text-sm flex flex-wrap items-center gap-x-2 gap-y-1" id="runtime-health-row">
                 <span class="font-medium text-gray-700 dark:text-gray-300">Health:</span>
-                <span class="ml-2 text-xs font-medium px-2 py-0.5 rounded @healthCls">@Model.Health.OverallStatus</span>
-                @if (!string.IsNullOrEmpty(Model.Health.Detail))
-                {
-                    <span class="text-gray-500 dark:text-gray-400 ml-2">@Model.Health.Detail</span>
-                }
+                <span id="runtime-health-badge" class="text-xs font-medium px-2 py-0.5 rounded @healthCls">@Model.Health.OverallStatus</span>
+                <button type="button" id="runtime-health-refresh"
+                        class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
+                        title="Fetch latest health">
+                    Refresh
+                </button>
+                <span id="runtime-health-detail"
+                      class="text-gray-500 dark:text-gray-400 @(string.IsNullOrEmpty(Model.Health.Detail) ? "hidden" : "")">@Model.Health.Detail</span>
             </p>
         }
     </div>
 
     <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
         <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Select actor model</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Click a model to save it to appsettings.User.json. Tune settings below if needed.</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Click a model to save and apply it. Tune gateway settings below if needed.</p>
 
         <div class="grid gap-4 md:grid-cols-3 mb-6" role="list">
             @foreach (var runtime in Model.Status.Available)
@@ -89,7 +93,7 @@
                                 <input type="checkbox" name="allowExperimentalRuntimes" value="true"
                                        class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                        @(cfg.AllowExperimentalRuntimes ? "checked" : null) />
-                                <span class="text-sm text-gray-600 dark:text-gray-400">Enable Proto.Actor and Orleans at startup</span>
+                                <span class="text-sm text-gray-600 dark:text-gray-400">Allow Orleans and Proto.Actor (required for those models)</span>
                             </div>
                         }
                         else if (field.Key == "ProtoHost")

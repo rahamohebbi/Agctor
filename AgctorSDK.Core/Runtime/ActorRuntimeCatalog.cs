@@ -34,8 +34,8 @@ public static class ActorRuntimeCatalog
             Id: "Orleans",
             DisplayName: "Orleans (distributed)",
             Maturity: "experimental",
-            Summary: "Connects to a local or remote Orleans silo cluster. Run the silo via Docker from the dashboard, then restart the Host with Orleans selected.",
-            Limitations: "Grain bridge for IActor is early; verify agent flows before production. Requires AllowExperimentalRuntimes.",
+            Summary: "Connects to a local or remote Orleans silo cluster. Start the silo via Docker below, then click this card to apply immediately.",
+            Limitations: "Requires AllowExperimentalRuntimes and a running silo (Docker). Agents run in the Host process while connected to the cluster; distributed grains are a future step.",
             DeploymentNotes: "Local: docker compose service orleans-silo (gateway 30000). Cloud: Azure Container Apps, AKS, or silo clusters.",
             Capabilities: new[] { "cluster_ready", "cloud_friendly", "distributed" },
             SupportsProtoRemoting: false)

@@ -87,6 +87,7 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly VisualStorageOptions _visualOptions;
     private readonly PlaygroundFocusPostHook _focusPostHook;
     private readonly PlaygroundStyleRefreshService? _styleRefresh;
+    private readonly IPlaygroundChatSettingsService _chatSettings;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -123,7 +124,8 @@ public sealed class ProjectMemoryController : ControllerBase
         VisualAssetCatalogStore? visualCatalog = null,
         IOptions<VisualStorageOptions>? visualOptions = null,
         PlaygroundFocusPostHook? focusPostHook = null,
-        PlaygroundStyleRefreshService? styleRefresh = null)
+        PlaygroundStyleRefreshService? styleRefresh = null,
+        IPlaygroundChatSettingsService? chatSettings = null)
     {
         _options = options;
         _loader = loader;
@@ -160,7 +162,11 @@ public sealed class ProjectMemoryController : ControllerBase
         _visualOptions = visualOptions?.Value ?? new VisualStorageOptions();
         _focusPostHook = focusPostHook ?? throw new ArgumentNullException(nameof(focusPostHook));
         _styleRefresh = styleRefresh;
+        _chatSettings = chatSettings ?? throw new ArgumentNullException(nameof(chatSettings));
     }
+
+    /// <summary>How many prior chat turns to include in prompts (user-configurable, default 25).</summary>
+    private int MaxChatContextTurns() => _chatSettings.GetMaxConversationTurns();
 
     private string? RootOrNull()
     {
@@ -371,7 +377,11 @@ public sealed class ProjectMemoryController : ControllerBase
         string? conversationPrefix = null;
         if (!string.IsNullOrWhiteSpace(body.SessionId))
         {
-            var prior = await _sessions.GetTurnsAsync(body.SessionId.Trim(), null, cancellationToken).ConfigureAwait(false);
+            var prior = await _sessions.GetTurnsAsync(
+                    body.SessionId.Trim(),
+                    MaxChatContextTurns(),
+                    cancellationToken)
+                .ConfigureAwait(false);
             conversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior);
         }
 
@@ -708,6 +718,27 @@ public sealed class ProjectMemoryController : ControllerBase
             cancellationToken).ConfigureAwait(false);
 
         return Ok(new CompanionPrivacySettingsDto { AutoIngestOnSessionEnd = saved.AutoIngestOnSessionEnd });
+    }
+
+    /// <summary>Playground chat context limit (machine-local appsettings.User.json).</summary>
+    [HttpGet("playground/settings")]
+    [ProducesResponseType(typeof(PlaygroundChatSettingsDto), StatusCodes.Status200OK)]
+    public ActionResult<PlaygroundChatSettingsDto> GetPlaygroundSettings()
+        => Ok(_chatSettings.GetSettings());
+
+    /// <summary>Persist <c>Agctor:ProjectMemory:MaxConversationTurns</c> for this machine.</summary>
+    [HttpPut("playground/settings")]
+    [ProducesResponseType(typeof(PlaygroundChatSettingsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PlaygroundChatSettingsDto>> PutPlaygroundSettingsAsync(
+        [FromBody] PlaygroundChatSettingsUpdateDto body,
+        CancellationToken cancellationToken)
+    {
+        if (body == null)
+            return BadRequest(new { error = "Request body is required." });
+
+        var saved = await _chatSettings.SaveAsync(body, cancellationToken).ConfigureAwait(false);
+        return Ok(saved);
     }
 
     [HttpPost("privacy/forget-person")]
@@ -1125,18 +1156,6 @@ public sealed class ProjectMemoryController : ControllerBase
         var sessionId = body.SessionId.Trim();
         await EnsurePlaygroundSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<SessionTurn> prior;
-        try
-        {
-            prior = await _sessions.GetTurnsAsync(sessionId, null, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Playground: could not load turns");
-            Response.StatusCode = StatusCodes.Status500InternalServerError;
-            return;
-        }
-
         // Match scenario-scoped flows: body may omit scenarioId — inherit from the session's chat project (same bucket as flow run).
         var sessInfo = await _sessions.GetSessionAsync(sessionId, cancellationToken).ConfigureAwait(false);
         var scenarioFromBody = body.ScenarioId?.Trim();
@@ -1156,9 +1175,6 @@ public sealed class ProjectMemoryController : ControllerBase
         var flowCatalogOk = scenarioDef?.Flow != null && ScenarioFlowValidator.Validate(scenarioDef).Count == 0;
         var useScenarioFlow = scenarioDef?.Flow != null && flowCatalogOk && !string.IsNullOrWhiteSpace(scenarioResolved);
         var promptText = hasText ? body.Payload.Trim() : "(User attached image(s) without a caption.)";
-        var prompt = useScenarioFlow
-            ? ""
-            : ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(spec, prior, promptText, scenarioResolved);
         var turnGroupId = string.IsNullOrWhiteSpace(body.TurnGroupId)
             ? Guid.NewGuid().ToString()
             : body.TurnGroupId.Trim();
@@ -1204,6 +1220,36 @@ public sealed class ProjectMemoryController : ControllerBase
             Response.StatusCode = StatusCodes.Status500InternalServerError;
             return;
         }
+
+        IReadOnlyList<SessionTurn> prior;
+        try
+        {
+            var rawTurns = await _sessions
+                .GetTurnsAsync(
+                    sessionId,
+                    MaxChatContextTurns() + 2,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            prior = SessionTranscriptFormatter.ForPromptContext(rawTurns, turnGroupId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Playground: could not load turns");
+            Response.StatusCode = StatusCodes.Status500InternalServerError;
+            return;
+        }
+
+        // "try again" → last real user question for routing + LLM (transcript still shows what you typed).
+        promptText = SessionTranscriptFormatter.ExpandFollowUpFromHistory(promptText, prior);
+
+        var prompt = useScenarioFlow
+            ? ""
+            : ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(
+                spec,
+                prior,
+                promptText,
+                scenarioResolved,
+                maxConversationTurns: MaxChatContextTurns());
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "text/event-stream; charset=utf-8";
@@ -1418,7 +1464,9 @@ public sealed class ProjectMemoryController : ControllerBase
                     UserMessage = body.Payload.Trim(),
                     CorrelationId = messageId,
                     Mode = ProjectMemoryPipelineMode.IngestOnly,
-                    ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior),
+                    ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(
+                        prior,
+                        MaxChatContextTurns()),
                     ScenarioId = scenarioResolved,
                     SessionId = sessionId,
                     TurnId = turnGroupId
@@ -1723,8 +1771,10 @@ public sealed class ProjectMemoryController : ControllerBase
                     .PreprocessAsync(
                         rootFull,
                         scenarioResolved,
-                        body.Payload,
-                        SessionTranscriptFormatter.BuildPrefix(prior),
+                        promptText,
+                        SessionTranscriptFormatter.BuildPrefix(
+                            prior,
+                            MaxChatContextTurns()),
                         ct)
                     .ConfigureAwait(false);
             }
@@ -1757,7 +1807,7 @@ public sealed class ProjectMemoryController : ControllerBase
                 }
             }
 
-            var flowUserMessage = corefForFlow?.ResolvedUserMessage ?? body.Payload;
+            var flowUserMessage = corefForFlow?.ResolvedUserMessage ?? promptText;
             var (playgroundActiveKey, playgroundActiveDisplay) = ResolvePlaygroundActiveSubject(corefForFlow, chatProject);
             var projectVisualMaxPhotos = ResolveProjectVisualMaxPhotos(chatProject);
 
@@ -1795,7 +1845,9 @@ public sealed class ProjectMemoryController : ControllerBase
                         UserMessage = body.Payload.Trim(),
                         CorrelationId = messageId,
                         Mode = ProjectMemoryPipelineMode.IngestOnly,
-                        ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(prior),
+                        ConversationPrefix = SessionTranscriptFormatter.BuildPrefix(
+                        prior,
+                        MaxChatContextTurns()),
                         ScenarioId = scenarioResolved,
                         SessionId = sessionId,
                         TurnId = turnGroupId
@@ -1930,16 +1982,26 @@ public sealed class ProjectMemoryController : ControllerBase
                         flowAppendix = string.Join("\n\n", appendixParts);
                 }
 
-                // Flow mode is strict node-to-node chaining: each persona gets upstream payload as latest input.
-                // Prior transcript is intentionally omitted to avoid leaking older turns into intermediate steps.
+                var latestChat = string.IsNullOrWhiteSpace(flowUserMessage) ? promptText : flowUserMessage.Trim();
+                if (!string.Equals(promptText.Trim(), latestChat, StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(promptText))
+                {
+                    var stepInput = "---\nInput for this step:\n" + promptText.Trim();
+                    flowAppendix = string.IsNullOrWhiteSpace(flowAppendix)
+                        ? stepInput
+                        : flowAppendix + "\n\n" + stepInput;
+                }
+
+                // Include recent transcript so follow-ups like "try again" keep context (capped in BuildPlaygroundPrompt).
                 var built = ProjectMemoryPersonaLlmRunner.BuildPlaygroundPrompt(
                     pSpec,
-                    priorTurns: null,
-                    newUserText: promptText,
+                    priorTurns: prior,
+                    newUserText: latestChat,
                     scenarioId: scenarioResolved,
                     playgroundFlowAppendix: flowAppendix,
                     activeSubjectEntityKey: playgroundActiveKey,
-                    activeSubjectDisplayName: playgroundActiveDisplay);
+                    activeSubjectDisplayName: playgroundActiveDisplay,
+                    maxConversationTurns: MaxChatContextTurns());
                 await GatedWriteSseAsync(new AgentStreamEvent
                     {
                         Type = "phase",

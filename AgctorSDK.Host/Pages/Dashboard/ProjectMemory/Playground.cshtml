@@ -139,12 +139,21 @@
                             Advanced
                         </span>
                         <span id="pm-play-agent-auto-label" class="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400"></span>
+                        <span id="pm-play-chat-context-label" class="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400"></span>
                     </summary>
                     <div class="mt-2 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/70 space-y-2">
                         <label for="pm-play-agent" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Agent spec (override)</label>
                         <select id="pm-play-agent" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></select>
                         <p class="text-[11px] text-gray-500 dark:text-gray-400">Options are scoped to this scenario's personas. The <strong>extractor</strong> is chosen automatically because it's the only agent that can write updates to disk. Override only for debugging a specific persona.</p>
                         <button type="button" id="pm-play-agent-reset" class="text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-300">Reset to scenario default</button>
+                        <div class="pt-2 mt-2 border-t border-gray-100 dark:border-gray-700 space-y-1">
+                            <label for="pm-play-chat-context-turns" class="block text-xs font-medium text-gray-700 dark:text-gray-300">Chat context turns</label>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input type="number" id="pm-play-chat-context-turns" min="1" max="100" step="1" value="25" class="w-full max-w-[6rem] rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" aria-describedby="pm-play-chat-context-help" />
+                                <span id="pm-play-chat-context-saved" class="hidden text-[11px] text-emerald-700 dark:text-emerald-300" role="status">Saved</span>
+                            </div>
+                            <p id="pm-play-chat-context-help" class="text-[11px] text-gray-500 dark:text-gray-400">How many prior chat turns (user + assistant) are included in LLM prompts. Persisted in <code class="text-[10px] bg-gray-100 dark:bg-gray-800 px-1 rounded">appsettings.User.json</code> as <code class="text-[10px]">Agctor:ProjectMemory:MaxConversationTurns</code>.</p>
+                        </div>
                     </div>
                 </details>
             </div>

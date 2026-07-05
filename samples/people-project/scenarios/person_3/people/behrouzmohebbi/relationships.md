@@ -1,11 +1,9 @@
-# Ryan Relationships
+# Behrouz Mohebbi Relationships
 
 ## Family
 
-
+- child: ryan
 - parent: raha
-- parent: user
-- parent: behrouzmohebbi
 
 ## Friends
 

@@ -96,30 +96,10 @@ AgctorSDK.CodeGraph.Snippets.SnippetProviderBootstrapper.RegisterBuiltIn();
 
 // Initialize the actor runtime before starting the application
 Console.WriteLine("🔧 Initializing Actor Runtime...");
+var runtimeSwitch = app.Services.GetRequiredService<IActorRuntimeSwitchService>();
+await runtimeSwitch.InitializeFromConfigurationAsync();
 var runtime = app.Services.GetRequiredService<IActorRuntimeAdapter>();
-var runtimeConfig = new Dictionary<string, object>
-{
-    ["Environment"] = app.Environment.EnvironmentName,
-    ["MaxConcurrentMessages"] = 1000,
-    ["DefaultTimeoutMs"] = 30000
-};
-
-if (runtime.Name == "Proto.Actor")
-{
-    runtimeConfig["remoteHost"] = builder.Configuration.GetValue<string>("Agctor:ProtoHost", "127.0.0.1") ?? "127.0.0.1";
-    runtimeConfig["remotePort"] = builder.Configuration.GetValue("Agctor:ProtoPort", 12000);
-}
-
-if (runtime.Name == "Orleans")
-{
-    runtimeConfig["clusterId"] = builder.Configuration.GetValue<string>("Agctor:OrleansClusterId", "agctor-dev") ?? "agctor-dev";
-    runtimeConfig["serviceId"] = builder.Configuration.GetValue<string>("Agctor:OrleansServiceId", "agctor-host") ?? "agctor-host";
-    runtimeConfig["gatewayHost"] = builder.Configuration.GetValue<string>("Agctor:OrleansGatewayHost", "127.0.0.1") ?? "127.0.0.1";
-    runtimeConfig["gatewayPort"] = builder.Configuration.GetValue("Agctor:OrleansGatewayPort", 30000);
-}
-
-await runtime.InitializeAsync(runtimeConfig);
-Console.WriteLine("✅ Actor Runtime initialized successfully");
+Console.WriteLine($"✅ Actor Runtime initialized: {RuntimeCanonicalId.FromAdapter(runtime)}");
 
 try
 {

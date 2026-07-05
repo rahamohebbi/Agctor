@@ -22,9 +22,17 @@ public class RuntimeCanonicalIdTests
     }
 
     [Fact]
-    public void FromAdapter_Orleans_Maps_To_Orleans()
+    public void FromAdapter_Switchable_InMemory_Maps_To_Factory_Key()
     {
-        var rt = new OrleansAdapter();
+        var inner = new InMemoryActorRuntime();
+        var rt = new SwitchableActorRuntimeAdapter(inner);
+        RuntimeCanonicalId.FromAdapter(rt).Should().Be("InMemory");
+    }
+
+    [Fact]
+    public void FromAdapter_Switchable_Orleans_Maps_To_Orleans()
+    {
+        var rt = new SwitchableActorRuntimeAdapter(new OrleansAdapter());
         RuntimeCanonicalId.FromAdapter(rt).Should().Be("Orleans");
     }
 }

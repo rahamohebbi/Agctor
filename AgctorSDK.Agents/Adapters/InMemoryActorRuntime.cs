@@ -24,7 +24,7 @@ namespace AgctorSDK.Core.Adapters
         private readonly ConcurrentDictionary<string, TaskCompletionSource<IMessageEnvelope>> _pendingRequests = new();
         private readonly Dictionary<string, object> _configuration = new();
         private readonly object _lockObject = new();
-        private readonly CancellationTokenSource _shutdownTokenSource = new();
+        private CancellationTokenSource _shutdownTokenSource = new();
         private readonly IAgctorLogger _logger;
         private readonly IActivityTracker? _activityTracker;
         private readonly ErrorHandlingMiddleware _errorHandler;
@@ -90,6 +90,13 @@ namespace AgctorSDK.Core.Adapters
             }
 
             LogTrace("Initializing InMemoryActorRuntime...");
+
+            // Allow re-init after a prior ShutdownAsync (runtime hot-swap).
+            if (_shutdownTokenSource.IsCancellationRequested)
+            {
+                _shutdownTokenSource.Dispose();
+                _shutdownTokenSource = new CancellationTokenSource();
+            }
 
             // Store configuration
             lock (_lockObject)

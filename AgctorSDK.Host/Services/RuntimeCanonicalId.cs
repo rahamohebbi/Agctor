@@ -12,6 +12,10 @@ public static class RuntimeCanonicalId
     public static string FromAdapter(IActorRuntimeAdapter adapter)
     {
         ArgumentNullException.ThrowIfNull(adapter);
+        // Hot-swap wrapper delegates to the inner adapter for canonical id.
+        if (adapter is SwitchableActorRuntimeAdapter switchable)
+            return FromAdapter(switchable.Current);
+
         return adapter switch
         {
             InMemoryActorRuntime => "InMemory",

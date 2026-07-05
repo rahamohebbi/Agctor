@@ -5,16 +5,16 @@
 }
 <div class="mb-6">
     <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Actor runtime</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        Select an actor model — your choice is saved to
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Click a model to save and apply it right away. Settings persist in
         <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">appsettings.User.json</code>
-        (per machine, not in git). Configure options below, then restart the Host to apply.
+        (per machine, not in git).
     </p>
 </div>
 
 <div id="actor-runtime-banner" class="hidden mb-4 p-4 rounded-lg bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800" role="status">
     <p id="actor-runtime-banner-text" class="text-sm font-medium text-green-900 dark:text-green-100"></p>
-    <p class="text-sm text-green-800 dark:text-green-200 mt-2"><strong>Restart the Host</strong> to load the selected actor runtime.</p>
+    <p class="text-sm text-green-800 dark:text-green-200 mt-2">Re-apply your scenario if agents were running before the switch.</p>
 </div>
 
 @await Component.InvokeAsync("ActorRuntimeDashboard", new { selectedRuntimeId = Model.SelectedRuntime })

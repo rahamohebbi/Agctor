@@ -11,6 +11,8 @@ using AgctorSDK.Core.ProjectMemory.Orchestration;
 using AgctorSDK.Core.ProjectMemory.OutOfSchema;
 using AgctorSDK.Core.ProjectMemory.Resolution.Trace;
 using AgctorSDK.Core.Runtime;
+using AgctorSDK.Core.Utils.ErrorHandling;
+using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Extensions.DependencyInjection;
 using AgctorSDK.Extensions.Services;
 using Microsoft.Extensions.Configuration;
@@ -121,30 +123,27 @@ public static class HostServiceCollectionExtensions
 
         Console.WriteLine($"🔄 Configured actor runtime: {configured}");
 
-        switch (configured)
+        // Hot-swappable wrapper: dashboard can apply InMemory / Orleans / Proto without Host restart.
+        services.AddSingleton<InMemoryActorRuntime>();
+        services.AddSingleton<OrleansAdapter>();
+        services.AddSingleton<ProtoActorAdapter>();
+        services.AddSingleton<SwitchableActorRuntimeAdapter>(sp =>
+            new SwitchableActorRuntimeAdapter(sp.GetRequiredService<InMemoryActorRuntime>()));
+        services.AddSingleton<IActorRuntimeAdapter>(sp => sp.GetRequiredService<SwitchableActorRuntimeAdapter>());
+        services.AddSingleton<IActorRuntimeAdapterFactory, ActorRuntimeAdapterFactory>();
+        services.AddSingleton<IAgentFactory, AgentFactory>();
+        services.AddSingleton<IAgctorLogger>(sp =>
         {
-            case AgctorRuntimeCatalog.ProtoActor:
-                services.AddAgctor<ProtoActorAdapter>(opts =>
-                {
-                    opts.DefaultRuntime = AgctorRuntimeCatalog.ProtoActor;
-                    opts.AllowExperimentalRuntimes = allowExperimental;
-                });
-                break;
-            case AgctorRuntimeCatalog.Orleans:
-                services.AddAgctor<OrleansAdapter>(opts =>
-                {
-                    opts.DefaultRuntime = AgctorRuntimeCatalog.Orleans;
-                    opts.AllowExperimentalRuntimes = allowExperimental;
-                });
-                break;
-            default:
-                services.AddAgctor<InMemoryActorRuntime>(opts =>
-                {
-                    opts.DefaultRuntime = AgctorRuntimeCatalog.InMemory;
-                    opts.AllowExperimentalRuntimes = allowExperimental;
-                });
-                break;
-        }
+            var options = sp.GetService<Microsoft.Extensions.Options.IOptions<AgctorOptions>>()?.Value;
+            var minLevel = options?.EnableDetailedLogging == true ? LogLevel.Trace : LogLevel.Info;
+            return LoggerFactory.CreateLogger("Agctor", minLevel);
+        });
+        services.AddSingleton<ErrorHandlingMiddleware>();
+        services.Configure<AgctorOptions>(o =>
+        {
+            o.DefaultRuntime = configured;
+            o.AllowExperimentalRuntimes = allowExperimental;
+        });
     }
 
     private static void ConfigureHostBackgroundWorkers(this IServiceCollection services, IConfiguration configuration)
