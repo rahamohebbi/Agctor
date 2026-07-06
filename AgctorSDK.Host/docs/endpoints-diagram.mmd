@@ -14,6 +14,19 @@ graph LR
             PutRuntime["PUT /api/runtime<br/>Persist user settings restart"]
         end
 
+        subgraph "RAG providers PRD025 /api/rag-providers"
+            GetRag["GET /api/rag-providers<br/>Catalog + configured"]
+            PutRag["PUT /api/rag-providers<br/>Persist appsettings.User.json"]
+            RagHealth["GET /api/rag-providers/health"]
+            RagQuery["POST /api/rag-providers/query<br/>Test retrieval"]
+            RagDocker["GET/POST /api/rag-providers/docker/id<br/>install start stop"]
+        end
+
+        subgraph "Terminal dashboard"
+            TermPresets["GET /api/terminal/presets<br/>actor-runtime or rag-provider"]
+            TermRun["POST /api/terminal/run<br/>Validated docker compose"]
+        end
+
         subgraph "Agents /api/agents"
             CreateAgent["POST /api/agents<br/>Create agent"]
             ListAgents["GET /api/agents<br/>List all agents"]

@@ -892,6 +892,7 @@ Use Postgres for:
 Semantic retrieval can be added later using:
 - SQLite mode: local embedding cache or file-based index
 - Postgres mode: pgvector
+- **External RAG sidecars (v1):** [PRD-025](../prd-025/prd-025-readme.md) — optional LightRAG / Cognee adapters for `contextStrategy: rag | graph_rag`; dashboard at `/Dashboard/RagProviders`; canonical markdown remains primary when provider is `None` or unavailable.
 
 This must remain optional and secondary to canonical file truth.
 

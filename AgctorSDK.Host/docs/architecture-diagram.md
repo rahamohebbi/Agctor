@@ -21,7 +21,7 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 ### HTTP API Controllers
 - **AgentsController** (`/api/agents`): Agent CRUD, messaging, streaming, health, type enablement
 - **AgentsDefinitionsController** (`/api/agents/definitions`): Unified catalog, project-memory YAML CRUD, and **`GET …/tool-usage`** for dashboard agent→tool insight
-- **GoalsController**, **ToolsController** (`/api/tools` including **`GET …/agent-associations`**), **RuntimeController**, **ConfigController**, **LlmController**
+- **GoalsController**, **ToolsController** (`/api/tools` including **`GET …/agent-associations`**), **RuntimeController**, **RagProvidersController** (PRD-025), **TerminalController**, **ConfigController**, **LlmController**
 - **ScenariosController** (`/api/scenarios`), **TestController** (`/api/test`)
 - **CodeGraphController**, **VisualizationController**
 - **ChatProjectsController**, **ChatSessionsController**
@@ -43,6 +43,16 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 - **ToolInvoker**: Direct tool execution path used by HTTP/MCP (resolves tools via the catalog)
 - **ToolAgentsInsightService** (`IToolAgentsInsightService`): Merged **tool↔agent** / **agent↔tool** views from **AgctorToolCatalog** (Extensions), `IAgentFactory` registration, project-memory YAML `tools.allow`, and C# affinity hints
 - **Scenario** types: catalog, factory, application service, and current-scenario store for demos and dashboard
+
+### RAG providers (PRD-025)
+
+- **`RagProvidersController`** (`/api/rag-providers`): catalog, settings persistence, health, test query, Docker sidecar lifecycle (mirrors **RuntimeController** patterns).
+- **`RagProvidersDashboardService`**: shared read/write for API + Razor ViewComponent.
+- **`RagContextService`** (Core): queries `IRagProviderAdapter` and formats prompt appendices; used by **`PersonMemoryMarkdownContextBuilder`** when `contextStrategy` is `rag` or `graph_rag`.
+- **`IRagProviderDockerService`**: `docker compose` CLI for `docker/rag-providers/docker-compose.yml` (`lightrag`, `cognee-mcp`).
+- **Dashboard**: `/Dashboard/RagProviders` + `rag-providers-dashboard.js`; Scenarios flow editor links to configured default provider.
+
+See [rag-providers.md](./rag-providers.md).
 
 ### Background services
 

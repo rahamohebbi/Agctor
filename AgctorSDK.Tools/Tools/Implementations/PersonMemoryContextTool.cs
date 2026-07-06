@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Models;
+using AgctorSDK.Core.ProjectMemory.Rag;
 using AgctorSDK.Core.ProjectMemory.Tools;
 using AgctorSDK.Core.Tools;
 using AgctorSDK.Core.Tools.Models;
@@ -65,6 +66,20 @@ public sealed class PersonMemoryContextTool : ToolActorBase
             var strategy = GetString(p, "contextStrategy") ?? "markdown_all";
             var userMessage = GetString(p, "userMessage") ?? "";
             var agentSpecId = GetString(p, "agentSpecId") ?? "person-query";
+            var ragOptions = PersonMemoryMarkdownContextBuilder.ParseRagOptionsFromParameters(
+                GetString(p, "ragProviderId"),
+                GetString(p, "ragCollectionId"),
+                GetInt(p, "ragTopK"));
+
+            RagContextService? ragService = null;
+            try
+            {
+                ragService = ProjectMemoryServiceAccessor.GetRequiredService<RagContextService>();
+            }
+            catch (InvalidOperationException)
+            {
+                /* Host not initialized — markdown fallback only */
+            }
 
             var loader = ProjectMemoryServiceAccessor.GetRequiredService<IProjectLoader>();
             var ops = ProjectMemoryServiceAccessor.GetRequiredService<ProjectMemoryOperations>();
@@ -85,7 +100,9 @@ public sealed class PersonMemoryContextTool : ToolActorBase
                     strategy,
                     userMessage,
                     CancellationToken.None,
-                    provenance)
+                    provenance,
+                    ragService,
+                    ragOptions)
                 .ConfigureAwait(false);
 
             return new ToolResult { IsSuccess = true, Output = appendix };
@@ -93,6 +110,26 @@ public sealed class PersonMemoryContextTool : ToolActorBase
         catch (Exception ex)
         {
             return new ToolResult { IsSuccess = false, Error = ex.Message };
+        }
+    }
+
+    private static int? GetInt(IDictionary<string, object> values, string key)
+    {
+        if (!values.TryGetValue(key, out var value) || value == null)
+            return null;
+
+        switch (value)
+        {
+            case int i:
+                return i;
+            case long l:
+                return (int)l;
+            case JsonElement je when je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var num):
+                return num;
+            case JsonElement je when je.ValueKind == JsonValueKind.String && int.TryParse(je.GetString(), out var parsed):
+                return parsed;
+            default:
+                return int.TryParse(value.ToString(), out var fallback) ? fallback : null;
         }
     }
 

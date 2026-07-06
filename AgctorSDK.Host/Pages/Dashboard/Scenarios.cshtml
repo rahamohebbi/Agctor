@@ -388,9 +388,14 @@
                                     <select id="sc-flow-pq-context-strategy" class="mt-1 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
                                         <option value="markdown_all">All entity markdown (default)</option>
                                         <option value="markdown_focus">Match name from question</option>
-                                        <option value="rag">Vector RAG (fallback: all markdown)</option>
-                                        <option value="graph_rag">Graph RAG (fallback: all markdown)</option>
+                                        <option value="rag">Vector RAG (fallback: focused markdown)</option>
+                                        <option value="graph_rag">Graph RAG (fallback: focused markdown)</option>
                                     </select>
+                                    <p id="sc-flow-pq-rag-hint" class="mt-2 hidden text-[10px] leading-snug text-gray-600 dark:text-gray-400">
+                                        Uses default provider: <strong id="sc-flow-pq-rag-provider-name">—</strong>
+                                        (<a href="/Dashboard/RagProviders" target="_blank" rel="noopener" class="font-medium text-sky-700 underline hover:no-underline dark:text-sky-300">configure</a>).
+                                        Falls back to focused markdown when the provider is unavailable.
+                                    </p>
                                 </div>
                                 <div id="sc-flow-persona-cap" class="mt-2 max-h-36 overflow-y-auto rounded border border-sky-300/70 bg-white/95 p-2 text-[10px] text-gray-800 dark:border-sky-700 dark:bg-gray-950/60 dark:text-gray-100"></div>
                             </details>

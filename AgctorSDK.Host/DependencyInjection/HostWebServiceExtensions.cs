@@ -82,9 +82,12 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IHostConfigurationService, HostConfigurationService>();
         services.AddSingleton<IUserRuntimeSettingsService, UserRuntimeSettingsService>();
         services.AddSingleton<IActorRuntimeDockerService, ActorRuntimeDockerService>();
+        services.AddSingleton<IRagProviderDockerService, RagProviderDockerService>();
+        services.AddSingleton<IUserRagSettingsService, UserRagSettingsService>();
         services.AddSingleton<ITerminalCommandService, TerminalCommandService>();
         services.AddSingleton<IActorRuntimeSwitchService, ActorRuntimeSwitchService>();
         services.AddSingleton<IRuntimeDashboardService, RuntimeDashboardService>();
+        services.AddSingleton<IRagProvidersDashboardService, RagProvidersDashboardService>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.LLMAgentDetailProvider>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProvider, Services.AgentDetailProviders.CoderAgentDetailProvider>();
         services.AddSingleton<AgctorSDK.Core.Interfaces.IAgentDetailProviderRegistry, AgentDetailProviderRegistry>();

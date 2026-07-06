@@ -1,0 +1,25 @@
+@page
+@model AgctorSDK.Host.Pages.Dashboard.RagProvidersModel
+@{
+    ViewData["Title"] = "RAG providers";
+}
+<div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">RAG providers</h1>
+    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+        Select an external retrieval backend for Project Memory <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">rag</code> /
+        <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">graph_rag</code> strategies. Settings persist in
+        <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">appsettings.User.json</code>
+        (per machine, not in git).
+    </p>
+</div>
+
+<div id="rag-providers-banner" class="hidden mb-4 p-4 rounded-lg bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800" role="status">
+    <p id="rag-providers-banner-text" class="text-sm font-medium text-green-900 dark:text-green-100"></p>
+</div>
+
+@await Component.InvokeAsync("RagProvidersDashboard", new { selectedProviderId = Model.SelectedProvider })
+
+@section Scripts {
+    <script src="~/js/dashboard/terminal-command-panel.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/rag-providers-dashboard.js" asp-append-version="true"></script>
+}

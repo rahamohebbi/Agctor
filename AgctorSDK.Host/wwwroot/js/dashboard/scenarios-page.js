@@ -852,6 +852,9 @@
         var personaSelect = document.getElementById('sc-flow-persona-select');
         var pqContextWrap = document.getElementById('sc-flow-pq-context-wrap');
         var pqContextStrategyEl = document.getElementById('sc-flow-pq-context-strategy');
+        var pqRagHintEl = document.getElementById('sc-flow-pq-rag-hint');
+        var pqRagProviderNameEl = document.getElementById('sc-flow-pq-rag-provider-name');
+        var cachedDefaultRagProvider = null;
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
         var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
         var personaCapEl = document.getElementById('sc-flow-persona-cap');
@@ -859,7 +862,28 @@
         var flowYamlToolsEl = document.getElementById('sc-flow-yaml-tools');
         var flowEditAgentLink = document.getElementById('sc-flow-edit-agent-link');
         var flowLlmToolsEl = document.getElementById('sc-flow-llm-tools');
-        if (!openBtn || !modal || !cyHost || !msgEl || !btnValidate || !btnSimulate || !btnSaveFlow || !btnConnect) return;
+        function refreshPqRagHint(strategy) {
+            if (!pqRagHintEl) return;
+            var isRag = strategy === 'rag' || strategy === 'graph_rag';
+            pqRagHintEl.classList.toggle('hidden', !isRag);
+            if (!isRag) return;
+            if (cachedDefaultRagProvider) {
+                if (pqRagProviderNameEl) pqRagProviderNameEl.textContent = cachedDefaultRagProvider;
+                return;
+            }
+            fetch('/api/rag-providers')
+                .then(function (res) { return res.ok ? res.json() : null; })
+                .then(function (data) {
+                    if (!data) return;
+                    var name = (data.configured && data.configured.defaultProvider)
+                        || (data.current && data.current.providerId)
+                        || 'None';
+                    cachedDefaultRagProvider = name;
+                    if (pqRagProviderNameEl) pqRagProviderNameEl.textContent = name;
+                })
+                .catch(function () { /* ignore */ });
+        }
+
         if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.createGraphRenderer !== 'function') return;
 
         var renderer = null;
@@ -1857,6 +1881,7 @@
                     pqContextStrategyEl.value = ['markdown_all', 'markdown_focus', 'rag', 'graph_rag'].indexOf(strat) >= 0
                         ? strat
                         : 'markdown_all';
+                    refreshPqRagHint(pqContextStrategyEl.value);
                 }
             }
             renderFlowLlmExtraTools(cfg, effectivePid);
@@ -2014,7 +2039,10 @@
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('change', persistFlowRouterInspector);
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('blur', persistFlowRouterInspector);
         if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
-        if (pqContextStrategyEl) pqContextStrategyEl.addEventListener('change', persistFlowPersonaInspector);
+        if (pqContextStrategyEl) pqContextStrategyEl.addEventListener('change', function () {
+            refreshPqRagHint(pqContextStrategyEl.value || 'markdown_all');
+            persistFlowPersonaInspector();
+        });
         if (flowLlmToolsEl) flowLlmToolsEl.addEventListener('change', persistFlowPersonaInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('change', persistFlowEdgeInspector);
         if (edgeConditionEl) edgeConditionEl.addEventListener('blur', persistFlowEdgeInspector);

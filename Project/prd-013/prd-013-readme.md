@@ -17,6 +17,7 @@
 ## Relationship to other PRDs
 
 - **PRD-012** (actor runtime dashboard): orthogonal; project memory does not change runtime selection.
+- **[PRD-025](../prd-025/prd-025-readme.md)** (external RAG providers): optional semantic retrieval for **`contextStrategy: rag | graph_rag`** via LightRAG/Cognee sidecars; canonical files remain on disk ([PRD §15.3](./prd-013-agctor-prd.md#153-future-semantic-retrieval)).
 - **Session / memory PRDs** (e.g. PRD-006, PRD-010): session storage is separate from **canonical project files** under `.agctor/`; portable project truth stays on disk per PRD-013.
 - **Scenario catalog PRD:** extends **Host** dashboard scenario loading and **chat session projects**; it does not change `.agctor/` on-disk project memory layout.
 - **Agent Studio integration PRD:** unifies dashboard surfaces for runtime agents and project-memory agent definitions without changing actor runtime fundamentals.
@@ -31,9 +32,11 @@
 - **Tests**: `AgctorSDK.Core.Tests/ProjectMemory`, `AgctorSDK.Core.IntegrationTests/ProjectMemory`.
 - **Docs**: [`AgctorSDK.Core/docs`](../../AgctorSDK.Core/docs/) — architecture / class / dependencies / endpoints diagrams (`*.mmd`, `*.jpg`, `npm run diagrams` in `docs/`).
 
-## Phase 2 (not implemented)
+## Phase 2 (partial / not fully implemented)
 
-Sales/Jobs project types, view helpers, Agent/Schema Studio UIs, richer validation, optional semantic retrieval — see [PRD §25](./prd-013-agctor-prd.md). **Dashboard UX** for Agent Studio, storage rules, and templates is specified separately in [prd-013-ux-ui.md](./prd-013-ux-ui.md) (specification only until planned).
+Sales/Jobs project types, view helpers, Agent/Schema Studio UIs, richer validation — see [PRD §25](./prd-013-agctor-prd.md). **Dashboard UX** for Agent Studio, storage rules, and templates is specified separately in [prd-013-ux-ui.md](./prd-013-ux-ui.md).
+
+**Semantic retrieval ([§15.3](./prd-013-agctor-prd.md#153-future-semantic-retrieval)):** v1 external RAG is implemented in **[PRD-025](../prd-025/prd-025-readme.md)** (LightRAG, Cognee, `/Dashboard/RagProviders`). Optional pgvector / SQLite embedding index remains future work.
 
 ## Key code locations
 
@@ -46,4 +49,5 @@ Sales/Jobs project types, view helpers, Agent/Schema Studio UIs, richer validati
 | Project-memory agents | `AgctorSDK.Agents/Agents/ProjectMemory/` |
 | Project-memory tool actor | `AgctorSDK.Tools/Tools/Implementations/ProjectMemoryTool.cs` |
 | Host registration | `AgctorSDK.Host/Program.cs` |
+| External RAG (PRD-025) | `AgctorSDK.Core/Rag/`, `AgctorSDK.Host/docs/rag-providers.md`, `/Dashboard/RagProviders` |
 | Sample project | `samples/people-project/` |

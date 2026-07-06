@@ -50,6 +50,7 @@ public static class HostServiceCollectionExtensions
         });
 
         services.AddAgctorRuntimeFromConfiguration(configuration);
+        services.AddAgctorRagProviders(configuration);
         services.AddAgctorActivityTracking(opts => opts.EnableToolTracing = true);
         services.AddAgctorVisualization();
         services.AddInMemoryTaskStore();

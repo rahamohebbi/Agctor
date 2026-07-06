@@ -4,6 +4,7 @@ using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Coref;
 using AgctorSDK.Core.ProjectMemory.Models;
 using AgctorSDK.Core.ProjectMemory.Orchestration;
+using AgctorSDK.Core.ProjectMemory.Rag;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Core.Sessions;
 using AgctorSDK.Core.Sessions.Models;
@@ -24,6 +25,7 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
     private readonly IConversationFocusStore _focusStore;
     private readonly ISessionStore _sessions;
     private readonly IPlaygroundChatSettingsService _chatSettings;
+    private readonly RagContextService _ragContext;
     private readonly ILogger<ScenarioFlowPersonaLlmRunner> _logger;
 
     public ScenarioFlowPersonaLlmRunner(
@@ -34,6 +36,7 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         IConversationFocusStore focusStore,
         ISessionStore sessions,
         IPlaygroundChatSettingsService chatSettings,
+        RagContextService ragContext,
         ILogger<ScenarioFlowPersonaLlmRunner> logger)
     {
         _loader = loader;
@@ -43,6 +46,7 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         _focusStore = focusStore;
         _sessions = sessions;
         _chatSettings = chatSettings;
+        _ragContext = ragContext;
         _logger = logger;
     }
 
@@ -84,7 +88,6 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         {
             try
             {
-                var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(request.FlowNodeConfig);
                 var memoryAppendix = await PlaygroundPersonQueryContextBuilder
                     .BuildFlowAppendixAsync(
                         _loader,
@@ -94,9 +97,10 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
                         agentId,
                         rootFull,
                         scenarioId,
-                        strat,
+                        request.FlowNodeConfig,
                         request.InputText,
-                        cancellationToken)
+                        cancellationToken,
+                        _ragContext)
                     .ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(memoryAppendix))
                     appendixParts.Add(memoryAppendix);

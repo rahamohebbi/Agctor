@@ -1,0 +1,70 @@
+# Local RAG provider sidecars for AGCTOR dashboard (LightRAG, Cognee MCP).
+# Usage from repo root:
+#   docker compose -f docker/rag-providers/docker-compose.yml up -d lightrag
+#   docker compose -f docker/rag-providers/docker-compose.yml up -d cognee-mcp
+#
+# Copy env examples before first start:
+#   cp docker/rag-providers/lightrag.env.example docker/rag-providers/lightrag.env
+#   cp docker/rag-providers/cognee.env.example docker/rag-providers/cognee.env
+
+services:
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: agctor-lightrag
+    ports:
+      - "${LIGHTRAG_PORT:-9621}:9621"
+    env_file:
+      - ${LIGHTRAG_ENV_FILE:-./lightrag.env.example}
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "9621"
+      WORKING_DIR: "/app/data/rag_storage"
+      INPUT_DIR: "/app/data/inputs"
+    volumes:
+      - lightrag-rag-storage:/app/data/rag_storage
+      - lightrag-inputs:/app/data/inputs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # LightRAG image has python3 but not curl; urllib keeps compose health accurate.
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:9621/health')\" || exit 1"
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 45s
+    restart: unless-stopped
+
+  cognee-mcp:
+    image: cognee/cognee-mcp:main
+    container_name: agctor-cognee-mcp
+    ports:
+      - "${COGNEE_MCP_PORT:-8000}:8000"
+    environment:
+      TRANSPORT_MODE: http
+    env_file:
+      - ${COGNEE_ENV_FILE:-./cognee.env.example}
+    volumes:
+      - cognee-data:/app/.cognee_system
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      # /health is lightweight; MCP initialize can block while recall/cognify runs.
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 45s
+    restart: unless-stopped
+
+volumes:
+  lightrag-rag-storage:
+  lightrag-inputs:
+  cognee-data:

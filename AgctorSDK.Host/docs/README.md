@@ -14,6 +14,18 @@ A read-only configuration dashboard is available at **/Dashboard** (Razor Pages 
 
 See [endpoints-diagram](./endpoints-diagram.md) for the full API including dashboard endpoints.
 
+## RAG providers (`/Dashboard/RagProviders`) — PRD-025
+
+- **Dashboard** – Select **LightRAG**, **Cognee**, or **Markdown only**; configure URLs; install/start/stop Docker sidecars; run test queries.
+- **API** – `GET/PUT /api/rag-providers`, health, query, and Docker lifecycle under `/api/rag-providers/docker/{id}/…`.
+- **Project Memory** – Scenario `LlmNode` **`contextStrategy: rag | graph_rag`** uses the active provider via `RagContextService`; falls back to focused markdown when unavailable.
+
+See [rag-providers](./rag-providers.md) for architecture, config keys, and endpoint tables.
+
+## Actor runtime (`/Dashboard/ActorRuntime`) — PRD-012
+
+- Select **InMemory**, **Orleans**, or **Proto.Actor**; Docker sidecar controls mirror the RAG providers page pattern.
+
 ## Project Memory Playground (`/Dashboard/ProjectMemory/Playground`)
 
 - **Streaming chat** via `POST /api/project-memory/playground/message/stream` (SSE: `flow_plan`, `flow_step`, `phase`, `llm_delta`, `done`).

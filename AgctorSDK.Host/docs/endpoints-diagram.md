@@ -29,6 +29,26 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 | GET | `/api/runtime` | Live `IActorRuntimeAdapter` (canonical id, stats), configured next-boot values, catalog with capabilities |
 | PUT | `/api/runtime` | Body `{ "defaultRuntime", "protoHost?", "protoPort?" }` — merge into `appsettings.User.json`; **`requiresRestart: true`** |
 
+### RAG providers – Dashboard (PRD-025)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/rag-providers` | Current provider, configured `Agctor:Rag`, catalog |
+| GET | `/api/rag-providers/health` | Provider + Docker sidecar health |
+| PUT | `/api/rag-providers` | Persist default provider and LightRAG/Cognee settings to `appsettings.User.json` |
+| POST | `/api/rag-providers/query` | Test retrieval (dashboard “Test query” panel) |
+| GET | `/api/rag-providers/docker/{providerId}` | Docker sidecar status |
+| POST | `/api/rag-providers/docker/{providerId}/install` | Pull sidecar image |
+| POST | `/api/rag-providers/docker/{providerId}/start` | Start sidecar |
+| POST | `/api/rag-providers/docker/{providerId}/stop` | Stop sidecar |
+
+See [rag-providers.md](./rag-providers.md) for architecture and Project Memory `contextStrategy` wiring.
+
+### Terminal – Dashboard (PRD-012 / PRD-025)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/terminal/presets` | Preset docker compose commands (`contextType`: `actor-runtime` \| `rag-provider`) |
+| POST | `/api/terminal/run` | Run validated `docker compose` from repo root |
+
 ### Agents (`/api/agents`)
 | Method | Path | Description |
 |--------|------|-------------|
@@ -161,6 +181,8 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 - **GET /Dashboard/Tools** – **Tools** tab: host tool catalog with **which agents use each tool** (`/api/tools/agent-associations`), tool descriptions from `AgctorToolCatalog`
 - **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
 - **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
+- **GET /Dashboard/ActorRuntime** – Actor runtime selection, Docker sidecars (PRD-012)
+- **GET /Dashboard/RagProviders** – External RAG providers: LightRAG, Cognee, test query (PRD-025)
 - **GET /Dashboard/ProjectMemory** – Project memory overview (PRD-013)
 - **GET /Dashboard/ProjectMemory/Agents** – Portable agent list
 - **GET /Dashboard/ProjectMemory/Agents/Edit** – Agent editor (`?id=` optional)

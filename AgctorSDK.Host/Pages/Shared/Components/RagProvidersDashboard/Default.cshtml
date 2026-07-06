@@ -1,0 +1,346 @@
+@model AgctorSDK.Host.Models.RagProvidersDashboardModel
+@using AgctorSDK.Core.Rag
+@using AgctorSDK.Host.Models
+
+<div id="rag-providers-dashboard" class="space-y-6" data-selected-provider="@Model.SelectedProviderId">
+    @if (Model.DockerMismatch && Model.SelectedModel != null)
+    {
+        <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" role="status">
+            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Docker sidecar not running</p>
+            <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">
+                Saved <strong>@Model.SelectedModel.DisplayName</strong> but Docker service is
+                <strong>@(Model.DockerStatus?.State ?? "stopped")</strong>.
+                Start the sidecar or switch to <strong>Markdown only</strong>.
+            </p>
+        </div>
+    }
+
+    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Current provider</h2>
+        <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+            <div><dt class="text-gray-500 dark:text-gray-400">Provider id</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.ProviderId</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400">Transport</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.Transport</dd></div>
+            <div><dt class="text-gray-500 dark:text-gray-400">Provider health</dt><dd class="text-gray-900 dark:text-white">@Model.Status.Current.HealthStatus</dd></div>
+            @if (!string.IsNullOrWhiteSpace(Model.Status.Current.HealthMessage))
+            {
+                <div class="sm:col-span-2"><dt class="text-gray-500 dark:text-gray-400">Detail</dt><dd class="text-gray-900 dark:text-white">@Model.Status.Current.HealthMessage</dd></div>
+            }
+        </dl>
+        @if (Model.Health != null)
+        {
+            var healthCls = Model.Health.OverallStatus == "healthy"
+                ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
+                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+            <p class="mt-3 text-sm flex flex-wrap items-center gap-x-2 gap-y-1" id="rag-health-row">
+                <span class="font-medium text-gray-700 dark:text-gray-300">Overall:</span>
+                <span id="rag-health-badge" class="text-xs font-medium px-2 py-0.5 rounded @healthCls">@Model.Health.OverallStatus</span>
+                <button type="button" id="rag-health-refresh"
+                        class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
+                        title="Fetch latest health">
+                    Refresh
+                </button>
+                <span id="rag-health-detail"
+                      class="text-gray-500 dark:text-gray-400 @(string.IsNullOrEmpty(Model.Health.Detail) ? "hidden" : "")">@Model.Health.Detail</span>
+            </p>
+        }
+    </div>
+
+    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Select provider</h2>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Click a card to save and apply the default provider.</p>
+
+        <div class="grid gap-4 md:grid-cols-3 mb-6" role="list">
+            @foreach (var provider in Model.Status.Available)
+            {
+                var selected = string.Equals(provider.Id, Model.SelectedProviderId, StringComparison.OrdinalIgnoreCase);
+                var cardCls = selected
+                    ? "border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-400"
+                    : "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600";
+                <button type="button" role="listitem"
+                        class="text-left p-4 rounded-lg shadow-sm w-full @cardCls"
+                        data-provider-select="@provider.Id">
+                    <div class="flex items-start justify-between gap-2">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">@provider.DisplayName</h3>
+                        @if (selected)
+                        {
+                            <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">Selected</span>
+                        }
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">@provider.Id</p>
+                    <p class="text-xs mt-2 text-gray-600 dark:text-gray-300">@provider.Maturity</p>
+                    @if (!string.IsNullOrWhiteSpace(provider.Summary))
+                    {
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@provider.Summary</p>
+                    }
+                    @if (provider.ContextStrategies?.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            @foreach (var strat in provider.ContextStrategies)
+                            {
+                                <span class="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">@strat</span>
+                            }
+                        </div>
+                    }
+                    @if (provider.RequiresDocker)
+                    {
+                        <p class="text-xs text-indigo-700 dark:text-indigo-300 mt-2">Docker sidecar · @provider.DefaultTransport</p>
+                    }
+                </button>
+            }
+        </div>
+
+        @if (Model.SelectedModel != null && !string.Equals(Model.SelectedModel.Id, RagProviderIds.None, StringComparison.Ordinal))
+        {
+            var cfg = Model.Status.Configured;
+            <form id="rag-save-form" class="space-y-4 max-w-xl border-t border-gray-200 dark:border-gray-700 pt-4">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">Configuration — @Model.SelectedModel.DisplayName</h3>
+                <input type="hidden" name="defaultProvider" value="@Model.SelectedProviderId" />
+
+                @foreach (var field in Model.SelectedModel.ConfigFields)
+                {
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">@field.Label</label>
+                        @if (field.FieldType == "select")
+                        {
+                            var options = (field.Placeholder ?? field.DefaultValue ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                            var current = ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id);
+                            <select name="@FieldName(field.Key)" class="@InputClass">
+                                @foreach (var opt in options)
+                                {
+                                    <option value="@opt" selected="@(string.Equals(opt, current, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@opt</option>
+                                }
+                            </select>
+                        }
+                        else if (field.FieldType == "password")
+                        {
+                            <input type="password" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id)"
+                                   class="@InputClass" placeholder="@field.Placeholder" autocomplete="off" />
+                        }
+                        else
+                        {
+                            <input type="text" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id)"
+                                   class="@InputClass" placeholder="@field.Placeholder" />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(field.HelpText))
+                        {
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">@field.HelpText</p>
+                        }
+                    </div>
+                }
+
+                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
+                    Save settings to appsettings.User.json
+                </button>
+            </form>
+
+            @if (Model.SelectedModel.RequiresDocker)
+            {
+                var docker = Model.DockerStatus;
+                var stateCls = docker?.State?.Equals("running", StringComparison.OrdinalIgnoreCase) == true
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
+                    : docker?.State is "stopped" or "exited"
+                        ? "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
+                <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4"
+                     id="rag-docker-panel"
+                     data-docker-provider-id="@Model.SelectedProviderId">
+                    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+                        <div>
+                            <h3 class="text-base font-semibold text-gray-900 dark:text-white">Docker sidecar</h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Start, stop, or pull without typing commands.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" data-docker-action="start"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50">
+                                Start
+                            </button>
+                            <button type="button" data-docker-action="stop"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50">
+                                Stop
+                            </button>
+                            <button type="button" data-docker-action="install"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+                                Pull
+                            </button>
+                            <button type="button" data-docker-action="refresh"
+                                    class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <p id="rag-docker-action-status" class="text-xs text-gray-600 dark:text-gray-300 mb-3 hidden" role="status"></p>
+
+                    @if (docker != null)
+                    {
+                        <dl id="rag-docker-status-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm mb-2">
+                            <div><dt class="text-gray-500 dark:text-gray-400">Docker</dt><dd id="rag-docker-status-available" class="text-gray-900 dark:text-white">@(docker.DockerAvailable ? "Available" : "Not available")</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">State</dt><dd><span id="rag-docker-status-state" class="text-xs font-medium px-2 py-0.5 rounded @stateCls">@docker.State</span></dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Service</dt><dd id="rag-docker-status-service" class="font-mono text-gray-900 dark:text-white">@docker.ServiceName</dd></div>
+                            <div><dt class="text-gray-500 dark:text-gray-400">Health</dt><dd id="rag-docker-status-health" class="text-gray-900 dark:text-white">@(docker.Health ?? "—")</dd></div>
+                        </dl>
+                        <p id="rag-docker-status-message" class="text-xs text-gray-600 dark:text-gray-300 mb-4">@(docker.Message ?? "")</p>
+                    }
+
+                    @await Component.InvokeAsync("TerminalCommandPanel", new
+                    {
+                        componentId = "rag-provider-terminal-" + Model.SelectedModel.Id.Replace('.', '-').ToLowerInvariant(),
+                        title = "Docker terminal — " + Model.SelectedModel.DisplayName,
+                        description = "Pick a preset or edit the command, then click Run. Commands run from the repo root. First-time Cognee pulls are large (~6 GB) and may take several minutes with no live progress.",
+                        contextType = "rag-provider",
+                        contextKey = Model.SelectedModel.Id
+                    })
+                </div>
+            }
+
+            <details class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4" id="rag-ingest-panel"
+                     data-provider-id="@Model.SelectedProviderId">
+                <summary class="cursor-pointer text-base font-semibold text-gray-900 dark:text-white">Ingest data</summary>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
+                    Push canonical Project Memory files into the active sidecar index. More source types (PDF, folders) are listed for future expansion.
+                </p>
+                <form id="rag-ingest-form" class="mt-4 space-y-3 max-w-xl">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="rag-ingest-source">Data source</label>
+                        <select id="rag-ingest-source" name="sourceId" class="@InputClass">
+                            <option value="agctor_markdown">Agctor markdown (.agctor/ + scenarios/*/people/)</option>
+                            <option value="pdf_document" disabled>PDF documents (coming soon)</option>
+                            <option value="workspace_folder" disabled>Workspace folder (coming soon)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="rag-ingest-collection-id">Collection / dataset id (optional)</label>
+                        <input type="text" id="rag-ingest-collection-id" name="collectionId"
+                               class="@InputClass" placeholder="defaults to scenario id or agctor" />
+                    </div>
+                    <p id="rag-ingest-project-root-hint" class="text-xs text-gray-500 dark:text-gray-400">
+                        Uses <code class="text-[11px]">Agctor:ProjectMemory:ProjectRoot</code> from Maintenance / appsettings.
+                    </p>
+                    @if (string.Equals(Model.SelectedProviderId, "Cognee", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" id="rag-ingest-force-reingest" name="forceReingest"
+                                   class="rounded border-gray-300 dark:border-gray-600" />
+                            Force re-ingest (re-run cognify on datasets already in Cognee — slow, ~2 min per dataset)
+                        </label>
+                    }
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" id="rag-ingest-preview-btn"
+                                class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
+                            Preview
+                        </button>
+                        <button type="submit" id="rag-ingest-run-btn"
+                                class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700">
+                            Ingest into @Model.SelectedModel.DisplayName
+                        </button>
+                    </div>
+                    <p id="rag-ingest-status" class="text-sm text-gray-600 dark:text-gray-300 hidden" role="status"></p>
+                    <ul id="rag-ingest-preview-list" class="text-xs text-gray-600 dark:text-gray-300 space-y-1 hidden"></ul>
+                    <ul id="rag-ingest-results" class="space-y-1 text-xs max-h-64 overflow-y-auto"></ul>
+                </form>
+            </details>
+
+            <details class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4" id="rag-test-query-panel">
+                <summary class="cursor-pointer text-base font-semibold text-gray-900 dark:text-white">Test query</summary>
+                <form id="rag-test-query-form" class="mt-4 space-y-3 max-w-xl">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sample question</label>
+                        <input type="text" id="rag-test-query-input" name="query" required
+                               class="@InputClass" placeholder="What does this project do?" />
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Collection / dataset id (optional)</label>
+                        <input type="text" id="rag-test-collection-id" name="collectionId"
+                               class="@InputClass" placeholder="default" />
+                    </div>
+                    <button type="submit" id="rag-test-run-btn"
+                            class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+                        Run test
+                    </button>
+                    <p id="rag-test-query-status" class="text-sm text-gray-600 dark:text-gray-300 hidden" role="status"></p>
+                    <ul id="rag-test-query-results" class="space-y-2 text-sm"></ul>
+                </form>
+            </details>
+        }
+        else if (Model.SelectedModel != null)
+        {
+            <p class="text-sm text-gray-600 dark:text-gray-300 border-t border-gray-200 dark:border-gray-700 pt-4">
+                Markdown-only mode uses on-disk Project Memory files. No external sidecar or configuration required.
+            </p>
+        }
+    </div>
+
+    <div>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Provider catalog</h2>
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            @foreach (var provider in Model.Status.Available)
+            {
+                <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">@provider.DisplayName</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">@provider.Id</p>
+                    @if (!string.IsNullOrWhiteSpace(provider.Summary))
+                    {
+                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@provider.Summary</p>
+                    }
+                    @if (provider.Capabilities?.Count > 0)
+                    {
+                        <div class="flex flex-wrap gap-1 mt-2">
+                            @foreach (var cap in provider.Capabilities)
+                            {
+                                <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">@cap</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@functions {
+    private const string InputClass =
+        "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm " +
+        "focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";
+
+    private static string FieldName(string key) => key switch
+    {
+        "BaseUrl" => "baseUrl",
+        "ApiKey" => "apiKey",
+        "DefaultMode" => "defaultMode",
+        "Transport" => "transport",
+        "McpPath" => "mcpPath",
+        "SearchType" => "searchType",
+        "LlmApiKey" => "llmApiKey",
+        _ => char.ToLowerInvariant(key[0]) + key[1..]
+    };
+
+    private static string ResolveFieldValue(string key, ConfiguredRagProviderDto cfg, string providerId)
+    {
+        if (string.Equals(providerId, RagProviderIds.LightRag, StringComparison.Ordinal))
+        {
+            return key switch
+            {
+                "BaseUrl" => cfg.LightRAG.BaseUrl,
+                "ApiKey" => cfg.LightRAG.ApiKey,
+                "DefaultMode" => cfg.LightRAG.DefaultMode,
+                "Transport" => cfg.LightRAG.Transport,
+                _ => ""
+            };
+        }
+
+        if (string.Equals(providerId, RagProviderIds.Cognee, StringComparison.Ordinal))
+        {
+            return key switch
+            {
+                "BaseUrl" => cfg.Cognee.BaseUrl,
+                "McpPath" => cfg.Cognee.McpPath,
+                "SearchType" => cfg.Cognee.SearchType,
+                "LlmApiKey" => cfg.Cognee.LlmApiKey,
+                "Transport" => cfg.Cognee.Transport,
+                _ => ""
+            };
+        }
+
+        return "";
+    }
+}

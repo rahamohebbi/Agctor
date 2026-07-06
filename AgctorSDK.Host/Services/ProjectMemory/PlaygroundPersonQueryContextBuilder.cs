@@ -1,11 +1,12 @@
 using System.Text.Json;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
-using AgctorSDK.Core.ProjectMemory.Visual;
-using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.ProjectMemory.Models;
+using AgctorSDK.Core.ProjectMemory.Rag;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Core.ProjectMemory.Tools;
+using AgctorSDK.Core.ProjectMemory.Visual;
+using AgctorSDK.Core.Tools.Implementations;
 using AgctorSDK.Core.Tools.Models;
 
 namespace AgctorSDK.Host.Services.ProjectMemory;
@@ -171,10 +172,13 @@ public static class PlaygroundPersonQueryContextBuilder
         string personaId,
         string projectRootFull,
         string? scenarioId,
-        string contextStrategy,
+        JsonElement? flowNodeConfig,
         string userMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        RagContextService? ragService = null)
     {
+        var strategy = ParseStrategy(flowNodeConfig);
+        var ragOptions = PersonMemoryMarkdownContextBuilder.ParseRagOptions(flowNodeConfig);
         var toolReq = new ToolRequest
         {
             Operation = "BuildContext",
@@ -182,11 +186,18 @@ public static class PlaygroundPersonQueryContextBuilder
             {
                 ["projectRoot"] = projectRootFull,
                 ["scenarioId"] = scenarioId ?? "",
-                ["contextStrategy"] = contextStrategy,
+                ["contextStrategy"] = strategy,
                 ["userMessage"] = userMessage,
                 ["agentSpecId"] = personaId.Trim()
             }
         };
+
+        if (!string.IsNullOrWhiteSpace(ragOptions.ProviderId))
+            toolReq.Parameters["ragProviderId"] = ragOptions.ProviderId;
+        if (!string.IsNullOrWhiteSpace(ragOptions.CollectionId))
+            toolReq.Parameters["ragCollectionId"] = ragOptions.CollectionId;
+        if (ragOptions.TopK != 8)
+            toolReq.Parameters["ragTopK"] = ragOptions.TopK;
 
         try
         {
@@ -207,9 +218,11 @@ public static class PlaygroundPersonQueryContextBuilder
                 spec,
                 projectRootFull,
                 scenarioId,
-                contextStrategy,
+                strategy,
                 userMessage,
-                cancellationToken)
+                cancellationToken,
+                ragService: ragService,
+                ragOptions: ragOptions)
             .ConfigureAwait(false);
     }
 
@@ -230,7 +243,9 @@ public static class PlaygroundPersonQueryContextBuilder
         string? scenarioId,
         string strategy,
         string focusSourceUserMessage,
-        CancellationToken cancellationToken) =>
+        CancellationToken cancellationToken,
+        RagContextService? ragService = null,
+        PersonMemoryRagOptions? ragOptions = null) =>
         PersonMemoryMarkdownContextBuilder.BuildAppendixAsync(
             ops,
             querySpec,
@@ -240,5 +255,7 @@ public static class PlaygroundPersonQueryContextBuilder
             focusSourceUserMessage,
             cancellationToken,
             loadedViaLine:
-            "Playground person-query: markdown below was read from disk (single-step LLM; use LlmNode toolIds to route via PersonMemoryContextTool).");
+            "Playground person-query: markdown below was read from disk (single-step LLM; use LlmNode toolIds to route via PersonMemoryContextTool).",
+            ragService: ragService,
+            ragOptions: ragOptions);
 }

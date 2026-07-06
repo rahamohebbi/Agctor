@@ -16,7 +16,9 @@ public class TerminalCommandServiceTests
     {
         var env = new Mock<IHostEnvironment>();
         env.SetupGet(e => e.ContentRootPath).Returns(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "AgctorSDK.Host")));
-        _svc = new TerminalCommandService(env.Object, new ActorRuntimeDockerService(env.Object, NullLogger<ActorRuntimeDockerService>.Instance), NullLogger<TerminalCommandService>.Instance);
+        var actorDocker = new ActorRuntimeDockerService(env.Object, NullLogger<ActorRuntimeDockerService>.Instance);
+        var ragDocker = new RagProviderDockerService(env.Object, NullLogger<RagProviderDockerService>.Instance);
+        _svc = new TerminalCommandService(env.Object, actorDocker, ragDocker, NullLogger<TerminalCommandService>.Instance);
     }
 
     [Fact]
@@ -46,5 +48,14 @@ public class TerminalCommandServiceTests
     public void TryValidate_rejects_non_docker_commands()
     {
         _svc.TryValidate("curl http://example.com", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void LightRag_presets_use_rag_compose_path()
+    {
+        var presets = _svc.GetPresets("rag-provider", "LightRAG");
+        presets.Should().NotBeEmpty();
+        presets.Should().Contain(p => p.Command.Contains("lightrag", StringComparison.OrdinalIgnoreCase));
+        presets.Should().Contain(p => p.Command.Contains("docker/rag-providers/docker-compose.yml", StringComparison.OrdinalIgnoreCase));
     }
 }

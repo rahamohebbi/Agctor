@@ -8,8 +8,16 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using AgctorSDK.Core.ProjectMemory.Models;
+using AgctorSDK.Core.ProjectMemory.Rag;
+using AgctorSDK.Core.Rag;
 
 namespace AgctorSDK.Core.ProjectMemory.Tools;
+
+/// <summary>Optional RAG overrides from LlmNode.config or PersonMemoryContextTool parameters (PRD-025).</summary>
+public sealed record PersonMemoryRagOptions(
+    string? ProviderId = null,
+    string? CollectionId = null,
+    int TopK = 8);
 
 /// <summary>
 /// Loads scenario-scoped people markdown for person-query style prompts. Shared by the HTTP playground,
@@ -40,6 +48,42 @@ public static class PersonMemoryMarkdownContextBuilder
             _ => "markdown_all"
         };
     }
+
+    /// <summary>Reads optional ragProviderId / ragCollectionId / ragTopK from flow node config.</summary>
+    public static PersonMemoryRagOptions ParseRagOptions(JsonElement? config)
+    {
+        if (config is not { ValueKind: JsonValueKind.Object } el)
+            return new PersonMemoryRagOptions();
+
+        string? providerId = null;
+        if (el.TryGetProperty("ragProviderId", out var p))
+            providerId = p.GetString()?.Trim();
+
+        string? collectionId = null;
+        if (el.TryGetProperty("ragCollectionId", out var c))
+            collectionId = c.GetString()?.Trim();
+
+        var topK = 8;
+        if (el.TryGetProperty("ragTopK", out var k))
+        {
+            if (k.ValueKind == JsonValueKind.Number && k.TryGetInt32(out var n))
+                topK = Math.Clamp(n, 1, 100);
+            else if (k.ValueKind == JsonValueKind.String && int.TryParse(k.GetString(), out n))
+                topK = Math.Clamp(n, 1, 100);
+        }
+
+        return new PersonMemoryRagOptions(providerId, collectionId, topK);
+    }
+
+    /// <summary>Builds rag options from PersonMemoryContextTool parameter dictionary.</summary>
+    public static PersonMemoryRagOptions ParseRagOptionsFromParameters(
+        string? providerId,
+        string? collectionId,
+        int? topK) =>
+        new(
+            string.IsNullOrWhiteSpace(providerId) ? null : providerId.Trim(),
+            string.IsNullOrWhiteSpace(collectionId) ? null : collectionId.Trim(),
+            topK is > 0 ? Math.Clamp(topK.Value, 1, 100) : 8);
 
     /// <summary>Best-effort token for <see cref="ProjectMemoryOperations.SearchEntitiesAsync"/> substring match.</summary>
     public static string? ExtractFocusQueryFromUserMessage(string? message)
@@ -88,16 +132,40 @@ public static class PersonMemoryMarkdownContextBuilder
         string strategy,
         string focusSourceUserMessage,
         CancellationToken cancellationToken,
-        string? loadedViaLine = null)
+        string? loadedViaLine = null,
+        RagContextService? ragService = null,
+        PersonMemoryRagOptions? ragOptions = null)
     {
         var notes = new StringBuilder();
         var effectiveStrategy = strategy;
-        if (string.Equals(effectiveStrategy, "rag", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(effectiveStrategy, "graph_rag", StringComparison.OrdinalIgnoreCase))
+
+        if (IsRagStrategy(strategy))
         {
+            var ragResult = await TryBuildRagAppendixAsync(
+                    ragService,
+                    ragOptions,
+                    strategy,
+                    focusSourceUserMessage,
+                    scenarioId,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (ragResult?.UsedExternalRag == true && !string.IsNullOrWhiteSpace(ragResult.Appendix))
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine(ragResult.Appendix.TrimEnd());
+                AppendPersonQueryInstructions(sb, querySpec, loadedViaLine
+                    ?? $"External RAG context loaded via {ragResult.ProviderId} (read-only).",
+                    externalRag: true);
+                if (notes.Length > 0)
+                    sb.AppendLine(notes.ToString().TrimEnd());
+                return sb.ToString().TrimEnd();
+            }
+
+            var reason = ragResult?.FallbackReason ?? "RAG service not available";
             notes.AppendLine(
-                $"Note: contextStrategy '{strategy}' is not wired yet; loaded on-disk markdown like markdown_all.");
-            effectiveStrategy = "markdown_all";
+                $"Note: contextStrategy '{strategy}' could not use external RAG ({reason}); loaded on-disk markdown like markdown_focus.");
+            effectiveStrategy = "markdown_focus";
         }
 
         var entityWorkspace = PersonaScenarioScope.GetEntityWorkspaceRoot(projectRootFull, scenarioId);
@@ -172,14 +240,65 @@ public static class PersonMemoryMarkdownContextBuilder
             combined = combined[..MaxAppendixChars];
         }
 
-        var sb = new StringBuilder();
-        sb.AppendLine("---");
-        sb.AppendLine(loadedViaLine
-                      ?? "Person-query: markdown below was read from disk (playground single-step path; no tool loop).");
+        var markdownSb = new StringBuilder();
+        markdownSb.AppendLine("---");
+        markdownSb.AppendLine(loadedViaLine
+                              ?? "Person-query: markdown below was read from disk (playground single-step path; no tool loop).");
+        AppendPersonQueryInstructions(markdownSb, querySpec, headerAlreadyWritten: true);
+        if (notes.Length > 0)
+            markdownSb.AppendLine(notes.ToString().TrimEnd());
+        markdownSb.AppendLine();
+        markdownSb.AppendLine(combined);
+        return markdownSb.ToString().TrimEnd();
+    }
+
+    private static bool IsRagStrategy(string strategy) =>
+        string.Equals(strategy, "rag", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(strategy, "graph_rag", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<RagContextAppendixResult?> TryBuildRagAppendixAsync(
+        RagContextService? ragService,
+        PersonMemoryRagOptions? ragOptions,
+        string strategy,
+        string userMessage,
+        string? scenarioId,
+        CancellationToken cancellationToken)
+    {
+        if (ragService == null)
+            return RagContextAppendixResult.Fallback("RAG service not registered");
+
+        var opts = ragOptions ?? new PersonMemoryRagOptions();
+        var mode = string.Equals(strategy, "graph_rag", StringComparison.OrdinalIgnoreCase)
+            ? RagQueryMode.Graph
+            : RagQueryMode.Hybrid;
+        var collectionId = string.IsNullOrWhiteSpace(opts.CollectionId) ? scenarioId : opts.CollectionId;
+
+        return await ragService.BuildAppendixAsync(
+            new RagContextRequest(
+                userMessage,
+                opts.ProviderId,
+                collectionId,
+                mode,
+                opts.TopK,
+                MaxAppendixChars),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static void AppendPersonQueryInstructions(
+        StringBuilder sb,
+        AgentDefinitionSpec querySpec,
+        string? loadedViaLine = null,
+        bool headerAlreadyWritten = false,
+        bool externalRag = false)
+    {
+        if (!headerAlreadyWritten && !string.IsNullOrWhiteSpace(loadedViaLine))
+            sb.AppendLine(loadedViaLine);
+
         if (IsRelationshipCoachingSpec(querySpec))
         {
-            sb.AppendLine(
-                "Relationship coaching: use ONLY the markdown below. Map who is speaking from relationships.md (e.g. user → child: ryan means the user is Ryan's parent).");
+            sb.AppendLine(externalRag
+                ? "Relationship coaching: use ONLY the retrieved context below. Map who is speaking from relationships when cited (e.g. user → child: ryan means the user is Ryan's parent)."
+                : "Relationship coaching: use ONLY the markdown below. Map who is speaking from relationships.md (e.g. user → child: ryan means the user is Ryan's parent).");
             sb.AppendLine(
                 "Give advice TO the user in their role toward the named person. Do NOT invent age, grade, hobbies, or timeline events absent from the files.");
             sb.AppendLine(
@@ -187,20 +306,17 @@ public static class PersonMemoryMarkdownContextBuilder
         }
         else
         {
-            sb.AppendLine(
-                "Use stored markdown below together with factual statements in the latest user message.");
+            sb.AppendLine(externalRag
+                ? "Use the retrieved context below together with factual statements in the latest user message."
+                : "Use stored markdown below together with factual statements in the latest user message.");
             sb.AppendLine(
                 "When the user states a new fact and asks a follow-up in the same turn, treat those stated facts as authoritative for this reply.");
             sb.AppendLine(
                 "You may apply reasonable inference from stated facts (e.g. chalk → drawing on outdoor surfaces) when the question follows directly.");
-            sb.AppendLine("Answer in plain text; prefer on-disk markdown for historical facts when it does not conflict with this turn.");
+            sb.AppendLine(externalRag
+                ? "Answer in plain text; prefer retrieved context for historical facts when it does not conflict with this turn."
+                : "Answer in plain text; prefer on-disk markdown for historical facts when it does not conflict with this turn.");
         }
-
-        if (notes.Length > 0)
-            sb.AppendLine(notes.ToString().TrimEnd());
-        sb.AppendLine();
-        sb.AppendLine(combined);
-        return sb.ToString().TrimEnd();
     }
 
     private static bool IsRelationshipCoachingSpec(AgentDefinitionSpec spec) =>

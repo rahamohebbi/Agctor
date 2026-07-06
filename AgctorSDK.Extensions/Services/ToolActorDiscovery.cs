@@ -101,7 +101,10 @@ public static class ToolActorDiscovery
                     ["operation"] = "BuildContext",
                     ["projectRoot"] = "string optional — defaults to Agctor:ProjectMemory:ProjectRoot",
                     ["scenarioId"] = "string optional",
-                    ["contextStrategy"] = "markdown_all | markdown_focus | …",
+                    ["contextStrategy"] = "markdown_all | markdown_focus | rag | graph_rag",
+                    ["ragProviderId"] = "optional override: LightRAG | Cognee | None",
+                    ["ragCollectionId"] = "optional dataset / collection id",
+                    ["ragTopK"] = "optional chunk limit (default 8)",
                     ["userMessage"] = "string — used for markdown_focus inference",
                     ["agentSpecId"] = "string optional — defaults to person-query"
                 },

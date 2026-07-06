@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using AgctorSDK.Core.Rag;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Host.Models;
 
@@ -25,42 +26,57 @@ public sealed class TerminalCommandService : ITerminalCommandService
 
     private readonly IHostEnvironment _environment;
     private readonly IActorRuntimeDockerService _docker;
+    private readonly IRagProviderDockerService _ragDocker;
     private readonly ILogger<TerminalCommandService> _logger;
 
     public TerminalCommandService(
         IHostEnvironment environment,
         IActorRuntimeDockerService docker,
+        IRagProviderDockerService ragDocker,
         ILogger<TerminalCommandService> logger)
     {
         _environment = environment;
         _docker = docker;
+        _ragDocker = ragDocker;
         _logger = logger;
     }
 
     /// <inheritdoc />
     public string? ResolveRepoRoot()
     {
-        var compose = _docker.ResolveComposeFilePath();
+        var compose = _docker.ResolveComposeFilePath() ?? _ragDocker.ResolveComposeFilePath();
         if (compose == null) return null;
         return Path.GetFullPath(Path.Combine(Path.GetDirectoryName(compose)!, "..", ".."));
     }
 
     /// <inheritdoc />
-    public string GetComposeRelativePath() => "docker/actor-runtimes/docker-compose.yml";
+    public string GetComposeRelativePath() => GetComposeRelativePath("actor-runtime");
+
+    private static string GetComposeRelativePath(string contextType) =>
+        string.Equals(contextType, "rag-provider", StringComparison.OrdinalIgnoreCase)
+            ? "docker/rag-providers/docker-compose.yml"
+            : "docker/actor-runtimes/docker-compose.yml";
 
     /// <inheritdoc />
     public IReadOnlyList<TerminalCommandPresetDto> GetPresets(string contextType, string? contextKey)
     {
-        if (!string.Equals(contextType, "actor-runtime", StringComparison.OrdinalIgnoreCase)
-            || string.IsNullOrWhiteSpace(contextKey))
-        {
+        if (string.IsNullOrWhiteSpace(contextKey))
             return Array.Empty<TerminalCommandPresetDto>();
-        }
 
-        var service = ActorRuntimeConfigSchema.GetDockerServiceName(contextKey);
+        if (string.Equals(contextType, "rag-provider", StringComparison.OrdinalIgnoreCase))
+            return BuildPresets(contextType, RagProviderConfigSchema.GetDockerServiceName(contextKey));
+
+        if (string.Equals(contextType, "actor-runtime", StringComparison.OrdinalIgnoreCase))
+            return BuildPresets(contextType, ActorRuntimeConfigSchema.GetDockerServiceName(contextKey));
+
+        return Array.Empty<TerminalCommandPresetDto>();
+    }
+
+    private IReadOnlyList<TerminalCommandPresetDto> BuildPresets(string contextType, string? service)
+    {
         if (service == null) return Array.Empty<TerminalCommandPresetDto>();
 
-        var f = GetComposeRelativePath();
+        var f = GetComposeRelativePath(contextType);
         return new[]
         {
             Preset("start", "Start sidecar", $"docker compose -f {f} up -d {service}"),
@@ -76,7 +92,8 @@ public sealed class TerminalCommandService : ITerminalCommandService
     public string GetDefaultCommand(string contextType, string? contextKey)
     {
         var presets = GetPresets(contextType, contextKey);
-        return presets.FirstOrDefault()?.Command ?? $"docker compose -f {GetComposeRelativePath()} ps";
+        return presets.FirstOrDefault()?.Command
+               ?? $"docker compose -f {GetComposeRelativePath(contextType)} ps";
     }
 
     /// <inheritdoc />
@@ -110,21 +127,21 @@ public sealed class TerminalCommandService : ITerminalCommandService
             return false;
         }
 
-        var composePath = _docker.ResolveComposeFilePath();
+        var match = ComposeFilePattern.Match(args);
+        if (!match.Success)
+        {
+            error = "Command must include -f docker/.../docker-compose.yml";
+            return false;
+        }
+
+        var fileToken = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
+        var composePath = ResolveComposePathForToken(fileToken);
         if (composePath == null)
         {
             error = "Compose file not found on this machine.";
             return false;
         }
 
-        var match = ComposeFilePattern.Match(args);
-        if (!match.Success)
-        {
-            error = "Command must include -f docker/actor-runtimes/docker-compose.yml";
-            return false;
-        }
-
-        var fileToken = match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value;
         if (!IsAllowedComposePath(fileToken, composePath))
         {
             error = "Compose file path is not allowed.";
@@ -132,6 +149,15 @@ public sealed class TerminalCommandService : ITerminalCommandService
         }
 
         return true;
+    }
+
+    private string? ResolveComposePathForToken(string fileToken)
+    {
+        var actor = _docker.ResolveComposeFilePath();
+        var rag = _ragDocker.ResolveComposeFilePath();
+        if (actor != null && IsAllowedComposePath(fileToken, actor)) return actor;
+        if (rag != null && IsAllowedComposePath(fileToken, rag)) return rag;
+        return actor ?? rag;
     }
 
     /// <inheritdoc />
@@ -209,9 +235,12 @@ public sealed class TerminalCommandService : ITerminalCommandService
     private bool IsAllowedComposePath(string token, string allowedAbsolutePath)
     {
         var normalizedAllowed = Path.GetFullPath(allowedAbsolutePath);
-        var relativeAllowed = GetComposeRelativePath().Replace('\\', '/');
+        var actorRelative = "docker/actor-runtimes/docker-compose.yml".Replace('\\', '/');
+        var ragRelative = "docker/rag-providers/docker-compose.yml".Replace('\\', '/');
+        var normalizedToken = token.Replace('\\', '/');
 
-        if (string.Equals(token.Replace('\\', '/'), relativeAllowed, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(normalizedToken, actorRelative, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedToken, ragRelative, StringComparison.OrdinalIgnoreCase))
             return true;
 
         try

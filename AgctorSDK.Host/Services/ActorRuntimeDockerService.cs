@@ -67,7 +67,7 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
             return status;
         }
 
-        if (!await IsDockerAvailableAsync(cancellationToken).ConfigureAwait(false))
+        if (!await DockerComposeCli.IsDockerAvailableAsync(cancellationToken).ConfigureAwait(false))
         {
             status.DockerAvailable = false;
             status.State = "docker_unavailable";
@@ -77,7 +77,7 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
 
         status.DockerAvailable = true;
         // Include stopped containers (-a) so state stays accurate after stop/start.
-        var ps = await RunComposeAsync(composePath, $"ps -a --format json {serviceName}", cancellationToken).ConfigureAwait(false);
+        var ps = await DockerComposeCli.RunComposeAsync(composePath, $"ps -a --format json {serviceName}", cancellationToken).ConfigureAwait(false);
         if (!ps.Success)
         {
             status.State = "error";
@@ -85,7 +85,7 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
             return status;
         }
 
-        var line = FindServiceJsonLine(ps.StdOut, serviceName);
+        var line = DockerComposeCli.FindServiceJsonLine(ps.StdOut, serviceName);
         if (string.IsNullOrWhiteSpace(line))
         {
             status.State = "stopped";
@@ -117,29 +117,6 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
         }
 
         return status;
-    }
-
-    /// <summary>Pick the JSON line for the compose service (handles multi-line ps output).</summary>
-    private static string? FindServiceJsonLine(string? stdout, string serviceName)
-    {
-        if (string.IsNullOrWhiteSpace(stdout)) return null;
-        foreach (var line in stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!line.StartsWith("{", StringComparison.Ordinal)) continue;
-            try
-            {
-                using var doc = System.Text.Json.JsonDocument.Parse(line);
-                if (doc.RootElement.TryGetProperty("Service", out var svc)
-                    && string.Equals(svc.GetString(), serviceName, StringComparison.OrdinalIgnoreCase))
-                    return line;
-            }
-            catch
-            {
-                // skip malformed lines
-            }
-        }
-
-        return stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault(l => l.StartsWith("{", StringComparison.Ordinal));
     }
 
     /// <inheritdoc />
@@ -176,7 +153,7 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
             };
         }
 
-        if (!await IsDockerAvailableAsync(cancellationToken).ConfigureAwait(false))
+        if (!await DockerComposeCli.IsDockerAvailableAsync(cancellationToken).ConfigureAwait(false))
         {
             return new ActorRuntimeDockerActionResult
             {
@@ -185,7 +162,7 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
             };
         }
 
-        var result = await RunComposeAsync(composePath, $"{composeArgs} {serviceName}", cancellationToken).ConfigureAwait(false);
+        var result = await DockerComposeCli.RunComposeAsync(composePath, $"{composeArgs} {serviceName}", cancellationToken).ConfigureAwait(false);
         return new ActorRuntimeDockerActionResult
         {
             Success = result.Success,
@@ -193,48 +170,5 @@ public sealed class ActorRuntimeDockerService : IActorRuntimeDockerService
             StdOut = result.StdOut,
             StdErr = result.StdErr
         };
-    }
-
-    private static async Task<bool> IsDockerAvailableAsync(CancellationToken cancellationToken)
-    {
-        var result = await RunProcessAsync("docker", "info --format {{.ServerVersion}}", cancellationToken).ConfigureAwait(false);
-        return result.Success;
-    }
-
-    private static Task<(bool Success, string? StdOut, string? StdErr)> RunComposeAsync(
-        string composePath,
-        string args,
-        CancellationToken cancellationToken)
-    {
-        var composeDir = Path.GetDirectoryName(composePath)!;
-        return RunProcessAsync("docker", $"compose -f \"{composePath}\" {args}", cancellationToken, composeDir);
-    }
-
-    private static async Task<(bool Success, string? StdOut, string? StdErr)> RunProcessAsync(
-        string fileName,
-        string arguments,
-        CancellationToken cancellationToken,
-        string? workingDirectory = null)
-    {
-        var psi = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = fileName,
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = workingDirectory ?? Environment.CurrentDirectory
-        };
-
-        using var process = System.Diagnostics.Process.Start(psi);
-        if (process == null)
-            return (false, null, "Failed to start process.");
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return (process.ExitCode == 0, stdoutTask.Result, stderrTask.Result);
     }
 }

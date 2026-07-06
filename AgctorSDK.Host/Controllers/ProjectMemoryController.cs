@@ -88,6 +88,7 @@ public sealed class ProjectMemoryController : ControllerBase
     private readonly PlaygroundFocusPostHook _focusPostHook;
     private readonly PlaygroundStyleRefreshService? _styleRefresh;
     private readonly IPlaygroundChatSettingsService _chatSettings;
+    private readonly AgctorSDK.Core.ProjectMemory.Rag.RagContextService _ragContext;
 
     public ProjectMemoryController(
         IOptionsMonitor<ProjectMemoryAgentOptions> options,
@@ -125,7 +126,8 @@ public sealed class ProjectMemoryController : ControllerBase
         IOptions<VisualStorageOptions>? visualOptions = null,
         PlaygroundFocusPostHook? focusPostHook = null,
         PlaygroundStyleRefreshService? styleRefresh = null,
-        IPlaygroundChatSettingsService? chatSettings = null)
+        IPlaygroundChatSettingsService? chatSettings = null,
+        AgctorSDK.Core.ProjectMemory.Rag.RagContextService? ragContext = null)
     {
         _options = options;
         _loader = loader;
@@ -163,6 +165,7 @@ public sealed class ProjectMemoryController : ControllerBase
         _focusPostHook = focusPostHook ?? throw new ArgumentNullException(nameof(focusPostHook));
         _styleRefresh = styleRefresh;
         _chatSettings = chatSettings ?? throw new ArgumentNullException(nameof(chatSettings));
+        _ragContext = ragContext ?? throw new ArgumentNullException(nameof(ragContext));
     }
 
     /// <summary>How many prior chat turns to include in prompts (user-configurable, default 25).</summary>
@@ -1893,7 +1896,6 @@ public sealed class ProjectMemoryController : ControllerBase
                     var appendixParts = new List<string>();
                     if (PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(pSpec, flowNode?.Config))
                     {
-                        var strat = PlaygroundPersonQueryContextBuilder.ParseStrategy(flowNode?.Config);
                         try
                         {
                             var memoryAppendix = await PlaygroundPersonQueryContextBuilder
@@ -1905,9 +1907,10 @@ public sealed class ProjectMemoryController : ControllerBase
                                     personaId.Trim(),
                                     rootFull,
                                     scenarioResolved,
-                                    strat,
+                                    flowNode?.Config,
                                     flowUserMessage,
-                                    cancellationToken)
+                                    cancellationToken,
+                                    _ragContext)
                                 .ConfigureAwait(false);
                             if (!string.IsNullOrWhiteSpace(memoryAppendix))
                                 appendixParts.Add(memoryAppendix);

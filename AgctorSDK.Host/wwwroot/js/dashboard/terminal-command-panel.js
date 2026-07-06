@@ -58,7 +58,10 @@
                     var secs = Math.floor((Date.now() - started) / 1000);
                     setStatus(statusEl, 'Running… ' + secs + 's');
                     if (progressEl) {
-                        progressEl.textContent = 'Waiting for docker… (' + secs + 's elapsed)';
+                        var hint = getDockerWaitHint(command);
+                        progressEl.textContent = hint
+                            ? hint + ' (' + secs + 's elapsed)'
+                            : 'Waiting for docker… (' + secs + 's elapsed)';
                     }
                 }, 1000);
 
@@ -130,6 +133,24 @@
 
     function setStatus(el, text) {
         if (el) el.textContent = text;
+    }
+
+    /** First-time image pulls can take several minutes; docker compose does not stream progress to the browser. */
+    function getDockerWaitHint(command) {
+        var cmd = (command || '').toLowerCase();
+        if (cmd.indexOf('cognee-mcp') >= 0 && (cmd.indexOf(' pull') >= 0 || cmd.indexOf(' up ') >= 0)) {
+            return 'Downloading/starting Cognee MCP (~6 GB on first pull; often 2–5 min)';
+        }
+        if (cmd.indexOf('lightrag') >= 0 && (cmd.indexOf(' pull') >= 0 || cmd.indexOf(' up ') >= 0)) {
+            return 'Downloading/starting LightRAG (first pull can take 1–3 min)';
+        }
+        if (cmd.indexOf(' pull') >= 0) {
+            return 'Pulling Docker image(s) — no live progress until complete';
+        }
+        if (cmd.indexOf(' up ') >= 0 || cmd.indexOf(' up -d') >= 0) {
+            return 'Starting Docker service(s)';
+        }
+        return null;
     }
 
     function showProgress(wrap, progressEl, exitEl, stdoutEl, stderrEl, command) {
