@@ -113,4 +113,30 @@ public class RuntimeApiIntegrationTests : IClassFixture<AgctorWebApplicationFact
         json.TryGetProperty("serviceName", out var svc).Should().BeTrue();
         svc.GetString().Should().Be("orleans-silo");
     }
+
+    [Fact]
+    public async Task Startup_OrleansUnavailable_FallsBackToInitializedInMemory()
+    {
+        var uniquePort = Interlocked.Increment(ref _portCounter);
+        using var factory = new AgctorWebApplicationFactory().WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Agctor:DefaultRuntime"] = "Orleans",
+                    ["Agctor:AllowExperimentalRuntimes"] = "true",
+                    ["Mcp:Port"] = uniquePort.ToString()
+                });
+            });
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/api/runtime");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var cur = json.GetProperty("current");
+        cur.GetProperty("canonicalId").GetString().Should().Be("InMemory");
+        cur.GetProperty("isInitialized").GetBoolean().Should().BeTrue();
+    }
 }

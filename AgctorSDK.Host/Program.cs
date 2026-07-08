@@ -99,6 +99,8 @@ Console.WriteLine("🔧 Initializing Actor Runtime...");
 var runtimeSwitch = app.Services.GetRequiredService<IActorRuntimeSwitchService>();
 await runtimeSwitch.InitializeFromConfigurationAsync();
 var runtime = app.Services.GetRequiredService<IActorRuntimeAdapter>();
+if (!runtime.IsInitialized)
+    throw new InvalidOperationException("Actor runtime failed to initialize.");
 Console.WriteLine($"✅ Actor Runtime initialized: {RuntimeCanonicalId.FromAdapter(runtime)}");
 
 try

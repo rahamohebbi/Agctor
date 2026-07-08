@@ -58,7 +58,19 @@ public sealed class ActorRuntimeSwitchService : IActorRuntimeSwitchService
         if (AgctorRuntimeCatalog.IsExperimental(configured) && !allowExperimental)
             configured = AgctorRuntimeCatalog.InMemory;
 
-        await SwitchToAsync(configured, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await SwitchToAsync(configured, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (result.Success || string.Equals(configured, AgctorRuntimeCatalog.InMemory, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // Configured runtime (e.g. Orleans) is unreachable — keep Host usable on InMemory.
+        _logger.LogWarning(
+            "Failed to start configured runtime {Runtime}: {Message}. Falling back to InMemory.",
+            configured,
+            result.Message);
+        var fallback = await SwitchToAsync(AgctorRuntimeCatalog.InMemory, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        if (!fallback.Success)
+            throw new InvalidOperationException($"Actor runtime fallback to InMemory failed: {fallback.Message}");
     }
 
     /// <inheritdoc />
@@ -98,13 +110,19 @@ public sealed class ActorRuntimeSwitchService : IActorRuntimeSwitchService
         try
         {
             await StopRegisteredAgentsAsync(current, cancellationToken).ConfigureAwait(false);
-            if (current.IsInitialized)
-                await current.ShutdownAsync(cancellationToken).ConfigureAwait(false);
 
+            // Initialize the next runtime before shutting down the current one so a failed switch
+            // (e.g. Orleans silo not running) does not leave the Host with no active runtime.
             var next = _factory.CreateRuntime(canonical);
             var config = ActorRuntimeConfigBuilder.FromConfiguration(_configuration, canonical, _environment.EnvironmentName);
             await next.InitializeAsync(config, cancellationToken).ConfigureAwait(false);
-            _switchable.SetInner(next);
+
+            // Factory returns DI singletons — skip shutdown when switching to the same instance.
+            if (current.IsInitialized && !ReferenceEquals(current, next))
+                await current.ShutdownAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!ReferenceEquals(_switchable.Current, next))
+                _switchable.SetInner(next);
 
             _logger.LogInformation("Switched actor runtime to {Runtime}", canonical);
             return new ActorRuntimeSwitchResult
