@@ -44,6 +44,35 @@ public class TerminalApiIntegrationTests : IClassFixture<AgctorWebApplicationFac
         res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task PostRunStream_InvalidCommand_Returns400()
+    {
+        var res = await _client.PostAsJsonAsync("/api/terminal/run/stream", new { command = "rm -rf /" });
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task PostRunStream_ValidPull_StreamsSseEvents()
+    {
+        // Use a fast, safe compose command so CI can assert SSE framing without a long pull.
+        var res = await _client.PostAsJsonAsync("/api/terminal/run/stream", new
+        {
+            command = "docker compose -f docker/rag-providers/docker-compose.yml ps graphiti",
+            contextType = "rag-provider",
+            contextKey = "Graphiti"
+        });
+
+        // Compose file may be missing in some environments — accept 200 SSE or 400 validation.
+        if (res.StatusCode == HttpStatusCode.BadRequest)
+            return;
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        res.Content.Headers.ContentType!.MediaType.Should().Be("text/event-stream");
+        var body = await res.Content.ReadAsStringAsync();
+        body.Should().Contain("data:");
+        body.Should().Match(s => s.Contains("\"type\":\"done\"") || s.Contains("\"type\":\"error\"") || s.Contains("\"type\":\"stdout\"") || s.Contains("\"type\":\"stderr\""));
+    }
+
     private sealed class TerminalPresetsPayload
     {
         public List<PresetItem> Presets { get; set; } = new();

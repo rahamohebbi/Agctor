@@ -36,6 +36,17 @@ public sealed class RunTerminalCommandResponseDto
     public string? StdErr { get; set; }
 }
 
+/// <summary>One SSE chunk from <c>POST /api/terminal/run/stream</c> (stdout/stderr/done/error).</summary>
+public sealed class TerminalStreamEventDto
+{
+    /// <summary>stdout | stderr | done | error</summary>
+    public string Type { get; set; } = null!;
+    public string? Text { get; set; }
+    public bool? Success { get; set; }
+    public int? ExitCode { get; set; }
+    public string? Message { get; set; }
+}
+
 public sealed class TerminalCommandPresetsResponseDto
 {
     public IReadOnlyList<TerminalCommandPresetDto> Presets { get; set; } = Array.Empty<TerminalCommandPresetDto>();

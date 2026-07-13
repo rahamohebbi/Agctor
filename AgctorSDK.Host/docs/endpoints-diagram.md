@@ -34,7 +34,7 @@ HTTP REST API endpoints and MCP TCP protocol exposed by AgctorSDK.Host.
 |--------|------|-------------|
 | GET | `/api/rag-providers` | Current provider, configured `Agctor:Rag`, catalog |
 | GET | `/api/rag-providers/health` | Provider + Docker sidecar health |
-| PUT | `/api/rag-providers` | Persist default provider and LightRAG/Cognee settings to `appsettings.User.json` |
+| PUT | `/api/rag-providers` | Persist default provider and LightRAG/Graphiti/Cognee settings to `appsettings.User.json` |
 | POST | `/api/rag-providers/query` | Test retrieval (dashboard “Test query” panel) |
 | GET | `/api/rag-providers/docker/{providerId}` | Docker sidecar status |
 | POST | `/api/rag-providers/docker/{providerId}/install` | Pull sidecar image |
@@ -182,7 +182,7 @@ See [rag-providers.md](./rag-providers.md) for architecture and Project Memory `
 - **GET /Dashboard/AgentDetail/{id}** – Agent detail with type-specific view
 - **GET /Dashboard/CodeGraph** – CodeGraph actor tree and embedding summary
 - **GET /Dashboard/ActorRuntime** – Actor runtime selection, Docker sidecars (PRD-012)
-- **GET /Dashboard/RagProviders** – External RAG providers: LightRAG, Cognee, test query (PRD-025)
+- **GET /Dashboard/RagProviders** – External RAG providers: LightRAG, Graphiti, Cognee, test query (PRD-025)
 - **GET /Dashboard/ProjectMemory** – Project memory overview (PRD-013)
 - **GET /Dashboard/ProjectMemory/Agents** – Portable agent list
 - **GET /Dashboard/ProjectMemory/Agents/Edit** – Agent editor (`?id=` optional)

@@ -254,6 +254,13 @@
                     defaultMode: String(fd.get('defaultMode') || 'Hybrid'),
                     transport: String(fd.get('transport') || 'Rest')
                 };
+            } else if (providerId === 'Graphiti') {
+                body.graphiti = {
+                    baseUrl: String(fd.get('baseUrl') || '').trim(),
+                    apiKey: String(fd.get('apiKey') || ''),
+                    defaultGroupId: String(fd.get('defaultGroupId') || 'agctor'),
+                    transport: String(fd.get('transport') || 'Rest')
+                };
             } else if (providerId === 'Cognee') {
                 body.cognee = {
                     baseUrl: String(fd.get('baseUrl') || '').trim(),

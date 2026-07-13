@@ -16,7 +16,7 @@ See [endpoints-diagram](./endpoints-diagram.md) for the full API including dashb
 
 ## RAG providers (`/Dashboard/RagProviders`) — PRD-025
 
-- **Dashboard** – Select **LightRAG**, **Cognee**, or **Markdown only**; configure URLs; install/start/stop Docker sidecars; run test queries.
+- **Dashboard** – Select **LightRAG**, **Graphiti**, **Cognee**, or **Markdown only**; configure URLs; install/start/stop Docker sidecars; run test queries.
 - **API** – `GET/PUT /api/rag-providers`, health, query, and Docker lifecycle under `/api/rag-providers/docker/{id}/…`.
 - **Project Memory** – Scenario `LlmNode` **`contextStrategy: rag | graph_rag`** uses the active provider via `RagContextService`; falls back to focused markdown when unavailable.
 

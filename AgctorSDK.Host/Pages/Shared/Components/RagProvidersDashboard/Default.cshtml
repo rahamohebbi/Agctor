@@ -328,6 +328,18 @@
             };
         }
 
+        if (string.Equals(providerId, RagProviderIds.Graphiti, StringComparison.Ordinal))
+        {
+            return key switch
+            {
+                "BaseUrl" => cfg.Graphiti.BaseUrl,
+                "ApiKey" => cfg.Graphiti.ApiKey,
+                "DefaultGroupId" => cfg.Graphiti.DefaultGroupId,
+                "Transport" => cfg.Graphiti.Transport,
+                _ => ""
+            };
+        }
+
         if (string.Equals(providerId, RagProviderIds.Cognee, StringComparison.Ordinal))
         {
             return key switch

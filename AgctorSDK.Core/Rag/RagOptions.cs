@@ -3,10 +3,12 @@ namespace AgctorSDK.Core.Rag;
 /// <summary>User/host settings under Agctor:Rag (persisted in appsettings.User.json in later phases).</summary>
 public sealed class RagOptions
 {
-    /// <summary>Catalog id: None, LightRAG, Cognee.</summary>
+    /// <summary>Catalog id: None, LightRAG, Graphiti, Cognee.</summary>
     public string DefaultProvider { get; set; } = RagProviderIds.None;
 
     public LightRagProviderOptions LightRAG { get; set; } = new();
+
+    public GraphitiProviderOptions Graphiti { get; set; } = new();
 
     public CogneeProviderOptions Cognee { get; set; } = new();
 }
@@ -21,6 +23,20 @@ public sealed class LightRagProviderOptions
     public RagTransportKind Transport { get; set; } = RagTransportKind.Rest;
 
     public RagQueryMode DefaultMode { get; set; } = RagQueryMode.Hybrid;
+}
+
+/// <summary>Graphiti REST sidecar settings (default port 8001; Neo4j companion).</summary>
+public sealed class GraphitiProviderOptions
+{
+    public string BaseUrl { get; set; } = "http://127.0.0.1:8001";
+
+    /// <summary>Unused by stock Graphiti REST; kept for future auth / gateway keys.</summary>
+    public string ApiKey { get; set; } = "";
+
+    /// <summary>Default Graphiti group_id when CollectionId is blank (maps to scenario/dataset).</summary>
+    public string DefaultGroupId { get; set; } = "agctor";
+
+    public RagTransportKind Transport { get; set; } = RagTransportKind.Rest;
 }
 
 /// <summary>Cognee MCP HTTP sidecar settings (default port 8000).</summary>

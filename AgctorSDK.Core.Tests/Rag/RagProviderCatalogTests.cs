@@ -7,7 +7,10 @@ namespace AgctorSDK.Core.Tests.Rag;
 /// <summary>PRD-025: catalog ids stay aligned with IRagProviderAdapterFactory keys.</summary>
 public class RagProviderCatalogTests
 {
-    public static readonly string[] FactoryIds = { RagProviderIds.None, RagProviderIds.LightRag, RagProviderIds.Cognee };
+    public static readonly string[] FactoryIds =
+    {
+        RagProviderIds.None, RagProviderIds.LightRag, RagProviderIds.Graphiti, RagProviderIds.Cognee
+    };
 
     [Fact]
     public void All_Contains_Exactly_Factory_Ids()
@@ -19,6 +22,7 @@ public class RagProviderCatalogTests
     [Theory]
     [InlineData("None")]
     [InlineData("lightrag")]
+    [InlineData("graphiti")]
     [InlineData("COGNEE")]
     public void GetById_Is_Case_Insensitive(string key)
     {
@@ -37,6 +41,7 @@ public class RagProviderCatalogTests
     [Theory]
     [InlineData(RagProviderIds.None, false)]
     [InlineData(RagProviderIds.LightRag, true)]
+    [InlineData(RagProviderIds.Graphiti, true)]
     [InlineData(RagProviderIds.Cognee, true)]
     public void RequiresDocker_matches_provider(string id, bool expected)
     {
@@ -46,6 +51,7 @@ public class RagProviderCatalogTests
     [Theory]
     [InlineData("markdown_only", RagProviderIds.None)]
     [InlineData("Light-RAG", RagProviderIds.LightRag)]
+    [InlineData("graphiti-rest", RagProviderIds.Graphiti)]
     public void Normalize_maps_aliases(string input, string expected)
     {
         RagProviderIds.Normalize(input).Should().Be(expected);

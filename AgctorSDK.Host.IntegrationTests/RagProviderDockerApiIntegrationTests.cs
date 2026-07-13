@@ -56,6 +56,18 @@ public class RagProviderDockerApiIntegrationTests : IClassFixture<AgctorWebAppli
     }
 
     [Fact]
+    public async Task GetDockerStatus_Graphiti_ReturnsStatusShape()
+    {
+        var response = await _client.GetAsync("/api/rag-providers/docker/Graphiti");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("providerId").GetString().Should().Be(RagProviderIds.Graphiti);
+        json.GetProperty("serviceName").GetString().Should().Be("graphiti");
+        json.TryGetProperty("state", out _).Should().BeTrue();
+        json.TryGetProperty("composeFileFound", out _).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task GetDockerStatus_None_ReturnsNotApplicable()
     {
         var response = await _client.GetAsync("/api/rag-providers/docker/None");
@@ -70,15 +82,19 @@ public class RagProviderDockerApiIntegrationTests : IClassFixture<AgctorWebAppli
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Agctor:Rag:DefaultProvider"] = "LightRAG",
+                ["Agctor:Rag:DefaultProvider"] = "Graphiti",
                 ["Agctor:Rag:LightRAG:BaseUrl"] = "http://localhost:9999",
+                ["Agctor:Rag:Graphiti:BaseUrl"] = "http://localhost:8001",
+                ["Agctor:Rag:Graphiti:DefaultGroupId"] = "demo",
                 ["Agctor:Rag:Cognee:SearchType"] = "GRAPH_COMPLETION"
             })
             .Build();
 
         var options = RagProviderConfigBuilder.FromConfiguration(config);
-        options.DefaultProvider.Should().Be(RagProviderIds.LightRag);
+        options.DefaultProvider.Should().Be(RagProviderIds.Graphiti);
         options.LightRAG.BaseUrl.Should().Be("http://localhost:9999");
+        options.Graphiti.BaseUrl.Should().Be("http://localhost:8001");
+        options.Graphiti.DefaultGroupId.Should().Be("demo");
         options.Cognee.SearchType.Should().Be("GRAPH_COMPLETION");
     }
 

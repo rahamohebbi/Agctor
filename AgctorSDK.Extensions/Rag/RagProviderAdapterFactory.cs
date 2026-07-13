@@ -17,6 +17,7 @@ public sealed class RagProviderAdapterFactory : IRagProviderAdapterFactory
     {
         [RagProviderIds.None] = typeof(NullRagProviderAdapter),
         [RagProviderIds.LightRag] = typeof(LightRagProviderAdapter),
+        [RagProviderIds.Graphiti] = typeof(GraphitiProviderAdapter),
         [RagProviderIds.Cognee] = typeof(CogneeProviderAdapter)
     };
 

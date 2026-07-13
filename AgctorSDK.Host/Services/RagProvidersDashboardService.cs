@@ -97,12 +97,14 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
 
         var configured = BuildConfiguredDto();
         var light = body.LightRAG ?? configured.LightRAG;
+        var graphiti = body.Graphiti ?? configured.Graphiti;
         var cognee = body.Cognee ?? configured.Cognee;
 
         await _userSettings.PersistAsync(new RagSettingsUpdate
         {
             DefaultProvider = canonical,
             LightRAG = MapLightRagOptions(light),
+            Graphiti = MapGraphitiOptions(graphiti),
             Cognee = MapCogneeOptions(cognee)
         }, cancellationToken).ConfigureAwait(false);
 
@@ -384,6 +386,13 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
                 DefaultMode = options.LightRAG.DefaultMode.ToString(),
                 Transport = options.LightRAG.Transport.ToString()
             },
+            Graphiti = new GraphitiProviderConfigDto
+            {
+                BaseUrl = options.Graphiti.BaseUrl,
+                ApiKey = options.Graphiti.ApiKey,
+                DefaultGroupId = options.Graphiti.DefaultGroupId,
+                Transport = options.Graphiti.Transport.ToString()
+            },
             Cognee = new CogneeProviderConfigDto
             {
                 BaseUrl = options.Cognee.BaseUrl,
@@ -431,6 +440,7 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         RagProviderIds.Normalize(providerId) switch
         {
             RagProviderIds.LightRag => configured.LightRAG.Transport,
+            RagProviderIds.Graphiti => configured.Graphiti.Transport,
             RagProviderIds.Cognee => configured.Cognee.Transport,
             _ => "None"
         };
@@ -448,6 +458,14 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         BaseUrl = dto.BaseUrl?.Trim() ?? "http://127.0.0.1:9621",
         ApiKey = dto.ApiKey ?? "",
         DefaultMode = Enum.TryParse<RagQueryMode>(dto.DefaultMode, true, out var mode) ? mode : RagQueryMode.Hybrid,
+        Transport = Enum.TryParse<RagTransportKind>(dto.Transport, true, out var transport) ? transport : RagTransportKind.Rest
+    };
+
+    private static GraphitiProviderOptions MapGraphitiOptions(GraphitiProviderConfigDto dto) => new()
+    {
+        BaseUrl = dto.BaseUrl?.Trim() ?? "http://127.0.0.1:8001",
+        ApiKey = dto.ApiKey ?? "",
+        DefaultGroupId = string.IsNullOrWhiteSpace(dto.DefaultGroupId) ? "agctor" : dto.DefaultGroupId.Trim(),
         Transport = Enum.TryParse<RagTransportKind>(dto.Transport, true, out var transport) ? transport : RagTransportKind.Rest
     };
 
@@ -496,6 +514,9 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
                 ? "LightRAG returned no chunks. Run Ingest data first. If you ingested before Ollama models were ready, click Ingest again or reprocess failed docs in LightRAG."
                 : $"LightRAG returned no chunks: {detail}";
         }
+
+        if (canonical == RagProviderIds.Graphiti)
+            return "Graphiti returned no facts. Run Ingest data first and wait for episode processing (async queue). Check OPENAI_API_KEY / Neo4j in graphiti.env.";
 
         if (canonical == RagProviderIds.Cognee)
             return "Cognee returned no chunks. Run Ingest data first and wait for graph extraction to finish. Dashboard test queries use CHUNKS (fast retrieval); switch Search type to RAG_COMPLETION in settings for full LLM answers.";

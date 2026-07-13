@@ -35,6 +35,17 @@ public static class RagProviderCatalog
             RequiresDocker: true,
             DefaultTransport: RagTransportKind.Rest),
         new RagProviderDescriptor(
+            Id: RagProviderIds.Graphiti,
+            DisplayName: "Graphiti",
+            Maturity: "supported",
+            Summary: "Temporal knowledge-graph RAG via Graphiti REST API (Docker sidecar on port 8001 + Neo4j).",
+            Limitations: "Needs Neo4j companion container and an LLM key (OpenAI or Ollama via OPENAI_BASE_URL in graphiti.env).",
+            DeploymentNotes: "docker/rag-providers service graphiti (pulls graphiti-db). REST to http://127.0.0.1:8001.",
+            Capabilities: new[] { "local_docker", "graph", "temporal", "agent_memory", "rest" },
+            ContextStrategies: new[] { "rag", "graph_rag" },
+            RequiresDocker: true,
+            DefaultTransport: RagTransportKind.Rest),
+        new RagProviderDescriptor(
             Id: RagProviderIds.Cognee,
             DisplayName: "Cognee",
             Maturity: "experimental",

@@ -1,5 +1,5 @@
 /**
- * Reusable terminal command panel: preset picker, editable command, Run + live progress output.
+ * Reusable terminal command panel: preset picker, editable command, Run + live SSE output.
  */
 (function () {
     function initPanel(root) {
@@ -18,7 +18,7 @@
         var exitEl = root.querySelector('.terminal-command-exit');
         var stdoutEl = root.querySelector('.terminal-command-stdout');
         var stderrEl = root.querySelector('.terminal-command-stderr');
-        var runUrl = '/api/terminal/run';
+        var streamUrl = '/api/terminal/run/stream';
 
         if (preset && input) {
             preset.addEventListener('change', function () {
@@ -48,6 +48,7 @@
 
                 var tickTimer = null;
                 var started = Date.now();
+                var live = { stdout: '', stderr: '' };
 
                 runBtn.disabled = true;
                 setRunning(true, runBtn, runLabel, spinner);
@@ -61,14 +62,17 @@
                         var hint = getDockerWaitHint(command);
                         progressEl.textContent = hint
                             ? hint + ' (' + secs + 's elapsed)'
-                            : 'Waiting for docker… (' + secs + 's elapsed)';
+                            : 'Streaming docker output… (' + secs + 's elapsed)';
                     }
                 }, 1000);
 
                 try {
-                    var res = await fetch(runUrl, {
+                    var res = await fetch(streamUrl, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'text/event-stream'
+                        },
                         body: JSON.stringify({
                             command: command,
                             contextKey: root.getAttribute('data-context-key') || null,
@@ -76,19 +80,35 @@
                         })
                     });
 
-                    var payload = await res.json().catch(function () { return {}; });
-                    var elapsed = Math.max(1, Math.floor((Date.now() - started) / 1000));
-
                     if (!res.ok) {
-                        var errMsg = payload.message || payload.Message || res.statusText;
-                        setStatus(statusEl, 'Failed after ' + elapsed + 's');
+                        var errPayload = await res.json().catch(function () { return {}; });
+                        var errMsg = errPayload.message || errPayload.Message || res.statusText;
+                        var elapsedFail = Math.max(1, Math.floor((Date.now() - started) / 1000));
+                        setStatus(statusEl, 'Failed after ' + elapsedFail + 's');
                         finishOutput(outputWrap, progressEl, exitEl, stdoutEl, stderrEl, '', errMsg, null, false);
                         return;
                     }
 
-                    var ok = payload.success === true;
-                    var exitCode = payload.exitCode != null ? payload.exitCode : (payload.ExitCode != null ? payload.ExitCode : (ok ? 0 : 1));
-                    var msg = payload.message || payload.Message || (ok ? 'Done.' : 'Failed.');
+                    var finalEvt = await consumeSseStream(res, function (evt) {
+                        if (evt.type === 'stdout' && evt.text) {
+                            live.stdout += evt.text;
+                            renderLive(stdoutEl, stderrEl, command, live);
+                        } else if (evt.type === 'stderr' && evt.text) {
+                            live.stderr += evt.text;
+                            renderLive(stdoutEl, stderrEl, command, live);
+                        }
+                    });
+
+                    var elapsed = Math.max(1, Math.floor((Date.now() - started) / 1000));
+                    var ok = finalEvt && finalEvt.success === true;
+                    var exitCode = finalEvt && finalEvt.exitCode != null ? finalEvt.exitCode : (ok ? 0 : 1);
+                    var msg = (finalEvt && (finalEvt.message || finalEvt.Message)) || (ok ? 'Done.' : 'Failed.');
+
+                    if (finalEvt && finalEvt.type === 'error') {
+                        ok = false;
+                        if (finalEvt.message) live.stderr += (live.stderr ? '\n' : '') + finalEvt.message;
+                    }
+
                     setStatus(statusEl, ok ? ('Done in ' + elapsed + 's') : ('Failed in ' + elapsed + 's'));
                     finishOutput(
                         outputWrap,
@@ -96,8 +116,8 @@
                         exitEl,
                         stdoutEl,
                         stderrEl,
-                        payload.stdOut || payload.stdout || '',
-                        payload.stdErr || payload.stderr || '',
+                        live.stdout,
+                        live.stderr,
                         exitCode,
                         ok
                     );
@@ -105,7 +125,6 @@
                         setStatus(statusEl, msg);
                     }
 
-                    // Tell the dashboard to refresh Docker state after compose commands.
                     document.dispatchEvent(new CustomEvent('agctor-docker-changed', {
                         detail: {
                             contextKey: root.getAttribute('data-context-key') || null,
@@ -125,6 +144,73 @@
         }
     }
 
+    /** Read SSE `data: {json}` frames from a fetch Response body. */
+    async function consumeSseStream(res, onEvent) {
+        if (!res.body || !res.body.getReader) {
+            throw new Error('Streaming response body is not available in this browser.');
+        }
+
+        var reader = res.body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var lastDone = null;
+
+        while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, { stream: true });
+
+            var parts = buffer.split('\n\n');
+            buffer = parts.pop() || '';
+
+            for (var i = 0; i < parts.length; i++) {
+                var frame = parts[i];
+                if (!frame || frame.charAt(0) === ':') continue;
+                var lines = frame.split('\n');
+                var dataLines = [];
+                for (var j = 0; j < lines.length; j++) {
+                    var line = lines[j];
+                    if (line.indexOf('data:') === 0) {
+                        dataLines.push(line.slice(5).replace(/^\s/, ''));
+                    }
+                }
+                if (!dataLines.length) continue;
+
+                var raw = dataLines.join('\n');
+                var evt;
+                try {
+                    evt = JSON.parse(raw);
+                } catch (e) {
+                    continue;
+                }
+
+                if (evt.type === 'done' || evt.type === 'error') {
+                    lastDone = evt;
+                }
+                onEvent(evt);
+            }
+        }
+
+        return lastDone;
+    }
+
+    function renderLive(stdoutEl, stderrEl, command, live) {
+        if (stdoutEl) {
+            var out = live.stdout && live.stdout.trim()
+                ? live.stdout
+                : '(streaming… docker often prints progress on stderr)';
+            stdoutEl.textContent = '$ ' + command + '\n\n' + out;
+            stdoutEl.scrollTop = stdoutEl.scrollHeight;
+        }
+        if (stderrEl) {
+            if (live.stderr && live.stderr.trim()) {
+                stderrEl.textContent = live.stderr;
+                stderrEl.classList.remove('hidden');
+                stderrEl.scrollTop = stderrEl.scrollHeight;
+            }
+        }
+    }
+
     function setRunning(isRunning, btn, label, spinner) {
         if (label) label.textContent = isRunning ? 'Running…' : 'Run';
         if (spinner) spinner.classList.toggle('hidden', !isRunning);
@@ -135,17 +221,20 @@
         if (el) el.textContent = text;
     }
 
-    /** First-time image pulls can take several minutes; docker compose does not stream progress to the browser. */
+    /** First-time image pulls can take several minutes; progress streams live into the panel. */
     function getDockerWaitHint(command) {
         var cmd = (command || '').toLowerCase();
         if (cmd.indexOf('cognee-mcp') >= 0 && (cmd.indexOf(' pull') >= 0 || cmd.indexOf(' up ') >= 0)) {
             return 'Downloading/starting Cognee MCP (~6 GB on first pull; often 2–5 min)';
         }
+        if (cmd.indexOf('graphiti') >= 0 && (cmd.indexOf(' pull') >= 0 || cmd.indexOf(' up ') >= 0)) {
+            return 'Downloading/starting Graphiti + Neo4j (first pull can take 2–4 min)';
+        }
         if (cmd.indexOf('lightrag') >= 0 && (cmd.indexOf(' pull') >= 0 || cmd.indexOf(' up ') >= 0)) {
             return 'Downloading/starting LightRAG (first pull can take 1–3 min)';
         }
         if (cmd.indexOf(' pull') >= 0) {
-            return 'Pulling Docker image(s) — no live progress until complete';
+            return 'Pulling Docker image(s) — live progress below';
         }
         if (cmd.indexOf(' up ') >= 0 || cmd.indexOf(' up -d') >= 0) {
             return 'Starting Docker service(s)';
@@ -161,7 +250,7 @@
             progressEl.classList.remove('hidden');
         }
         if (exitEl) exitEl.textContent = '';
-        stdoutEl.textContent = '$ ' + command + '\n\n(executing…)';
+        stdoutEl.textContent = '$ ' + command + '\n\n(streaming…)';
         if (stderrEl) {
             stderrEl.textContent = '';
             stderrEl.classList.add('hidden');

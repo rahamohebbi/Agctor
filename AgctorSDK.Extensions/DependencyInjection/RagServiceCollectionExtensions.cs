@@ -15,7 +15,7 @@ namespace AgctorSDK.Extensions.DependencyInjection;
 public static class RagServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds <see cref="IRagProviderAdapterFactory"/> and v1 provider adapters (None, LightRAG, Cognee).
+    /// Adds <see cref="IRagProviderAdapterFactory"/> and v1 provider adapters (None, LightRAG, Graphiti, Cognee).
     /// </summary>
     public static IServiceCollection AddAgctorRagProviders(
         this IServiceCollection services,
@@ -42,6 +42,7 @@ public static class RagServiceCollectionExtensions
 
         services.TryAddSingleton<NullRagProviderAdapter>();
         services.TryAddSingleton<LightRagProviderAdapter>();
+        services.TryAddSingleton<GraphitiProviderAdapter>();
         services.TryAddSingleton<CogneeProviderAdapter>();
         services.TryAddSingleton<IRagProviderAdapterFactory, RagProviderAdapterFactory>();
         services.TryAddSingleton<AgctorSDK.Core.ProjectMemory.Rag.RagContextService>();

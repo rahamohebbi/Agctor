@@ -22,6 +22,7 @@ public sealed class ConfiguredRagProviderDto
 {
     public string DefaultProvider { get; set; } = null!;
     public LightRagProviderConfigDto LightRAG { get; set; } = new();
+    public GraphitiProviderConfigDto Graphiti { get; set; } = new();
     public CogneeProviderConfigDto Cognee { get; set; } = new();
 }
 
@@ -31,6 +32,15 @@ public sealed class LightRagProviderConfigDto
     public string BaseUrl { get; set; } = "http://127.0.0.1:9621";
     public string ApiKey { get; set; } = "";
     public string DefaultMode { get; set; } = "Hybrid";
+    public string Transport { get; set; } = "Rest";
+}
+
+/// <summary>Graphiti REST settings for dashboard forms.</summary>
+public sealed class GraphitiProviderConfigDto
+{
+    public string BaseUrl { get; set; } = "http://127.0.0.1:8001";
+    public string ApiKey { get; set; } = "";
+    public string DefaultGroupId { get; set; } = "agctor";
     public string Transport { get; set; } = "Rest";
 }
 
@@ -78,6 +88,7 @@ public sealed class UpdateRagProviderSelectionDto
 {
     public string DefaultProvider { get; set; } = null!;
     public LightRagProviderConfigDto? LightRAG { get; set; }
+    public GraphitiProviderConfigDto? Graphiti { get; set; }
     public CogneeProviderConfigDto? Cognee { get; set; }
 }
 

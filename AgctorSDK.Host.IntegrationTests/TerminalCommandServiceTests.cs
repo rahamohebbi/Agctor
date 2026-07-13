@@ -58,4 +58,13 @@ public class TerminalCommandServiceTests
         presets.Should().Contain(p => p.Command.Contains("lightrag", StringComparison.OrdinalIgnoreCase));
         presets.Should().Contain(p => p.Command.Contains("docker/rag-providers/docker-compose.yml", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void Graphiti_presets_use_rag_compose_path()
+    {
+        var presets = _svc.GetPresets("rag-provider", "Graphiti");
+        presets.Should().NotBeEmpty();
+        presets.Should().Contain(p => p.Command.Contains("graphiti", StringComparison.OrdinalIgnoreCase));
+        presets.Should().Contain(p => p.Command.Contains("docker/rag-providers/docker-compose.yml", StringComparison.OrdinalIgnoreCase));
+    }
 }

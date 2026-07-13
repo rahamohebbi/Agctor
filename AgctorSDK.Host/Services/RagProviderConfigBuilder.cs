@@ -14,6 +14,10 @@ public static class RagProviderConfigBuilder
         options.DefaultProvider = RagProviderIds.Normalize(options.DefaultProvider);
         if (string.IsNullOrWhiteSpace(options.LightRAG.BaseUrl))
             options.LightRAG.BaseUrl = "http://127.0.0.1:9621";
+        if (string.IsNullOrWhiteSpace(options.Graphiti.BaseUrl))
+            options.Graphiti.BaseUrl = "http://127.0.0.1:8001";
+        if (string.IsNullOrWhiteSpace(options.Graphiti.DefaultGroupId))
+            options.Graphiti.DefaultGroupId = "agctor";
         if (string.IsNullOrWhiteSpace(options.Cognee.BaseUrl))
             options.Cognee.BaseUrl = "http://127.0.0.1:8000";
         if (string.IsNullOrWhiteSpace(options.Cognee.McpPath))

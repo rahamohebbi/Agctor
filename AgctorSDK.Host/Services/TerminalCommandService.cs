@@ -16,6 +16,15 @@ public interface ITerminalCommandService
     string GetDefaultCommand(string contextType, string? contextKey);
     bool TryValidate(string command, out string? error);
     Task<RunTerminalCommandResponseDto> RunAsync(string command, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs a validated command and pushes stdout/stderr chunks as they arrive (for SSE).
+    /// Invokes <paramref name="onChunk"/> with channel "stdout" or "stderr".
+    /// </summary>
+    Task<RunTerminalCommandResponseDto> RunStreamingAsync(
+        string command,
+        Func<string, string, CancellationToken, Task> onChunk,
+        CancellationToken cancellationToken = default);
 }
 
 /// <inheritdoc />
@@ -163,6 +172,33 @@ public sealed class TerminalCommandService : ITerminalCommandService
     /// <inheritdoc />
     public async Task<RunTerminalCommandResponseDto> RunAsync(string command, CancellationToken cancellationToken = default)
     {
+        var stdout = new System.Text.StringBuilder();
+        var stderr = new System.Text.StringBuilder();
+        var result = await RunStreamingAsync(
+            command,
+            (channel, text, _) =>
+            {
+                if (string.Equals(channel, "stderr", StringComparison.Ordinal))
+                    stderr.Append(text);
+                else
+                    stdout.Append(text);
+                return Task.CompletedTask;
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        result.StdOut = stdout.Length > 0 ? stdout.ToString() : null;
+        result.StdErr = stderr.Length > 0 ? stderr.ToString() : result.StdErr;
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<RunTerminalCommandResponseDto> RunStreamingAsync(
+        string command,
+        Func<string, string, CancellationToken, Task> onChunk,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(onChunk);
+
         if (!TryValidate(command, out var validationError))
         {
             return new RunTerminalCommandResponseDto
@@ -194,17 +230,19 @@ public sealed class TerminalCommandService : ITerminalCommandService
 
         try
         {
-            var (success, stdout, stderr, exitCode) = await RunProcessAsync("docker", arguments, repoRoot, timeoutCts.Token)
+            var (success, exitCode, stderrTail) = await RunProcessStreamingAsync(
+                    "docker",
+                    arguments,
+                    repoRoot,
+                    onChunk,
+                    timeoutCts.Token)
                 .ConfigureAwait(false);
 
-            var detail = BuildResultMessage(success, exitCode, stderr);
             return new RunTerminalCommandResponseDto
             {
                 Success = success,
                 ExitCode = exitCode,
-                Message = detail,
-                StdOut = stdout,
-                StdErr = stderr
+                Message = BuildResultMessage(success, exitCode, stderrTail)
             };
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -257,10 +295,15 @@ public sealed class TerminalCommandService : ITerminalCommandService
     private static TerminalCommandPresetDto Preset(string id, string label, string command) =>
         new() { Id = id, Label = label, Command = command };
 
-    private static async Task<(bool Success, string? StdOut, string? StdErr, int ExitCode)> RunProcessAsync(
+    /// <summary>
+    /// Pumps stdout/stderr as chunks arrive so the dashboard can stream docker pull progress live.
+    /// Returns a short stderr tail for the final status message.
+    /// </summary>
+    private static async Task<(bool Success, int ExitCode, string? StdErrTail)> RunProcessStreamingAsync(
         string fileName,
         string arguments,
         string workingDirectory,
+        Func<string, string, CancellationToken, Task> onChunk,
         CancellationToken cancellationToken)
     {
         var psi = new System.Diagnostics.ProcessStartInfo
@@ -273,16 +316,52 @@ public sealed class TerminalCommandService : ITerminalCommandService
             CreateNoWindow = true,
             WorkingDirectory = workingDirectory
         };
+        // Prefer line-based progress when stdout/stderr are redirected (no TTY).
+        psi.Environment["COMPOSE_PROGRESS"] = "plain";
+        psi.Environment["DOCKER_CLI_HINTS"] = "false";
 
         using var process = System.Diagnostics.Process.Start(psi);
         if (process == null)
-            return (false, null, "Failed to start process.", -1);
+        {
+            await onChunk("stderr", "Failed to start process.", cancellationToken).ConfigureAwait(false);
+            return (false, -1, "Failed to start process.");
+        }
 
-        // Read stdout and stderr in parallel to avoid pipe buffer deadlocks.
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var stderrTail = new System.Text.StringBuilder();
+        var stdoutTask = PumpStreamAsync(process.StandardOutput, "stdout", onChunk, null, cancellationToken);
+        var stderrTask = PumpStreamAsync(process.StandardError, "stderr", onChunk, stderrTail, cancellationToken);
         await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        return (process.ExitCode == 0, stdoutTask.Result, stderrTask.Result, process.ExitCode);
+
+        var tail = stderrTail.Length > 0 ? stderrTail.ToString() : null;
+        return (process.ExitCode == 0, process.ExitCode, tail);
+    }
+
+    private static async Task PumpStreamAsync(
+        System.IO.StreamReader reader,
+        string channel,
+        Func<string, string, CancellationToken, Task> onChunk,
+        System.Text.StringBuilder? captureTail,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new char[1024];
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
+                .ConfigureAwait(false);
+            if (read <= 0)
+                break;
+
+            var text = new string(buffer, 0, read);
+            if (captureTail != null)
+            {
+                captureTail.Append(text);
+                // Keep only the last ~4 KB for the final status line.
+                if (captureTail.Length > 4096)
+                    captureTail.Remove(0, captureTail.Length - 4096);
+            }
+
+            await onChunk(channel, text, cancellationToken).ConfigureAwait(false);
+        }
     }
 }

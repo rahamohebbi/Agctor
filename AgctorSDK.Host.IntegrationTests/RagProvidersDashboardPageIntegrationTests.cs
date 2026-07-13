@@ -53,7 +53,7 @@ public class RagProvidersDashboardPageIntegrationTests : IClassFixture<AgctorWeb
         json.TryGetProperty("current", out var current).Should().BeTrue();
         json.TryGetProperty("configured", out _).Should().BeTrue();
         json.TryGetProperty("available", out var available).Should().BeTrue();
-        available.GetArrayLength().Should().BeGreaterThanOrEqualTo(3);
+        available.GetArrayLength().Should().BeGreaterThanOrEqualTo(4);
         current.GetProperty("providerId").GetString().Should().NotBeNullOrEmpty();
     }
 

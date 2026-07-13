@@ -20,6 +20,7 @@ RagContextService ──► IRagProviderAdapterFactory ──► IRagProviderAda
         │                        │
         │                        ├── NullRagProviderAdapter (None)
         │                        ├── LightRagProviderAdapter (REST)
+        │                        ├── GraphitiProviderAdapter (REST)
         │                        └── CogneeProviderAdapter (MCP HTTP)
         │
         └── fallback → markdown_focus + user-visible note when provider unavailable
@@ -49,6 +50,12 @@ Merged from `appsettings.json`, `appsettings.User.json`, and environment:
         "DefaultMode": "Hybrid",
         "Transport": "Rest"
       },
+      "Graphiti": {
+        "BaseUrl": "http://127.0.0.1:8001",
+        "ApiKey": "",
+        "DefaultGroupId": "agctor",
+        "Transport": "Rest"
+      },
       "Cognee": {
         "BaseUrl": "http://127.0.0.1:8000",
         "McpPath": "/mcp",
@@ -64,6 +71,7 @@ Merged from `appsettings.json`, `appsettings.User.json`, and environment:
 | --- | --- | --- | --- |
 | `None` | — | — | Markdown-only fallback |
 | `LightRAG` | `lightrag` | 9621 | REST |
+| `Graphiti` | `graphiti` (+ `graphiti-db`) | 8001 | REST |
 | `Cognee` | `cognee-mcp` | 8000 | MCP HTTP (`/mcp`) |
 
 ## REST API (`/api/rag-providers`)
@@ -86,7 +94,8 @@ Validated `docker compose` presets use context type **`rag-provider`** and compo
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/api/terminal/presets?contextType=rag-provider&contextKey=LightRAG` | Preset commands for a provider |
-| POST | `/api/terminal/run` | Run a validated docker compose command from repo root |
+| POST | `/api/terminal/run` | Run a validated docker compose command (buffered result) |
+| POST | `/api/terminal/run/stream` | Same, but SSE-streams stdout/stderr live (pull progress) |
 
 ## Project Memory integration
 
@@ -102,7 +111,7 @@ Optional LlmNode config keys:
 | Key | Purpose |
 | --- | --- |
 | `contextStrategy` | `markdown_all` \| `markdown_focus` \| `rag` \| `graph_rag` |
-| `ragProviderId` | Override catalog id (`LightRAG`, `Cognee`, `None`) |
+| `ragProviderId` | Override catalog id (`LightRAG`, `Graphiti`, `Cognee`, `None`) |
 | `ragCollectionId` | Dataset / collection passed to the provider |
 | `ragTopK` | Max chunks (default 8) |
 

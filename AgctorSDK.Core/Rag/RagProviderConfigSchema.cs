@@ -14,6 +14,7 @@ public static class RagProviderConfigSchema
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             RagProviderIds.LightRag,
+            RagProviderIds.Graphiti,
             RagProviderIds.Cognee
         };
 
@@ -23,6 +24,7 @@ public static class RagProviderConfigSchema
         return RagProviderIds.Normalize(providerId) switch
         {
             RagProviderIds.LightRag => "lightrag",
+            RagProviderIds.Graphiti => "graphiti",
             RagProviderIds.Cognee => "cognee-mcp",
             _ => null
         };
@@ -43,6 +45,17 @@ public static class RagProviderConfigSchema
                     "Maps to LightRAG query modes."),
                 new("Transport", "Transport", "select", "Rest", "Rest",
                     "v1 uses REST only; MCP bridge is optional later.")
+            ],
+            RagProviderIds.Graphiti =>
+            [
+                new("BaseUrl", "API base URL", "text", "http://127.0.0.1:8001", "http://127.0.0.1:8001",
+                    "Graphiti REST API root (Docker sidecar; Neo4j starts as dependency)."),
+                new("ApiKey", "API key", "password", "", null,
+                    "Optional gateway key; stock Graphiti REST does not require it."),
+                new("DefaultGroupId", "Default group id", "text", "agctor", "agctor",
+                    "Graphiti group_id when CollectionId / scenario id is blank."),
+                new("Transport", "Transport", "select", "Rest", "Rest",
+                    "v1 uses REST (/healthcheck, /search, /messages).")
             ],
             RagProviderIds.Cognee =>
             [

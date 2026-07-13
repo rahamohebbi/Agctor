@@ -49,6 +49,9 @@ public sealed class UserRagSettingsService : IUserRagSettingsService
         if (update.LightRAG != null)
             rag["LightRAG"] = JsonSerializer.SerializeToNode(update.LightRAG, JsonWriteOptions);
 
+        if (update.Graphiti != null)
+            rag["Graphiti"] = JsonSerializer.SerializeToNode(update.Graphiti, JsonWriteOptions);
+
         if (update.Cognee != null)
             rag["Cognee"] = JsonSerializer.SerializeToNode(update.Cognee, JsonWriteOptions);
 

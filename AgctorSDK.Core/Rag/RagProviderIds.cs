@@ -6,9 +6,10 @@ public static class RagProviderIds
     public const string None = "None";
     public const string LightRag = "LightRAG";
     public const string Cognee = "Cognee";
+    public const string Graphiti = "Graphiti";
 
     /// <summary>Factory/catalog ids in display order.</summary>
-    public static readonly IReadOnlyList<string> All = new[] { None, LightRag, Cognee };
+    public static readonly IReadOnlyList<string> All = new[] { None, LightRag, Graphiti, Cognee };
 
     /// <summary>Maps aliases to canonical ids; returns None when blank.</summary>
     public static string Normalize(string? providerId)
@@ -30,6 +31,11 @@ public static class RagProviderIds
         if (t.Equals(Cognee, StringComparison.OrdinalIgnoreCase)
             || t.Equals("cognee-mcp", StringComparison.OrdinalIgnoreCase))
             return Cognee;
+
+        if (t.Equals(Graphiti, StringComparison.OrdinalIgnoreCase)
+            || t.Equals("graphiti-rest", StringComparison.OrdinalIgnoreCase)
+            || t.Equals("zep-graphiti", StringComparison.OrdinalIgnoreCase))
+            return Graphiti;
 
         return t;
     }

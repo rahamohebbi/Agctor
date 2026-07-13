@@ -13,5 +13,6 @@ public sealed class RagSettingsUpdate
 {
     public string DefaultProvider { get; set; } = RagProviderIds.None;
     public LightRagProviderOptions? LightRAG { get; set; }
+    public GraphitiProviderOptions? Graphiti { get; set; }
     public CogneeProviderOptions? Cognee { get; set; }
 }

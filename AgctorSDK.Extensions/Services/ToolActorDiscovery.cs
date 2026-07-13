@@ -102,7 +102,7 @@ public static class ToolActorDiscovery
                     ["projectRoot"] = "string optional — defaults to Agctor:ProjectMemory:ProjectRoot",
                     ["scenarioId"] = "string optional",
                     ["contextStrategy"] = "markdown_all | markdown_focus | rag | graph_rag",
-                    ["ragProviderId"] = "optional override: LightRAG | Cognee | None",
+                    ["ragProviderId"] = "optional override: LightRAG | Graphiti | Cognee | None",
                     ["ragCollectionId"] = "optional dataset / collection id",
                     ["ragTopK"] = "optional chunk limit (default 8)",
                     ["userMessage"] = "string — used for markdown_focus inference",
