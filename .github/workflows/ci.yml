@@ -13,6 +13,7 @@ jobs:
   build-test:
     name: Build and test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       DOTNET_NOLOGO: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -43,4 +44,7 @@ jobs:
           --filter "TestCategory!=RequiresOllama"
 
       - name: Host integration tests
-        run: dotnet test AgctorSDK.Host.IntegrationTests --no-build --configuration Release --verbosity normal
+        run: >
+          dotnet test AgctorSDK.Host.IntegrationTests
+          --no-build --configuration Release --verbosity normal
+          --blame-hang-timeout 1m

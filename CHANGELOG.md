@@ -18,6 +18,8 @@ are tagged.
 - Safer MCP default bind address (`127.0.0.1`) so the listener is not exposed on
   all interfaces by accident.
 - Direct `System.Text.Json` 8.0.5 reference to pick up high-severity JSON fixes.
+- MCP accept loop honors shutdown cancellation so Host integration tests do not
+  hang testhost in CI. HTTP tests disable the TCP listener (`Mcp:Enabled=false`).
 
 ### Changed
 

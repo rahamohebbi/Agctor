@@ -140,6 +140,7 @@ Configure via `appsettings.json`:
 ```json
 {
   "Mcp": {
+    "Enabled": true,
     "Host": "127.0.0.1",
     "Port": 8080
   },

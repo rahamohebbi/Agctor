@@ -17,7 +17,6 @@ namespace AgctorSDK.Host.IntegrationTests
     {
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
-        private static int _portCounter = 9080; // Different base port from AgentsController
 
         public ToolsControllerIntegrationTests(WebApplicationFactory<Program> factory)
         {
@@ -25,11 +24,9 @@ namespace AgctorSDK.Host.IntegrationTests
             {
                 builder.ConfigureAppConfiguration((context, config) =>
                 {
-                    // Use a unique port for each test to avoid conflicts
-                    var uniquePort = Interlocked.Increment(ref _portCounter);
                     config.AddInMemoryCollection(new[]
                     {
-                        new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                        new KeyValuePair<string, string?>("Mcp:Enabled", "false")
                     });
                 });
             });

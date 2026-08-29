@@ -22,7 +22,6 @@ namespace AgctorSDK.Host.IntegrationTests
     {
         private readonly WebApplicationFactory<Program> _factory;
         private WebApplicationFactory<Program>? _serverFactory;
-        private static int _portCounter = 10080; // Legacy counter, unused in dynamic mode but kept for uniqueness fallback
         private int _mcpPort;
         private TcpClient? _testClient;
 
@@ -43,6 +42,8 @@ namespace AgctorSDK.Host.IntegrationTests
                     // Request an ephemeral port
                     config.AddInMemoryCollection(new[]
                     {
+                        new KeyValuePair<string, string?>("Mcp:Enabled", "true"),
+                        new KeyValuePair<string, string?>("Mcp:Host", "127.0.0.1"),
                         new KeyValuePair<string, string?>("Mcp:Port", "0")
                     });
                 });

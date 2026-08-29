@@ -48,57 +48,71 @@ namespace AgctorSDK.Host.Mcp
         /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            // HTTP-only hosts (integration tests, some deployments) can turn the TCP listener off.
+            if (!_configuration.GetValue("Mcp:Enabled", true))
+            {
+                _logger.LogInformation("MCP listener disabled (Mcp:Enabled=false)");
+                return;
+            }
+
             _logger.LogInformation("Starting MCP listener...");
 
             try
             {
-                // Get configuration (log values for diagnostics)
                 var port = _configuration.GetValue<int>("Mcp:Port", DefaultPort);
                 var host = _configuration.GetValue<string>("Mcp:Host") ?? DefaultHost;
 
                 _logger.LogDebug("MCP listener resolved configuration Host={Host} Port={Port}", host, port);
 
-                // Start TCP listener
                 var ipAddress = IPAddress.Parse(host);
                 _tcpListener = new TcpListener(ipAddress, port);
                 _tcpListener.Start();
 
-                // Store the real bound endpoint so integration tests can discover it
                 _endpointInfo.Host = host;
                 _endpointInfo.Port = ((_tcpListener.LocalEndpoint as System.Net.IPEndPoint)?.Port) ?? port;
 
                 _logger.LogInformation("MCP listener started on {Host}:{Port}", host, port);
 
-                // Accept connections until cancellation is requested
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     try
                     {
-                        var tcpClient = await _tcpListener.AcceptTcpClientAsync();
-                        _logger.LogInformation("New MCP client connected from {RemoteEndpoint}", 
+                        // Pass stoppingToken so Linux CI shutdown unblocks accept instead of hanging.
+                        var tcpClient = await _tcpListener.AcceptTcpClientAsync(stoppingToken);
+                        _logger.LogInformation("New MCP client connected from {RemoteEndpoint}",
                             tcpClient.Client.RemoteEndPoint);
 
-                        // Handle each client connection independently (Actor Model isolation)
                         var clientConnection = new McpClientConnection(tcpClient, _messageDispatcher, _logger);
                         lock (_connectionLock)
                         {
                             _activeConnections.Add(clientConnection);
                         }
 
-                        // Start handling the client in the background
                         _ = Task.Run(async () => await HandleClientAsync(clientConnection, stoppingToken), stoppingToken);
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
                     }
                     catch (ObjectDisposedException)
                     {
-                        // Expected when shutting down
+                        break;
+                    }
+                    catch (SocketException ex) when (stoppingToken.IsCancellationRequested
+                        || ex.SocketErrorCode is SocketError.OperationAborted or SocketError.Interrupted)
+                    {
                         break;
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error accepting MCP client connection");
-                        await Task.Delay(1000, stoppingToken); // Brief delay before retrying
+                        await Task.Delay(1000, stoppingToken);
                     }
                 }
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Normal host shutdown.
             }
             catch (Exception ex)
             {

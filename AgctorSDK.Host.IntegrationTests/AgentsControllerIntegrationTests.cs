@@ -18,7 +18,6 @@ namespace AgctorSDK.Host.IntegrationTests
     {
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
-        private static int _portCounter = 8080;
 
         public AgentsControllerIntegrationTests(WebApplicationFactory<Program> factory)
         {
@@ -26,11 +25,10 @@ namespace AgctorSDK.Host.IntegrationTests
             {
                 builder.ConfigureAppConfiguration((context, config) =>
                 {
-                    // Use a unique port for each test to avoid conflicts
-                    var uniquePort = Interlocked.Increment(ref _portCounter);
+                    // HTTP tests do not need the TCP listener; leaving it on hangs testhost shutdown in CI.
                     config.AddInMemoryCollection(new[]
                     {
-                        new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                        new KeyValuePair<string, string?>("Mcp:Enabled", "false")
                     });
                 });
             });
