@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <!-- Language executors live in this assembly, not Core. -->
-    <PackageReference Include="IronPython" Version="3.4.1" />
+    <PackageReference Include="IronPython" Version="3.4.2" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
 
