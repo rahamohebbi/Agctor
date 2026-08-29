@@ -17,6 +17,7 @@ are tagged.
 - GitHub Actions CI that builds the solution and runs unit plus integration tests.
 - Safer MCP default bind address (`127.0.0.1`) so the listener is not exposed on
   all interfaces by accident.
+- Direct `System.Text.Json` 8.0.5 reference to pick up high-severity JSON fixes.
 
 ### Changed
 

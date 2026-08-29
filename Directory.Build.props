@@ -22,5 +22,12 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>direct</NuGetAuditMode>
   </PropertyGroup>
+
+  <!-- Force a patched System.Text.Json onto every project (GHSA-hh2w-p6rv-4g7w / GHSA-8g4q-xg66-9fp4). -->
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
 </Project>

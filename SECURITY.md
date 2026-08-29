@@ -42,6 +42,11 @@ Recommended defaults:
 - Do not wire code-execution or filesystem tools to agents that accept untrusted prompts without a sandbox you own.
 - Keep Swagger and CORS (`AllowAll`) limited to development.
 
+`OpenTelemetry.Api` / Zipkin / Jaeger exporters currently carry moderate advisories.
+Fixing the API/Zipkin issues requires OpenTelemetry 1.15.3+, which is a breaking
+jump from 1.6.0 and is left for a follow-up. Prefer OTLP over the last Jaeger
+exporter (1.5.1). Dependabot is enabled for remaining package updates.
+
 ## Secrets
 
 Never commit API keys, connection strings, or `appsettings.*.local.json`. Use
