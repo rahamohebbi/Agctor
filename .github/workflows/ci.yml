@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Agctor.sln
+
+      - name: Build
+        run: dotnet build Agctor.sln --no-restore --configuration Release
+
+      - name: Unit tests
+        run: dotnet test AgctorSDK.Core.Tests --no-build --configuration Release --verbosity normal
+
+      - name: Core integration tests (no Ollama)
+        run: >
+          dotnet test AgctorSDK.Core.IntegrationTests
+          --no-build --configuration Release --verbosity normal
+          --filter "TestCategory!=RequiresOllama"
+
+      - name: Host integration tests
+        run: dotnet test AgctorSDK.Host.IntegrationTests --no-build --configuration Release --verbosity normal

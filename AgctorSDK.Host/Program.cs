@@ -18,17 +18,13 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "HTTP + MCP Integration Gateway for the AGCTOR Agent Framework"
     });
-    
-    // Enable XML documentation for better Swagger docs
-    // Commented out for now as XML file might not exist
-    /*
+
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
     {
-        c.IncludeXmlComments(xmlPath);
+        c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
     }
-    */
 });
 
 // Configure agent types
@@ -56,7 +52,7 @@ builder.Services.AddHostedService<McpListener>();
 // Register endpoint info so tests can discover chosen port when 0 is used
 builder.Services.AddSingleton<AgctorSDK.Host.Models.McpEndpointInfo>();
 
-// Add CORS for development
+// Wide-open CORS is development-only; do not enable AllowAll in production.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>

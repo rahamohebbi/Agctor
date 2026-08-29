@@ -34,6 +34,7 @@ namespace AgctorSDK.Core.IntegrationTests
     }
 
     [TestClass]
+    [TestCategory("RequiresOllama")]
     public class EndToEndTests
     {
         private const string OllamaUrl = "http://localhost:11434";

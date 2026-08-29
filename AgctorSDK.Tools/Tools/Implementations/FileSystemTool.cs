@@ -11,7 +11,11 @@ using AgctorSDK.Core.Tools.Models;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
-    // TODO: Add security checks for file system access.
+    /// <summary>
+    /// File read/write tool actor. Paths are not sandboxed: this tool can touch any
+    /// location the process can access. Inject a rooted <see cref="IFileSystem"/> or
+    /// only host it in trusted environments. See SECURITY.md.
+    /// </summary>
     public class FileSystemTool : BaseActor, IToolActor
     {
         private readonly IFileSystem _fileSystem;

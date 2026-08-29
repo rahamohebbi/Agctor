@@ -13,6 +13,7 @@ using AgctorSDK.Core.IntegrationTests.TestHelpers;
 namespace AgctorSDK.Core.IntegrationTests
 {
     [TestClass]
+    [TestCategory("RequiresOllama")]
     public class LLMAgentIntegrationTests
     {
         private const string OllamaUrl = "http://localhost:11434";

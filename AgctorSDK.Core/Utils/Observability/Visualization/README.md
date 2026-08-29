@@ -150,16 +150,5 @@ The system currently supports:
 
 ## Demo
 
-To see the visualization layer in action, run the visualization demo:
-
-```csharp
-await VisualizationDemo.RunVisualizationDemoAsync();
-```
-
-This will:
-
-1. Create a sample agent hierarchy
-2. Generate visualizations for the hierarchy
-3. Create a mock message flow
-4. Save an HTML file with the visualizations
-5. Provide links to external trace viewers 
+Run the projects under `Demo/Visualization` and `Demo/VisualizationExample`
+to generate HTML diagrams from live agent traces. 

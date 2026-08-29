@@ -85,13 +85,8 @@ File.WriteAllText("visualization.html",
 
 ### Run the Visualization Demo
 
-To see a demonstration of the visualization features:
-
-```csharp
-await VisualizationDemo.RunVisualizationDemoAsync();
-```
-
-This will generate example visualizations and save them to an HTML file.
+See `Demo/Visualization` and `Demo/VisualizationExample` for runnable samples
+that write HTML diagrams from live traces.
 
 ## Understanding the Visualizations
 

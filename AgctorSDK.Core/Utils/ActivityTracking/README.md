@@ -145,12 +145,7 @@ services.AddAgctorOpenTelemetryTracking(options =>
 5. Record exceptions when they occur
 6. Use the `using` statement with activities to ensure they are properly disposed
 
-## Demo
+## Example
 
-The `ActivityTrackingDemo` class provides a complete demonstration of how to use the activity tracking system with both the logger-based and OpenTelemetry-based implementations.
-
-To run the demo:
-
-```csharp
-await ActivityTrackingDemo.RunActivityTrackingDemoAsync();
-``` 
+See `Examples/ActivityTrackingExample.cs` in this folder and the apps under `Demo/`
+for end-to-end tracing. 
