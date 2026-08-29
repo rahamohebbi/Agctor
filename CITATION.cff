@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+title: Agctor
+message: If you use Agctor, please cite it using these metadata.
+type: software
+authors:
+  - family-names: Mohebbi
+    given-names: Raha
+    email: rahamohebbi@gmail.com
+repository-code: https://github.com/rahamohebbi/Agctor
+license: Apache-2.0
+abstract: >-
+  A .NET actor-model framework for building agentic systems with
+  pluggable runtimes, LLM agents, tools, and HTTP/MCP hosting.
+keywords:
+  - actor-model
+  - agents
+  - llm
+  - dotnet
+  - mcp
+version: 0.1.0
+date-released: "2026-08-29"

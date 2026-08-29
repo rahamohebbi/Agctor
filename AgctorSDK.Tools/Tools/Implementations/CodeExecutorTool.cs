@@ -13,6 +13,11 @@ using AgctorSDK.Core.Tools.LanguageExecutors;
 
 namespace AgctorSDK.Core.Tools.Implementations
 {
+    /// <summary>
+    /// Compiles and runs C# (Roslyn) and Python (IronPython) in the host process.
+    /// There is no OS-level sandbox — do not expose this tool to untrusted input.
+    /// See SECURITY.md.
+    /// </summary>
     public class CodeExecutorTool : Agent, IToolActor
     {
         private readonly IFileSystem _fileSystem;

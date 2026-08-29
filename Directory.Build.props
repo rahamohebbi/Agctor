@@ -1,0 +1,26 @@
+<Project>
+  <!-- Shared build, package, and license metadata for every project in the repo. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Default: apps, tests, and demos are not published to NuGet. -->
+    <IsPackable>false</IsPackable>
+    <Authors>Agctor Contributors</Authors>
+    <Company>Agctor</Company>
+    <Copyright>Copyright (c) 2026 Agctor Contributors</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageProjectUrl>https://github.com/rahamohebbi/Agctor</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/rahamohebbi/Agctor.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>actor-model;agents;llm;dotnet;mcp</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+</Project>

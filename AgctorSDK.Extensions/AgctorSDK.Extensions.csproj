@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <Description>Dependency-injection helpers (AddAgctor) and runtime adapter registration for Agctor.</Description>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AgctorSDK.Core\AgctorSDK.Core.csproj" />

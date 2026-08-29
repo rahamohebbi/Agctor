@@ -12,7 +12,7 @@ The **AgctorSDK.Host** project provides a web gateway interface to the AGCTOR fr
 - **Swagger Documentation**: Interactive API docs at `/swagger`
 
 ### ✅ MCP (Model Context Protocol) Support
-- **TCP Listener**: Accepts MCP connections on port 8080
+- **TCP Listener**: Accepts MCP connections on `127.0.0.1:8080` by default (do not bind `0.0.0.0` without a firewall)
 - **Message Routing**: Routes MCP messages to appropriate agents
 - **Protocol Compliance**: Follows MCP standard for metadata and headers
 - **Concurrent Connections**: Handles multiple MCP clients simultaneously
@@ -140,7 +140,7 @@ Configure via `appsettings.json`:
 ```json
 {
   "Mcp": {
-    "Host": "0.0.0.0",
+    "Host": "127.0.0.1",
     "Port": 8080
   },
   "Logging": {

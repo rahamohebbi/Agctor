@@ -26,8 +26,9 @@ namespace AgctorSDK.Host.Mcp
         private readonly object _connectionLock = new();
 
         // Default configuration
+        // Bind loopback by default so a local Host process is not reachable from the network.
         private const int DefaultPort = 8080;
-        private const string DefaultHost = "0.0.0.0";
+        private const string DefaultHost = "127.0.0.1";
 
         public McpListener(
             IMessageDispatcher messageDispatcher,
