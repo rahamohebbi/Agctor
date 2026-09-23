@@ -20,7 +20,7 @@ object.
 
 - **Actor runtime** with a pluggable adapter (in-memory is implemented; Orleans
   and Proto.Actor adapters are placeholders)
-- **Agents**: LLM (Ollama), human/CLI, and tool actors
+- **Agents**: LLM (Ollama), completion actor with fallback text, human/CLI, and tool actors
 - **Tools**: C# and Python code execution, filesystem, code editor
 - **Timeouts** as a supervisor actor, with progress and partial results
 - **Host**: REST API, Swagger, and a TCP MCP listener
@@ -91,6 +91,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();
 services.AddAgctor(); // in-memory runtime by default
+services.AddAgctorHostedRuntime(); // initialize the runtime when the host starts
 ```
 
 Packable projects (`Core`, `Agents`, `Tools`, `Extensions`) are Apache-2.0 and

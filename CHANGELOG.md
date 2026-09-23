@@ -10,6 +10,12 @@ are tagged.
 
 ### Added
 
+- `ITextGenerator` plus `OllamaTextGenerator` and `ChainedTextGenerator`. Model and
+  network failures return a result instead of throwing.
+- `CompletionAgent`, an actor that answers a `CompletionRequest` and uses the
+  request's fallback text when generation fails, so the actor stays active.
+- `AddAgctorHostedRuntime()` so a host process initializes the actor runtime on startup.
+- `AddAgctor()` now registers `IAgentRegistry`, which `AgentFactory` requires.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can
   keep required attribution.
 - Contributor guide, code of conduct, security policy, and GitHub issue/PR templates.
