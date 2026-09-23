@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using AgctorSDK.Core.Interfaces;
+using AgctorSDK.Core.Registry;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Adapters;
 using AgctorSDK.Core.Agents;
@@ -38,7 +39,9 @@ namespace AgctorSDK.Core.DependencyInjection
             // Register the adapter factory for runtime switching
             services.AddSingleton<IActorRuntimeAdapterFactory, ActorRuntimeAdapterFactory>();
             
-            // Register the agent factory for agent functionality
+            // Register the agent factory for agent functionality.
+            // The registry is required by AgentFactory; host apps used to register it themselves.
+            services.TryAddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
             services.AddSingleton<IAgentFactory, AgentFactory>();
             
             // Register logging and error handling services
@@ -82,7 +85,7 @@ namespace AgctorSDK.Core.DependencyInjection
             // Register the adapter factory for runtime switching
             services.AddSingleton<IActorRuntimeAdapterFactory, ActorRuntimeAdapterFactory>();
             
-            // Register the agent factory for agent functionality
+            services.TryAddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
             services.AddSingleton<IAgentFactory, AgentFactory>();
             
             // Configure options if provided
