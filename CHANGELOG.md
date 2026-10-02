@@ -10,6 +10,7 @@ are tagged.
 
 ### Added
 
+- Decision Fabric MVP. Actors call `Context.Decide` / `Decide`. The decision actor routes choice, score, and binary requests to rules, Laya, or an OpenAI-shaped LLM, with policy filters, confidence escalation, fallback, and OpenTelemetry decision events.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can
   keep required attribution.
 - Contributor guide, code of conduct, security policy, and GitHub issue/PR templates.
