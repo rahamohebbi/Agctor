@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Decisions;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using System.Text.RegularExpressions;
@@ -16,9 +17,10 @@ namespace AgctorSDK.Core.Agents
     /// Basic implementation of an intelligent agent that can process prompts and spawn child agents.
     /// Provides recursive task decomposition capabilities and manages a hierarchy of child agents.
     /// </summary>
-    public class Agent : IAgent
+    public class Agent : IAgent, IHasActorContext
     {
         private readonly List<string> _childAgentIds = new();
+        private readonly ActorContextSlot _decisions = new ActorContextSlot();
         private readonly object _lockObject = new();
         private IAgentFactory? _agentFactory;
         private string? _currentPrompt;
@@ -76,6 +78,25 @@ namespace AgctorSDK.Core.Agents
         /// The current status of the agent's work on its assigned prompt.
         /// </summary>
         public AgentStatus Status => _status;
+
+        /// <summary>
+        /// Decision gateway bound by the runtime. Calls go to the decision actor.
+        /// </summary>
+        public IActorContext? Context => _decisions.Context;
+
+        /// <inheritdoc />
+        public void BindContext(IActorContext context)
+        {
+            _decisions.BindContext(context);
+        }
+
+        /// <summary>
+        /// Asks the decision fabric from inside this agent.
+        /// </summary>
+        protected Task<DecisionResult> Decide(DecisionRequest request, CancellationToken cancellationToken = default)
+        {
+            return _decisions.Decide(request, cancellationToken);
+        }
 
         /// <summary>
         /// Gets the current hierarchy depth of this agent.

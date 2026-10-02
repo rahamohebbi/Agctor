@@ -61,6 +61,18 @@ namespace AgctorSDK.Core.Utils.Observability.Metrics
         }
         
         /// <summary>
+        /// Decision fabric metrics. Names match the MVP telemetry contract.
+        /// </summary>
+        public static class Decisions
+        {
+            public const string Latency = Prefix + "decision_latency";
+            public const string Cost = Prefix + "decision_cost";
+            public const string Confidence = Prefix + "decision_confidence";
+            public const string Escalations = Prefix + "decision_escalations";
+            public const string ProviderFailures = Prefix + "provider_failures";
+        }
+
+        /// <summary>
         /// Tag names used to categorize metrics.
         /// </summary>
         public static class Tags

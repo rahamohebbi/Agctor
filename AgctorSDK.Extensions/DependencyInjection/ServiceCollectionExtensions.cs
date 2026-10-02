@@ -6,6 +6,7 @@ using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Runtime;
 using AgctorSDK.Core.Adapters;
 using AgctorSDK.Core.Agents;
+using AgctorSDK.Core.Decisions;
 using AgctorSDK.Core.Utils.Logging;
 using AgctorSDK.Core.Utils.ErrorHandling;
 using AgctorSDK.Core.Utils.Observability.Metrics;
@@ -27,11 +28,13 @@ namespace AgctorSDK.Core.DependencyInjection
         /// <returns>The service collection for method chaining</returns>
         public static IServiceCollection AddAgctor(this IServiceCollection services, Action<AgctorOptions>? configureOptions = null)
         {
-            // Register the default InMemoryActorRuntime as the primary adapter
-            services.TryAddSingleton<IActorRuntimeAdapter, InMemoryActorRuntime>();
+            // Fabric first so the runtime factory can see IDecisionService when it is resolved.
+            services.AddDecisionFabric();
+
+            services.TryAddSingleton(CreateInMemoryRuntime);
+            services.TryAddSingleton<IActorRuntimeAdapter>(sp => sp.GetRequiredService<InMemoryActorRuntime>());
             
             // Register all available adapters as named services for factory pattern
-            services.AddSingleton<InMemoryActorRuntime>();
             services.AddSingleton<OrleansAdapter>();
             services.AddSingleton<ProtoActorAdapter>();
             
@@ -71,11 +74,19 @@ namespace AgctorSDK.Core.DependencyInjection
         public static IServiceCollection AddAgctor<TAdapter>(this IServiceCollection services, Action<AgctorOptions>? configureOptions = null)
             where TAdapter : class, IActorRuntimeAdapter
         {
-            // Register the specified adapter as the primary implementation
-            services.TryAddSingleton<IActorRuntimeAdapter, TAdapter>();
+            services.AddDecisionFabric();
+            services.TryAddSingleton(CreateInMemoryRuntime);
+
+            if (typeof(TAdapter) == typeof(InMemoryActorRuntime))
+            {
+                services.TryAddSingleton<IActorRuntimeAdapter>(sp => sp.GetRequiredService<InMemoryActorRuntime>());
+            }
+            else
+            {
+                services.TryAddSingleton<IActorRuntimeAdapter, TAdapter>();
+            }
             
             // Register all available adapters as named services
-            services.AddSingleton<InMemoryActorRuntime>();
             services.AddSingleton<OrleansAdapter>();
             services.AddSingleton<ProtoActorAdapter>();
             
@@ -171,6 +182,13 @@ namespace AgctorSDK.Core.DependencyInjection
         /// <summary>
         /// Finds the first service descriptor for the specified service type.
         /// </summary>
+        private static InMemoryActorRuntime CreateInMemoryRuntime(IServiceProvider serviceProvider)
+        {
+            var logger = serviceProvider.GetService<IAgctorLogger>() ?? LoggerFactory.CreateLogger("InMemoryActorRuntime");
+            // Optional: hosts that never call AddDecisionFabric still get a runtime, just without Decide.
+            return new InMemoryActorRuntime(logger, serviceProvider.GetService<IDecisionService>());
+        }
+
         private static ServiceDescriptor? FindServiceDescriptor<TService>(this IServiceCollection services)
             where TService : class
         {

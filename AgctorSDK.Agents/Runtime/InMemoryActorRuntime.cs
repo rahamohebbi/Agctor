@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using AgctorSDK.Core.Actors;
+using AgctorSDK.Core.Decisions;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.Agents;
@@ -26,17 +28,25 @@ namespace AgctorSDK.Core.Runtime
         private readonly CancellationTokenSource _shutdownTokenSource = new();
         private readonly IAgctorLogger _logger;
         private readonly ErrorHandlingMiddleware _errorHandler;
-        
+        private readonly IDecisionService? _decisions;
+        private readonly object _decisionGate = new();
+        private Task? _decisionActorTask;
+
         public InMemoryActorRuntime()
+            : this(Utils.Logging.LoggerFactory.CreateLogger("InMemoryActorRuntime"), null)
         {
-            _logger = Utils.Logging.LoggerFactory.CreateLogger("InMemoryActorRuntime");
-            _errorHandler = new ErrorHandlingMiddleware(_logger);
         }
-        
+
         public InMemoryActorRuntime(IAgctorLogger logger)
+            : this(logger, null)
+        {
+        }
+
+        public InMemoryActorRuntime(IAgctorLogger logger, IDecisionService? decisions)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _errorHandler = new ErrorHandlingMiddleware(_logger);
+            _decisions = decisions;
         }
         
         private bool _isInitialized;
@@ -75,14 +85,14 @@ namespace AgctorSDK.Core.Runtime
             }
         }
 
-        public Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default)
+        public async Task InitializeAsync(IDictionary<string, object> configuration, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             
             if (_isInitialized)
             {
                 LogTrace("Runtime already initialized");
-                return Task.CompletedTask;
+                return;
             }
 
             LogTrace("Initializing InMemoryActorRuntime...");
@@ -100,8 +110,10 @@ namespace AgctorSDK.Core.Runtime
             _startTime = DateTimeOffset.UtcNow;
             _isInitialized = true;
 
+            // The decision actor has to exist before any other actor calls Context.Decide.
+            await EnsureDecisionActorAsync(cancellationToken).ConfigureAwait(false);
+
             LogTrace($"InMemoryActorRuntime initialized successfully at {_startTime}");
-            return Task.CompletedTask;
         }
 
         public async Task ShutdownAsync(CancellationToken cancellationToken = default)
@@ -160,6 +172,11 @@ namespace AgctorSDK.Core.Runtime
                 throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actorId));
             }
 
+            if (!IsDecisionActor(actorId))
+            {
+                await EnsureDecisionActorAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             var newActorInstance = actorFactory(actorId);
 
             // Setup agent-specific properties before initialization
@@ -178,6 +195,12 @@ namespace AgctorSDK.Core.Runtime
                         baseAgent.SetParentAgentId(agentInitData.ParentAgentId);
                     }
                 }
+            }
+
+            // Bind before InitializeAsync so an actor can decide while it is starting.
+            if (!IsDecisionActor(actorId))
+            {
+                BindDecisionContext(newActorInstance);
             }
             
             await newActorInstance.InitializeAsync(cancellationToken);
@@ -227,6 +250,12 @@ namespace AgctorSDK.Core.Runtime
             if (string.IsNullOrEmpty(actorId))
             {
                 throw new ArgumentException("Actor ID cannot be null or empty.", nameof(actor));
+            }
+
+            if (!IsDecisionActor(actorId))
+            {
+                await EnsureDecisionActorAsync(cancellationToken).ConfigureAwait(false);
+                BindDecisionContext(actor);
             }
 
             var messageQueue = Channel.CreateUnbounded<IMessageEnvelope>(new UnboundedChannelOptions
@@ -546,6 +575,58 @@ namespace AgctorSDK.Core.Runtime
                 _pendingRequests.Clear();
             }
             _isDisposed = true;
+        }
+
+        private static bool IsDecisionActor(string actorId)
+        {
+            return string.Equals(actorId, DecisionFabricIds.DecisionActorId, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Spawns the decision actor once. Other spawns await the same task so Context is never bound
+        /// before the mailbox that serves Decide exists.
+        /// </summary>
+        private Task EnsureDecisionActorAsync(CancellationToken cancellationToken)
+        {
+            if (_decisions == null)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (_actors.ContainsKey(DecisionFabricIds.DecisionActorId))
+            {
+                return Task.CompletedTask;
+            }
+
+            lock (_decisionGate)
+            {
+                if (_actors.ContainsKey(DecisionFabricIds.DecisionActorId))
+                {
+                    return Task.CompletedTask;
+                }
+
+                if (_decisionActorTask == null)
+                {
+                    var decisions = _decisions;
+                    _decisionActorTask = SpawnActorAsync(
+                        DecisionFabricIds.DecisionActorId,
+                        id => new DecisionActor(id, decisions),
+                        cancellationToken: cancellationToken);
+                }
+
+                return _decisionActorTask;
+            }
+        }
+
+        private void BindDecisionContext(IActor actor)
+        {
+            if (_decisions == null || actor is not IHasActorContext slot)
+            {
+                return;
+            }
+
+            // The actor asks the decision actor by id. It never receives a provider reference.
+            slot.BindContext(new ActorContext(actor.Id, actor.ActorType, this));
         }
 
         private T CreateActorInstance<T>(string actorId) where T : class, IActor
