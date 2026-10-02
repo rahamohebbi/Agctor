@@ -22,6 +22,7 @@ object.
   and Proto.Actor adapters are placeholders)
 - **Agents**: LLM (Ollama), human/CLI, and tool actors
 - **Tools**: C# and Python code execution, filesystem, code editor
+- **Decision fabric**: actors call `Context.Decide` for choice, score, and yes/no decisions. The runtime routes to rules, Laya, or an OpenAI-shaped LLM, then escalates or falls back.
 - **Timeouts** as a supervisor actor, with progress and partial results
 - **Host**: REST API, Swagger, and a TCP MCP listener
 - **CLI** for sending a prompt to a root agent
