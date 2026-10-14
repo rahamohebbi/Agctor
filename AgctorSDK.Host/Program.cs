@@ -176,7 +176,7 @@ app.UseAuthorization();
 app.UseStaticFiles();
 app.MapControllers();
 app.MapRazorPages();
-app.MapGet("/", () => Results.Redirect("/swagger/"));
+app.MapGet("/", () => Results.Redirect("/Dashboard"));
 app.MapGet("/swagger", () => Results.Redirect("/swagger/"));
 
 // The MCP listener uses a separate TCP port from the HTTP server.
@@ -194,6 +194,7 @@ var primaryHttpUrl = configuredHttpUrls
     .FirstOrDefault(url => url.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
 if (!string.IsNullOrWhiteSpace(primaryHttpUrl))
 {
+    Console.WriteLine($"🖥️ Dashboard: {primaryHttpUrl.TrimEnd('/')}/Dashboard");
     Console.WriteLine($"📘 Swagger UI: {primaryHttpUrl.TrimEnd('/')}/swagger");
 }
 
@@ -266,4 +267,4 @@ app.Lifetime.ApplicationStopping.Register(() =>
 app.Run();
 
 // Make Program class accessible for integration testing
-public partial class Program { } 
+public partial class Program { }

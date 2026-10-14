@@ -147,5 +147,5 @@ The `VisualizationExample.cs` file in this repository demonstrates how to use th
 
 1. Make sure Jaeger is running (optional)
 2. Build the project: `dotnet build`
-3. Run the example: `dotnet run`
+3. Run the example: `dotnet run --framework net10.0`
 4. Open the generated HTML files in a web browser 

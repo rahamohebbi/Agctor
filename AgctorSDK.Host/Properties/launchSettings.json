@@ -4,7 +4,7 @@
     "AgctorSDK.Host InMemory": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "swagger",
+      "launchUrl": "Dashboard",
       "applicationUrl": "http://localhost:5274",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
@@ -15,7 +15,7 @@
     "AgctorSDK.Host Proto": {
       "commandName": "Project",
       "launchBrowser": true,
-      "launchUrl": "swagger",
+      "launchUrl": "Dashboard",
       "applicationUrl": "http://localhost:5275",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",

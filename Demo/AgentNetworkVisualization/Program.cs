@@ -76,7 +76,7 @@ namespace Agctor.Demo.AgentNetworkVisualization
             Console.WriteLine($"The demo will attempt to send trace data to Zipkin at: {ZipkinBaseUrl}");
             Console.WriteLine($"Zipkin UI should be accessible at: {ZipkinBaseUrl}/zipkin/");
             Console.WriteLine($"The demo will automatically time out after {GlobalExecutionTimeoutMs/1000} seconds if it hangs.");
-            Console.WriteLine("To skip tracing, run with: dotnet run --project AgentNetworkVisualization -- --no-trace");
+            Console.WriteLine("To skip tracing, run with: dotnet run --framework net10.0 --project AgentNetworkVisualization -- --no-trace");
             
             // Create a cancellation token with timeout
             using var cts = new CancellationTokenSource(GlobalExecutionTimeoutMs);
@@ -280,7 +280,7 @@ namespace Agctor.Demo.AgentNetworkVisualization
                 sp.GetRequiredService<IAgentRegistry>(),
                 sp.GetRequiredService<IActivityTracker>(),
                 sp.GetRequiredService<IAgctorLogger>(),
-                visualizationOptions
+                Microsoft.Extensions.Options.Options.Create(visualizationOptions)
             ));
             
             var serviceProvider = services.BuildServiceProvider();

@@ -131,6 +131,7 @@ namespace AgctorSDK.Host.Models
     {
         public string Id { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
         public string Kind { get; set; } = string.Empty; // csharp-type | project-memory-yaml
         public string Source { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty; // enabled | disabled | valid

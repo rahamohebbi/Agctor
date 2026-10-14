@@ -15,12 +15,12 @@ The demo provides:
 
 ## Running the Demo
 
-1. Ensure you have .NET 8.0 SDK installed
+1. Ensure you have .NET 10 SDK installed
 
 2. Build and run the demo:
    ```bash
    dotnet build
-   dotnet run
+   dotnet run --framework net10.0
    ```
 
 3. View the generated HTML file in a browser:

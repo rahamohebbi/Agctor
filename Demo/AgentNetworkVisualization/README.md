@@ -15,7 +15,7 @@ The demo:
 
 ## Prerequisites
 
-- .NET 8.0 SDK
+- .NET 10 SDK
 - Zipkin (for distributed tracing visualization - optional)
 
 ## Setup
@@ -35,7 +35,7 @@ The demo:
    ```bash
    cd Demo
    dotnet build
-   dotnet run --project AgentNetworkVisualization
+   dotnet run --framework net10.0 --project AgentNetworkVisualization
    ```
 
 ## Error Handling

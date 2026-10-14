@@ -45,6 +45,10 @@ Demo/                              # Example applications
 
 ## Quick Start
 
+The Host application and its integration tests target **.NET 10** (`net10.0`). The SDK libraries, CLI, Orleans silo, demos, and remaining tests target both **.NET 8** (`net8.0`) and **.NET 10** (`net10.0`). Install the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) to build the repository. Running or testing a target requires its matching runtime; the Host and host tests require the matching ASP.NET Core runtime.
+
+`dotnet build` builds all configured targets. The Host starts directly on .NET 10 with `dotnet run --project AgctorSDK.Host`; no framework selection is needed. For the CLI, Orleans silo, and demos, use `--framework net10.0` when running or publishing (or `--framework net8.0` for .NET 8).
+
 ### 1. Build the Solution
 ```bash
 dotnet build Agctor.sln
@@ -59,25 +63,36 @@ dotnet run
 ### 3. Use the CLI
 ```bash
 cd AgctorCLI
-dotnet run -- "Your prompt here"
+dotnet run --framework net10.0 -- "Your prompt here"
 ```
 
 ### 4. Access the API
-- REST API: `http://localhost:5000`
+- Dashboard: `http://localhost:5274` (redirects to `/Dashboard`)
+- REST API: `http://localhost:5274/api`
 - MCP Server: `tcp://localhost:8080`
-- Swagger UI: `http://localhost:5000/swagger`
+- Swagger UI: `http://localhost:5274/swagger`
 
 ## Testing
 
 Run unit tests:
 ```bash
-dotnet test AgctorSDK.Core.Tests
+dotnet test AgctorSDK.Core.Tests --framework net10.0
 ```
 
 Run integration tests:
 ```bash
-dotnet test AgctorSDK.Core.IntegrationTests
+dotnet test AgctorSDK.Core.IntegrationTests --framework net10.0
 ```
+
+For test projects that target both frameworks, install both runtimes and omit `--framework` to exercise both targets. Host integration tests run on .NET 10 only. Some integration tests require local services such as Ollama.
+
+Publish the Host or Orleans silo for .NET 10:
+```bash
+dotnet publish AgctorSDK.Host -c Release --framework net10.0 -o artifacts/host/net10.0
+dotnet publish AgctorSDK.OrleansSilo -c Release --framework net10.0 -o artifacts/orleans/net10.0
+```
+
+The Orleans Docker image defaults to .NET 10. To build it for .NET 8 instead, pass `--build-arg DOTNET_VERSION=8.0` to `docker build`.
 
 ## Architecture
 

@@ -57,7 +57,7 @@ namespace Agctor.Demo.Visualization
                 null!, // No agent registry needed for demo
                 sp.GetRequiredService<IActivityTracker>(),
                 logger,
-                visualizationOptions
+                Microsoft.Extensions.Options.Options.Create(visualizationOptions)
             ));
             
             var serviceProvider = services.BuildServiceProvider();
@@ -160,6 +160,27 @@ namespace Agctor.Demo.Visualization
             
             sb.AppendLine("graph TD");
             
+            // Sample topology matching the activities created above.
+            var hierarchy = new AgentHierarchy
+            {
+                RootAgent = new Agent
+                {
+                    Id = "root-agent-001", Type = "Coordinator", Description = "Coordinate tasks",
+                    Children = new List<Agent>
+                    {
+                        new Agent
+                        {
+                            Id = "child-agent-001", Type = "Processor", Description = "Process data",
+                            Children = new List<Agent>
+                            {
+                                new Agent { Id = "grandchild-agent-001", Type = "Formatter", Description = "Format results" }
+                            }
+                        },
+                        new Agent { Id = "child-agent-002", Type = "Generator", Description = "Generate report" }
+                    }
+                }
+            };
+
             // Process the root agent and its descendants
             if (hierarchy.RootAgent != null)
             {
@@ -217,6 +238,17 @@ namespace Agctor.Demo.Visualization
             
             sb.AppendLine("sequenceDiagram");
             
+            // Sample messages corresponding to the demo's processing steps.
+            var messageFlows = new[]
+            {
+                new MessageFlow { From = "root-agent-001", To = "child-agent-001", Message = "Process data" },
+                new MessageFlow { From = "child-agent-001", To = "grandchild-agent-001", Message = "Format results" },
+                new MessageFlow { From = "grandchild-agent-001", To = "child-agent-001", Message = "Formatted results", IsReply = true },
+                new MessageFlow { From = "child-agent-001", To = "root-agent-001", Message = "Processed data", IsReply = true },
+                new MessageFlow { From = "root-agent-001", To = "child-agent-002", Message = "Generate report" },
+                new MessageFlow { From = "child-agent-002", To = "root-agent-001", Message = "Report", IsReply = true }
+            };
+
             // Collect all unique participants
             var participants = new HashSet<string>();
             foreach (var flow in messageFlows)

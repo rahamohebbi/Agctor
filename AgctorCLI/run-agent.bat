@@ -10,4 +10,4 @@ if "%~1"=="" (
 )
 
 REM Run the CLI with the provided arguments
-dotnet run -- %* 
+dotnet run --framework net10.0 -- %*

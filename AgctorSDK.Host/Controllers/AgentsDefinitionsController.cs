@@ -71,6 +71,7 @@ public sealed class AgentsDefinitionsController : ControllerBase
                     Id = spec.Id,
                     DisplayName = string.IsNullOrWhiteSpace(spec.Name) ? spec.Id : spec.Name,
                     Kind = "project-memory-yaml",
+                    Description = spec.Description ?? string.Empty,
                     Source = string.IsNullOrWhiteSpace(spec.SourcePath) ? ".agctor/agents" : spec.SourcePath,
                     State = "valid",
                     Metadata = new Dictionary<string, object>

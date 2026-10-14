@@ -81,12 +81,12 @@ namespace AgctorSDK.VisualizationExample
                 null!, // No agent registry needed for demo
                 null!, // No activity tracker needed for demo
                 logger,
-                new VisualizationOptions
+                Microsoft.Extensions.Options.Options.Create(new VisualizationOptions
                 {
                     TraceViewerType = TraceViewerType.Jaeger,
                     JaegerBaseUrl = "http://localhost:16686",
                     ZipkinBaseUrl = "http://localhost:9411"
-                });
+                }));
             
             // Create sample agent hierarchy and message flow diagrams
             string hierarchyDiagram = GenerateSampleHierarchyDiagram();
@@ -202,7 +202,7 @@ namespace AgctorSDK.VisualizationExample
                 sp.GetRequiredService<IAgentRegistry>(),
                 sp.GetRequiredService<IActivityTracker>(),
                 sp.GetRequiredService<IAgctorLogger>(),
-                visualizationOptions
+                Microsoft.Extensions.Options.Options.Create(visualizationOptions)
             ));
             
             var serviceProvider = services.BuildServiceProvider();
@@ -408,7 +408,7 @@ namespace AgctorSDK.VisualizationExample
                 sp.GetRequiredService<IAgentRegistry>(),
                 sp.GetRequiredService<IActivityTracker>(),
                 sp.GetRequiredService<IAgctorLogger>(),
-                visualizationOptions
+                Microsoft.Extensions.Options.Options.Create(visualizationOptions)
             ));
             
             var serviceProvider = services.BuildServiceProvider();
@@ -1016,7 +1016,7 @@ namespace AgctorSDK.VisualizationExample
                 sp.GetRequiredService<IAgentRegistry>(),
                 sp.GetRequiredService<IActivityTracker>(),
                 sp.GetRequiredService<IAgctorLogger>(),
-                visualizationOptions
+                Microsoft.Extensions.Options.Options.Create(visualizationOptions)
             ));
             
             var serviceProvider = services.BuildServiceProvider();
@@ -1763,4 +1763,4 @@ namespace AgctorSDK.VisualizationExample
             Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{level}] [{_name}] {message}");
         }
     }
-} 
+}

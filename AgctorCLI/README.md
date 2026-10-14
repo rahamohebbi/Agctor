@@ -44,25 +44,25 @@ AgctorCLI.exe "Your prompt here" [runtime]
 #### Market Research
 ```bash
 # Basic market analysis
-dotnet run -- "Analyze current market trends in the technology sector"
+dotnet run --framework net10.0 -- "Analyze current market trends in the technology sector"
 
 # Specific market segment analysis
-dotnet run -- "Research emerging trends in artificial intelligence and machine learning markets"
+dotnet run --framework net10.0 -- "Research emerging trends in artificial intelligence and machine learning markets"
 
 # Competitive analysis
-dotnet run -- "Conduct competitor analysis for cloud computing services"
+dotnet run --framework net10.0 -- "Conduct competitor analysis for cloud computing services"
 ```
 
 #### Financial Analysis
 ```bash
 # Financial report generation
-dotnet run -- "Generate quarterly financial analysis report"
+dotnet run --framework net10.0 -- "Generate quarterly financial analysis report"
 
 # Investment research
-dotnet run -- "Analyze investment opportunities in renewable energy sector"
+dotnet run --framework net10.0 -- "Analyze investment opportunities in renewable energy sector"
 
 # Risk assessment
-dotnet run -- "Evaluate financial risks for expanding into international markets"
+dotnet run --framework net10.0 -- "Evaluate financial risks for expanding into international markets"
 ```
 
 ### 2. Content Creation Tasks
@@ -70,25 +70,25 @@ dotnet run -- "Evaluate financial risks for expanding into international markets
 #### Report Generation
 ```bash
 # Executive summary
-dotnet run -- "Create executive summary for Q4 business performance"
+dotnet run --framework net10.0 -- "Create executive summary for Q4 business performance"
 
 # Technical documentation
-dotnet run -- "Generate technical documentation for API integration"
+dotnet run --framework net10.0 -- "Generate technical documentation for API integration"
 
 # Marketing content
-dotnet run -- "Develop marketing content strategy for product launch"
+dotnet run --framework net10.0 -- "Develop marketing content strategy for product launch"
 ```
 
 #### Research Tasks
 ```bash
 # Industry research
-dotnet run -- "Research best practices for remote team management"
+dotnet run --framework net10.0 -- "Research best practices for remote team management"
 
 # Technology evaluation
-dotnet run -- "Evaluate pros and cons of different cloud platforms"
+dotnet run --framework net10.0 -- "Evaluate pros and cons of different cloud platforms"
 
 # Trend analysis
-dotnet run -- "Analyze consumer behavior trends in e-commerce"
+dotnet run --framework net10.0 -- "Analyze consumer behavior trends in e-commerce"
 ```
 
 ### 3. Planning and Strategy
@@ -96,25 +96,25 @@ dotnet run -- "Analyze consumer behavior trends in e-commerce"
 #### Project Planning
 ```bash
 # Project roadmap
-dotnet run -- "Create project roadmap for mobile app development"
+dotnet run --framework net10.0 -- "Create project roadmap for mobile app development"
 
 # Resource planning
-dotnet run -- "Plan resource allocation for software development team"
+dotnet run --framework net10.0 -- "Plan resource allocation for software development team"
 
 # Timeline creation
-dotnet run -- "Develop implementation timeline for digital transformation"
+dotnet run --framework net10.0 -- "Develop implementation timeline for digital transformation"
 ```
 
 #### Strategic Analysis
 ```bash
 # SWOT analysis
-dotnet run -- "Perform SWOT analysis for entering new market segment"
+dotnet run --framework net10.0 -- "Perform SWOT analysis for entering new market segment"
 
 # Strategic planning
-dotnet run -- "Develop strategic plan for company growth over next 3 years"
+dotnet run --framework net10.0 -- "Develop strategic plan for company growth over next 3 years"
 
 # Process optimization
-dotnet run -- "Analyze and optimize customer service processes"
+dotnet run --framework net10.0 -- "Analyze and optimize customer service processes"
 ```
 
 ### 4. Using Different Execution Methods
@@ -122,13 +122,13 @@ dotnet run -- "Analyze and optimize customer service processes"
 #### Direct .NET CLI
 ```bash
 # Simple task
-dotnet run -- "Summarize key points from quarterly earnings report"
+dotnet run --framework net10.0 -- "Summarize key points from quarterly earnings report"
 
 # Complex task with specific runtime
-dotnet run -- "Create comprehensive business plan for startup" InMemory
+dotnet run --framework net10.0 -- "Create comprehensive business plan for startup" InMemory
 
 # Quick analysis
-dotnet run -- "Identify potential cost savings in current operations"
+dotnet run --framework net10.0 -- "Identify potential cost savings in current operations"
 ```
 
 #### Windows Batch Script
@@ -169,19 +169,19 @@ foreach ($prompt in $prompts) {
 #### Comprehensive Business Analysis
 ```bash
 # This type of complex prompt may trigger child agent creation
-dotnet run -- "Create comprehensive business analysis including market research, competitor analysis, financial projections, and strategic recommendations"
+dotnet run --framework net10.0 -- "Create comprehensive business analysis including market research, competitor analysis, financial projections, and strategic recommendations"
 ```
 
 #### Product Development Planning
 ```bash
 # Multi-faceted product planning
-dotnet run -- "Develop complete product launch strategy including market analysis, target audience identification, pricing strategy, and marketing plan"
+dotnet run --framework net10.0 -- "Develop complete product launch strategy including market analysis, target audience identification, pricing strategy, and marketing plan"
 ```
 
 #### Organizational Assessment
 ```bash
 # Complex organizational analysis
-dotnet run -- "Conduct organizational assessment covering team structure, process efficiency, technology stack evaluation, and improvement recommendations"
+dotnet run --framework net10.0 -- "Conduct organizational assessment covering team structure, process efficiency, technology stack evaluation, and improvement recommendations"
 ```
 
 ### 6. Error Handling Examples
@@ -189,13 +189,13 @@ dotnet run -- "Conduct organizational assessment covering team structure, proces
 #### Invalid Usage
 ```bash
 # Missing prompt (shows usage)
-dotnet run
+dotnet run --framework net10.0
 
 # Empty prompt (shows usage)
-dotnet run -- ""
+dotnet run --framework net10.0 -- ""
 
 # Invalid runtime
-dotnet run -- "Test prompt" InvalidRuntime
+dotnet run --framework net10.0 -- "Test prompt" InvalidRuntime
 ```
 
 #### Expected Output for Errors
@@ -270,7 +270,7 @@ prompts=(
 
 for prompt in "${prompts[@]}"; do
     echo "Processing: $prompt"
-    dotnet run -- "$prompt"
+    dotnet run --framework net10.0 -- "$prompt"
     
     if [ $? -eq 0 ]; then
         echo "✅ Completed: $prompt"
@@ -302,12 +302,12 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       
       - name: Run Weekly Analysis
         run: |
           cd AgctorCLI
-          dotnet run -- "Generate weekly business performance analysis"
+          dotnet run --framework net10.0 -- "Generate weekly business performance analysis"
 ```
 
 #### PowerShell Module Integration
@@ -331,7 +331,7 @@ function Invoke-AgentAnalysis {
             Write-Host "🤖 Running agent analysis..." -ForegroundColor Cyan
         }
         
-        $result = & dotnet run -- $Prompt $Runtime
+        $result = & dotnet run --framework net10.0 -- $Prompt $Runtime
         return $result
     }
     finally {
@@ -422,7 +422,7 @@ await runtime.InitializeAsync(new Dictionary<string, object>
 ## Building and Running
 
 ### Prerequisites
-- .NET 8.0 SDK
+- .NET 10 SDK
 - AgctorSDK.Core project reference
 
 ### Build
@@ -433,12 +433,12 @@ dotnet build
 
 ### Run
 ```bash
-dotnet run -- "Your prompt here"
+dotnet run --framework net10.0 -- "Your prompt here"
 ```
 
 ### Publish
 ```bash
-dotnet publish -c Release -o ./publish
+dotnet publish --framework net10.0 -c Release -o ./publish
 ```
 
 ## Integration

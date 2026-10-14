@@ -3,19 +3,15 @@
 @{
     ViewData["Title"] = "Agents";
 }
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Agents</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Unified runtime agents + definitions. See <strong class="text-gray-700 dark:text-gray-300">tool access by agent</strong> (loaded live from the host), toggle C# types, edit YAML specs, and apply a scenario for this session (default startup scenario remains in <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">Agctor:Dashboard:ScenarioName</code>).</p>
+<link rel="stylesheet" href="~/css/agents-page.css" asp-append-version="true" />
+<div class="ag-page-heading">
+    <div><p class="ag-eyebrow">WORKSPACE / AGENTS</p>
+    <h1>Agents</h1>
+    <p>See what’s running. Manage the definitions behind it.</p></div>
+    <a class="ag-help-link" href="/Dashboard/Scenarios">Explore workflows <span aria-hidden="true">↗</span></a>
 </div>
 
-<div class="mb-6 p-4 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-800/40 dark:border-slate-600" role="note">
-    <p class="text-sm text-slate-800 dark:text-slate-200">
-        <span class="font-medium">Full YAML studio</span> (all fields, templates, playground deep links):
-        <a href="/Dashboard/ProjectMemory/Agents" class="text-blue-600 font-medium hover:underline dark:text-blue-400">Project memory → Agents (advanced)</a>.
-    </p>
-</div>
-
-<div id="agents-content" class="space-y-6">
+<div id="agents-content" class="ag-workspace">
     <div class="flex items-center justify-center p-8 rounded-lg bg-gray-100 dark:bg-gray-800">
         <div class="text-center">
             <div role="status">
@@ -30,7 +26,7 @@
 @* Drawer host lives outside #agents-content so table re-render does not remove it (PRD-013 Phase 2). *@
 <div id="agents-pm-drawer-host" class="hidden fixed inset-0 z-50 flex justify-end" aria-hidden="true">
     <button type="button" class="flex-1 min-w-0 bg-gray-900/50 border-0 cursor-default p-0" data-agents-drawer-backdrop aria-label="Close panel"></button>
-    <div id="agents-pm-drawer-panel" class="w-full max-w-lg bg-white dark:bg-gray-900 h-full shadow-xl border-l border-gray-200 dark:border-gray-700 overflow-y-auto"></div>
+    <div id="agents-pm-drawer-panel" role="dialog" aria-modal="true" aria-label="Agent definition" tabindex="-1" class="w-full max-w-lg bg-white dark:bg-gray-900 h-full shadow-xl border-l border-gray-200 dark:border-gray-700 overflow-y-auto"></div>
 </div>
 
 @section Scripts {

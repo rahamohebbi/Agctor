@@ -25,7 +25,7 @@ Write-Host ""
 
 # Execute the CLI
 try {
-    & dotnet run -- $Prompt $Runtime
+    & dotnet run --framework net10.0 -- $Prompt $Runtime
     $exitCode = $LASTEXITCODE
     
     if ($exitCode -eq 0) {

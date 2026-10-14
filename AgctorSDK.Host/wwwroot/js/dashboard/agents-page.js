@@ -1,6 +1,6 @@
 /**
- * Dashboard Agents page (PRD-010): unified agent-type list, Flowbite-styled toggles,
- * single configured scenario Apply, and refresh.
+ * Agents workspace: running instances, saved definitions, and type availability.
+ * Keeps view state and editor contents stable across background refreshes.
  */
 (function () {
     const el = document.getElementById('agents-content');
@@ -20,16 +20,25 @@
     const backendErrors = new Map();
     let refreshTimer = null;
     let lastRenderSignature = '';
-    /** Prevents PUT loop when we refresh after toggle */
-    let suppressToggleUntil = 0;
+    let activeTab = 'running';
+    let searchText = '';
+    let selectedScenario = '';
+    let scenarioExpanded = false;
+    let mutationBusy = false;
+    let refreshBusy = false;
+    let drawerReturnFocus = null;
+    let drawerReturnFocusId = null;
+    let originalPmSpec = {};
+    let feedback = { message: '', error: false };
+    let scenarioApplying = false;
 
     /** PRD-013 Phase 2: create / edit project-memory YAML from unified Agents page */
-    let pmDrawerMode = 'create'; // create | edit | view-csharp
+    let pmDrawerMode = 'create'; // create | edit
 
     function esc(s) {
         const d = document.createElement('div');
         d.textContent = s ?? '';
-        return d.innerHTML;
+        return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function setBackendError(key, message) {
@@ -66,19 +75,13 @@
     function buildRenderSignature(config, agents, current, definitions, scenarios, agentTools) {
         return JSON.stringify({
             config: config || {},
-            agents: Array.isArray(agents) ? agents : [],
+            agents: Array.isArray(agents) ? agents.map(a => ({ id: a.id, type: a.type, status: a.status })) : [],
             current: current || null,
             definitions: Array.isArray(definitions) ? definitions : [],
             scenarios: Array.isArray(scenarios) ? scenarios : [],
             agentTools: agentTools && Array.isArray(agentTools.agents) ? agentTools.agents : [],
             errors: stableErrorsSnapshot()
         });
-    }
-
-    function refreshMetaText(list) {
-        const count = Array.isArray(list) ? list.length : 0;
-        const loaded = lastLoadedAt ? new Date(lastLoadedAt).toLocaleTimeString() : 'Not loaded yet';
-        return esc(String(count)) + ' active instance(s). Last refreshed at ' + esc(loaded) + '.';
     }
 
     function linesToArr(t) {
@@ -159,6 +162,8 @@
         drawerHost.classList.add('hidden');
         drawerHost.setAttribute('aria-hidden', 'true');
         if (drawerPanel) drawerPanel.innerHTML = '';
+        if (drawerReturnFocus?.isConnected) drawerReturnFocus.focus();
+        else (document.getElementById(drawerReturnFocusId) || document.getElementById('agents-tab-' + activeTab))?.focus();
     }
 
     function readPmFormFromPanel() {
@@ -181,90 +186,44 @@
         };
         spec.guardrails = linesToArr(/** @type {HTMLTextAreaElement} */ (document.getElementById('agents-pm-g')).value);
         const rel = /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-relpath')).value.trim();
-        return { spec: spec, relativePath: rel || null };
+        const merged = { ...originalPmSpec, ...spec };
+        for (const key of ['input', 'output', 'tools', 'memoryAccess']) merged[key] = { ...(originalPmSpec[key] || {}), ...spec[key] };
+        return { spec: merged, relativePath: rel || null };
     }
 
     function renderPmDrawerForm(spec, relativePath, title, readOnly) {
         if (!drawerPanel) return;
         const idReadonly = readOnly || pmDrawerMode === 'edit';
-        drawerPanel.innerHTML =
-            '<div class="p-6 space-y-4">' +
-            '<div class="flex items-start justify-between gap-2">' +
-            '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">' +
-            esc(title) +
-            '</h2>' +
-            '<button type="button" data-agents-drawer-close class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">Close</button>' +
-            '</div>' +
-            '<p class="text-xs text-gray-500 dark:text-gray-400">Saved files live under the configured project root (<code class="text-xs">Agctor:ProjectMemory:ProjectRoot</code>). For the full field set use <a class="text-blue-600 dark:text-blue-400 hover:underline" href="/Dashboard/ProjectMemory/Agents">Project Memory → Agents</a>.</p>' +
-            '<div class="space-y-3">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>' +
-            '<input id="agents-pm-id" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (idReadonly ? 'readonly' : '') +
-            ' /></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Relative path (optional)</label>' +
-            '<input id="agents-pm-relpath" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" placeholder=".agctor/agents/people/…" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div>' +
-            '<div class="grid grid-cols-2 gap-2">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name</label>' +
-            '<input id="agents-pm-name" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>' +
-            '<input id="agents-pm-role" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>' +
-            '<textarea id="agents-pm-desc" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Project types (comma-separated)</label>' +
-            '<input id="agents-pm-pt" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Instructions (one per line)</label>' +
-            '<textarea id="agents-pm-ins" rows="4" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div>' +
-            '<div class="grid grid-cols-2 gap-2">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Input type</label>' +
-            '<input id="agents-pm-in" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Output type</label>' +
-            '<input id="agents-pm-out" type="text" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            ' /></div></div>' +
-            '<div class="grid grid-cols-2 gap-2">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools allow (lines)</label>' +
-            '<textarea id="agents-pm-tallow" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Tools deny (lines)</label>' +
-            '<textarea id="agents-pm-tdeny" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div></div>' +
-            '<div class="grid grid-cols-2 gap-2">' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory read (lines)</label>' +
-            '<textarea id="agents-pm-mr" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory write (lines)</label>' +
-            '<textarea id="agents-pm-mw" rows="3" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div></div>' +
-            '<div><label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Guardrails (lines)</label>' +
-            '<textarea id="agents-pm-g" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-xs font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white" ' +
-            (readOnly ? 'readonly' : '') +
-            '></textarea></div>' +
-            '</div>' +
-            (readOnly
-                ? ''
-                : '<div class="flex flex-wrap gap-2 pt-2">' +
-                  '<button type="button" data-pm-save class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save</button>' +
-                  '<span id="agents-pm-msg" class="self-center text-sm text-gray-600 dark:text-gray-400"></span>' +
-                  '</div>') +
-            '</div>';
+        const field = (label, id, rows, hint = '', locked = readOnly) => `<div><label for="${id}" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">${label}</label>
+            ${hint ? `<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">${hint}</p>` : ''}
+            ${rows ? `<textarea id="${id}" rows="${rows}" ${locked ? 'readonly' : ''}` : `<input id="${id}" type="text" ${locked ? 'readonly' : ''}`}
+            class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white">${rows ? '</textarea>' : ''}</div>`;
+        drawerPanel.innerHTML = `<div class="p-6 space-y-6">
+            <div class="flex items-start justify-between gap-4"><h2 class="text-lg font-semibold text-gray-900 dark:text-white">${esc(title)}</h2><button type="button" data-agents-drawer-close class="text-sm text-gray-500 dark:text-gray-400">Close</button></div>
+            <p class="text-sm text-gray-500 dark:text-gray-400">Save reusable instructions for a workflow. This creates a definition, not a running instance.</p>
+            <div class="space-y-4">
+                ${field('Name', 'agents-pm-name', 0)}
+                ${field('Definition ID', 'agents-pm-id', 0, 'The identifier used by workflows. It cannot change after creation.', idReadonly)}
+                ${field('Role', 'agents-pm-role', 0, 'For example: coaching, extraction, or query.')}
+                ${field('Description', 'agents-pm-desc', 2, 'A short explanation of what this agent does.')}
+                ${field('Instructions', 'agents-pm-ins', 5, 'One instruction per line.')}
+                ${field('Guardrails', 'agents-pm-g', 2, 'Optional boundaries and constraints, one per line.')}
+            </div>
+            <details class="border-t border-gray-200 dark:border-gray-700 pt-4"><summary class="cursor-pointer text-sm font-semibold">Tools and memory permissions</summary><div class="space-y-4 mt-4">
+                ${field('Allowed tools', 'agents-pm-tallow', 3, 'Tool names, one per line.')}
+                ${field('Denied tools', 'agents-pm-tdeny', 2)}
+                ${field('Memory read paths', 'agents-pm-mr', 3, 'One path or pattern per line.')}
+                ${field('Memory write paths', 'agents-pm-mw', 2)}
+            </div></details>
+            <details class="border-t border-gray-200 dark:border-gray-700 pt-4"><summary class="cursor-pointer text-sm font-semibold">Advanced configuration</summary><div class="space-y-4 mt-4">
+                ${field('Project types', 'agents-pm-pt', 0, 'Comma-separated project types, such as people.')}
+                ${field('Input type', 'agents-pm-in', 0)}
+                ${field('Output type', 'agents-pm-out', 0)}
+                ${field('Relative file path', 'agents-pm-relpath', 0, 'Optional. The file is saved under the configured project root.')}
+                <a href="/Dashboard/ProjectMemory/Agents" class="text-sm text-blue-600 dark:text-blue-400">Open the full agent editor ↗</a>
+            </div></details>
+            ${readOnly ? '' : '<div class="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 pt-4 pb-2"><button type="button" data-pm-save class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save definition</button><p id="agents-pm-msg" role="status" aria-live="polite" class="mt-2 text-sm text-gray-600 dark:text-gray-400"></p></div>'}
+            </div>`;
 
         /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-id')).value = spec.id;
         /** @type {HTMLInputElement} */ (document.getElementById('agents-pm-relpath')).value = relativePath || '';
@@ -284,13 +243,21 @@
 
     function openPmDrawer() {
         if (!drawerHost) return;
+        drawerReturnFocus = document.activeElement;
+        drawerReturnFocusId = document.activeElement?.id;
         drawerHost.classList.remove('hidden');
         drawerHost.setAttribute('aria-hidden', 'false');
+        drawerPanel.querySelectorAll('label').forEach(label => {
+            const field = label.parentElement.querySelector('input, textarea');
+            if (field?.id) label.htmlFor = field.id;
+        });
+        (drawerPanel.querySelector('input:not([readonly]), button') || drawerPanel).focus();
     }
 
     async function openNewPmAgent() {
         pmDrawerMode = 'create';
-        renderPmDrawerForm(normalizePmSpec(defaultPmSpec()), '', 'New project-memory agent', false);
+        originalPmSpec = {};
+        renderPmDrawerForm(normalizePmSpec(defaultPmSpec()), '', 'New agent definition', false);
         openPmDrawer();
     }
 
@@ -303,60 +270,13 @@
             alert((data && (data.error || data.message)) || 'Failed to load definition (' + res.status + ').');
             return;
         }
-        if (data.kind === 'csharp-type') {
-            pmDrawerMode = 'view-csharp';
-            const det = data.detail || {};
-            const cTools = toolsForDefinitionId(data.id, agentToolsInsight);
-            let toolsBlock = '';
-            if (cTools.length) {
-                toolsBlock =
-                    '<dt class="text-gray-500 pt-2">Host tools</dt><dd class="mt-1 flex flex-wrap gap-1">' +
-                    cTools
-                        .map(function (t) {
-                            const tip = [t.displayName || t.clrTypeName, t.description].filter(Boolean).join(' — ');
-                            return (
-                                '<span class="inline-flex rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" title="' +
-                                esc(tip) +
-                                '">' +
-                                esc(t.displayName || t.clrTypeName) +
-                                '</span>'
-                            );
-                        })
-                        .join('') +
-                    '</dd>';
-            } else {
-                toolsBlock =
-                    '<dt class="text-gray-500 pt-2">Host tools</dt><dd class="text-xs text-gray-500 dark:text-gray-400">None resolved for this type (see Tool access section).</dd>';
-            }
-            if (!drawerPanel) return;
-            drawerPanel.innerHTML =
-                '<div class="p-6 space-y-4">' +
-                '<div class="flex items-start justify-between gap-2">' +
-                '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">C# type: ' +
-                esc(data.id) +
-                '</h2>' +
-                '<button type="button" data-agents-drawer-close class="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">Close</button>' +
-                '</div>' +
-                '<p class="text-sm text-gray-600 dark:text-gray-300">This agent is defined in code. Enable or disable it using the toggles in the runtime table above.</p>' +
-                '<dl class="text-sm space-y-2">' +
-                '<dt class="text-gray-500">CLR type</dt><dd class="font-mono text-gray-900 dark:text-white">' +
-                esc(det.clrType || '') +
-                '</dd>' +
-                '<dt class="text-gray-500">Enabled</dt><dd>' +
-                esc(String(det.enabled !== false)) +
-                '</dd>' +
-                toolsBlock +
-                '</dl>' +
-                '</div>';
-            openPmDrawer();
-            return;
-        }
         if (data.kind !== 'project-memory-yaml' || !data.detail || !data.detail.spec) {
             alert('Unexpected response shape.');
             return;
         }
         pmDrawerMode = 'edit';
-        renderPmDrawerForm(normalizePmSpec(data.detail.spec), data.detail.relativePath || '', 'Edit: ' + id, false);
+        originalPmSpec = data.detail.spec;
+        renderPmDrawerForm(normalizePmSpec(data.detail.spec), data.detail.relativePath || '', 'Edit ' + (data.detail.spec.name || id), false);
         openPmDrawer();
     }
 
@@ -414,405 +334,129 @@
         }
     }
 
-    /** Group GET /api/agents by CLR type name */
+    function displayType(name) {
+        return String(name || 'Unknown').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2');
+    }
+
+    function matchesSearch(...values) {
+        return values.join(' ').toLowerCase().includes(searchText.trim().toLowerCase());
+    }
+
+    function toolDetails(id, kind) {
+        const row = agentToolsInsight?.agents?.find(a => a.agentId === id && a.kind === kind);
+        const tools = row?.tools || [];
+        const unmatched = row?.unmappedYamlAllowTokens || [];
+        return `<details class="ag-details" data-detail-key="${esc(kind + ':' + id)}"><summary>Tool access <span class="ag-count">${tools.length}</span></summary>
+            <p class="ag-muted">Configured associations, not current tool activity.</p>
+            ${tools.length ? '<ul class="ag-tool-list">' + tools.map(t => `<li><strong>${esc(t.displayName || t.clrTypeName)}</strong><span>${esc(t.description || '')}</span></li>`).join('') + '</ul>' : '<p class="ag-muted">No host tool associations found.</p>'}
+            ${unmatched.length ? `<p class="ag-muted">Unresolved tool names: ${unmatched.map(esc).join(', ')}</p>` : ''}
+            </details>`;
+    }
+
+    function emptyState(title, description) {
+        return `<div class="ag-empty"><span class="ag-empty-icon" aria-hidden="true">◎</span><h3>${esc(title)}</h3><p>${esc(description)}</p>
+            ${searchText ? '<button class="ag-button" data-clear-search>Clear search</button>' : ''}</div>`;
+    }
+
+    function renderRunning(list) {
+        const visible = list.filter(a => matchesSearch(a.id, a.type, displayType(a.type)));
+        return `<div class="ag-section-heading"><div><h2>Running agents</h2><p>Instances registered in this host session. Open an agent to inspect its details.</p></div><span class="ag-badge ag-badge-green">${list.length} registered</span></div>
+            ${visible.length ? '<div class="ag-instance-list">' + visible.map(a => `<article class="ag-instance">
+                <span class="ag-avatar" aria-hidden="true">${esc((a.type || 'A').slice(0, 1))}</span>
+                <div class="ag-instance-body"><h3><a href="/Dashboard/AgentDetail/${encodeURIComponent(a.id)}">${esc(a.id)}</a></h3><p>${esc(displayType(a.type))}</p></div>
+                <a class="ag-button" href="/Dashboard/AgentDetail/${encodeURIComponent(a.id)}" aria-label="Inspect ${esc(a.id)}">Inspect <span aria-hidden="true">↗</span></a>
+                </article>`).join('') + '</div>' : emptyState(searchText ? 'No matching agents' : 'No agents are running yet', searchText ? 'Try an agent name or type.' : 'Apply a scenario above to create agents for a workflow. Enabling an agent type alone does not start it.')}
+            <p class="ag-footnote">This is a registry view, not a live activity or health indicator.</p>`;
+    }
+
+    function renderLibrary(defs) {
+        const visible = defs.filter(d => matchesSearch(d.displayName, d.id, d.description, d.metadata?.role, ...(d.metadata?.projectTypes || [])));
+        return `<div class="ag-section-heading"><div><h2>Saved agent definitions</h2><p>Reusable instructions for project-memory workflows. Saving a definition does not start an agent.</p></div>
+            <button class="ag-button ag-primary" id="agents-new-definition" data-yaml-new>+ New definition</button></div>
+            ${visible.length ? '<div class="ag-card-grid">' + visible.map(d => `<article class="ag-card">
+                <div class="ag-card-heading"><h3>${esc(d.displayName || d.id)}</h3><span class="ag-badge">${esc(d.metadata?.role || 'Definition')}</span></div>
+                <p class="ag-muted ag-id">${esc(d.id)}</p>
+                <p class="ag-description">${esc(d.description || 'Reusable instructions for project-memory workflows.')}</p>
+                <p class="ag-card-context">${d.metadata?.projectTypes?.length ? 'For ' + d.metadata.projectTypes.map(esc).join(', ') + ' projects' : 'Project-memory definition'}</p>
+                ${toolDetails(d.id, 'project-memory-yaml')}
+                <div class="ag-card-actions"><button class="ag-button" id="agents-edit-${esc(d.id)}" data-yaml-edit="${esc(d.id)}" aria-label="Edit ${esc(d.displayName || d.id)}">Edit definition</button>
+                <details class="ag-more" data-detail-key="source:${esc(d.id)}"><summary>File details</summary><div><p class="ag-file">${esc(d.source)}</p><button class="ag-danger" data-yaml-del="${esc(d.id)}">Delete definition</button></div></details></div>
+                </article>`).join('') + '</div>' : emptyState(searchText ? 'No matching definitions' : 'Your agent library is empty', searchText ? 'Search by name, role, or project type.' : 'Create a definition with instructions, tool access, and memory permissions for a workflow.')}
+            <p class="ag-footnote">Need templates or the full editor? <a href="/Dashboard/ProjectMemory/Agents">Open advanced agent settings ↗</a></p>`;
+    }
+
+    function renderTypes(config, list) {
+        const types = config.agentTypes || {};
+        const byType = groupAgentsByType(list);
+        const visible = Object.keys(types).sort().filter(t => matchesSearch(t, displayType(t), types[t]));
+        return `<div class="ag-section-heading"><div><h2>Agent types</h2><p>Built-in C# implementations available to scenarios and workflows.</p></div></div>
+            <div class="ag-notice"><strong>Available does not mean running.</strong> Enabling a type allows it to be created. Disabling it stops its existing instances. These settings are saved across host restarts.</div>
+            ${visible.length ? '<div class="ag-types">' + visible.map(t => {
+                const enabled = config.agentTypeEnablement?.[t] !== false;
+                const instances = byType.get(t) || [];
+                return `<article class="ag-type"><div class="ag-type-main"><div><h3>${esc(displayType(t))}</h3><p class="ag-muted ag-id">${esc(t)}</p></div>
+                    <div class="ag-type-controls"><span class="ag-muted">${instances.length} registered</span>
+                    <label class="ag-toggle"><input type="checkbox" role="switch" id="toggle-${esc(t)}" data-agent-type-toggle="${esc(t)}" aria-label="Allow ${esc(displayType(t))} to be created" ${enabled ? 'checked' : ''} ${mutationBusy ? 'disabled' : ''}><span class="ag-switch" aria-hidden="true"></span><span>${enabled ? 'Available' : 'Disabled'}</span></label></div></div>
+                    <details class="ag-details" data-detail-key="type:${esc(t)}"><summary>Type details</summary><p class="ag-file">${esc(types[t])}</p>
+                    ${instances.length ? '<p class="ag-muted">Registered instances</p><ul class="ag-tool-list">' + instances.map(a => `<li><a href="/Dashboard/AgentDetail/${encodeURIComponent(a.id)}">${esc(a.id)}</a></li>`).join('') + '</ul>' : '<p class="ag-muted">No instances have been created.</p>'}
+                    ${toolDetails(t, 'csharp-agent-type')}</details></article>`;
+            }).join('') + '</div>' : emptyState('No matching types', 'Try a type name such as Coder or Session.')}`;
+    }
+
     function groupAgentsByType(agents) {
         const map = new Map();
         for (const a of agents) {
-            const t = a.type || 'Unknown';
-            if (!map.has(t)) map.set(t, []);
-            map.get(t).push(a);
+            const type = a.type || 'Unknown';
+            if (!map.has(type)) map.set(type, []);
+            map.get(type).push(a);
         }
         return map;
     }
 
-    /** Tools linked to a C# agent type (same keys as runtime toggles). */
-    function csharpToolsForType(typeName, insight) {
-        if (!insight || !Array.isArray(insight.agents)) return [];
-        const row = insight.agents.find(function (a) {
-            return a.kind === 'csharp-agent-type' && a.agentId === typeName;
-        });
-        return row && Array.isArray(row.tools) ? row.tools : [];
-    }
-
-    /** Card grid: each agent with tool chips + optional unmapped YAML tokens. */
-    function renderAgentToolsSection(insight) {
-        const errKey = 'agent-tool-usage-api';
-        const err = backendErrors.has(errKey) ? backendErrors.get(errKey) : null;
-        if (err) {
-            return (
-                '<section class="mb-6 p-4 rounded-xl border border-red-200 bg-red-50/90 dark:bg-red-900/20 dark:border-red-800">' +
-                '<h2 class="text-sm font-semibold text-red-900 dark:text-red-100">Tool access by agent</h2>' +
-                '<p class="mt-2 text-sm text-red-800 dark:text-red-200">' +
-                esc(err) +
-                '</p></section>'
-            );
-        }
-        const agents = insight && Array.isArray(insight.agents) ? insight.agents : [];
-        if (!agents.length) {
-            return (
-                '<section class="mb-6 p-6 rounded-xl border border-dashed border-gray-300 bg-gray-50/80 dark:border-gray-600 dark:bg-gray-800/50">' +
-                '<h2 class="text-base font-semibold text-gray-900 dark:text-white">Tool access by agent</h2>' +
-                '<p class="mt-2 text-sm text-gray-600 dark:text-gray-400">No mappings returned yet. Open a project with agent YAML or ensure tool actors are registered.</p></section>'
-            );
-        }
-        const cards = agents
-            .map(function (a) {
-                const isYaml = a.kind === 'project-memory-yaml';
-                const kindBadge =
-                    '<span class="shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ' +
-                    (isYaml
-                        ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100'
-                        : 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100') +
-                    '">' +
-                    (isYaml ? 'YAML' : 'C#') +
-                    '</span>';
-                const tools = Array.isArray(a.tools) ? a.tools : [];
-                const pills =
-                    tools.length === 0
-                        ? ''
-                        : '<div class="mt-3 flex flex-wrap gap-1.5" role="list">' +
-                          tools
-                              .map(function (t) {
-                                  const tip = [t.displayName || t.clrTypeName, t.description, t.detail].filter(Boolean).join(' — ');
-                                  const rest = t.httpPrimaryId
-                                      ? '<span class="ml-1 text-[10px] opacity-75 font-normal">' + esc(t.httpPrimaryId) + '</span>'
-                                      : '';
-                                  return (
-                                      '<span role="listitem" class="inline-flex max-w-full items-center rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" title="' +
-                                      esc(tip) +
-                                      '">' +
-                                      '<span class="truncate">' +
-                                      esc(t.displayName || t.clrTypeName) +
-                                      '</span>' +
-                                      rest +
-                                      '</span>'
-                                  );
-                              })
-                              .join('') +
-                          '</div>';
-                const unmapped = Array.isArray(a.unmappedYamlAllowTokens) ? a.unmappedYamlAllowTokens : [];
-                const unmappedBlock =
-                    unmapped.length === 0
-                        ? ''
-                        : '<div class="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/60 px-2.5 py-2 dark:border-amber-800/60 dark:bg-amber-900/20">' +
-                          '<p class="text-[11px] font-medium text-amber-900 dark:text-amber-100">Allow-list tokens not mapped to a host tool</p>' +
-                          '<div class="mt-1 flex flex-wrap gap-1">' +
-                          unmapped
-                              .map(function (tok) {
-                                  return '<code class="rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-amber-950 dark:bg-gray-900 dark:text-amber-100">' + esc(tok) + '</code>';
-                              })
-                              .join('') +
-                          '</div></div>';
-                const foot =
-                    tools.length === 0 && unmapped.length === 0
-                        ? '<p class="mt-3 text-xs text-gray-500 dark:text-gray-400">No host tools linked for this agent.</p>'
-                        : '';
-                return (
-                    '<article class="flex flex-col rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800/90">' +
-                    '<div class="flex items-start justify-between gap-2">' +
-                    '<div class="min-w-0">' +
-                    '<h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white" title="' +
-                    esc(a.agentLabel || a.agentId) +
-                    '">' +
-                    esc(a.agentLabel || a.agentId) +
-                    '</h3>' +
-                    '<p class="mt-0.5 truncate font-mono text-[11px] text-gray-500 dark:text-gray-400">' +
-                    esc(a.agentId) +
-                    '</p></div>' +
-                    kindBadge +
-                    '</div>' +
-                    pills +
-                    unmappedBlock +
-                    foot +
-                    '</article>'
-                );
-            })
-            .join('');
-        return (
-            '<section class="mb-6" aria-labelledby="agent-tools-heading">' +
-            '<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">' +
-            '<div>' +
-            '<h2 id="agent-tools-heading" class="text-base font-semibold text-gray-900 dark:text-white">Tool access by agent</h2>' +
-            '<p class="mt-1 max-w-3xl text-xs leading-relaxed text-gray-600 dark:text-gray-400">Host tools each agent may use, derived dynamically from project-memory <span class="font-mono text-[10px]">tools.allow</span> and known C# routing. Open the Tools page for the inverse view (tool → agents).</p>' +
-            '</div>' +
-            '<a href="/Dashboard/Tools" class="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700">Tools dashboard</a>' +
-            '</div>' +
-            '<div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">' +
-            cards +
-            '</div></section>'
-        );
-    }
-
-    /** Lookup tool list for a definition id (YAML id or C# type name). */
-    function toolsForDefinitionId(defId, insight) {
-        if (!insight || !Array.isArray(insight.agents)) return [];
-        const row = insight.agents.find(function (a) {
-            return a.agentId === defId;
-        });
-        return row && Array.isArray(row.tools) ? row.tools : [];
-    }
-
-    function renderDefinitionToolsCell(defId, insight) {
-        const tools = toolsForDefinitionId(defId, insight);
-        if (!tools.length) {
-            return '<td class="px-6 py-4 text-xs text-gray-400 dark:text-gray-500">—</td>';
-        }
-        const title = tools
-            .map(function (t) {
-                return t.displayName || t.clrTypeName;
-            })
-            .join(', ');
-        const preview = tools
-            .slice(0, 2)
-            .map(function (t) {
-                return esc(t.displayName || t.clrTypeName);
-            })
-            .join('<span class="text-gray-300 dark:text-gray-600"> · </span>');
-        const more = tools.length > 2 ? ' <span class="text-gray-400">+' + String(tools.length - 2) + '</span>' : '';
-        return (
-            '<td class="px-6 py-4 text-xs text-gray-800 dark:text-gray-200 max-w-[10rem]" title="' +
-            esc(title) +
-            '">' +
-            preview +
-            more +
-            '</td>'
-        );
-    }
-
     function render(config, agents, current, definitions, scenarios, agentTools) {
+        const focusedId = el.contains(document.activeElement) ? document.activeElement.id : null;
+        const selection = focusedId === 'agents-search' ? document.activeElement.selectionStart : null;
+        const openDetails = new Set(Array.from(el.querySelectorAll('details[open][data-detail-key]'), d => d.dataset.detailKey));
         const list = Array.isArray(agents) ? agents : [];
-        const defs = Array.isArray(definitions) ? definitions : [];
-        const scs = Array.isArray(scenarios) ? scenarios : [];
-        const agentTypes = config.agentTypes && typeof config.agentTypes === 'object' ? config.agentTypes : {};
-        const enablement = config.agentTypeEnablement && typeof config.agentTypeEnablement === 'object'
-            ? config.agentTypeEnablement
-            : {};
-        const defaultScenarioName = config.dashboardScenarioName || '';
-        const selectedScenarioName = (current && current.scenarioName) || defaultScenarioName;
-        const byType = groupAgentsByType(list);
-        const typeKeys = Object.keys(agentTypes).sort((a, b) => a.localeCompare(b));
-
-        const errorBlock = renderBackendErrors();
-        const currentBlock = current
-            ? '<div class="p-4 mb-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800"><p class="text-sm font-medium text-amber-800 dark:text-amber-200">Current scenario</p><p class="mt-1 font-semibold text-amber-900 dark:text-white">' +
-              esc(current.scenarioName) + '</p>' +
-              (current.description ? '<p class="mt-1 text-sm text-amber-700 dark:text-amber-300">' + esc(current.description) + '</p>' : '') +
-              '</div>'
-            : '<div class="p-4 mb-4 rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-800 dark:border-gray-700"><p class="text-sm text-gray-500 dark:text-gray-400">No scenario applied in this session yet. Use Apply to run the configured scenario.</p></div>';
-
-        let rows = '';
-        for (const typeName of typeKeys) {
-            const enabled = enablement[typeName] !== false;
-            const instances = byType.get(typeName) || [];
-            const ctTools = csharpToolsForType(typeName, agentTools);
-            let csharpToolsHtml = '';
-            if (ctTools.length) {
-                csharpToolsHtml =
-                    '<div class="mt-2 flex max-w-md flex-wrap gap-1" role="list" aria-label="Host tools for this type">' +
-                    ctTools
-                        .map(function (t) {
-                            const tip = [t.displayName || t.clrTypeName, t.description].filter(Boolean).join(' — ');
-                            return (
-                                '<span role="listitem" class="inline-flex max-w-full items-center rounded-md border border-indigo-100 bg-indigo-50/90 px-1.5 py-0.5 text-[11px] font-medium text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-100" title="' +
-                                esc(tip) +
-                                '">' +
-                                '<span class="truncate">' +
-                                esc(t.displayName || t.clrTypeName) +
-                                '</span></span>'
-                            );
-                        })
-                        .join('') +
-                    '</div>';
-            }
-            const countBadge =
-                '<span class="bg-gray-100 text-gray-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-gray-700 dark:text-gray-300">' +
-                instances.length +
-                '</span>';
-            let instLinks = '';
-            if (instances.length) {
-                instLinks =
-                    '<div class="flex flex-wrap gap-1 mt-1">' +
-                    instances
-                        .map(
-                            (a) =>
-                                '<a href="/Dashboard/AgentDetail/' +
-                                encodeURIComponent(a.id) +
-                                '" class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">' +
-                                esc(a.id) +
-                                '</a>'
-                        )
-                        .join('') +
-                    '</div>';
-            } else {
-                instLinks = '<span class="text-xs text-gray-400 dark:text-gray-500">None running</span>';
-            }
-
-            const toggleId = 'toggle-' + typeName.replace(/[^a-zA-Z0-9_-]/g, '_');
-            rows +=
-                '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
-                '<th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">' +
-                esc(typeName) +
-                csharpToolsHtml +
-                '</th>' +
-                '<td class="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs break-all max-w-md">' +
-                esc(agentTypes[typeName] || '') +
-                '</td>' +
-                '<td class="px-6 py-4">' +
-                countBadge +
-                '</td>' +
-                '<td class="px-6 py-4">' +
-                '<label class="inline-flex items-center cursor-pointer">' +
-                '<input type="checkbox" class="sr-only peer" data-agent-type-toggle="' +
-                esc(typeName) +
-                '" id="' +
-                toggleId +
-                '" ' +
-                (enabled ? 'checked' : '') +
-                '>' +
-                '<div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[\'\'] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>' +
-                '<span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300">' +
-                (enabled ? 'Enabled' : 'Disabled') +
-                '</span>' +
-                '</label>' +
-                '</td>' +
-                '<td class="px-6 py-4">' +
-                instLinks +
-                '</td>' +
-                '</tr>';
+        const defs = (definitions || []).filter(d => d.kind === 'project-memory-yaml');
+        const types = Object.keys(config.agentTypes || {});
+        if (!selectedScenario) selectedScenario = current?.scenarioName || config.dashboardScenarioName || scenarios[0]?.id || '';
+        const scenarioLabel = scenarios.find(s => s.id === current?.scenarioName)?.displayName || current?.scenarioName;
+        const tabs = [['running', 'Running', list.length], ['library', 'Agent library', defs.length], ['types', 'Agent types', types.length]];
+        el.innerHTML = `${renderBackendErrors()}
+            <div class="ag-session"><div class="ag-session-copy"><span class="ag-eyebrow">CURRENT HOST SESSION</span><h2>${current ? esc(scenarioLabel) : 'No scenario applied'}</h2>
+            <p>${current ? 'A scenario has been applied to this host.' : 'Startup agents can run independently. Apply a scenario to set up a workflow.'}</p></div>
+            <button class="ag-button" id="agents-scenario-toggle" data-scenario-toggle aria-expanded="${scenarioExpanded}" aria-controls="agents-scenario-panel">${scenarioExpanded ? 'Close scenario setup' : current ? 'Change scenario' : 'Set up a scenario'} <span aria-hidden="true">${scenarioExpanded ? '−' : '+'}</span></button></div>
+            <div class="ag-scenario-panel" id="agents-scenario-panel" ${scenarioExpanded ? '' : 'hidden'}>
+                <label for="agents-scenario-select">Choose a scenario</label><div class="ag-scenario-controls"><select id="agents-scenario-select">${scenarios.map(s => `<option value="${esc(s.id)}" ${s.id === selectedScenario ? 'selected' : ''}>${esc(s.displayName || s.id)}</option>`).join('')}</select>
+                <button class="ag-button ag-primary" data-apply-scenario ${mutationBusy || !scenarios.length ? 'disabled' : ''}>${scenarioApplying ? 'Applying…' : 'Apply scenario'}</button><a href="/Dashboard/Scenarios">Browse scenarios ↗</a></div>
+                <p>Creates or configures agents for this host session. Applying a scenario may reset its existing agents. Your startup default stays unchanged.</p></div>
+            <div id="scenario-message" class="ag-feedback" role="status" aria-live="polite"></div>
+            <div class="ag-tabs" role="tablist" aria-label="Agent views">${tabs.map(([id, label, count]) => `<button id="agents-tab-${id}" role="tab" data-agent-tab="${id}" aria-selected="${activeTab === id}" aria-controls="agents-view" tabindex="${activeTab === id ? 0 : -1}">${label} <span class="ag-count">${count}</span></button>`).join('')}</div>
+            <div class="ag-toolbar"><label class="ag-search"><span class="sr-only">Search ${activeTab === 'running' ? 'running agents' : activeTab === 'library' ? 'agent definitions' : 'agent types'}</span><span aria-hidden="true">⌕</span><input id="agents-search" type="search" placeholder="${activeTab === 'library' ? 'Search definitions by name, role, or project…' : activeTab === 'types' ? 'Search agent types…' : 'Search running agents…'}" value="${esc(searchText)}"></label>
+            <div class="ag-refresh"><span id="agents-refresh-meta" class="ag-muted">${lastLoadedAt ? 'Updated ' + esc(new Date(lastLoadedAt).toLocaleTimeString()) : 'Loading…'}</span><button class="ag-button" id="agents-refresh-button" data-refresh-agents aria-label="Refresh agents">↻ Refresh</button></div></div>
+            <section id="agents-view" role="tabpanel" aria-labelledby="agents-tab-${activeTab}" tabindex="0">${activeTab === 'running' ? renderRunning(list) : activeTab === 'library' ? renderLibrary(defs) : renderTypes(config, list)}</section>`;
+        el.querySelectorAll('details[data-detail-key]').forEach(d => { d.open = openDetails.has(d.dataset.detailKey); });
+        showScenarioMessage(feedback.message, feedback.error);
+        if (focusedId) {
+            const focus = document.getElementById(focusedId);
+            focus?.focus({ preventScroll: true });
+            if (selection !== null && focus?.setSelectionRange) focus.setSelectionRange(selection, selection);
         }
+    }
 
-        const runtimeCapableCount = defs.filter(function (d) {
-            return d.kind === 'csharp-type';
-        }).length;
-        const nonRuntimeCount = defs.length - runtimeCapableCount;
-
-        let defRows = '';
-        defs.forEach(function (d) {
-            const meta = d.metadata ? JSON.stringify(d.metadata) : '';
-            const safeId = esc(d.id || '');
-            const runtimeBadge =
-                d.kind === 'project-memory-yaml'
-                    ? '<span class="inline-flex items-center rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5 text-[11px] font-medium">Non-runtime definition (YAML)</span>'
-                    : '<span class="inline-flex items-center rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200 px-2 py-0.5 text-[11px] font-medium">Runtime-capable type (C#)</span>';
-            const yamlActions =
-                d.kind === 'project-memory-yaml'
-                    ? '<button type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs mr-2" data-yaml-edit="' +
-                      safeId +
-                      '">Edit</button>' +
-                      '<button type="button" class="text-red-600 dark:text-red-400 hover:underline text-xs" data-yaml-del="' +
-                      safeId +
-                      '">Delete</button>'
-                    : '<button type="button" class="text-blue-600 dark:text-blue-400 hover:underline text-xs" data-csharp-view="' +
-                      safeId +
-                      '">View</button>';
-            defRows +=
-                '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
-                '<th scope="row" class="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">' + esc(d.displayName || d.id) + '</th>' +
-                '<td class="px-6 py-4 text-xs text-gray-600 dark:text-gray-300">' + safeId + '</td>' +
-                '<td class="px-6 py-4 text-xs">' + esc(d.kind || '') + '</td>' +
-                '<td class="px-6 py-4 text-xs font-mono break-all max-w-md">' + esc(d.source || '') + '</td>' +
-                '<td class="px-6 py-4 text-xs">' + esc(d.state || '') + '</td>' +
-                '<td class="px-6 py-4 text-xs">' + runtimeBadge + '</td>' +
-                renderDefinitionToolsCell(d.id, agentTools) +
-                '<td class="px-6 py-4 text-xs break-all max-w-md">' + esc(meta) + '</td>' +
-                '<td class="px-6 py-4 text-xs whitespace-nowrap">' +
-                yamlActions +
-                '</td>' +
-                '</tr>';
-        });
-        if (!defRows) {
-            defRows =
-                '<tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">' +
-                '<td class="px-6 py-4 text-xs text-gray-500 dark:text-gray-400" colspan="9">No definitions found.</td>' +
-                '</tr>';
-        }
-
-        const scenarioOptions = scs
-            .map(function (s) {
-                const id = s.id || '';
-                const text = (s.displayName || id) + ' [' + id + ']';
-                return '<option value="' + esc(id) + '" ' + (id === selectedScenarioName ? 'selected' : '') + '>' + esc(text) + '</option>';
-            })
-            .join('');
-
-        el.innerHTML =
-            errorBlock +
-            currentBlock +
-            '<div class="p-6 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700 mb-6">' +
-            '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">' +
-            '<div>' +
-            '<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Scenario</h2>' +
-            '<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Default startup scenario remains <strong class="text-gray-800 dark:text-gray-200">' +
-            esc(defaultScenarioName) +
-            '</strong>. You can apply a different scenario below for this session.</p>' +
-            '</div>' +
-            '<div class="flex flex-wrap items-center gap-2">' +
-            '<select id="agents-scenario-select" class="min-w-[14rem] py-2.5 px-3 text-sm font-medium text-gray-900 bg-white rounded-lg border border-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600">' +
-            scenarioOptions +
-            '</select>' +
-            '<div class="flex flex-wrap gap-2">' +
-            '<button type="button" data-apply-scenario class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">' +
-            'Apply scenario' +
-            '</button>' +
-            '<button type="button" data-refresh-agents class="py-2.5 px-5 text-sm font-medium text-gray-900 focus:outline-none bg-white rounded-lg border border-gray-200 hover:bg-gray-100 hover:text-blue-700 focus:z-10 focus:ring-4 focus:ring-gray-100 dark:focus:ring-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600 dark:hover:text-white dark:hover:bg-gray-700">' +
-            'Refresh' +
-            '</button>' +
-            '</div></div></div>' +
-            '<div id="scenario-message" class="mt-3 min-h-[1.5rem] text-sm"></div></div>' +
-            '<div class="relative overflow-x-auto shadow-md sm:rounded-lg">' +
-            '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">' +
-            '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">' +
-            '<tr>' +
-            '<th scope="col" class="px-6 py-3">Type</th>' +
-            '<th scope="col" class="px-6 py-3">Registered CLR</th>' +
-            '<th scope="col" class="px-6 py-3">Instances</th>' +
-            '<th scope="col" class="px-6 py-3">Enabled</th>' +
-            '<th scope="col" class="px-6 py-3">Runtime</th>' +
-            '</tr></thead><tbody>' +
-            rows +
-            '</tbody></table></div>' +
-            renderAgentToolsSection(agentTools) +
-            '<div class="mt-4 p-4 rounded-lg bg-indigo-50 border border-indigo-200 dark:bg-indigo-900/20 dark:border-indigo-800">' +
-            '<p class="text-sm font-medium text-indigo-900 dark:text-indigo-100">Runtime vs non-runtime definitions</p>' +
-            '<p class="mt-1 text-xs text-indigo-800 dark:text-indigo-200">' +
-            'Runtime-capable C# types can be spawned as actor instances by scenarios/tools. YAML project-memory definitions are configuration specs used by project-memory pipelines and do not appear as running actors by themselves.' +
-            '</p>' +
-            '<p class="mt-2 text-xs text-indigo-800 dark:text-indigo-200">' +
-            'Runtime-capable: <strong>' + esc(String(runtimeCapableCount)) + '</strong> · Non-runtime YAML: <strong>' + esc(String(nonRuntimeCount)) + '</strong>' +
-            '</p></div>' +
-            '<div class="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">' +
-            '<h2 class="text-base font-semibold text-gray-900 dark:text-white">Agent definitions</h2>' +
-            '<button type="button" data-yaml-new class="self-start text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 dark:bg-blue-600 dark:hover:bg-blue-700 focus:outline-none dark:focus:ring-blue-800">' +
-            'New project-memory agent' +
-            '</button></div>' +
-            '<div class="mt-2 relative overflow-x-auto shadow-md sm:rounded-lg">' +
-            '<table class="w-full text-sm text-left rtl:text-right text-gray-500 dark:text-gray-400">' +
-            '<thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">' +
-            '<tr>' +
-            '<th scope="col" class="px-6 py-3">Definition</th>' +
-            '<th scope="col" class="px-6 py-3">Id</th>' +
-            '<th scope="col" class="px-6 py-3">Kind</th>' +
-            '<th scope="col" class="px-6 py-3">Source</th>' +
-            '<th scope="col" class="px-6 py-3">State</th>' +
-            '<th scope="col" class="px-6 py-3">Runtime</th>' +
-            '<th scope="col" class="px-6 py-3">Host tools</th>' +
-            '<th scope="col" class="px-6 py-3">Metadata</th>' +
-            '<th scope="col" class="px-6 py-3">Actions</th>' +
-            '</tr></thead><tbody>' +
-            defRows +
-            '</tbody></table></div>' +
-            '<p class="mt-4 text-xs text-gray-500 dark:text-gray-400">' +
-            refreshMetaText(list) +
-            '</p>';
+    function renderCurrent() {
+        if (configData) render(configData, agentsData, currentScenario, definitionsData, scenariosData, agentToolsInsight);
     }
 
     function showScenarioMessage(msg, isError) {
-        const msgEl = document.getElementById('scenario-message');
-        if (!msgEl) return;
-        msgEl.textContent = msg;
-        msgEl.className =
-            'mt-3 min-h-[1.5rem] text-sm ' +
-            (isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+        feedback = { message: msg, error: isError };
+        const node = document.getElementById('scenario-message');
+        if (node) {
+            node.textContent = msg;
+            node.style.color = isError ? '#b42332' : '';
+            node.setAttribute('role', isError ? 'alert' : 'status');
+        }
     }
 
     async function fetchJson(url, errorKey, fallbackValue) {
@@ -826,6 +470,7 @@
                 setBackendError(errorKey, msg);
                 return fallbackValue;
             }
+            if (data === null && errorKey !== 'current-scenario-api') throw new Error('The server returned an empty response.');
             clearBackendError(errorKey);
             return data;
         } catch (e) {
@@ -835,44 +480,56 @@
     }
 
     async function refreshRuntimeData(showInlineError, forceRender) {
-        const [agents, current, defs, scenarios, toolUsage] = await Promise.all([
-            fetchJson('/api/agents', 'agents-api', agentsData),
-            fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario),
-            fetchJson('/api/agents/definitions', 'agent-definitions-api', definitionsData),
-            fetchJson('/api/scenarios', 'scenarios-api', scenariosData),
-            fetchJson('/api/agents/definitions/tool-usage', 'agent-tool-usage-api', agentToolsInsight)
-        ]);
+        if (refreshBusy) return;
+        refreshBusy = true;
+        try {
+            const [config, agents, current, defs, scenarios, toolUsage] = await Promise.all([
+                fetchJson('/api/Config', 'config-api', configData),
+                fetchJson('/api/agents', 'agents-api', agentsData),
+                fetchJson('/api/Test/current-scenario', 'current-scenario-api', currentScenario),
+                fetchJson('/api/agents/definitions', 'agent-definitions-api', definitionsData),
+                fetchJson('/api/scenarios', 'scenarios-api', scenariosData),
+                fetchJson('/api/agents/definitions/tool-usage', 'agent-tool-usage-api', agentToolsInsight)
+            ]);
 
-        agentsData = Array.isArray(agents) ? agents : [];
-        currentScenario = current;
-        definitionsData = Array.isArray(defs) ? defs : [];
-        scenariosData = Array.isArray(scenarios) ? scenarios : [];
-        agentToolsInsight =
-            toolUsage && typeof toolUsage === 'object' && Array.isArray(toolUsage.agents) ? toolUsage : { agents: [] };
+            if (config) configData = config;
+            lastLoadedAt = Date.now();
+            agentsData = Array.isArray(agents) ? agents : [];
+            currentScenario = current;
+            definitionsData = Array.isArray(defs) ? defs : [];
+            scenariosData = Array.isArray(scenarios) ? scenarios : [];
+            agentToolsInsight =
+                toolUsage && typeof toolUsage === 'object' && Array.isArray(toolUsage.agents) ? toolUsage : { agents: [] };
 
-        if (configData) {
-            const nextSignature = buildRenderSignature(
-                configData,
-                agentsData,
-                currentScenario,
-                definitionsData,
-                scenariosData,
-                agentToolsInsight
-            );
-            if (forceRender || nextSignature !== lastRenderSignature) {
-                lastLoadedAt = Date.now();
-                render(configData, agentsData, currentScenario, definitionsData, scenariosData, agentToolsInsight);
-                lastRenderSignature = nextSignature;
+            if (configData) {
+                const nextSignature = buildRenderSignature(
+                    configData,
+                    agentsData,
+                    currentScenario,
+                    definitionsData,
+                    scenariosData,
+                    agentToolsInsight
+                );
+                if (forceRender || nextSignature !== lastRenderSignature) {
+                    render(configData, agentsData, currentScenario, definitionsData, scenariosData, agentToolsInsight);
+                    lastRenderSignature = nextSignature;
+                }
             }
-        }
 
-        if (showInlineError && backendErrors.size > 0) {
-            showScenarioMessage('One or more backend issues were detected. See the red panel above.', true);
-        }
+            const meta = document.getElementById('agents-refresh-meta');
+            if (meta) meta.textContent = 'Updated ' + new Date(lastLoadedAt).toLocaleTimeString();
+            if (showInlineError && backendErrors.size > 0) {
+                showScenarioMessage('Some data could not be refreshed. See the issues above.', true);
+            }
+        } finally { refreshBusy = false; }
     }
 
     async function applyScenario() {
-        showScenarioMessage('Applying...', false);
+        if (mutationBusy || refreshBusy) return;
+        mutationBusy = true;
+        scenarioApplying = true;
+        renderCurrent();
+        showScenarioMessage('Applying scenario…', false);
         try {
             const select = document.getElementById('agents-scenario-select');
             // PRD-013 Phase 4: POST /api/scenarios/{id}/apply; id "default" → Agctor:Dashboard:ScenarioName
@@ -900,6 +557,12 @@
             setBackendError('scenario-apply', msg);
             await refreshRuntimeData(false, true);
             showScenarioMessage(msg, true);
+        } finally {
+            mutationBusy = false;
+            scenarioApplying = false;
+            const button = el.querySelector('[data-apply-scenario]');
+            if (button) { button.disabled = !scenariosData.length; button.textContent = 'Apply scenario'; }
+            renderCurrent();
         }
     }
 
@@ -919,50 +582,78 @@
     }
 
     el.addEventListener('click', function (e) {
-        const t = e.target;
-        if (!t || !t.matches) return;
-        if (t.matches('button[data-apply-scenario]')) applyScenario();
-        if (t.matches('button[data-refresh-agents]')) refreshRuntimeData(true, true);
-        if (t.matches('button[data-yaml-new]')) openNewPmAgent();
-        if (t.matches('button[data-yaml-edit]')) {
-            const id = t.getAttribute('data-yaml-edit');
-            if (id) openEditPmAgent(id);
+        const t = e.target.closest('button');
+        if (!t) return;
+        if (t.dataset.agentTab) {
+            activeTab = t.dataset.agentTab;
+            searchText = '';
+            renderCurrent();
+            document.getElementById('agents-tab-' + activeTab)?.focus();
         }
-        if (t.matches('button[data-csharp-view]')) {
-            const id = t.getAttribute('data-csharp-view');
-            if (id) openEditPmAgent(id);
+        if (t.matches('[data-scenario-toggle]')) { scenarioExpanded = !scenarioExpanded; renderCurrent(); }
+        if (t.matches('[data-clear-search]')) { searchText = ''; renderCurrent(); document.getElementById('agents-search')?.focus(); }
+        if (t.matches('[data-apply-scenario]')) applyScenario();
+        if (t.matches('[data-refresh-agents]') && !mutationBusy) refreshRuntimeData(true, true);
+        if (t.matches('[data-yaml-new]')) openNewPmAgent();
+        if (t.matches('[data-yaml-edit]')) {
+            openEditPmAgent(t.dataset.yamlEdit).catch(() => showScenarioMessage('Could not open this definition. Please try again.', true));
         }
-        if (t.matches('button[data-yaml-del]')) {
-            const id = t.getAttribute('data-yaml-del');
-            if (id) deletePmAgent(id);
-        }
+        if (t.matches('[data-yaml-del]')) deletePmAgent(t.dataset.yamlDel);
+    });
+
+    el.addEventListener('input', function (e) {
+        if (e.target.id === 'agents-search') { searchText = e.target.value; renderCurrent(); }
+    });
+    el.addEventListener('keydown', function (e) {
+        if (!e.target.matches('[role="tab"]')) return;
+        const keys = ['running', 'library', 'types'];
+        const index = keys.indexOf(activeTab);
+        let next;
+        if (e.key === 'ArrowRight') next = keys[(index + 1) % keys.length];
+        if (e.key === 'ArrowLeft') next = keys[(index + keys.length - 1) % keys.length];
+        if (e.key === 'Home') next = keys[0];
+        if (e.key === 'End') next = keys[keys.length - 1];
+        if (next) { e.preventDefault(); activeTab = next; searchText = ''; renderCurrent(); document.getElementById('agents-tab-' + activeTab).focus(); }
     });
 
     if (drawerHost) {
         drawerHost.addEventListener('click', function (e) {
-            const t = e.target;
-            if (!t || !t.matches) return;
-            if (t.matches('[data-agents-drawer-backdrop]') || t.matches('[data-agents-drawer-close]')) closePmDrawer();
+            const t = e.target.closest('button');
+            if (!t) return;
+            if (t.matches('[data-agents-drawer-backdrop], [data-agents-drawer-close]')) closePmDrawer();
             if (t.matches('[data-pm-save]')) savePmAgent();
+        });
+        drawerHost.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { e.preventDefault(); closePmDrawer(); }
+            if (e.key !== 'Tab') return;
+            const fields = Array.from(drawerPanel.querySelectorAll('button, a[href], input, textarea, select, [tabindex="0"]')).filter(x => !x.disabled && x.getClientRects().length);
+            const first = fields[0], last = fields[fields.length - 1];
+            if (e.shiftKey && (document.activeElement === first || document.activeElement === drawerPanel)) { e.preventDefault(); last?.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
         });
     }
 
     el.addEventListener('change', async function (e) {
         const input = e.target;
-        if (!input || !input.matches || !input.matches('input[data-agent-type-toggle]')) return;
-        const typeName = input.getAttribute('data-agent-type-toggle');
-        if (!typeName) return;
-        if (Date.now() < suppressToggleUntil) return;
+        if (input.id === 'agents-scenario-select') { selectedScenario = input.value; return; }
+        if (!input.matches('input[data-agent-type-toggle]')) return;
+        const typeName = input.dataset.agentTypeToggle;
+        if (mutationBusy || refreshBusy) { input.checked = !input.checked; return; }
         const enabled = input.checked;
+        const count = agentsData.filter(a => a.type === typeName).length;
+        if (!enabled && count && !confirm('Disable ' + displayType(typeName) + '? This stops ' + count + ' registered instance(s) and prevents new ones. The setting is saved across restarts.')) { input.checked = true; return; }
+        mutationBusy = true;
+        input.disabled = true;
         try {
             await setAgentTypeEnabled(typeName, enabled);
-            const cfg = await fetchJson('/api/Config', 'config-api', configData);
-            if (cfg) configData = cfg;
-            suppressToggleUntil = Date.now() + 400;
             await refreshRuntimeData(false, true);
+            showScenarioMessage(displayType(typeName) + (enabled ? ' is available. Apply a scenario to create instances.' : ' is disabled. Existing instances have been stopped.'), false);
         } catch {
             input.checked = !enabled;
             await refreshRuntimeData(true, true);
+        } finally {
+            mutationBusy = false;
+            el.querySelectorAll('[data-agent-type-toggle]').forEach(x => { x.disabled = false; });
         }
     });
 
@@ -979,7 +670,7 @@
 
             if (refreshTimer) window.clearInterval(refreshTimer);
             refreshTimer = window.setInterval(function () {
-                refreshRuntimeData(false, false);
+                if (!mutationBusy && !document.hidden) refreshRuntimeData(false, false);
             }, 5000);
         })
         .catch(() => {
