@@ -27,8 +27,5 @@
     <ProjectReference Include="..\AgctorSDK.Extensions\AgctorSDK.Extensions.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove="VisualizationLayerDemo.cs" />
-  </ItemGroup>
 
 </Project>

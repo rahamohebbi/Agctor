@@ -46,17 +46,13 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "HTTP + MCP Integration Gateway for the AGCTOR Agent Framework"
     });
-    
-    // Enable XML documentation for better Swagger docs
-    // Commented out for now as XML file might not exist
-    /*
+
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
     if (File.Exists(xmlPath))
     {
-        c.IncludeXmlComments(xmlPath);
+        c.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
     }
-    */
 });
 
 var defaultProjectMemoryRoot = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "samples", "people-project"));
@@ -73,7 +69,7 @@ Console.WriteLine($"🤖 Configured LLM defaults: apiUrl={LLMAgent.GetConfigured
 builder.Services.AddAgctorHost(builder.Configuration, defaultProjectMemoryRoot);
 builder.Services.AddAgctorHostWeb(builder.Configuration, configuredMcpPort);
 
-// Add CORS for development
+// Wide-open CORS is development-only; do not enable AllowAll in production.
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>

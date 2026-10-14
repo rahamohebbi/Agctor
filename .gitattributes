@@ -1,0 +1,18 @@
+# Normalize text files; keep binaries intact.
+* text=auto eol=lf
+
+*.cs text diff=csharp
+*.csproj text
+*.sln text eol=crlf
+*.json text
+*.md text
+*.yml text
+*.sh text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.gif binary
+*.dll binary
+*.snupkg binary

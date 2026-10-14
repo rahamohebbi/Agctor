@@ -1,0 +1,39 @@
+# EditorConfig for Agctor (.NET / C#)
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{csproj,props,targets,json,yml,yaml,md,cff}]
+indent_size = 2
+
+[*.{sln,sh}]
+end_of_line = lf
+
+[*.cs]
+indent_size = 4
+# Keep public APIs nullable-aware; suppress noisy generated-file rules in CI if needed.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = true:suggestion
+csharp_style_namespace_declarations = file_scoped:silent
+csharp_using_directive_placement = outside_namespace:warning
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+dotnet_naming_rule.interfaces_should_be_i_prefixed.severity = suggestion
+dotnet_naming_rule.interfaces_should_be_i_prefixed.symbols = interface_group
+dotnet_naming_rule.interfaces_should_be_i_prefixed.style = prefix_interface_with_i
+dotnet_naming_symbols.interface_group.applicable_kinds = interface
+dotnet_naming_style.prefix_interface_with_i.required_prefix = I
+dotnet_naming_style.prefix_interface_with_i.capitalization = pascal_case
+
+[*.md]
+trim_trailing_whitespace = false

@@ -70,3 +70,25 @@ Demo/VisualizationExample/*.html
 samples/people-project/.agctor/logs/rebuilds/
 
 /samples/people-project/scenarios/people-style-photo-loop/visual
+# Secrets and local overrides — never commit these
+.env
+.env.*
+!.env.example
+secrets.json
+appsettings.*.local.json
+*.pfx
+*.p12
+
+# Logs and coverage
+*.log
+logs/
+coverage/
+coverage.json
+*.lcov
+
+# BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+# Local tool and user secrets
+*.userprefs
+*.DotSettings.user
