@@ -11,6 +11,7 @@
     <!-- Language executors live in this assembly, not Core. -->
     <PackageReference Include="IronPython" Version="3.4.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
   </ItemGroup>
 
   <ItemGroup>
