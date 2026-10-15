@@ -63,6 +63,11 @@
     };
 
     var all = [];
+    var currentAppliedId = '';
+    var searchText = '';
+    var activeSection = 'overview';
+    var catalogBusy = false;
+    var applying = false;
     /** Default-catalog ids hidden via user file (server); included on catalog save. */
     var suppressedDefaults = [];
     var selectedId = null;
@@ -109,7 +114,7 @@
         });
     }
 
-    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+    function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 
     function api(url, opt) {
         return fetch(url, opt).then(function (r) {
@@ -152,45 +157,129 @@
         );
     }
 
-    function renderHeaderChips(currentScenarioName) {
-        chipDefault.textContent = dashboardDefaultScenario || '(not configured)';
-        chipCurrent.textContent = currentScenarioName || '(none applied)';
-        if (hasUnsavedChanges()) {
-            chipDirty.textContent = 'Unsaved edits';
-            chipDirty.className = 'mt-1 text-sm font-semibold text-amber-700 dark:text-amber-300';
-        } else {
-            chipDirty.textContent = 'No local edits';
-            chipDirty.className = 'mt-1 text-sm font-semibold text-emerald-700 dark:text-emerald-300';
-        }
+    function scenarioName(id) {
+        var found = JSON.parse(loadedSnapshot).find(function (x) { return x.id === id; });
+        return found ? (found.displayName || found.id) : id;
+    }
+
+    function renderHeaderChips() {
+        chipDefault.textContent = scenarioName(dashboardDefaultScenario) || 'Not configured';
+        chipCurrent.textContent = scenarioName(currentAppliedId) || 'No scenario applied';
+        var dirty = hasUnsavedChanges();
+        chipDirty.textContent = dirty ? 'Unsaved changes in this catalog' : 'All changes saved';
+        chipDirty.classList.toggle('sc-unsaved', dirty);
+        document.querySelector('.sc-savebar').classList.toggle('sc-has-edits', dirty);
+        saveBtn.disabled = !dirty || catalogBusy;
+        discardBtn.disabled = !dirty || catalogBusy;
+        applyBtn.disabled = !currentScenario() || dirty || catalogBusy || applying;
+        document.getElementById('sc-open-flow').disabled = !currentScenario() || dirty || catalogBusy;
+        document.getElementById('sc-apply-help').textContent = dirty
+            ? 'Save or discard your catalog edits before applying a scenario or editing its flow.'
+            : 'Applies the saved configuration. This can reset agents from the previous scenario; it does not change the configured default.';
+        document.getElementById('sc-open-flow').title = dirty ? 'Save or discard catalog edits first.' : 'Open the visual flow editor';
+        renderOverview();
+        renderList();
     }
 
     function renderList() {
-        if (!all.length) {
-            list.innerHTML = '<div class="text-xs text-gray-500 dark:text-gray-400">No scenarios found.</div>';
+        var matches = all.filter(function (s) {
+            return [s.displayName, s.id, s.description, KIND_LABELS[s.kind]].join(' ').toLowerCase().indexOf(searchText) >= 0;
+        });
+        document.getElementById('sc-list-count').textContent = searchText ? matches.length + ' / ' + all.length : all.length;
+        if (!matches.length) {
+            list.innerHTML = '<div class="sc-empty"><strong>' + (all.length ? 'No matching scenarios' : 'No scenarios yet') + '</strong><p class="sc-muted">' + (all.length ? 'Try another name or description.' : 'Create a scenario to get started.') + '</p>' + (searchText ? '<button type="button" id="sc-clear-search" class="sc-button">Clear search</button>' : '') + '</div>';
+            var clearSearch = document.getElementById('sc-clear-search');
+            if (clearSearch) clearSearch.onclick = function () { searchText = ''; document.getElementById('sc-search').value = ''; renderList(); document.getElementById('sc-search').focus(); };
             return;
         }
-
-        var html = '';
-        for (var i = 0; i < all.length; i++) {
-            var s = all[i];
-            var active = s.id === selectedId;
-            html += '<button class="w-full text-left rounded border p-2 ' + (active ? 'border-blue-300 dark:border-blue-700' : 'border-gray-200 dark:border-gray-700') + ' sc-pick" data-id="' + esc(s.id) + '">';
-            html += '<div class="font-medium text-gray-900 dark:text-white">' + esc(s.displayName || s.id) + '</div>';
-            var listKind = KIND_LABELS[String(s.kind || '').toLowerCase()] || s.kind;
-            html += '<div class="text-xs text-gray-500 dark:text-gray-400">' + esc(s.id) + ' · ' + esc(listKind) + '</div>';
-            html += '<div class="text-[11px] mt-1 text-gray-500 dark:text-gray-400">' + ((s.agentTypes || []).length) + ' agent(s)' + (getScenarioFlow(s) ? ' · conversation flow' : '') + '</div>';
-            html += '</button>';
-        }
-        list.innerHTML = html;
+        var saved = JSON.parse(loadedSnapshot);
+        list.innerHTML = matches.map(function (s) {
+            var changed = JSON.stringify(s) !== JSON.stringify(saved.find(function (x) { return x.id === s.id; }));
+            return '<button type="button" class="sc-pick" aria-pressed="' + (s.id === selectedId) + '" data-id="' + esc(s.id) + '"><span class="sc-pick-title">' + esc(s.displayName || s.id) + '</span><span class="sc-pick-description">' + esc(s.description || 'No description yet.') + '</span><span class="sc-pick-meta">' + esc(KIND_LABELS[s.kind] || s.kind) + (s.id === currentAppliedId ? ' · Applied' : '') + (s.id === dashboardDefaultScenario ? ' · Default' : '') + (changed ? ' · Unsaved' : '') + '</span></button>';
+        }).join('');
         list.querySelectorAll('.sc-pick').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 selectedId = btn.getAttribute('data-id');
-                renderList();
                 renderEditor();
+                renderHeaderChips();
                 applyStatus.textContent = '';
+                var selected = Array.from(list.querySelectorAll('.sc-pick')).find(function (x) { return x.getAttribute('data-id') === selectedId; });
+                if (selected) selected.focus();
             });
         });
     }
+
+    function friendlyType(t) { return String(t).replace(/([a-z])([A-Z])/g, '$1 $2'); }
+    function overviewRoster(items, none) {
+        return items.length ? '<ul class="sc-roster">' + items.map(function (x) { return '<li>' + esc(friendlyType(x)) + '</li>'; }).join('') + '</ul>' : '<p class="sc-muted">' + none + '</p>';
+    }
+    function renderOverview() {
+        var s = currentScenario();
+        document.getElementById('sc-selected').classList.toggle('hidden', !s);
+        if (!s) return;
+        document.getElementById('sc-selected-title').textContent = s.displayName || s.id;
+        document.getElementById('sc-selected-description').textContent = s.description || 'Add a description in Configuration to explain when to use this scenario.';
+        document.getElementById('sc-selected-badges').innerHTML = '<span class="sc-badge">' + esc(KIND_LABELS[s.kind] || s.kind) + '</span>' + (s.id === currentAppliedId ? '<span class="sc-badge sc-applied">Applied to session</span>' : '') + (s.id === dashboardDefaultScenario ? '<span class="sc-badge">Configured default</span>' : '');
+        document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Runtime agents <span class="sc-badge">' + (s.agentTypes || []).length + '</span></h3><p class="sc-muted">' + (isScriptedScenario(s) ? 'The built-in setup program creates and connects these agents.' : 'Apply starts an enabled coordinator; session memory is created when needed. Other types are saved as configuration.') + '</p>' + overviewRoster(s.agentTypes || [], 'No runtime agents configured.') + '</section><section><h3>AI profiles <span class="sc-badge">' + (s.personaAgentIds || []).length + '</span></h3><p class="sc-muted">Instructions and tools used by AI steps in the flow.</p>' + overviewRoster(s.personaAgentIds || [], 'No AI profiles attached.') + '</section></div>';
+        var flow = getScenarioFlow(s);
+        var nodes = flow && (flow.nodes || flow.Nodes) || [];
+        document.getElementById('sc-flow-summary').textContent = flow ? nodes.length + ' steps configured. Open the designer to explore routing, AI steps, and replies.' : 'No flow configured. Add a flow to define how messages move through this scenario.';
+        document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
+    }
+    function selectSection(name, focus) {
+        activeSection = name;
+        ['overview', 'configure'].forEach(function (key) {
+            var tab = document.getElementById('sc-tab-' + key);
+            tab.setAttribute('aria-selected', String(key === name));
+            tab.tabIndex = key === name ? 0 : -1;
+            document.getElementById('sc-' + key).classList.toggle('hidden', key !== name);
+        });
+        if (focus) document.getElementById('sc-tab-' + name).focus();
+    }
+    ['overview', 'configure'].forEach(function (key) {
+        var tab = document.getElementById('sc-tab-' + key);
+        tab.addEventListener('click', function () { selectSection(key); });
+        tab.addEventListener('keydown', function (e) {
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].indexOf(e.key) < 0) return;
+            e.preventDefault();
+            selectSection(e.key === 'Home' ? 'overview' : e.key === 'End' ? 'configure' : activeSection === 'overview' ? 'configure' : 'overview', true);
+        });
+    });
+    document.getElementById('sc-search').addEventListener('input', function (e) { searchText = e.target.value.trim().toLowerCase(); renderList(); });
+    window.addEventListener('beforeunload', function (e) { if (hasUnsavedChanges()) { e.preventDefault(); e.returnValue = ''; } });
+    var pendingDiscard = null;
+    var discardReturnFocus = null;
+    var discardModal = document.getElementById('sc-discard-modal');
+    function closeDiscardModal() {
+        discardModal.classList.add('hidden');
+        pendingDiscard = null;
+        if (discardReturnFocus) discardReturnFocus.focus();
+    }
+    function confirmDiscard(action) {
+        if (!hasUnsavedChanges()) { action(); return; }
+        pendingDiscard = action;
+        discardReturnFocus = document.activeElement;
+        discardModal.classList.remove('hidden');
+        document.getElementById('sc-keep-edits').focus();
+    }
+    document.getElementById('sc-keep-edits').onclick = closeDiscardModal;
+    document.getElementById('sc-confirm-discard').onclick = function () {
+        var action = pendingDiscard;
+        closeDiscardModal();
+        if (action) action();
+    };
+    function trapDialog(e, dialog) {
+        if (e.key !== 'Tab') return;
+        var items = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]')).filter(function (el) { return el.getClientRects().length; });
+        if (!items.length) return;
+        var first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+    discardModal.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeDiscardModal();
+        trapDialog(e, discardModal);
+    });
 
     function isScriptedScenario(s) {
         return String((s && s.kind) || '').toLowerCase() === 'scripted';
@@ -246,7 +335,7 @@
         }
         empty.classList.add('hidden');
         editor.classList.remove('hidden');
-        applyBtn.disabled = false;
+        applyBtn.disabled = hasUnsavedChanges() || catalogBusy || applying;
         idEl.value = s.id || '';
         displayEl.value = s.displayName || '';
         descEl.value = s.description || '';
@@ -273,7 +362,7 @@
         s.personaBindings.extractor = normalizeType(bindExtractor.value) || null;
         s.personaBindings.curator = normalizeType(bindCurator.value) || null;
         s.personaBindings.query = normalizeType(bindQuery.value) || null;
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderAgentTypeEditor();
         renderPersonaEditor();
     }
@@ -327,12 +416,12 @@
         validationEl.innerHTML = lines.join('');
 
         var willStart = types.filter(function (t) {
-            return t === 'SessionCoordinatorAgent' || t === 'SessionMemoryAgent';
+            return t.toLowerCase() === 'sessioncoordinatoragent' && typeEnablement[t] !== false;
         });
-        var configOnly = types.filter(function (t) { return willStart.indexOf(t) < 0; });
-        previewEl.innerHTML =
-            'When you click Apply: <strong>Will start now:</strong> ' + esc(willStart.length ? willStart.join(', ') : '(none)') +
-            ' · <strong>Saved for this scenario only:</strong> ' + esc(configOnly.length ? configOnly.join(', ') : '(none)');
+        var configOnly = types.filter(function (t) { return t.toLowerCase() !== 'sessioncoordinatoragent' && t.toLowerCase() !== 'sessionmemoryagent'; });
+        previewEl.textContent = isScriptedScenario(s)
+            ? 'The built-in setup program controls agent creation for this scenario.'
+            : 'Starts on apply: ' + (willStart.length ? willStart.map(friendlyType).join(', ') : 'no enabled coordinator') + (types.some(function (t) { return t.toLowerCase() === 'sessionmemoryagent'; }) ? '. Session memory is created on demand' : '') + (configOnly.length ? '. Other types are stored as configuration: ' + configOnly.map(friendlyType).join(', ') + '.' : '.');
 
         chipsEl.querySelectorAll('[data-remove-type]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -425,7 +514,7 @@
         s.agentTypes = list;
         typesEl.value = list.join('\n');
         addInput.value = '';
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderAgentTypeEditor();
     }
 
@@ -436,7 +525,7 @@
         var list = (s.agentTypes || []).filter(function (x) { return normalizeType(x).toLowerCase() !== t; });
         s.agentTypes = list;
         typesEl.value = list.join('\n');
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderAgentTypeEditor();
     }
 
@@ -453,7 +542,7 @@
         list.push(p);
         s.personaAgentIds = list;
         personaAddInput.value = '';
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderPersonaEditor();
     }
 
@@ -462,7 +551,7 @@
         if (!s) return;
         var p = normalizeType(raw).toLowerCase();
         s.personaAgentIds = (s.personaAgentIds || []).filter(function (x) { return normalizeType(x).toLowerCase() !== p; });
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderPersonaEditor();
     }
 
@@ -485,7 +574,8 @@
                 .sort();
             hostCatalogTools = Array.isArray(cfg.tools) ? cfg.tools.slice() : [];
             personaSuggestionEl.innerHTML = knownPersonaIds.map(function (p) { return '<option value="' + esc(p) + '"></option>'; }).join('');
-            renderHeaderChips(cur && cur.scenarioName ? cur.scenarioName : '');
+            currentAppliedId = cur && cur.scenarioName || '';
+            renderHeaderChips();
         });
     }
 
@@ -499,14 +589,14 @@
                 suppressedDefaults = Array.isArray(sup) ? sup.slice() : [];
                 loadedSnapshot = JSON.stringify(all);
                 loadedSuppressedSnapshot = JSON.stringify(suppressedDefaults);
-                if (!selectedId && all.length) selectedId = all[0].id;
+                if (!selectedId && all.length) selectedId = all.some(function (x) { return x.id === currentAppliedId; }) ? currentAppliedId : all.some(function (x) { return x.id === dashboardDefaultScenario; }) ? dashboardDefaultScenario : all[0].id;
                 if (selectedId && !all.find(function (x) { return x.id === selectedId; })) selectedId = all.length ? all[0].id : null;
                 renderList();
                 renderEditor();
                 status.textContent = '';
-                renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+                renderHeaderChips();
             })
-            .catch(function (e) { status.textContent = e.message || 'Load failed'; });
+            .catch(function (e) { status.textContent = e.message || 'Load failed'; throw e; });
     }
 
     function loadAll() {
@@ -517,7 +607,7 @@
 
     saveBtn.addEventListener('click', function () {
         updateScenarioFromForm();
-        saveBtn.disabled = true;
+        setCatalogBusy(true);
         status.textContent = 'Saving catalog...';
         api('/api/scenarios', {
             method: 'PUT',
@@ -529,47 +619,43 @@
             })
         })
             .then(function () {
-                status.textContent = 'Catalog saved';
-                return loadCatalog();
+                return loadCatalog().then(function () { status.textContent = 'Saved. Apply from Overview to use these changes.'; });
             })
             .catch(function (e) { status.textContent = e.message || 'Save failed'; })
-            .finally(function () { saveBtn.disabled = false; });
+            .finally(function () { setCatalogBusy(false); });
     });
 
+    function setCatalogBusy(busy) {
+        catalogBusy = busy;
+        document.getElementById('scenarios-root').inert = busy;
+        document.getElementById('sc-new-scenario').disabled = busy;
+        renderHeaderChips();
+    }
     discardBtn.addEventListener('click', function () {
-        var s = currentScenario();
-        if (!s) return;
-        var saved = JSON.parse(loadedSnapshot);
-        var fromSaved = saved.find(function (x) { return x.id === selectedId; });
-        if (!fromSaved) return;
-        s.displayName = fromSaved.displayName || '';
-        s.description = fromSaved.description || '';
-        s.agentTypes = (fromSaved.agentTypes || []).slice();
-        s.personaAgentIds = (fromSaved.personaAgentIds || []).slice();
-        s.personaBindings = {
-            extractor: fromSaved.personaBindings && fromSaved.personaBindings.extractor || null,
-            curator: fromSaved.personaBindings && fromSaved.personaBindings.curator || null,
-            query: fromSaved.personaBindings && fromSaved.personaBindings.query || null
-        };
-        var savedFlow = getScenarioFlow(fromSaved);
-        if (savedFlow) s.flow = JSON.parse(JSON.stringify(savedFlow));
-        else delete s.flow;
+        confirmDiscard(function () {
+        all = JSON.parse(loadedSnapshot);
+        suppressedDefaults = JSON.parse(loadedSuppressedSnapshot);
         renderEditor();
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
-        status.textContent = 'Changes discarded';
+        renderHeaderChips();
+        status.textContent = 'All unsaved edits discarded.';
+        });
     });
 
     reloadBtn.addEventListener('click', function () {
-        reloadBtn.disabled = true;
+        confirmDiscard(function () {
+        setCatalogBusy(true);
         status.textContent = 'Reloading from disk...';
         api('/api/scenarios/reload', { method: 'POST' })
             .then(function () { return loadCatalog(); })
-            .finally(function () { reloadBtn.disabled = false; });
+            .catch(function (e) { status.textContent = e.message || 'Reload failed'; })
+            .finally(function () { setCatalogBusy(false); });
+        });
     });
 
     applyBtn.addEventListener('click', function () {
-        if (!selectedId) return;
-        applyBtn.disabled = true;
+        if (!selectedId || hasUnsavedChanges() || applying) return;
+        applying = true;
+        setCatalogBusy(true);
         applyStatus.textContent = 'Applying...';
         api('/api/scenarios/' + encodeURIComponent(selectedId) + '/apply', {
             method: 'POST',
@@ -585,7 +671,8 @@
                 applyStatus.textContent = e.message || 'Apply failed';
             })
             .finally(function () {
-                applyBtn.disabled = false;
+                applying = false;
+                setCatalogBusy(false);
             });
     });
 
@@ -598,7 +685,7 @@
         if (!s) return;
         s.agentTypes = [];
         typesEl.value = '';
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderAgentTypeEditor();
     });
     addInput.addEventListener('keydown', function (e) {
@@ -612,7 +699,7 @@
         var s = currentScenario();
         if (!s) return;
         s.personaAgentIds = [];
-        renderHeaderChips(chipCurrent.textContent === '(none applied)' ? '' : chipCurrent.textContent);
+        renderHeaderChips();
         renderPersonaEditor();
     });
     personaDefaultsBtn.addEventListener('click', function () {
@@ -637,7 +724,12 @@
     bindExtractor.addEventListener('input', updateScenarioFromForm);
     bindCurator.addEventListener('input', updateScenarioFromForm);
     bindQuery.addEventListener('input', updateScenarioFromForm);
-    refreshBtn.addEventListener('click', loadAll);
+    refreshBtn.addEventListener('click', function () {
+        confirmDiscard(function () {
+        setCatalogBusy(true);
+        loadAll().finally(function () { setCatalogBusy(false); });
+        });
+    });
 
     var listStatus = document.getElementById('sc-list-status');
     function setListStatus(msg) {
@@ -665,10 +757,12 @@
 
     function closeNewModal() {
         if (newModal) newModal.classList.add('hidden');
+        if (newScenarioBtn) newScenarioBtn.focus();
         showNewError('');
     }
 
     function openNewModal() {
+        if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before creating another scenario.'; return; }
         if (!newModal || !newIdInput) return;
         newIdInput.value = '';
         if (newDisplayInput) newDisplayInput.value = '';
@@ -708,6 +802,8 @@
             .then(function (created) {
                 selectedId = (created && created.id) || id;
                 closeNewModal();
+                searchText = ''; document.getElementById('sc-search').value = '';
+                selectSection('configure');
                 setListStatus('Created "' + selectedId + '".');
                 status.textContent = '';
                 return loadCatalog();
@@ -750,12 +846,14 @@
         });
         newModal.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && !newModal.classList.contains('hidden')) closeNewModal();
+            trapDialog(e, newModal);
         });
     }
 
     var delScenarioBtn = document.getElementById('sc-delete-scenario');
     if (delScenarioBtn) {
         delScenarioBtn.addEventListener('click', function () {
+            if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before deleting a scenario.'; return; }
             if (!selectedId) {
                 setListStatus('Select a scenario to delete.');
                 return;
@@ -1361,6 +1459,7 @@
             if (flowLlmToolsEl) flowLlmToolsEl.innerHTML = '';
             modal.classList.add('hidden');
             cyHost.innerHTML = '';
+            openBtn.focus();
         }
 
         function loadFlowModalAgentLabels() {
@@ -1985,6 +2084,7 @@
         function openModal() {
             var s = currentScenario();
             if (!s) return;
+            if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before editing the flow.'; return; }
             var existingFlow = getScenarioFlow(s);
             draftBase = existingFlow ? JSON.parse(JSON.stringify(existingFlow)) : window.AgctorScenarioFlow.emptyFlow(s.id);
             resetFlowSimState();
@@ -1994,6 +2094,7 @@
             renderer = window.AgctorScenarioFlow.createGraphRenderer();
             cyHost.innerHTML = '';
             modal.classList.remove('hidden');
+            modal.querySelector('[data-sc-flow-close]').focus();
             api('/api/Config')
                 .then(function (cfg) {
                     hostCatalogTools = Array.isArray(cfg && cfg.tools) ? cfg.tools.slice() : [];
@@ -2002,6 +2103,7 @@
                 .finally(function () {
                     requestAnimationFrame(function () {
                         requestAnimationFrame(function () {
+                            if (!renderer || modal.classList.contains('hidden')) return;
                             renderer.mount(cyHost, draftBase);
                             renderer.onChange(function () {
                                 setFlowMsg('');
@@ -2165,6 +2267,7 @@
 
         modal.addEventListener('keydown', function (e) {
             if (modal.classList.contains('hidden') || !renderer) return;
+            trapDialog(e, modal);
             var tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
             if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
             if (e.key !== 'Delete' && e.key !== 'Backspace') return;
@@ -2282,6 +2385,7 @@
             });
             copyModal.addEventListener('keydown', function (e) {
                 if (e.key === 'Escape' && !copyModal.classList.contains('hidden')) closeCopyFlowModal();
+                trapDialog(e, copyModal);
             });
         }
 

@@ -3,76 +3,111 @@
 @{
     ViewData["Title"] = "Scenarios";
 }
-<div class="mb-6">
-    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Scenario catalog</h1>
-    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Choose and configure how a chat session behaves: which programs start, which AI profiles are used, and how messages flow. Saving here updates your config file; use <strong class="font-medium text-gray-700 dark:text-gray-200">Apply</strong> to load a scenario into the current session.</p>
-</div>
-
-<div class="mb-4 grid gap-3 md:grid-cols-3">
-    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
-        <p class="text-xs text-gray-500 dark:text-gray-400">Configured default</p>
-        <p id="sc-chip-default" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">—</p>
-    </div>
-    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
-        <p class="text-xs text-gray-500 dark:text-gray-400">Current session</p>
-        <p id="sc-chip-current" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">—</p>
-    </div>
-    <div class="p-3 rounded-lg border border-gray-200 bg-white dark:bg-gray-800 dark:border-gray-700">
-        <p class="text-xs text-gray-500 dark:text-gray-400">Editor state</p>
-        <p id="sc-chip-dirty" class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">No local edits</p>
-    </div>
-</div>
-
-<div id="scenarios-root" class="grid gap-4 lg:grid-cols-3">
-    <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Scenarios</h2>
-            <div class="flex flex-wrap gap-1.5">
-                <button type="button" id="scenarios-refresh" class="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Refresh</button>
-                <button type="button" id="sc-new-scenario" class="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">New</button>
-                <button type="button" id="sc-delete-scenario" class="px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Delete</button>
-            </div>
-        </div>
-        <p id="sc-list-status" class="mb-2 min-h-[1rem] text-xs text-gray-600 dark:text-gray-400" aria-live="polite"></p>
-        <div id="scenarios-list" class="space-y-2 text-sm"></div>
-    </div>
-
-    <div class="space-y-4 lg:col-span-2">
-        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Run scenario now</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Loads this scenario into your current chat session and starts the agents listed below.</p>
-            <div class="flex flex-wrap items-center gap-2">
-                <button type="button" id="sc-apply" class="px-4 py-2.5 text-sm font-medium text-white bg-emerald-600 rounded-lg hover:bg-emerald-700">Apply to current session</button>
-                <a href="/Dashboard/Agents" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Open Agents</a>
-                <span id="sc-apply-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
-            </div>
-        </div>
-
-        <div class="p-4 bg-white border border-gray-200 rounded-lg shadow dark:bg-gray-800 dark:border-gray-700">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Scenario catalog editor (configuration)</h2>
-            <div id="scenarios-empty" class="text-xs text-gray-500 dark:text-gray-400">Select a scenario to edit.</div>
-            <div id="scenarios-editor" class="hidden space-y-3">
-                <div class="grid gap-3 md:grid-cols-2">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Internal id</label>
-                        <input id="sc-id" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                        <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Stable name used in config files. You cannot rename it here after creation.</p>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario type</label>
-                        <input id="sc-kind" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
-                        <p id="sc-kind-help" class="mt-1 text-[11px] leading-snug text-gray-600 dark:text-gray-300" aria-live="polite"></p>
-                    </div>
+<link rel="stylesheet" href="~/css/scenarios-page.css" asp-append-version="true" />
+<div class="sc-workspace">
+    <header class="sc-heading">
+        <div><p class="sc-eyebrow">WORKSPACE / SCENARIOS</p><h1>Scenarios</h1><p>Choose a workflow. Shape how your agents work together.</p></div>
+        <button type="button" id="sc-new-scenario" class="sc-button sc-primary">+ New scenario</button>
+    </header>
+    <section class="sc-session" aria-label="Host session">
+        <div><p class="sc-eyebrow">CURRENT HOST SESSION</p><h2 id="sc-chip-current">Loading…</h2><p>Applying a scenario sets up its agents for this host session.</p></div>
+        <div class="sc-default"><span>Configured default</span><strong id="sc-chip-default">Loading…</strong><a href="/Dashboard">Manage in Overview ↗</a></div>
+    </section>
+    <div id="scenarios-root" class="sc-layout">
+        <aside class="sc-sidebar" aria-label="Scenario catalog">
+            <div class="sc-list-heading"><h2>Your scenarios <span id="sc-list-count" class="sc-badge"></span></h2><button type="button" id="scenarios-refresh" class="sc-button sc-small">Refresh</button></div>
+            <label class="sc-search"><span aria-hidden="true">⌕</span><input id="sc-search" type="search" aria-label="Search scenarios" placeholder="Search scenarios…" /></label>
+            <p id="sc-list-status" class="sc-status" role="status"></p>
+            <div id="scenarios-list"><p class="sc-muted">Loading scenarios…</p></div>
+        </aside>
+        <div class="sc-detail">
+            <div id="scenarios-empty" class="sc-card sc-empty">Select a scenario to see how it works, or create your first one.</div>
+            <div id="sc-selected" class="hidden sc-card">
+                <header class="sc-detail-heading"><div id="sc-selected-badges" class="sc-badges"></div><h2 id="sc-selected-title"></h2><p id="sc-selected-description" class="sc-muted"></p></header>
+                <div class="sc-tabs" role="tablist" aria-label="Scenario details">
+                    <button type="button" id="sc-tab-overview" role="tab" aria-selected="true" aria-controls="sc-overview">Overview</button>
+                    <button type="button" id="sc-tab-configure" role="tab" aria-selected="false" aria-controls="sc-configure" tabindex="-1">Configuration</button>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
+                <section id="sc-overview" role="tabpanel" aria-labelledby="sc-tab-overview" tabindex="0">
+                    <div id="sc-overview-content"></div>
+                    <div class="sc-flow-card"><div><h3>Conversation flow</h3><p id="sc-flow-summary" class="sc-muted"></p></div><button type="button" id="sc-open-flow" class="sc-button">Edit flow ↗</button></div>
+                    <div class="sc-apply-box"><h3>Use this scenario</h3><p id="sc-apply-help" class="sc-muted">Applies the saved configuration. This can reset agents from the previous scenario; it does not change the configured default.</p><div class="sc-actions"><button type="button" id="sc-apply" class="sc-button sc-primary" disabled>Apply to session</button><a href="/Dashboard/Agents" class="sc-button">View agents ↗</a></div><p id="sc-apply-status" class="sc-status" role="status"></p></div>
+                </section>
+                <section id="sc-configure" class="hidden" role="tabpanel" aria-labelledby="sc-tab-configure" tabindex="0">
+                    <p class="sc-config-note">Edit the saved definition here. Apply it from Overview when you want to use the changes.</p>
+                    <div id="scenarios-editor" class="hidden">
+<details class="sc-section" open><summary>Name & description</summary><div class="sc-section-body">                <div>
+                    <label for="sc-display-name" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
                     <input id="sc-display-name" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
                     <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Friendly title shown in this list and elsewhere in the dashboard.</p>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                    <label for="sc-description" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                     <textarea id="sc-description" rows="2" class="w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
                     <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Short summary of what this scenario is for (for your reference, not sent to the AI).</p>
+                </div>
+</div></details>
+<details class="sc-section"><summary>Runtime agents</summary><div class="sc-section-body">                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agents to start when applied</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Live workers for your chat session (for example, something that coordinates messages or remembers context). Persona definitions (how the AI thinks and what it remembers) are added in the section below and on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.</p>
+                    <div id="sc-agent-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <input id="sc-agent-add" list="sc-agent-suggestions" aria-label="Add runtime agent" placeholder="Choose an agent type…" class="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        <datalist id="sc-agent-suggestions"></datalist>
+                        <button type="button" id="sc-agent-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
+                        <button type="button" id="sc-agent-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
+                    </div>
+                    <div id="sc-agent-validation" class="mt-2 text-xs space-y-1"></div>
+                    <div id="sc-agent-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
+                </div>
+</div></details>
+<details class="sc-section"><summary>AI profiles</summary><div class="sc-section-body">                <div>
+                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">AI memory &amp; behavior profiles</label>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Attach profiles that tell the AI how to extract facts, organize memory, and answer questions (for example <code>person-extractor</code>, <code>memory-curator</code>, <code>person-query</code>).</p>
+                    <div class="mb-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
+                        These profiles are instructions and settings, not separate running programs. They are used when your flow runs an AI step. Edit the full definition on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.
+                    </div>
+                    <div id="sc-persona-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
+                    <div class="mt-2 flex flex-wrap items-center gap-2">
+                        <input id="sc-persona-add" list="sc-persona-suggestions" aria-label="Add AI profile" placeholder="Choose an AI profile…" class="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        <datalist id="sc-persona-suggestions"></datalist>
+                        <button type="button" id="sc-persona-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
+                        <button type="button" id="sc-persona-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
+                        <button type="button" id="sc-persona-defaults-btn" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Attach people defaults</button>
+                    </div>
+                    <div id="sc-persona-validation" class="mt-2 text-xs space-y-1"></div>
+                    <div id="sc-persona-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
+                </div>
+<details class="sc-section"><summary>Optional profile roles</summary><div class="sc-section-body">                <div>
+                    <p class="mb-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">Optional shortcuts: pick which profile plays each role when the system needs to extract facts, organize memory, or answer questions. Leave blank if you only use the flow designer.</p>
+                    <div class="grid gap-3 md:grid-cols-3">
+                        <div>
+                            <label for="sc-bind-extractor" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fact extraction profile (optional)</label>
+                            <input id="sc-bind-extractor" list="sc-persona-suggestions" placeholder="person-extractor" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
+                        <div>
+                            <label for="sc-bind-curator" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory organization profile (optional)</label>
+                            <input id="sc-bind-curator" list="sc-persona-suggestions" placeholder="memory-curator" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
+                        <div>
+                            <label for="sc-bind-query" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Question answering profile (optional)</label>
+                            <input id="sc-bind-query" list="sc-persona-suggestions" placeholder="person-query" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
+                        </div>
+                    </div>
+                </div>
+</div></details>
+</div></details>
+<details class="sc-section"><summary>Advanced settings</summary><div class="sc-section-body">                <div class="grid gap-3 md:grid-cols-2">
+                    <div>
+                        <label for="sc-id" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Internal id</label>
+                        <input id="sc-id" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Stable name used in config files. You cannot rename it here after creation.</p>
+                    </div>
+                    <div>
+                        <label for="sc-kind" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Scenario type</label>
+                        <input id="sc-kind" disabled class="w-full rounded-lg border border-gray-300 bg-gray-100 p-2.5 text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white" />
+                        <p id="sc-kind-help" class="mt-1 text-[11px] leading-snug text-gray-600 dark:text-gray-300" aria-live="polite"></p>
+                    </div>
                 </div>
                 <div id="sc-handler-section" class="hidden space-y-2">
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Built-in setup program</label>
@@ -83,69 +118,27 @@
                 <div id="sc-declarative-hint" class="hidden rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] leading-snug text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
                     <strong class="font-medium">You configure this scenario.</strong> Choose which agents start when you apply it, attach memory personas below, and use the visual flow designer to define how chat steps run. No built-in setup program is used.
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agents to start when applied</label>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Live workers for your chat session (for example, something that coordinates messages or remembers context). Persona definitions (how the AI thinks and what it remembers) are added in the section below and on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.</p>
-                    <div id="sc-agent-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
-                    <div class="mt-2 flex flex-wrap items-center gap-2">
-                        <input id="sc-agent-add" list="sc-agent-suggestions" placeholder="Search or type an agent name…" class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                        <datalist id="sc-agent-suggestions"></datalist>
-                        <button type="button" id="sc-agent-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
-                        <button type="button" id="sc-agent-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
-                    </div>
-                    <div id="sc-agent-validation" class="mt-2 text-xs space-y-1"></div>
-                    <div id="sc-agent-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">AI memory &amp; behavior profiles</label>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Attach profiles that tell the AI how to extract facts, organize memory, and answer questions (for example <code>person-extractor</code>, <code>memory-curator</code>, <code>person-query</code>).</p>
-                    <div class="mb-2 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs text-blue-900 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-200">
-                        These profiles are instructions and settings, not separate running programs. They are used when your flow runs an AI step. Edit the full definition on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.
-                    </div>
-                    <div id="sc-persona-chips" class="min-h-[2.5rem] flex flex-wrap gap-2 rounded-lg border border-gray-300 bg-gray-50 p-2.5 dark:bg-gray-700 dark:border-gray-600"></div>
-                    <div class="mt-2 flex flex-wrap items-center gap-2">
-                        <input id="sc-persona-add" list="sc-persona-suggestions" placeholder="Type persona id..." class="min-w-[18rem] flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                        <datalist id="sc-persona-suggestions"></datalist>
-                        <button type="button" id="sc-persona-add-btn" class="px-3 py-2 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Add</button>
-                        <button type="button" id="sc-persona-clear-btn" class="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100 dark:bg-red-900/30 dark:text-red-200">Clear all</button>
-                        <button type="button" id="sc-persona-defaults-btn" class="px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-200">Attach people defaults</button>
-                    </div>
-                    <div id="sc-persona-validation" class="mt-2 text-xs space-y-1"></div>
-                    <div id="sc-persona-preview" class="mt-2 text-xs text-gray-600 dark:text-gray-300"></div>
-                </div>
-                <div>
-                    <p class="mb-2 text-[11px] leading-snug text-gray-500 dark:text-gray-400">Optional shortcuts: pick which profile plays each role when the system needs to extract facts, organize memory, or answer questions. Leave blank if you only use the flow designer.</p>
-                    <div class="grid gap-3 md:grid-cols-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fact extraction profile (optional)</label>
-                            <input id="sc-bind-extractor" list="sc-persona-suggestions" placeholder="person-extractor" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Memory organization profile (optional)</label>
-                            <input id="sc-bind-curator" list="sc-persona-suggestions" placeholder="memory-curator" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Question answering profile (optional)</label>
-                            <input id="sc-bind-query" list="sc-persona-suggestions" placeholder="person-query" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white" />
-                        </div>
-                    </div>
-                </div>
                 <details class="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
                     <summary class="cursor-pointer text-xs font-medium text-gray-700 dark:text-gray-300">Advanced: edit raw agent type lines</summary>
-                    <textarea id="sc-agent-types" rows="6" class="mt-2 w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
+                    <textarea aria-label="Raw runtime agent types" id="sc-agent-types" rows="6" class="mt-2 w-full rounded-lg border border-gray-300 bg-gray-50 p-2.5 text-sm font-mono dark:bg-gray-700 dark:border-gray-600 dark:text-white"></textarea>
                 </details>
-                <div class="rounded-lg border border-indigo-200 bg-indigo-50/80 p-3 dark:border-indigo-800 dark:bg-indigo-900/20">
-                    <p class="text-xs font-medium text-indigo-900 dark:text-indigo-100">Conversation flow</p>
-                    <p class="mt-1 text-[11px] text-indigo-800 dark:text-indigo-200">Design the path each message takes (chat in → AI steps → reply out). This is where you connect routers and AI profiles for custom scenarios.</p>
-                    <button type="button" id="sc-open-flow" class="mt-2 px-3 py-2 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Open Scenario Flow Studio</button>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" id="sc-save" class="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Save catalog changes</button>
-                    <button type="button" id="sc-discard" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Discard edits</button>
-                    <button type="button" id="sc-reload" class="px-4 py-2.5 text-sm font-medium text-gray-800 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600">Reload from disk</button>
-                    <span id="sc-status" class="text-xs text-gray-500 dark:text-gray-400"></span>
-                </div>
+<div class="sc-maintenance"><p class="sc-muted">Reload the catalog after editing its files outside this page. Deleting a customized built-in scenario restores its default; deleting it again hides it.</p><div class="sc-actions"><button type="button" id="sc-reload" class="sc-button">Reload from disk</button><button type="button" id="sc-delete-scenario" class="sc-button sc-danger">Delete scenario</button></div></div></div></details>
+                    </div>
+                </section>
             </div>
+            <div class="sc-savebar"><div><strong id="sc-chip-dirty">No unsaved changes</strong><p id="sc-status" class="sc-status" role="status"></p></div><div class="sc-actions"><button type="button" id="sc-discard" class="sc-button" disabled>Discard all edits</button><button type="button" id="sc-save" class="sc-button sc-primary" disabled>Save all changes</button></div></div>
+        </div>
+    </div>
+</div>
+
+<div id="sc-discard-modal" class="hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-labelledby="sc-discard-title" aria-describedby="sc-discard-description">
+    <div class="fixed inset-0 bg-gray-900/60"></div>
+    <div class="relative mx-auto mt-24 w-[calc(100%-2rem)] max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <h2 id="sc-discard-title" class="text-lg font-semibold text-gray-900 dark:text-white">Discard unsaved changes?</h2>
+        <p id="sc-discard-description" class="mt-2 text-sm text-gray-600 dark:text-gray-300">Your unsaved edits across this catalog will be lost. Saved scenarios will stay unchanged.</p>
+        <div class="mt-6 flex flex-wrap justify-end gap-3">
+            <button type="button" id="sc-keep-edits" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600 dark:text-white">Keep editing</button>
+            <button type="button" id="sc-confirm-discard" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white">Discard changes</button>
         </div>
     </div>
 </div>
@@ -155,7 +148,7 @@
         <div class="fixed inset-0 bg-gray-900/60" data-sc-new-backdrop></div>
         <div class="relative w-full max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
             <h2 id="sc-new-title" class="text-base font-semibold text-gray-900 dark:text-white">New scenario</h2>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Creates a declarative entry in the user catalog (<code class="text-[10px]">agctor-scenarios.user.json</code>).</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Create a custom workflow, then choose its agents, AI profiles, and conversation flow.</p>
             <div class="mt-3 space-y-3">
                 <div>
                     <label for="sc-new-id" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Id</label>
@@ -182,8 +175,8 @@
         <div id="sc-flow-panel" class="relative flex w-[min(94vw,1680px)] max-w-[98vw] min-w-[36rem] max-h-[94vh] min-h-[32rem] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 resize" style="height: 82vh;">
             <div class="flex shrink-0 items-start justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
                 <div>
-                    <h2 id="sc-flow-title" class="text-base font-semibold text-gray-900 dark:text-white">Agctor Scenario Flow Studio</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Canonical GraphDocument — flows execute server-side (<code class="text-[10px]">POST /api/scenarios/{id}/flow/run</code> or coordinator chat when applied). <strong class="text-gray-700 dark:text-gray-300">v2</strong> adds loop-back, gates, ask-user, and domain events (<code class="text-[10px]">schemaVersion: 2.0</code>). Drag the corner grip to resize.</p>
+                    <h2 id="sc-flow-title" class="text-base font-semibold text-gray-900 dark:text-white">Conversation flow</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Connect the steps a message follows, from input to reply. Select a step to edit it, then validate and save your flow.</p>
                     <p id="sc-flow-schema-badge" class="mt-1 hidden text-[10px] font-medium text-teal-700 dark:text-teal-300"></p>
                 </div>
                 <button type="button" class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" data-sc-flow-close aria-label="Close">✕</button>
@@ -201,7 +194,7 @@
                                 </div>
                             </div>
                             <div class="group">
-                                <button type="button" title="One LLM step: persona YAML + Ollama; set config.personaId from the scenario roster." class="w-full rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">LlmNode</button>
+                                <button type="button" title="One LLM step: persona YAML + Ollama; set config.personaId from the scenario roster." class="w-full rounded border border-gray-300 px-2 py-1.5 text-left text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800" data-flow-add="LlmNode">AI step</button>
                                 <div role="tooltip" class="mt-1 hidden rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] leading-snug text-gray-700 shadow-sm group-hover:block dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
                                     One local <strong class="font-medium text-gray-900 dark:text-gray-100">LLM</strong> turn per node: that persona’s project-memory <strong class="font-medium">YAML</strong> (tools, paths, tone) plus Ollama. Set <code class="text-[9px]">config.personaId</code> from this scenario’s roster; optional extra catalog tools in the inspector.
                                 </div>
@@ -213,7 +206,7 @@
                                 </div>
                             </div>
                         </div>
-                        <p class="mt-3 text-xs font-medium text-teal-800 dark:text-teal-200">v2 runtime (PRD-024)</p>
+                        <p class="mt-3 text-xs font-medium text-teal-800 dark:text-teal-200">Conversation controls</p>
                         <div class="flex flex-col gap-1.5">
                             <button type="button" title="Branch on a session fact (true/false edges)." class="w-full rounded border border-teal-300 px-2 py-1.5 text-left text-xs hover:bg-teal-50 dark:border-teal-700 dark:hover:bg-teal-950/40" data-flow-add="Gate">Gate</button>
                             <button type="button" title="Suspend until the user sends a message (optional attachments)." class="w-full rounded border border-teal-300 px-2 py-1.5 text-left text-xs hover:bg-teal-50 dark:border-teal-700 dark:hover:bg-teal-950/40" data-flow-add="WaitForInput">Ask user</button>
