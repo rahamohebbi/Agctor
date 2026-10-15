@@ -102,17 +102,17 @@
         if (mode === 'loopBack') {
             var lc = e.loopConfig || {};
             var max = lc.maxAttempts != null ? lc.maxAttempts : '?';
-            return 'loop:' + max;
+            return 'Loop · ' + max;
         }
-        var modeShort = mode.slice(0, 4);
+        var modeShort = mode === 'parallel' ? 'Parallel' : 'Next';
         var cond = String(e.condition || '').trim();
         var cm = String(e.conditionMatch || 'contains').slice(0, 4);
         if (cond) {
             var t = cond.length > 16 ? cond.slice(0, 16) + '\u2026' : cond;
-            return modeShort + ':' + cm + '\u00b7' + t;
+            return (mode === 'parallel' ? 'Parallel · ' : '') + cm + ' · ' + t;
         }
-        if (e.llmRoutingHint && String(e.llmRoutingHint).trim()) return modeShort + ':llm';
-        return modeShort + ':def';
+        if (e.llmRoutingHint && String(e.llmRoutingHint).trim()) return mode === 'parallel' ? 'Parallel · AI match' : 'AI match';
+        return modeShort;
     }
 
     function emptyFlow(scenarioId) {
@@ -245,7 +245,7 @@
             var fromN = nodeById(nodes, e.fromNodeId);
             if (fromN && fromN.type === 'Router') {
                 var rc = fromN.config || {};
-                if (String(rc.routerMode || '').toLowerCase() !== 'llm' && String(e.conditionMatch || '').toLowerCase() === 'regex' && String(e.condition || '').trim()) {
+                if (['llm', 'decision'].indexOf(String(rc.routerMode || '').toLowerCase()) < 0 && String(e.conditionMatch || '').toLowerCase() === 'regex' && String(e.condition || '').trim()) {
                     try {
                         new RegExp(String(e.condition).trim(), 'i');
                     } catch (err) {
@@ -257,7 +257,7 @@
         nodes.forEach(function (n) {
             if (!n || n.type !== 'Router') return;
             var cfg = n.config || {};
-            if (String(cfg.routerMode || '').toLowerCase() === 'llm') return;
+            if (['llm', 'decision'].indexOf(String(cfg.routerMode || '').toLowerCase()) >= 0) return;
             var rid = n.id;
             var seqOut = outgoingEdges(edges, rid, 'sequential');
             var defc = seqOut.filter(function (e) { return !String(e.condition || '').trim(); }).length;

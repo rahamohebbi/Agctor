@@ -12,6 +12,9 @@ namespace AgctorSDK.Core.Interfaces
     {
         /// <param name="projectId">Optional chat project bucket; must exist when set.</param>
         Task<SessionInfo> CreateSessionAsync(string? sessionId = null, string? title = null, string? projectId = null, CancellationToken cancellationToken = default);
+        Task<string?> GetModelSettingsJsonAsync(string sessionId, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+        Task SaveModelSettingsJsonAsync(string sessionId, string json, CancellationToken cancellationToken = default) => throw new NotSupportedException("Session model settings are not supported by this store.");
+
         Task<SessionInfo?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default);
         /// <summary>Updates the session title (trims whitespace, rejects empty). Returns the latest session metadata.</summary>
         Task<SessionInfo> UpdateSessionTitleAsync(string sessionId, string title, CancellationToken cancellationToken = default);

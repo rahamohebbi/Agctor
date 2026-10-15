@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Host.Services.Models;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Messages;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
@@ -44,6 +46,7 @@ public sealed class ScenarioFlowRuntimeOrchestrator : IScenarioFlowRuntimeOrches
     private const string SenderId = "scenario-flow-orchestrator";
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromMinutes(10);
 
+    private readonly ModelSelectionService? _models;
     private readonly IActorRuntimeAdapter _runtime;
     private readonly IScenarioFlowRuntimeStore _store;
     private readonly IScenarioFlowSegmentExecutor _segmentExecutor;
@@ -54,8 +57,10 @@ public sealed class ScenarioFlowRuntimeOrchestrator : IScenarioFlowRuntimeOrches
         IActorRuntimeAdapter runtime,
         IScenarioFlowRuntimeStore store,
         IScenarioFlowSegmentExecutor segmentExecutor,
-        IOptionsMonitor<ScenarioFlowHostOptions> flowOptions)
+        IOptionsMonitor<ScenarioFlowHostOptions> flowOptions,
+        ModelSelectionService? models = null)
     {
+        _models = models;
         _runtime = runtime;
         _store = store;
         _segmentExecutor = segmentExecutor;
@@ -71,7 +76,9 @@ public sealed class ScenarioFlowRuntimeOrchestrator : IScenarioFlowRuntimeOrches
         var flow = definition.Flow ?? throw new InvalidOperationException("Scenario has no flow.");
         var sessionId = request.SessionId?.Trim() ?? Guid.NewGuid().ToString("N");
         var projectRoot = request.ProjectRoot?.Trim() ?? throw new InvalidOperationException("Project root is required.");
-        var flowJson = JsonSerializer.Serialize(flow, ScenarioFlowJson.Options);
+        var plan = ModelSelectionScope.Plan?.ScenarioId == scenarioId ? ModelSelectionScope.Plan
+            : _models == null ? null : await _models.PlanAsync(sessionId, scenarioId, cancellationToken);
+        var flowJson = ModelSelectionService.ExecutionJson(flow, plan);
         var correlationId = Guid.NewGuid().ToString("N");
         var attachments = (IReadOnlyList<string>)(request.AttachmentIds ?? new List<string>());
 
@@ -159,7 +166,9 @@ public sealed class ScenarioFlowRuntimeOrchestrator : IScenarioFlowRuntimeOrches
         CancellationToken cancellationToken = default)
     {
         var flow = definition.Flow ?? throw new InvalidOperationException("Scenario has no flow.");
-        var flowJson = JsonSerializer.Serialize(flow, ScenarioFlowJson.Options);
+        var storedSnapshot = await _store.LoadAsync(projectRoot, sessionId, scenarioId, cancellationToken);
+        var plan = storedSnapshot?.ModelPlan ?? (_models == null ? null : await _models.PlanAsync(sessionId, scenarioId, cancellationToken));
+        var flowJson = ModelSelectionService.ExecutionJson(flow, plan);
         var correlationId = Guid.NewGuid().ToString("N");
         var message = new ScenarioFlowResumeDomainEventMessage(
             sessionId,

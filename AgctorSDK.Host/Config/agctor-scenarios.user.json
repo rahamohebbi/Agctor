@@ -45,6 +45,7 @@
         "createdAtUtc": null,
         "updatedAtUtc": null,
         "outputPolicy": "merge_sections",
+        "sessionLoopCap": null,
         "nodes": [
           {
             "id": "in1",
@@ -67,7 +68,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           }
         ],
         "ui": null
@@ -105,6 +107,7 @@
         "createdAtUtc": null,
         "updatedAtUtc": null,
         "outputPolicy": "ranked",
+        "sessionLoopCap": null,
         "nodes": [
           {
             "id": "in1",
@@ -123,14 +126,15 @@
             "type": "Router",
             "label": "Router",
             "config": {
-              "routerMode": "llm",
-              "routerTargetPolicy": "single_best"
+              "routerMode": "decision",
+              "routerTargetPolicy": "single_best",
+              "decisionModel": "tev1:4b-q4_K_M"
             }
           },
           {
             "id": "n_people_extract",
             "type": "LlmNode",
-            "label": "Extract",
+            "label": "Person Extractor",
             "config": {
               "personaId": "person-extractor"
             }
@@ -138,7 +142,7 @@
           {
             "id": "n_people_curate",
             "type": "LlmNode",
-            "label": "Curate",
+            "label": "Memory Curator",
             "config": {
               "personaId": "memory-curator",
               "toolIds": [
@@ -149,7 +153,7 @@
           {
             "id": "n_people_query",
             "type": "LlmNode",
-            "label": "Query",
+            "label": "Person Query Agent",
             "config": {
               "personaId": "person-query",
               "contextStrategy": "markdown_all",
@@ -216,7 +220,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_extract_curate",
@@ -225,7 +230,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_router_extract",
@@ -234,7 +240,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user shares new facts about a person, or asks to save/persist/write what was said.\nExamples: Ryan is 12; his favorite color is blue; please save this; persist what we know."
+            "llmRoutingHint": "Use when the user shares new facts about a person, or asks to save/persist/write what was said.\nExamples: Ryan is 12; his favorite color is blue; please save this; persist what we know.",
+            "loopConfig": null
           },
           {
             "id": "e_people_router_query",
@@ -243,7 +250,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user asks factual questions (who/what/when) without asking to save.\nExamples: Who is Ryan? What do we know about Mom? What is her favorite color?"
+            "llmRoutingHint": "Use when the user asks factual questions (who/what/when) without asking to save.\nExamples: Who is Ryan? What do we know about Mom? What is her favorite color?",
+            "loopConfig": null
           },
           {
             "id": "e_people_router_coach",
@@ -252,7 +260,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use for relationship or friendship advice grounded in memory.\nExamples: gift ideas, reconnecting, conflict, supporting stress."
+            "llmRoutingHint": "Use for relationship or friendship advice grounded in memory.\nExamples: gift ideas, reconnecting, conflict, supporting stress.",
+            "loopConfig": null
           },
           {
             "id": "e_people_router_style",
@@ -261,7 +270,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear."
+            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear.",
+            "loopConfig": null
           },
           {
             "id": "e_people_router_fitness",
@@ -270,7 +280,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress."
+            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress.",
+            "loopConfig": null
           },
           {
             "id": "e_people_router_visual",
@@ -279,7 +290,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo."
+            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo.",
+            "loopConfig": null
           },
           {
             "id": "e_people_coach_merge",
@@ -288,7 +300,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_style_merge",
@@ -297,7 +310,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_fitness_merge",
@@ -306,7 +320,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_visual_merge",
@@ -315,7 +330,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_query_merge",
@@ -324,7 +340,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_curate_merge",
@@ -333,7 +350,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_people_merge_out",
@@ -342,38 +360,55 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           }
         ],
         "ui": {
           "nodeLayouts": {
             "in1": {
-              "x": -400,
-              "y": 150
+              "x": -499.70454026049214,
+              "y": 170.36974478440166
             },
             "out1": {
-              "x": 340,
-              "y": 200
+              "x": 540.6354261930777,
+              "y": 158.26452084662773
             },
             "n_people_router": {
-              "x": -200,
-              "y": 165
+              "x": -269.7757796276347,
+              "y": 163.1876420875939
             },
             "n_people_extract": {
-              "x": -60,
-              "y": 110
+              "x": -163.7635296330947,
+              "y": -156.2066598920375
             },
             "n_people_curate": {
-              "x": 140,
-              "y": 110
+              "x": 153.12277045167005,
+              "y": -148.78790657092307
             },
             "n_people_query": {
-              "x": -10,
-              "y": 240
+              "x": -15.273061563840635,
+              "y": -4.909288740757292
+            },
+            "n_people_coach": {
+              "x": 7.164335166165063,
+              "y": 478.0094469768511
+            },
+            "n_people_style": {
+              "x": -17.237677814917237,
+              "y": 115.26035822917963
+            },
+            "n_people_fitness": {
+              "x": 1.4584908568057475,
+              "y": 320.3640374193482
+            },
+            "n_people_visual": {
+              "x": -25.425014163880814,
+              "y": 210.82382905863534
             },
             "n_people_merge": {
-              "x": 220,
-              "y": 200
+              "x": 296.1185199838166,
+              "y": 157.11632676968074
             }
           }
         }
@@ -409,6 +444,7 @@
         "createdAtUtc": null,
         "updatedAtUtc": null,
         "outputPolicy": "ranked",
+        "sessionLoopCap": null,
         "nodes": [
           {
             "id": "in1",
@@ -477,7 +513,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_72kl12n8",
@@ -486,7 +523,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_wc2kvd1u",
@@ -495,7 +533,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "use when we are providing information about certain person. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog"
+            "llmRoutingHint": "use when we are providing information about certain person. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog",
+            "loopConfig": null
           },
           {
             "id": "e_36mzpt86",
@@ -504,7 +543,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use where user ask questions. for example:\n1. Who is X? \n2. What does X do? \n3. what is X\u0027s favorite color?"
+            "llmRoutingHint": "Use where user ask questions. for example:\n1. Who is X? \n2. What does X do? \n3. what is X\u0027s favorite color?",
+            "loopConfig": null
           },
           {
             "id": "e_bgq3dgrz",
@@ -513,7 +553,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_wl6noi95",
@@ -522,7 +563,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_414znssh",
@@ -531,7 +573,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           }
         ],
         "ui": {
@@ -602,6 +645,7 @@
         "createdAtUtc": null,
         "updatedAtUtc": null,
         "outputPolicy": "ranked",
+        "sessionLoopCap": null,
         "nodes": [
           {
             "id": "in1",
@@ -716,7 +760,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_72kl12n8",
@@ -725,7 +770,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_wc2kvd1u",
@@ -734,7 +780,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user states new facts even if they also ask a question in the same message. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog\n4. she was born in 2020 so how old is he now?"
+            "llmRoutingHint": "Use when the user states new facts even if they also ask a question in the same message. for example :\n1. X is a software engineer\n2. He is good at playing basketball\n3. She has a dog\n4. she was born in 2020 so how old is he now?",
+            "loopConfig": null
           },
           {
             "id": "e_36mzpt86",
@@ -743,7 +790,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user asks factual questions; still apply if they also stated facts in the same message.\nExamples: \n1. Who is X? What does X do? What is X\u0027s favorite color?"
+            "llmRoutingHint": "Use when the user asks factual questions; still apply if they also stated facts in the same message.\nExamples: \n1. Who is X? What does X do? What is X\u0027s favorite color?",
+            "loopConfig": null
           },
           {
             "id": "e_router_coach_p3",
@@ -752,7 +800,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user wants relationship or friendship help grounded in what we know about someone.\nExamples: gift ideas, how to reconnect, advice after an argument, supporting a stressed friend, planning a thoughtful message, improving the relationship."
+            "llmRoutingHint": "Use when the user wants relationship or friendship help grounded in what we know about someone.\nExamples: gift ideas, how to reconnect, advice after an argument, supporting a stressed friend, planning a thoughtful message, improving the relationship.",
+            "loopConfig": null
           },
           {
             "id": "e_router_style_p3",
@@ -761,7 +810,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear."
+            "llmRoutingHint": "Use when the user attached a photo and asks about outfit, fashion, style, or what to wear.",
+            "loopConfig": null
           },
           {
             "id": "e_router_fitness_p3",
@@ -770,7 +820,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress."
+            "llmRoutingHint": "Use when the user attached a gym/progress photo or asks about workout, form, or fitness progress.",
+            "loopConfig": null
           },
           {
             "id": "e_router_visual_p3",
@@ -779,7 +830,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo."
+            "llmRoutingHint": "Use when a photo is attached but subject tagging is unclear and the user wants to save or identify who is in the photo.",
+            "loopConfig": null
           },
           {
             "id": "e_coach_merge_p3",
@@ -788,7 +840,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_style_merge_p3",
@@ -797,7 +850,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_fitness_merge_p3",
@@ -806,7 +860,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_visual_merge_p3",
@@ -815,7 +870,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_bgq3dgrz",
@@ -824,7 +880,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_wl6noi95",
@@ -833,7 +890,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_414znssh",
@@ -842,7 +900,8 @@
             "mode": "sequential",
             "condition": null,
             "conditionMatch": null,
-            "llmRoutingHint": null
+            "llmRoutingHint": null,
+            "loopConfig": null
           }
         ],
         "ui": {
@@ -897,8 +956,8 @@
     },
     {
       "id": "people-style-photo-loop",
-      "displayName": "People — style photo loop",
-      "description": "PRD-024 reference: style coach asks for photos, visual intake + extract, loop back with updated advice (v2 runtime actor).",
+      "displayName": "People \u2014 style photo loop",
+      "description": "PRD-024 reference: style coach asks for photos, visual intake \u002B extract, loop back with updated advice (v2 runtime actor).",
       "kind": "declarative",
       "handler": null,
       "agentTypes": [
@@ -920,6 +979,8 @@
         "graphId": "people-style-photo-loop",
         "name": "People style photo loop",
         "status": "active",
+        "createdAtUtc": null,
+        "updatedAtUtc": null,
         "outputPolicy": "ranked",
         "sessionLoopCap": 10,
         "nodes": [
@@ -953,7 +1014,7 @@
             "type": "WaitForInput",
             "label": "Ask for photos",
             "config": {
-              "promptTemplate": "To tailor wedding-guest style advice, please upload 2–3 full-body photos (outfit or mirror shots). I'll use them for fit, colors, and formality — then refine my suggestions for your friend's wedding.",
+              "promptTemplate": "To tailor wedding-guest style advice, please upload 2\u20133 full-body photos (outfit or mirror shots). I\u0027ll use them for fit, colors, and formality \u2014 then refine my suggestions for your friend\u0027s wedding.",
               "acceptAttachments": true,
               "attachmentPolicy": "imagesOnly"
             }
@@ -990,31 +1051,50 @@
             "id": "e_start",
             "fromNodeId": "in1",
             "toNodeId": "n_style",
-            "mode": "sequential"
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_style_gate",
             "fromNodeId": "n_style",
             "toNodeId": "n_gate",
-            "mode": "sequential"
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_gate_ok",
             "fromNodeId": "n_gate",
             "toNodeId": "out1",
-            "mode": "sequential"
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_gate_ask",
             "fromNodeId": "n_gate",
             "toNodeId": "n_ask",
-            "mode": "sequential"
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_ask_loop",
             "fromNodeId": "n_ask",
             "toNodeId": "n_visual",
-            "mode": "loopBack",
+            "mode": "loopback",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
             "loopConfig": {
               "loopRegionId": "photo-collection",
               "maxAttempts": 3,
@@ -1026,13 +1106,20 @@
             "id": "e_visual_await",
             "fromNodeId": "n_visual",
             "toNodeId": "n_await",
-            "mode": "sequential"
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
           },
           {
             "id": "e_await_style",
             "fromNodeId": "n_await",
             "toNodeId": "n_style",
-            "mode": "loopBack",
+            "mode": "loopback",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
             "loopConfig": {
               "loopRegionId": "style-refresh",
               "maxAttempts": 5,
@@ -1043,13 +1130,34 @@
         ],
         "ui": {
           "nodeLayouts": {
-            "in1": { "x": -420, "y": 200 },
-            "n_style": { "x": -220, "y": 200 },
-            "n_gate": { "x": -20, "y": 200 },
-            "out1": { "x": 200, "y": 80 },
-            "n_ask": { "x": 200, "y": 200 },
-            "n_visual": { "x": 400, "y": 200 },
-            "n_await": { "x": 600, "y": 200 }
+            "in1": {
+              "x": -420,
+              "y": 200
+            },
+            "n_style": {
+              "x": -220,
+              "y": 200
+            },
+            "n_gate": {
+              "x": -20,
+              "y": 200
+            },
+            "out1": {
+              "x": 200,
+              "y": 80
+            },
+            "n_ask": {
+              "x": 200,
+              "y": 200
+            },
+            "n_visual": {
+              "x": 400,
+              "y": 200
+            },
+            "n_await": {
+              "x": 600,
+              "y": 200
+            }
           }
         }
       }

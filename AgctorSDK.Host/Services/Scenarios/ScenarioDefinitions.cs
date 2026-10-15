@@ -31,6 +31,8 @@ public sealed class ScenarioDefinition
     public ScenarioPersonaBindings PersonaBindings { get; set; } = new();
 
     /// <summary>PRD-014 optional persona orchestration graph (portable GraphDocument, not renderer-native JSON).</summary>
+    public AgctorSDK.Core.Ollama.ModelDefaults ModelDefaults { get; set; } = new();
+
     public ScenarioFlowDocument? Flow { get; set; }
 
     [JsonIgnore]

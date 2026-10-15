@@ -7,5 +7,8 @@ public enum ScenarioFlowRouterMode
     Deterministic,
 
     /// <summary>LLM picks one or more <c>config.personaId</c> values from sequential Router→LlmNode edges.</summary>
-    Llm
+    Llm,
+
+    /// <summary>A dedicated Ollama System One model scores typed branch decisions.</summary>
+    Decision
 }

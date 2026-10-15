@@ -89,55 +89,63 @@
                 {
                     selector: 'node',
                     style: {
-                        label: 'data(label)',
+                        label: function (node) {
+                            var labels = { ChatInput: 'INPUT', Output: 'OUTPUT', Router: 'ROUTER', LlmNode: 'AI STEP', Merge: 'MERGE', Gate: 'GATE', WaitForInput: 'ASK USER', AwaitEvent: 'WAIT FOR EVENT', Notify: 'NOTIFY' };
+                            return (labels[node.data('agctorType')] || 'STEP') + '\n' + node.data('label');
+                        },
+                        shape: 'round-rectangle',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '145px',
+                        'line-height': 1.7,
                         'text-valign': 'center',
                         'text-halign': 'center',
-                        'background-color': '#6366f1',
-                        color: '#fff',
-                        width: 'label',
-                        height: 'label',
+                        'background-color': '#eef2ff',
+                        color: '#312e81',
+                        width: 148,
+                        height: 54,
                         padding: '10px',
-                        'font-size': '11px',
+                        'font-size': '13px',
+                        'font-weight': 500,
                         'border-width': 2,
-                        'border-color': 'rgba(255,255,255,0.35)',
+                        'border-color': '#c7d2fe',
                         'border-opacity': 1
                     }
                 },
                 {
                     selector: 'node[agctorType = "ChatInput"]',
-                    style: { 'background-color': '#059669' }
+                    style: { 'background-color': '#ecfdf5', 'border-color': '#6ee7b7', color: '#065f46' }
                 },
                 {
                     selector: 'node[agctorType = "Output"]',
-                    style: { 'background-color': '#b45309' }
+                    style: { 'background-color': '#fff7ed', 'border-color': '#fdba74', color: '#9a3412' }
                 },
                 {
                     selector: 'node[agctorType = "LlmNode"]',
-                    style: { 'background-color': '#0284c7' }
+                    style: { 'background-color': '#f0f9ff', 'border-color': '#7dd3fc', color: '#075985' }
                 },
                 {
                     selector: 'node[agctorType = "Router"]',
-                    style: { 'background-color': '#7c3aed' }
+                    style: { 'background-color': '#f5f3ff', 'border-color': '#c4b5fd', color: '#5b21b6' }
                 },
                 {
                     selector: 'node[agctorType = "Merge"]',
-                    style: { 'background-color': '#db2777' }
+                    style: { 'background-color': '#fdf2f8', 'border-color': '#f9a8d4', color: '#9d174d' }
                 },
                 {
                     selector: 'node[agctorType = "Gate"]',
-                    style: { 'background-color': '#0d9488', shape: 'diamond' }
+                    style: { 'background-color': '#f0fdfa', 'border-color': '#5eead4', color: '#115e59' }
                 },
                 {
                     selector: 'node[agctorType = "WaitForInput"]',
-                    style: { 'background-color': '#ea580c' }
+                    style: { 'background-color': '#fff7ed', 'border-color': '#fdba74', color: '#9a3412' }
                 },
                 {
                     selector: 'node[agctorType = "AwaitEvent"]',
-                    style: { 'background-color': '#4f46e5', shape: 'hexagon' }
+                    style: { 'background-color': '#eef2ff', 'border-color': '#a5b4fc', color: '#3730a3' }
                 },
                 {
                     selector: 'node[agctorType = "Notify"]',
-                    style: { 'background-color': '#64748b', shape: 'round-rectangle' }
+                    style: { 'background-color': '#f8fafc', 'border-color': '#cbd5e1', color: '#334155', shape: 'round-rectangle' }
                 },
                 {
                     selector: 'edge',
@@ -148,22 +156,22 @@
                         'target-arrow-shape': 'triangle',
                         'curve-style': 'bezier',
                         label: 'data(routeCaption)',
-                        'font-size': '8px',
+                        'font-size': '10px',
                         'font-weight': '500',
                         color: '#64748b',
                         'text-background-color': '#f1f5f9',
                         'text-background-opacity': 0.92,
-                        'text-background-padding': '1px 3px',
+                        'text-background-padding': '3px',
                         'text-background-shape': 'roundrectangle'
                     }
                 },
                 {
                     selector: 'node:selected',
                     style: {
-                        'border-width': 5,
-                        'border-color': '#facc15',
+                        'border-width': 3,
+                        'border-color': '#4f46e5',
                         'border-opacity': 1,
-                        'background-blacken': -0.15,
+                        'background-blacken': 0,
                         'z-index': 9999
                     }
                 },
@@ -190,9 +198,9 @@
                     selector: 'edge:selected',
                     style: {
                         width: 4,
-                        'line-color': '#fbbf24',
-                        'target-arrow-color': '#fbbf24',
-                        'font-size': '8px',
+                        'line-color': '#6366f1',
+                        'target-arrow-color': '#6366f1',
+                        'font-size': '10px',
                         color: '#475569',
                         'text-background-color': '#fffbeb'
                     }
@@ -217,6 +225,8 @@
                 }
             ],
             layout: { name: 'breadthfirst', directed: true, spacingFactor: 1.45 },
+            minZoom: 0.15,
+            maxZoom: 2.5,
             userZoomingEnabled: true,
             userPanningEnabled: true,
             boxSelectionEnabled: true
@@ -256,6 +266,25 @@
         } catch (e) {
             /* ignore */
         }
+    };
+
+    /** Arrange forward edges into columns; loop-back edges do not determine ranks. */
+    CytoscapeRenderer.prototype.autoLayout = function () {
+        if (!this._cy) return;
+        var cy = this._cy;
+        var forward = cy.elements().filter(function (e) { return e.isNode() || e.data('mode') !== 'loopBack'; });
+        forward.layout({ name: 'breadthfirst', directed: true, grid: true, spacingFactor: 1.6, fit: false, animate: false }).run();
+        // Compact each depth into a column. Space siblings evenly around the center.
+        var columns = {};
+        cy.nodes().forEach(function (n) {
+            var depth = Math.round(n.position().y);
+            (columns[depth] = columns[depth] || []).push(n);
+        });
+        Object.keys(columns).sort(function (a, b) { return Number(a) - Number(b); }).forEach(function (depth, index) {
+            var nodes = columns[depth].sort(function (a, b) { return a.position().x - b.position().x; });
+            nodes.forEach(function (n, row) { n.position({ x: index * 230, y: (row - (nodes.length - 1) / 2) * 130 }); });
+        });
+        this.fitViewport();
     };
 
     /** Nearest edge end in rendered space (which endpoint user is grabbing). */

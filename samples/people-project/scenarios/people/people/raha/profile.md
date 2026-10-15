@@ -10,6 +10,7 @@ Education: Computer Science from the university of Salford in the UK
 Date of birth: in the UK
 First name: Raha
 Location: California, Irvine city
+Age: 46
 
 ## Physical Attributes
 

@@ -58,6 +58,28 @@ public class LlmController : ControllerBase
         }
     }
 
+    /// <summary>Installed models advertising native decision capability via Ollama /api/show.</summary>
+    [HttpGet("decision-models")]
+    public async Task<IActionResult> GetDecisionModels([FromServices] IOllamaDecisionClient decisions,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var names = await decisions.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+            return Ok(new { models = names.Select(name => new { name }) });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to discover Ollama decision models");
+            return StatusCode(502, new ErrorResponse
+            {
+                Code = "DECISION_MODELS_UNAVAILABLE",
+                Message = "Could not load decision models. Check the configured Ollama connection and refresh."
+            });
+        }
+    }
+
     /// <summary>Persists <c>Agctor:LLM:DefaultModel</c> and applies it via <see cref="LLMAgent.ConfigureDefaults"/>.</summary>
     [HttpPut("default-model")]
     [ProducesResponseType(typeof(SetLlmDefaultModelResponse), StatusCodes.Status200OK)]

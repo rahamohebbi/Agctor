@@ -3,6 +3,8 @@ namespace AgctorSDK.Core.ProjectMemory.Scenarios;
 /// <summary>PRD-024 persisted execution snapshot (one per session + applied scenario).</summary>
 public sealed class ScenarioFlowRuntimeSnapshot
 {
+    public AgctorSDK.Core.Ollama.ModelSelectionPlan? ModelPlan { get; set; }
+
     public string SchemaVersion { get; set; } = "1.0";
 
     public string FlowId { get; set; } = string.Empty;

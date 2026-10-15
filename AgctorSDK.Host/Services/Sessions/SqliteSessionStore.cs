@@ -68,6 +68,32 @@ VALUES ($id, $title, $projectId, $createdAt, $updatedAt, 0);";
                 ?? throw new InvalidOperationException($"Failed to create session '{sessionId}'.");
         }
 
+        public async Task<string?> GetModelSettingsJsonAsync(string sessionId, CancellationToken cancellationToken = default)
+        {
+            await using var conn = CreateConnection();
+            await conn.OpenAsync(cancellationToken);
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT settings_json FROM session_model_settings WHERE session_id = $id";
+            cmd.Parameters.AddWithValue("$id", sessionId);
+            return await cmd.ExecuteScalarAsync(cancellationToken) as string;
+        }
+
+        public async Task SaveModelSettingsJsonAsync(string sessionId, string json, CancellationToken cancellationToken = default)
+        {
+            await _dbLock.WaitAsync(cancellationToken);
+            try
+            {
+                await using var conn = CreateConnection();
+                await conn.OpenAsync(cancellationToken);
+                await using var cmd = conn.CreateCommand();
+                cmd.CommandText = "INSERT INTO session_model_settings (session_id, settings_json) SELECT $id, $json FROM sessions WHERE session_id = $id ON CONFLICT(session_id) DO UPDATE SET settings_json = excluded.settings_json";
+                cmd.Parameters.AddWithValue("$id", sessionId);
+                cmd.Parameters.AddWithValue("$json", json);
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            finally { _dbLock.Release(); }
+        }
+
         public async Task<SessionInfo?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(sessionId))
@@ -152,6 +178,7 @@ WHERE session_id = $id;";
                     "session_turns",
                     "session_trace_links",
                     "session_summaries",
+                    "session_model_settings",
                     "session_project_moves"
                 };
                 foreach (var table in tables)
@@ -817,6 +844,12 @@ ON session_turns(session_id, sequence);
 
 CREATE INDEX IF NOT EXISTS idx_session_turns_session_created
 ON session_turns(session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS session_model_settings (
+  session_id TEXT PRIMARY KEY,
+  settings_json TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS session_summaries (
   session_id TEXT PRIMARY KEY,

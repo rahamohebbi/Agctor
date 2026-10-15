@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Core.Utils.ActivityTracking;
 using System.Text;
 using System.Text.Json;
 using AgctorSDK.Core.ProjectMemory;
@@ -9,18 +11,24 @@ namespace AgctorSDK.Host.Services.Scenarios;
 /// <summary>Builds a routing prompt (user message + persona blurbs), calls Ollama, parses JSON per PRD-014 router response schema.</summary>
 public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
 {
+    private readonly IActivityTracker? _tracker;
     private readonly IProjectLoader _loader;
     private readonly IProjectMemoryLlmClient _llm;
     private readonly ILogger<ScenarioFlowRouterLlmService> _logger;
+    private readonly ScenarioFlowDecisionRouter _decisionRouter;
 
     public ScenarioFlowRouterLlmService(
         IProjectLoader loader,
         IProjectMemoryLlmClient llm,
-        ILogger<ScenarioFlowRouterLlmService> logger)
+        ILogger<ScenarioFlowRouterLlmService> logger,
+        ScenarioFlowDecisionRouter decisionRouter,
+        IActivityTracker? tracker = null)
     {
+        _tracker = tracker;
         _loader = loader;
         _llm = llm;
         _logger = logger;
+        _decisionRouter = decisionRouter;
     }
 
     /// <inheritdoc />
@@ -32,6 +40,13 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         CancellationToken cancellationToken = default,
         string? routingContext = null)
     {
+        var role = config.Mode == ScenarioFlowRouterMode.Decision ? ModelRoles.DecisionRouting : ModelRoles.LlmRouting;
+        using var modelScope = ModelSelectionScope.Select(ModelSelectionScope.Selection is { } selected && selected.Role == role ? selected
+            : new ResolvedModel(role, config.Mode == ScenarioFlowRouterMode.Decision ? config.DecisionModel : config.LlmModel ?? ModelSelectionScope.Plan?.Defaults[role].Model ?? OllamaRuntimeConfiguration.GetDefaultModel(), "flow node"));
+        if (config.Mode == ScenarioFlowRouterMode.Decision) config = config with { DecisionModel = ModelSelectionScope.Selection?.Model };
+        using var activity = _tracker?.StartActivity("flow.router.model");
+        activity?.SetAttribute("model", ModelSelectionScope.Selection?.Model ?? "not configured");
+        activity?.SetTimelineDetailJson(JsonSerializer.Serialize(ModelSelectionScope.Selection, AgctorSDK.Host.Services.Models.ModelSelectionService.Json));
         if (string.IsNullOrWhiteSpace(projectRoot))
             return ScenarioFlowRouterLlmResult.Fail("Project root is required for LLM routing.");
         if (candidates.Count == 0)
@@ -42,10 +57,21 @@ public sealed class ScenarioFlowRouterLlmService : IScenarioFlowRouterLlmService
         {
             ctx = await _loader.LoadAsync(projectRoot.Trim(), cancellationToken).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Router LLM: failed to load project at {Root}", projectRoot);
             return ScenarioFlowRouterLlmResult.Fail(ex.Message);
+        }
+
+        if (config.Mode == ScenarioFlowRouterMode.Decision)
+        {
+            var branches = candidates.Select(c => new ScenarioDecisionBranch(c.PersonaId,
+                $"{c.PersonaId}: {c.Label}. " + BuildBlurb(ctx.AgentSpecs.FirstOrDefault(a =>
+                    string.Equals(a.Id, c.PersonaId, StringComparison.OrdinalIgnoreCase))) +
+                (string.IsNullOrWhiteSpace(c.LlmRoutingHint) ? "" : $" Routing guidance: {c.LlmRoutingHint}"))).ToArray();
+            return await _decisionRouter.RouteAsync(string.IsNullOrEmpty(routingContext) ? userMessage : routingContext,
+                branches, config, cancellationToken).ConfigureAwait(false);
         }
 
         var allowed = new HashSet<string>(candidates.Select(c => c.PersonaId), StringComparer.OrdinalIgnoreCase);

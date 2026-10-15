@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Host.Services.Models;
 using System.Text.Json;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Host.Services.ProjectMemory;
@@ -36,6 +38,8 @@ public sealed class ScenarioFlowSegmentExecutor : IScenarioFlowSegmentExecutor
             return Fail(request.Snapshot, "Flow has no nodes.");
 
         var snapshot = request.Snapshot;
+        snapshot.ModelPlan = ModelSelectionService.ReadExecutionPlan(request.FlowJson) ?? snapshot.ModelPlan;
+        using var modelScope = ModelSelectionScope.Begin(snapshot.ModelPlan);
         var startNodeId = ResolveStartNodeId(flow, snapshot, request.UserMessage, request.AttachmentIds);
         var nodeMap = flow.Nodes.ToDictionary(n => n.Id.Trim(), n => n, StringComparer.OrdinalIgnoreCase);
 

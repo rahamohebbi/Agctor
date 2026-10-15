@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Host.Services.Models;
 using System.Text.Json;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.ProjectMemory;
@@ -18,6 +20,7 @@ namespace AgctorSDK.Host.Services.Scenarios;
 /// </summary>
 public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
 {
+    private readonly ModelSelectionService? _models;
     private readonly IProjectLoader _loader;
     private readonly IEntityRegistry _entities;
     private readonly IAgentFactory _agentFactory;
@@ -37,8 +40,10 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         ISessionStore sessions,
         IPlaygroundChatSettingsService chatSettings,
         RagContextService ragContext,
-        ILogger<ScenarioFlowPersonaLlmRunner> logger)
+        ILogger<ScenarioFlowPersonaLlmRunner> logger,
+        ModelSelectionService? models = null)
     {
+        _models = models;
         _loader = loader;
         _entities = entities;
         _agentFactory = agentFactory;
@@ -60,6 +65,12 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
             return new ProjectMemoryPersonaRunResult(false, "agentId is required.", null);
         if (string.IsNullOrWhiteSpace(request.InputText))
             return new ProjectMemoryPersonaRunResult(false, "inputText is required.", null);
+
+        var plan = ModelSelectionScope.Plan?.ScenarioId == request.ScenarioId ? ModelSelectionScope.Plan
+            : _models == null ? null : await _models.PlanAsync(request.SessionId, request.ScenarioId, cancellationToken);
+        using var runScope = ModelSelectionScope.Begin(plan);
+        using var nodeScope = ModelSelectionScope.Node(request.FlowNodeId ?? "", ModelRoles.Generation,
+            request.FlowNodeConfig is { ValueKind: JsonValueKind.Object } modelConfig && modelConfig.TryGetProperty("llmModel", out var modelValue) && modelValue.ValueKind == JsonValueKind.String ? modelValue.GetString() : null);
 
         LoadedProjectContext ctx;
         try

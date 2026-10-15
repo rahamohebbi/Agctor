@@ -1,3 +1,4 @@
+using AgctorSDK.Host.Services.Models;
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
@@ -47,6 +48,8 @@ namespace AgctorSDK.Host.Controllers;
 [Produces("application/json")]
 public sealed class ProjectMemoryController : ControllerBase
 {
+    private readonly ModelSelectionService? _modelSelection;
+    private readonly ModelCapabilitiesService? _modelCapabilities;
     private readonly IOptionsMonitor<ProjectMemoryAgentOptions> _options;
     private readonly IProjectLoader _loader;
     private readonly IEntityRegistry _entities;
@@ -127,8 +130,12 @@ public sealed class ProjectMemoryController : ControllerBase
         PlaygroundFocusPostHook? focusPostHook = null,
         PlaygroundStyleRefreshService? styleRefresh = null,
         IPlaygroundChatSettingsService? chatSettings = null,
-        AgctorSDK.Core.ProjectMemory.Rag.RagContextService? ragContext = null)
+        AgctorSDK.Core.ProjectMemory.Rag.RagContextService? ragContext = null,
+        ModelSelectionService? modelSelection = null,
+        ModelCapabilitiesService? modelCapabilities = null)
     {
+        _modelSelection = modelSelection;
+        _modelCapabilities = modelCapabilities;
         _options = options;
         _loader = loader;
         _entities = entities;
@@ -1175,6 +1182,19 @@ public sealed class ProjectMemoryController : ControllerBase
             chatProject = await _sessions.GetProjectAsync(sessInfo.ProjectId!, cancellationToken).ConfigureAwait(false);
 
         var scenarioDef = string.IsNullOrWhiteSpace(scenarioResolved) ? null : _scenarioCatalog.Get(scenarioResolved);
+        var modelPlan = _modelSelection == null ? null : await _modelSelection.PlanAsync(sessionId, scenarioResolved, cancellationToken);
+        using var modelRunScope = ModelSelectionScope.Begin(modelPlan);
+        try
+        {
+            if (modelPlan != null && _modelCapabilities != null)
+                await _modelCapabilities.ValidateAsync(modelPlan.Nodes.Count > 0 ? modelPlan.Nodes.Values : new[] { modelPlan.Defaults[ModelRoles.Generation] }, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { error = ex.Message }, cancellationToken);
+            return;
+        }
         var flowCatalogOk = scenarioDef?.Flow != null && ScenarioFlowValidator.Validate(scenarioDef).Count == 0;
         var useScenarioFlow = scenarioDef?.Flow != null && flowCatalogOk && !string.IsNullOrWhiteSpace(scenarioResolved);
         var promptText = hasText ? body.Payload.Trim() : "(User attached image(s) without a caption.)";
@@ -1730,7 +1750,6 @@ public sealed class ProjectMemoryController : ControllerBase
 
             var lastPersona = spec.Id;
             var ollamaBaseFlow = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
-            var modelFlow = LLMAgent.GetConfiguredDefaultModel();
             var flowObserver = new PlaygroundScenarioFlowSseObserver(
                 scenarioDef.Flow!,
                 ingestChipActive,
@@ -1820,6 +1839,7 @@ public sealed class ProjectMemoryController : ControllerBase
 
             ScenarioFlowGraphInterpreter.PersonaInvoker invokeFlow = async (personaId, promptText, cancellationToken, flowNodeId) =>
             {
+                var modelFlow = ModelSelectionScope.GenerationModel;
                 lastPersona = personaId.Trim();
                 personasSeen.Add(lastPersona);
                 var pSpec = ctx.AgentSpecs.FirstOrDefault(a =>
@@ -2433,7 +2453,7 @@ public sealed class ProjectMemoryController : ControllerBase
             await EmitPreStepAsync(flowPlan.Steps[i]).ConfigureAwait(false);
 
         var ollamaBase = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
-        var model = LLMAgent.GetConfiguredDefaultModel();
+        var model = ModelSelectionScope.GenerationModel;
         var personaDetail =
             $"{spec.Id} @ {rootFull}; {prior.Count} prior turn(s); prompt {prompt.Length} chars"
             + (string.IsNullOrWhiteSpace(scenarioResolved) ? "" : $"; scenarioId={scenarioResolved}")

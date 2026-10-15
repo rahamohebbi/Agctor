@@ -288,6 +288,7 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
             Curator = src.PersonaBindings?.Curator,
             Query = src.PersonaBindings?.Query
         },
+        ModelDefaults = JsonSerializer.Deserialize<AgctorSDK.Core.Ollama.ModelDefaults>(JsonSerializer.Serialize(src.ModelDefaults ?? new()))!,
         Flow = ScenarioFlowDocument.Clone(src.Flow)
     };
 

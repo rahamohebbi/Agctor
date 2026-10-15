@@ -131,6 +131,7 @@ public sealed class ScenariosController : ControllerBase
             Handler = null,
             AgentTypes = new List<string>(),
             PersonaAgentIds = new List<string>(),
+            ModelDefaults = body.ModelDefaults ?? new(),
             PersonaBindings = new ScenarioPersonaBindings(),
             Flow = null
         };
@@ -307,6 +308,7 @@ public sealed class ScenariosController : ControllerBase
             Curator = d.PersonaBindings?.Curator,
             Query = d.PersonaBindings?.Query
         },
+        ModelDefaults = System.Text.Json.JsonSerializer.Deserialize<AgctorSDK.Core.Ollama.ModelDefaults>(System.Text.Json.JsonSerializer.Serialize(d.ModelDefaults))!,
         Flow = ScenarioFlowDocument.Clone(d.Flow)
     };
 
@@ -339,6 +341,7 @@ public sealed class ScenariosController : ControllerBase
             Curator = d.PersonaBindings?.Curator,
             Query = d.PersonaBindings?.Query
         },
+        ModelDefaults = System.Text.Json.JsonSerializer.Deserialize<AgctorSDK.Core.Ollama.ModelDefaults>(System.Text.Json.JsonSerializer.Serialize(d.ModelDefaults))!,
         Flow = ScenarioFlowDocument.Clone(d.Flow)
     };
 }

@@ -119,7 +119,7 @@ public static class ScenarioFlowValidator
             if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
                 continue;
             var rcfg = ScenarioFlowRouterConfig.Parse(n.Config);
-            if (rcfg.Mode == ScenarioFlowRouterMode.Llm)
+            if (rcfg.UsesModel)
                 continue;
 
             var rId = n.Id.Trim();
@@ -160,15 +160,16 @@ public static class ScenarioFlowValidator
             if (!string.Equals(n.Type, "Router", StringComparison.OrdinalIgnoreCase))
                 continue;
             var rcfg = ScenarioFlowRouterConfig.Parse(n.Config);
-            if (rcfg.Mode != ScenarioFlowRouterMode.Llm)
+            if (!rcfg.UsesModel)
                 continue;
+
 
             var rId = n.Id.Trim();
             var parFromR = edgeList.Count(e =>
                 string.Equals(e.FromNodeId, rId, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(e.Mode, "parallel", StringComparison.OrdinalIgnoreCase));
             if (parFromR > 0)
-                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' with routerMode llm cannot have parallel outgoing edges.");
+                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' with model routing cannot have parallel outgoing edges.");
 
             var seqEdges = edgeList
                 .Where(e => string.Equals(e.FromNodeId, rId, StringComparison.OrdinalIgnoreCase)
@@ -178,7 +179,7 @@ public static class ScenarioFlowValidator
                 .ToList();
             if (seqEdges.Count == 0)
             {
-                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) needs sequential edges to LlmNode nodes.");
+                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (model routing) needs sequential edges to LlmNode nodes.");
                 continue;
             }
 
@@ -191,7 +192,7 @@ public static class ScenarioFlowValidator
                 if (tn == null || !string.Equals(tn.Type, "LlmNode", StringComparison.OrdinalIgnoreCase))
                 {
                     errors.Add(
-                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) sequential edge '{e.Id}' must target a LlmNode node.");
+                        $"Scenario '{scenario.Id}' flow: Router '{rId}' (model routing) sequential edge '{e.Id}' must target a LlmNode node.");
                     continue;
                 }
 
@@ -215,13 +216,13 @@ public static class ScenarioFlowValidator
                     if (merge == null)
                     {
                         errors.Add(
-                            $"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) has multiple LlmNode branches but no shared Merge before Output. Add one Merge where every branch meets, or set routerTargetPolicy to single_best (or maxTargets to 1) so at most one branch runs per message.");
+                            $"Scenario '{scenario.Id}' flow: Router '{rId}' (model routing) has multiple LlmNode branches but no shared Merge before Output. Add one Merge where every branch meets, or set routerTargetPolicy to single_best (or maxTargets to 1) so at most one branch runs per message.");
                     }
                 }
             }
             else if (personaBranchIds.Count == 1 && !NodeCanReachOutput(flow, edgeList, personaBranchIds[0]))
             {
-                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (llm) LlmNode branch must reach an Output node.");
+                errors.Add($"Scenario '{scenario.Id}' flow: Router '{rId}' (model routing) LlmNode branch must reach an Output node.");
             }
 
             if (!string.IsNullOrWhiteSpace(rcfg.FallbackPersonaId))

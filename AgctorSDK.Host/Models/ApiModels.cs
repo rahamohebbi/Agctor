@@ -437,6 +437,8 @@ namespace AgctorSDK.Host.Models
         public ScenarioPersonaBindingsDto PersonaBindings { get; set; } = new();
 
         /// <summary>PRD-014 optional visual flow (canonical GraphDocument).</summary>
+    public AgctorSDK.Core.Ollama.ModelDefaults ModelDefaults { get; set; } = new();
+
         public ScenarioFlowDocument? Flow { get; set; }
     }
 
@@ -458,6 +460,7 @@ namespace AgctorSDK.Host.Models
     /// <summary>Creates a declarative scenario in the user catalog file.</summary>
     public sealed class CreateScenarioRequest
     {
+        public AgctorSDK.Core.Ollama.ModelDefaults ModelDefaults { get; set; } = new();
         public string Id { get; set; } = "";
         public string? DisplayName { get; set; }
         public string? Description { get; set; }

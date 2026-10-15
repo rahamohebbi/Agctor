@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Host.Services.Models;
 using System.Threading;
 using AgctorSDK.Core.ProjectMemory;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
@@ -10,6 +12,8 @@ namespace AgctorSDK.Host.Services.Scenarios;
 /// <inheritdoc />
 public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
 {
+    private readonly ModelSelectionService? _models;
+    private readonly ModelCapabilitiesService? _capabilities;
     private readonly IScenarioCatalog _catalog;
     private readonly IProjectMemoryPersonaLlmRunner _personaRunner;
     private readonly IScenarioFlowRouterLlmService _routerLlm;
@@ -25,8 +29,12 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
         IOptionsMonitor<ProjectMemoryAgentOptions> projectMemoryOptions,
         IOptionsMonitor<ScenarioFlowHostOptions> flowOptions,
         ILogger<ScenarioFlowExecutionService> logger,
-        IScenarioFlowRuntimeOrchestrator? runtimeOrchestrator = null)
+        IScenarioFlowRuntimeOrchestrator? runtimeOrchestrator = null,
+        ModelSelectionService? models = null,
+        ModelCapabilitiesService? capabilities = null)
     {
+        _models = models;
+        _capabilities = capabilities;
         _catalog = catalog;
         _personaRunner = personaRunner;
         _routerLlm = routerLlm;
@@ -53,6 +61,13 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
 
         if (def.Flow == null)
             return ScenarioFlowRunResponse.Fail("NO_FLOW", $"Scenario '{scenarioId}' has no flow to execute.");
+
+        var plan = ModelSelectionScope.Plan?.ScenarioId == scenarioId ? ModelSelectionScope.Plan
+            : _models == null ? ModelSelectionService.Resolve(def, null, OllamaRuntimeConfiguration.GetDefaultModel())
+                : await _models.PlanAsync(request.SessionId, scenarioId, cancellationToken);
+        using var modelScope = ModelSelectionScope.Begin(plan);
+        try { if (_capabilities != null) await _capabilities.ValidateAsync(plan.Nodes.Values, cancellationToken); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return ScenarioFlowRunResponse.Fail("MODEL_UNAVAILABLE", ex.Message); }
 
         var val = ScenarioFlowValidator.Validate(def);
         if (val.Count > 0)

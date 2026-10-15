@@ -318,6 +318,7 @@
      * Avoids showing transcript / scenario / debug for an implicit "first list item" selection.
      */
     function syncSessionColumn() {
+        window.AgctorChatModels.openSession(activeSessionId, activeProjectScenarioId);
         var has = !!activeSessionId;
         var deletingActive = !!(deletingSessionId && deletingSessionId === activeSessionId);
         if (has) {

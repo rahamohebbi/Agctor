@@ -32,6 +32,11 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IPlaygroundChatSettingsService, PlaygroundChatSettingsService>();
         services.AddSingleton<ILlmUserSettingsService, LlmUserSettingsService>();
         services.AddSingleton<IOllamaModelCatalog, OllamaModelCatalog>();
+        services.AddSingleton<AgctorSDK.Host.Services.Models.ModelSelectionService>();
+        services.AddSingleton<AgctorSDK.Host.Services.Models.ModelCapabilitiesService>();
+        services.AddHttpClient(OllamaDecisionClient.HttpClientName, client => client.Timeout = TimeSpan.FromMinutes(2));
+        services.AddSingleton<IOllamaDecisionClient, OllamaDecisionClient>();
+        services.AddSingleton<ScenarioFlowDecisionRouter>();
 
         services.AddSingleton<IAgentRegistry, InMemoryAgentRegistry>();
         services.AddSingleton<IAgentOutputStreamRegistry, AgentOutputStreamRegistry>();

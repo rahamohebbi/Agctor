@@ -10,9 +10,12 @@ public sealed record ScenarioFlowRouterConfig(
     string? FallbackPersonaId,
     string? LlmRoutingInstructions,
     ScenarioFlowRouterTargetPolicy TargetPolicy = ScenarioFlowRouterTargetPolicy.AllMatching,
-    ScenarioFlowRouterBranchExecution BranchExecution = ScenarioFlowRouterBranchExecution.Parallel)
+    ScenarioFlowRouterBranchExecution BranchExecution = ScenarioFlowRouterBranchExecution.Parallel,
+    string? DecisionModel = null,
+    string? LlmModel = null)
 {
-    /// <summary>Default when <c>config</c> is empty or <c>routerMode</c> is not <c>llm</c>.</summary>
+    public bool UsesModel => Mode is ScenarioFlowRouterMode.Llm or ScenarioFlowRouterMode.Decision;
+    /// <summary>Default when <c>config</c> is empty or <c>routerMode</c> is neither <c>llm</c> nor <c>decision</c>.</summary>
     public static ScenarioFlowRouterConfig Default { get; } =
         new(ScenarioFlowRouterMode.Deterministic, null, null, null, null);
 
@@ -28,9 +31,12 @@ public sealed record ScenarioFlowRouterConfig(
         var modeStr = el.TryGetProperty("routerMode", out var rm) && rm.ValueKind == JsonValueKind.String
             ? rm.GetString()
             : null;
-        var mode = string.Equals(modeStr, "llm", StringComparison.OrdinalIgnoreCase)
-            ? ScenarioFlowRouterMode.Llm
-            : ScenarioFlowRouterMode.Deterministic;
+        var mode = modeStr?.Trim().ToLowerInvariant() switch
+        {
+            "llm" => ScenarioFlowRouterMode.Llm,
+            "decision" => ScenarioFlowRouterMode.Decision,
+            _ => ScenarioFlowRouterMode.Deterministic
+        };
 
         int? maxTargets = null;
         if (el.TryGetProperty("maxTargets", out var mt) && mt.ValueKind == JsonValueKind.Number && mt.TryGetInt32(out var mti) && mti > 0)
@@ -55,7 +61,10 @@ public sealed record ScenarioFlowRouterConfig(
 
         var policy = ParseTargetPolicy(el);
         var branchExecution = ParseBranchExecution(el);
-        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr, policy, branchExecution);
+        var decisionModel = el.TryGetProperty("decisionModel", out var dm) && dm.ValueKind == JsonValueKind.String
+            ? dm.GetString()?.Trim() : null;
+        var llmModel = el.TryGetProperty("llmModel", out var lm) && lm.ValueKind == JsonValueKind.String ? lm.GetString()?.Trim() : null;
+        return new ScenarioFlowRouterConfig(mode, maxTargets, minConf, fallback, llmInstr, policy, branchExecution, decisionModel, llmModel);
     }
 
     private static ScenarioFlowRouterBranchExecution ParseBranchExecution(JsonElement el)

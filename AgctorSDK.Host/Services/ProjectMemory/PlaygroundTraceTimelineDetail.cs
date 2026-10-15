@@ -51,6 +51,7 @@ internal static class PlaygroundTraceTimelineDetail
             {
                 kind = "pm.playground.persona-llm",
                 model,
+                modelSource = AgctorSDK.Core.Ollama.ModelSelectionScope.Selection?.Source ?? AgctorSDK.Core.Ollama.ModelSelectionScope.Plan?.Defaults[AgctorSDK.Core.Ollama.ModelRoles.Generation].Source ?? "application default",
                 ollamaBase,
                 promptChars = prompt.Length,
                 outputChars = output.Length,

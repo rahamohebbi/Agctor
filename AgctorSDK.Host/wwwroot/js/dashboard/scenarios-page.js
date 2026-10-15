@@ -343,6 +343,7 @@
         bindExtractor.value = (s.personaBindings && s.personaBindings.extractor) || '';
         bindCurator.value = (s.personaBindings && s.personaBindings.curator) || '';
         bindQuery.value = (s.personaBindings && s.personaBindings.query) || '';
+        window.AgctorModels.form('sc-model-', s.modelDefaults);
         renderScenarioTypeHelp(s);
         renderAgentTypeEditor();
         renderPersonaEditor();
@@ -351,6 +352,7 @@
     function updateScenarioFromForm() {
         var s = currentScenario();
         if (!s) return;
+        s.modelDefaults = window.AgctorModels.readForm('sc-model-');
         s.displayName = String(displayEl.value || '').trim();
         s.description = String(descEl.value || '').trim();
         s.agentTypes = String(typesEl.value || '')
@@ -676,6 +678,7 @@
             });
     });
 
+    Object.keys(window.AgctorModels.labels).forEach(function (role) { document.getElementById('sc-model-' + role).addEventListener('change', updateScenarioFromForm); });
     displayEl.addEventListener('input', updateScenarioFromForm);
     descEl.addEventListener('input', updateScenarioFromForm);
     typesEl.addEventListener('input', updateScenarioFromForm);
@@ -764,6 +767,7 @@
     function openNewModal() {
         if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before creating another scenario.'; return; }
         if (!newModal || !newIdInput) return;
+        window.AgctorModels.form('sc-new-model-', {});
         newIdInput.value = '';
         if (newDisplayInput) newDisplayInput.value = '';
         showNewError('');
@@ -797,7 +801,7 @@
         api('/api/scenarios', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id, displayName: disp, description: '' })
+            body: JSON.stringify({ id: id, displayName: disp, description: '', modelDefaults: window.AgctorModels.readForm('sc-new-model-') })
         })
             .then(function (created) {
                 selectedId = (created && created.id) || id;
@@ -933,6 +937,41 @@
         var loopInvalidationEl = document.getElementById('sc-flow-loop-invalidation');
         var routerPanel = document.getElementById('sc-flow-router-panel');
         var routerModeEl = document.getElementById('sc-flow-router-mode');
+        var decisionModelEl = document.getElementById('sc-flow-router-decision-model');
+        var decisionStatusEl = document.getElementById('sc-flow-router-decision-status');
+        var decisionRefreshEl = document.getElementById('sc-flow-router-decision-refresh');
+        var decisionModels = [];
+        var decisionModelsLoaded = false;
+        var decisionModelsLoading = false;
+
+        function isModelRouterMode(mode) {
+            return ['llm', 'decision'].indexOf(String(mode || '').toLowerCase()) >= 0;
+        }
+
+        function renderDecisionModels(selected) {
+            var inherited = window.AgctorModels.fallback(currentScenario().modelDefaults, 'decisionRouting');
+            window.AgctorModels.populate(decisionModelEl, 'decisionRouting', selected, inherited)
+                .then(function () { if (decisionStatusEl) decisionStatusEl.textContent = window.AgctorModels.describe(selected, inherited); })
+                .catch(function (e) { if (decisionStatusEl) decisionStatusEl.textContent = e.message; });
+        }
+        function loadDecisionModels() {
+            if (decisionModelsLoading) return;
+            decisionModelsLoading = true;
+            if (decisionRefreshEl) decisionRefreshEl.disabled = true;
+            window.AgctorModels.load(true).then(function () {
+                decisionModelsLoaded = true;
+                refreshFlowInspectors();
+            }).catch(function (e) { if (decisionStatusEl) decisionStatusEl.textContent = e.message; })
+              .finally(function () { decisionModelsLoading = false; if (decisionRefreshEl) decisionRefreshEl.disabled = false; });
+        }
+        var routerModelEl = document.getElementById('sc-flow-router-model');
+        var personaModelEl = document.getElementById('sc-flow-persona-model');
+        function fillNodeModel(select, sourceId, cfg, role) {
+            var inherited = window.AgctorModels.fallback(currentScenario().modelDefaults, role);
+            window.AgctorModels.populate(select, role, cfg.llmModel, inherited).then(function () {
+                document.getElementById(sourceId).textContent = window.AgctorModels.describe(cfg.llmModel, window.AgctorModels.fallback(currentScenario().modelDefaults, role));
+            }).catch(function (e) { document.getElementById(sourceId).textContent = e.message; });
+        }
         var routerTargetPolicyEl = document.getElementById('sc-flow-router-target-policy');
         var routerBranchExecEl = document.getElementById('sc-flow-router-branch-exec');
         var routerBranchExecWrap = document.getElementById('sc-flow-router-branch-exec-wrap');
@@ -1439,6 +1478,7 @@
         }
 
         function closeModal() {
+            window.AgctorScenarioFlow.studio.destroy();
             clearTraverseHoverLink();
             resetFlowSimState();
             if (renderer) {
@@ -1628,7 +1668,7 @@
             if (fromRouter) {
                 try {
                     var rc = JSON.parse(src.data('agctorConfig') || '{}');
-                    routerUsesLlm = String(rc.routerMode || '').toLowerCase() === 'llm';
+                    routerUsesLlm = isModelRouterMode(rc.routerMode);
                 } catch (err) {
                     routerUsesLlm = false;
                 }
@@ -1640,8 +1680,8 @@
                 } else if (fromRouter) {
                     edgeCtx.classList.remove('hidden');
                     edgeCtx.textContent = routerUsesLlm
-                        ? 'This arrow leaves an LLM-mode router: describe when to take this branch (hint below). Conditions are hidden because they are not used in LLM mode.'
-                        : 'This arrow leaves a deterministic router: set condition + match mode below. The LLM hint is hidden because it is only used when the router is in LLM mode.';
+                        ? 'This arrow leaves a model-based router: describe when to take this branch (hint below). Conditions are hidden because they are not used in model routing.'
+                        : 'This arrow leaves a deterministic router: set condition + match mode below. The LLM hint is hidden because it is only used when the router uses a model.';
                 } else {
                     edgeCtx.classList.add('hidden');
                     edgeCtx.textContent = '';
@@ -1695,7 +1735,7 @@
             var nodes = (doc && doc.nodes) || [];
             return nodes.some(function (n) {
                 if (!n || n.type !== 'Router' || !n.config) return false;
-                return String(n.config.routerMode || '').toLowerCase() === 'llm';
+                return isModelRouterMode(n.config.routerMode);
             });
         }
 
@@ -1704,7 +1744,9 @@
             var det = document.getElementById('sc-flow-router-deterministic');
             var llm = document.getElementById('sc-flow-router-llm-options');
             if (!routerModeEl || !det || !llm) return;
-            var isLlm = routerModeEl.value === 'llm';
+            var isLlm = isModelRouterMode(routerModeEl.value);
+            var decision = document.getElementById('sc-flow-router-decision-options');
+            if (decision) decision.classList.toggle('hidden', routerModeEl.value !== 'decision');
             det.classList.toggle('hidden', isLlm);
             llm.classList.toggle('hidden', !isLlm);
             if (routerMaxEl && routerTargetPolicyEl) {
@@ -1737,7 +1779,10 @@
             } catch (e) {
                 cfg = {};
             }
-            routerModeEl.value = (cfg.routerMode === 'llm') ? 'llm' : 'deterministic';
+            routerModeEl.value = isModelRouterMode(cfg.routerMode) ? cfg.routerMode.toLowerCase() : 'deterministic';
+            renderDecisionModels(cfg.decisionModel || '');
+            document.getElementById('sc-flow-router-model-wrap').classList.toggle('hidden', routerModeEl.value !== 'llm');
+            fillNodeModel(routerModelEl, 'sc-flow-router-model-source', cfg, 'llmRouting');
             if (routerTargetPolicyEl) {
                 routerTargetPolicyEl.value =
                     cfg.routerTargetPolicy === 'single_best' ? 'single_best' : 'all_matching';
@@ -1921,6 +1966,7 @@
             } catch (e) {
                 cfg = {};
             }
+            fillNodeModel(personaModelEl, 'sc-flow-persona-model-source', cfg, 'generation');
             var cur = normalizeType(cfg.personaId);
             personaInvalidHint.classList.add('hidden');
             personaInvalidHint.textContent = '';
@@ -1998,6 +2044,7 @@
             } catch (e) {
                 cfg = {};
             }
+            if (personaModelEl.value) cfg.llmModel = personaModelEl.value; else delete cfg.llmModel;
             cfg.personaId = normalizeType(personaSelect.value);
             var pid = cfg.personaId;
             if (pid && pid.toLowerCase() === 'person-query' && pqContextStrategyEl) {
@@ -2032,8 +2079,11 @@
             } catch (e) {
                 cfg = {};
             }
-            if (routerModeEl.value === 'llm') {
-                cfg.routerMode = 'llm';
+            if (isModelRouterMode(routerModeEl.value)) {
+                cfg.routerMode = routerModeEl.value;
+                if (routerModelEl.value) cfg.llmModel = routerModelEl.value; else delete cfg.llmModel;
+                if (routerModeEl.value === 'decision') cfg.decisionModel = decisionModelEl ? decisionModelEl.value : '';
+                else delete cfg.decisionModel;
                 if (routerTargetPolicyEl) {
                     cfg.routerTargetPolicy = routerTargetPolicyEl.value === 'single_best' ? 'single_best' : 'all_matching';
                 }
@@ -2068,6 +2118,7 @@
                 }
             } else {
                 delete cfg.routerMode;
+                delete cfg.decisionModel;
                 delete cfg.routerTargetPolicy;
                 delete cfg.routerBranchExecution;
                 delete cfg.maxTargets;
@@ -2082,6 +2133,7 @@
         }
 
         function openModal() {
+            if (!decisionModelsLoaded) loadDecisionModels();
             var s = currentScenario();
             if (!s) return;
             if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before editing the flow.'; return; }
@@ -2105,6 +2157,7 @@
                         requestAnimationFrame(function () {
                             if (!renderer || modal.classList.contains('hidden')) return;
                             renderer.mount(cyHost, draftBase);
+                            window.AgctorScenarioFlow.studio.mount(renderer, draftBase, readFlowDocFromRenderer, s.displayName || s.id);
                             renderer.onChange(function () {
                                 setFlowMsg('');
                                 refreshFlowInspectors();
@@ -2125,7 +2178,12 @@
                 });
         }
 
+        routerModelEl.addEventListener('change', persistFlowRouterInspector);
+        personaModelEl.addEventListener('change', persistFlowPersonaInspector);
+        if (decisionModelEl) decisionModelEl.addEventListener('change', persistFlowRouterInspector);
+        if (decisionRefreshEl) decisionRefreshEl.addEventListener('click', loadDecisionModels);
         if (routerModeEl) routerModeEl.addEventListener('change', function () {
+            if (routerModeEl.value === 'decision' && !decisionModelsLoaded) loadDecisionModels();
             updateRouterModeDependentUi();
             persistFlowRouterInspector();
         });
@@ -2206,7 +2264,10 @@
                         }
                     }
                 }
-                renderer.addNode(add, nodeLabel, cfg);
+                var addedId = renderer.addNode(add, nodeLabel, cfg);
+                var addedCy = renderer.getCy();
+                addedCy.$(':selected').unselect();
+                if (addedId) addedCy.getElementById(addedId).select();
                 refreshFlowInspectors();
                 updateV2StudioUi();
             }

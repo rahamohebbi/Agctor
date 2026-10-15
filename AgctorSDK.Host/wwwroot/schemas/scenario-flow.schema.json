@@ -93,7 +93,7 @@
         },
         "config": {
           "type": "object",
-          "description": "Type-specific payload. Router (llm): routerMode, routerTargetPolicy (single_best | all_matching), routerBranchExecution (parallel | sequential | auto), maxTargets, minConfidence, fallbackPersonaId, llmRoutingInstructions. LlmNode: personaId (string); optional contextStrategy; optional toolIds / toolPreset.",
+          "description": "Type-specific payload. Router: routerMode (deterministic | llm | decision), decisionModel (optional node override; otherwise resolved from chat/scenario defaults), llmModel (optional LLM routing override), routerTargetPolicy (single_best | all_matching), routerBranchExecution (parallel | sequential | auto), maxTargets, minConfidence, fallbackPersonaId, llmRoutingInstructions. LlmNode: personaId (string); optional llmModel; optional contextStrategy; optional toolIds / toolPreset.",
           "additionalProperties": true
         }
       }
@@ -134,7 +134,7 @@
         },
         "llmRoutingHint": {
           "type": "string",
-          "description": "Optional per-edge routing guidance when Router uses routerMode llm (included in router LLM prompt)."
+          "description": "Optional per-edge routing guidance when Router uses routerMode llm or decision (included in router LLM prompt)."
         }
       }
     }

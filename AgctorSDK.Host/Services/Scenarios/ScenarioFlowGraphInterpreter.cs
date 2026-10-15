@@ -1,3 +1,5 @@
+using AgctorSDK.Core.Ollama;
+using AgctorSDK.Host.Services.Models;
 using System.Text.Json;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 
@@ -28,7 +30,7 @@ public sealed class ScenarioFlowGraphInterpreter
         await ExecuteAsync(flow, userMessage, invokePersona, llmNodeTimeout, "", null, null, cancellationToken)
             .ConfigureAwait(false);
 
-    /// <summary>Full execution: pass <paramref name="projectRoot"/> and <paramref name="routerLlm"/> when any Router uses <c>routerMode: llm</c>.</summary>
+    /// <summary>Full execution: pass <paramref name="projectRoot"/> and <paramref name="routerLlm"/> when any Router uses <c>routerMode: llm</c> or <c>routerMode: decision</c>.</summary>
     public async Task<string> ExecuteAsync(
         ScenarioFlowDocument flow,
         string userMessage,
@@ -103,21 +105,26 @@ public sealed class ScenarioFlowGraphInterpreter
             {
                 var rid = current;
                 var rCfg = ScenarioFlowRouterConfig.Parse(map[current].Config);
-                if (rCfg.Mode == ScenarioFlowRouterMode.Llm)
+                if (rCfg.UsesModel)
                 {
                     if (routerLlm == null)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' uses routerMode llm but no router LLM service was provided.");
+                            $"Router '{current}' uses model routing but no router service was provided.");
 
                     if (OutgoingParallelEdges(flow, current).Count > 0)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' (llm) must not have parallel outgoing edges.");
+                            $"Router '{current}' (model routing) must not have parallel outgoing edges.");
 
                     var candidates = ListRouterPersonaCandidates(flow, map, current);
                     if (candidates.Count == 0)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' (llm) has no sequential edges to LlmNode nodes.");
+                            $"Router '{current}' (model routing) has no sequential edges to LlmNode nodes.");
 
+                    using var routingModelScope = ModelSelectionScope.Node(current,
+                        rCfg.Mode == ScenarioFlowRouterMode.Decision ? ModelRoles.DecisionRouting : ModelRoles.LlmRouting,
+                        rCfg.Mode == ScenarioFlowRouterMode.Decision ? rCfg.DecisionModel : rCfg.LlmModel);
+                    if (rCfg.Mode == ScenarioFlowRouterMode.Decision)
+                        rCfg = rCfg with { DecisionModel = ModelSelectionScope.Selection?.Model };
                     var routingText = RouterInputText(flow, store, current, userMessage, routerRoutingAppendix);
                     var llmResult = await routerLlm
                         .RouteAsync(projectRoot ?? "", userMessage, candidates, rCfg, cancellationToken, routingText)
@@ -151,7 +158,7 @@ public sealed class ScenarioFlowGraphInterpreter
                         {
                             var pickedOne = string.Join(", ", llmResult.SelectedPersonaIds);
                             await observer
-                                .OnNodeCompletedAsync(rid, "Router", $"llm→[{pickedOne}]", cancellationToken)
+                                .OnNodeCompletedAsync(rid, "Router", $"{rCfg.Mode.ToString().ToLowerInvariant()}→[{pickedOne}]", cancellationToken)
                                 .ConfigureAwait(false);
                             await observer
                                 .OnRouterBranchResolvedAsync(rid, new[] { targetNodes[0] }, null, cancellationToken)
@@ -188,7 +195,7 @@ public sealed class ScenarioFlowGraphInterpreter
                             .OnNodeCompletedAsync(
                                 rid,
                                 "Router",
-                                $"llm→[{picked}] {branchExec.ToString().ToLowerInvariant()}",
+                                $"{rCfg.Mode.ToString().ToLowerInvariant()}→[{picked}] {branchExec.ToString().ToLowerInvariant()}",
                                 cancellationToken)
                             .ConfigureAwait(false);
                     }
@@ -332,6 +339,7 @@ public sealed class ScenarioFlowGraphInterpreter
                 break;
             case var t when string.Equals(t, "LlmNode", StringComparison.OrdinalIgnoreCase):
             {
+                using var modelScope = ModelSelectionScope.Node(nodeId, ModelRoles.Generation, ModelSelectionService.ConfigModel(node, ModelRoles.Generation));
                 var prompt = GetIncomingText(flow, store, nodeId, userMessage);
                 var pid = TryGetPersonaId(node.Config);
                 if (string.IsNullOrWhiteSpace(pid))
@@ -355,7 +363,7 @@ public sealed class ScenarioFlowGraphInterpreter
                     throw new ScenarioFlowExecutionException($"LlmNode '{nodeId}' {detail}.");
                 }
 
-                completeDetail = $"{pid.Trim()}; {store[nodeId].Length} char(s)";
+                completeDetail = $"{pid.Trim()}; {store[nodeId].Length} char(s); model={ModelSelectionScope.GenerationModel} ({ModelSelectionScope.Selection?.Source})";
                 break;
             }
             case var t when string.Equals(t, "Merge", StringComparison.OrdinalIgnoreCase):
@@ -933,17 +941,22 @@ public sealed class ScenarioFlowGraphInterpreter
             {
                 var rid = current;
                 var rCfg = ScenarioFlowRouterConfig.Parse(map[current].Config);
-                if (rCfg.Mode == ScenarioFlowRouterMode.Llm)
+                if (rCfg.UsesModel)
                 {
                     if (routerLlm == null)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' uses routerMode llm but no router LLM service was provided.");
+                            $"Router '{current}' uses model routing but no router service was provided.");
 
                     var candidates = ListRouterPersonaCandidates(flow, map, current);
                     if (candidates.Count == 0)
                         throw new ScenarioFlowExecutionException(
-                            $"Router '{current}' (llm) has no sequential edges to LlmNode nodes.");
+                            $"Router '{current}' (model routing) has no sequential edges to LlmNode nodes.");
 
+                    using var routingModelScope = ModelSelectionScope.Node(current,
+                        rCfg.Mode == ScenarioFlowRouterMode.Decision ? ModelRoles.DecisionRouting : ModelRoles.LlmRouting,
+                        rCfg.Mode == ScenarioFlowRouterMode.Decision ? rCfg.DecisionModel : rCfg.LlmModel);
+                    if (rCfg.Mode == ScenarioFlowRouterMode.Decision)
+                        rCfg = rCfg with { DecisionModel = ModelSelectionScope.Selection?.Model };
                     var routingText = RouterInputText(flow, store, current, userMessage, routerRoutingAppendix);
                     var llmResult = await routerLlm
                         .RouteAsync(projectRoot ?? "", userMessage, candidates, rCfg, cancellationToken, routingText)

@@ -4,6 +4,7 @@
     ViewData["Title"] = "Scenarios";
 }
 <link rel="stylesheet" href="~/css/scenarios-page.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/scenario-flow-studio.css" asp-append-version="true" />
 <div class="sc-workspace">
     <header class="sc-heading">
         <div><p class="sc-eyebrow">WORKSPACE / SCENARIOS</p><h1>Scenarios</h1><p>Choose a workflow. Shape how your agents work together.</p></div>
@@ -47,6 +48,9 @@
                     <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Short summary of what this scenario is for (for your reference, not sent to the AI).</p>
                 </div>
 </div></details>
+<details class="sc-section" open><summary>Default models</summary><div class="sc-section-body"><p class="sc-muted">Choose a default for each job. Nodes can use their own model, and chat sessions can override these choices.</p><div><label for="sc-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+<div><label for="sc-model-llmRouting" class="block text-xs font-medium mb-1">LLM routing</label><select id="sc-model-llmRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+<div><label for="sc-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><p id="sc-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
 <details class="sc-section"><summary>Runtime agents</summary><div class="sc-section-body">                <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agents to start when applied</label>
                     <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Live workers for your chat session (for example, something that coordinates messages or remembers context). Persona definitions (how the AI thinks and what it remembers) are added in the section below and on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.</p>
@@ -159,7 +163,10 @@
                     <label for="sc-new-display" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
                     <input id="sc-new-display" type="text" autocomplete="off" placeholder="Optional — defaults to id" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
                 </div>
-                <p id="sc-new-error" class="hidden text-xs text-red-600 dark:text-red-400" role="alert"></p>
+                <details class="mt-3"><summary class="text-xs cursor-pointer">Default models (optional)</summary><div class="mt-2 space-y-2"><div><label for="sc-new-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-new-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+<div><label for="sc-new-model-llmRouting" class="block text-xs font-medium mb-1">LLM routing</label><select id="sc-new-model-llmRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+<div><label for="sc-new-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-new-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><p id="sc-new-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
+            <p id="sc-new-error" class="hidden text-xs text-red-600 dark:text-red-400" role="alert"></p>
             </div>
             <div class="mt-4 flex flex-wrap justify-end gap-2">
                 <button type="button" class="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium dark:border-gray-600" data-sc-new-cancel>Cancel</button>
@@ -172,19 +179,34 @@
 <div id="sc-flow-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-modal="true" role="dialog" aria-labelledby="sc-flow-title">
     <div class="flex min-h-full items-center justify-center p-3 sm:p-4">
         <div class="fixed inset-0 bg-gray-900/60" data-sc-flow-backdrop></div>
-        <div id="sc-flow-panel" class="relative flex w-[min(94vw,1680px)] max-w-[98vw] min-w-[36rem] max-h-[94vh] min-h-[32rem] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 resize" style="height: 82vh;">
+        <div id="sc-flow-panel" class="relative flex w-[min(94vw,1680px)] max-w-[98vw] min-w-[36rem] max-h-[94vh] min-h-[32rem] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 resize" style="height: 92vh;">
             <div class="flex shrink-0 items-start justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
                 <div>
+                    <p id="sc-flow-scenario-name" class="flow-eyebrow"></p>
                     <h2 id="sc-flow-title" class="text-base font-semibold text-gray-900 dark:text-white">Conversation flow</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Connect the steps a message follows, from input to reply. Select a step to edit it, then validate and save your flow.</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">Design the journey from message to reply.</p>
                     <p id="sc-flow-schema-badge" class="mt-1 hidden text-[10px] font-medium text-teal-700 dark:text-teal-300"></p>
                 </div>
                 <button type="button" class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" data-sc-flow-close aria-label="Close">✕</button>
             </div>
-            <div class="flex min-h-0 flex-1 flex-col gap-3 p-4 md:flex-row md:items-stretch">
-                <div class="flex w-full shrink-0 flex-col md:w-72 min-h-0 md:max-w-[min(22rem,42vw)]">
-                    <div class="flex min-h-0 max-h-[min(58vh,720px)] flex-1 flex-col overflow-y-auto rounded-lg border border-gray-200 bg-white/70 p-2 shadow-sm dark:border-gray-600 dark:bg-gray-900/50">
-                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">Add node</p>
+            <div class="flow-toolbar">
+                <div class="flow-view-switch" role="group" aria-label="Editor view">
+                    <button type="button" id="sc-flow-view-graph" aria-pressed="true" aria-controls="sc-flow-workspace">Graph</button>
+                    <button type="button" id="sc-flow-view-json" aria-pressed="false" aria-controls="sc-flow-json-panel">{ } JSON</button>
+                </div>
+                <span id="sc-flow-counts" class="flow-muted"></span>
+                <div class="flow-viewport-tools" id="sc-flow-viewport-tools">
+                    <button type="button" id="sc-flow-zoom-out" aria-label="Zoom out">−</button>
+                    <span id="sc-flow-zoom-level" aria-label="Canvas zoom">100%</span>
+                    <button type="button" id="sc-flow-zoom-in" aria-label="Zoom in">+</button>
+                    <button type="button" id="sc-flow-fit">Fit view</button>
+                    <button type="button" id="sc-flow-arrange" title="Arrange the graph from input to output. Save to keep the new positions.">Auto layout</button>
+                </div>
+            </div>
+            <div id="sc-flow-workspace" class="flow-workspace">
+                <aside class="flow-library" aria-label="Node library">
+                    <div class="flow-library-nodes">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">ADD A STEP</p>
                         <div class="flex flex-col gap-1.5">
                             @* group-hover shows copy below the chip; survives moving the pointer onto the text (same group). Native title remains for accessibility. *@
                             <div class="group">
@@ -213,17 +235,18 @@
                             <button type="button" title="Suspend until a domain event arrives (e.g. visual.extract.completed)." class="w-full rounded border border-teal-300 px-2 py-1.5 text-left text-xs hover:bg-teal-50 dark:border-teal-700 dark:hover:bg-teal-950/40" data-flow-add="AwaitEvent">Wait for event</button>
                             <button type="button" title="Signal another persona without running an LLM turn." class="w-full rounded border border-teal-300 px-2 py-1.5 text-left text-xs hover:bg-teal-50 dark:border-teal-700 dark:hover:bg-teal-950/40" data-flow-add="Notify">Notify</button>
                         </div>
-                        <button type="button" id="sc-flow-connect" title="Direction follows node types (ChatInput → Router → LlmNode → Merge → Output) when both are known; otherwise first selected → second." class="mt-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800">Connect 2 selected</button>
-                        <button type="button" id="sc-flow-connect-loop" title="Loop-back edge: from suspend node back to an earlier step (dashed amber)." class="mt-1.5 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/70">Loop back (2 selected)</button>
-                        <label class="mt-2 flex items-center gap-2 text-[10px] text-gray-700 dark:text-gray-300">
-                            <input type="checkbox" id="sc-flow-show-loop-regions" class="rounded border-gray-300 dark:border-gray-600" />
-                            Show loop regions on canvas
-                        </label>
-                        <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
-                        <details class="mt-2 rounded border border-gray-200 bg-gray-50/90 p-1.5 dark:border-gray-600 dark:bg-gray-800/60">
-                            <summary class="cursor-pointer select-none text-[10px] font-medium text-gray-700 dark:text-gray-300">Canvas shortcuts</summary>
-                            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">Nodes: click or shift+drag box-select; selected nodes show a <strong class="text-amber-600">yellow ring</strong>. <strong class="text-gray-800 dark:text-gray-200">Connect 2 selected</strong> picks arrow direction from types. Edges: click to select (gold). <strong class="text-gray-800 dark:text-gray-200">Delete</strong> / <strong class="text-gray-800 dark:text-gray-200">Backspace</strong> removes selected edges. <strong class="text-gray-800 dark:text-gray-200">Alt+drag</strong> from a selected edge onto a node rewires the nearest end.</p>
-                        </details>
+                    </div>
+                    <div class="flow-outline"><h3>STEPS IN THIS FLOW</h3><div id="sc-flow-outline"></div></div>
+                    <div class="flow-library-help">Add a step, then select two steps to connect them. Shift-click to select more than one.</div>
+                </aside>
+                <div class="flow-stage">
+                    <div id="sc-flow-cy" tabindex="0" role="application" aria-label="Flow graph" title="Drag to pan · scroll to zoom · Shift-click to select multiple steps"></div>
+                    <div class="flow-canvas-hint">Drag to pan <span>·</span> Scroll to zoom <span>·</span> Shift-click to select</div>
+                </div>
+                <aside class="flow-inspector" aria-label="Selection settings">
+                    <header><p class="flow-eyebrow">INSPECTOR</p><h3 id="sc-flow-selection-title">Your flow</h3><p id="sc-flow-selection-meta" class="flow-muted">Select a step or connection to configure it.</p></header>
+                    <div class="flow-inspector-scroll">
+                        <div id="sc-flow-selection-empty" class="flow-selection-empty"><span aria-hidden="true">↗</span><h4>Make it yours</h4><p>Choose a step on the canvas or in the list to edit its settings. Select a connection to set its routing rules.</p></div>
                         <div id="sc-flow-edge-panel" class="hidden mt-3 rounded border border-amber-200 bg-amber-50/80 p-2 dark:border-amber-800 dark:bg-amber-950/40">
                             <p class="text-[10px] font-semibold text-amber-900 dark:text-amber-200">Selected edge</p>
                             <p id="sc-flow-edge-meta" class="mt-1 font-mono text-[9px] text-gray-600 dark:text-gray-400"></p>
@@ -243,7 +266,7 @@
                                 <p class="mt-1 text-[9px] text-gray-600 dark:text-gray-400">Leave condition empty on <strong>one</strong> arrow only — that is the fallback if no other branch matches.</p>
                             </div>
                             <div id="sc-flow-edge-llm-block" class="mt-2 hidden border-t border-amber-200/80 pt-2 dark:border-amber-800/60">
-                                <p class="text-[10px] font-medium text-gray-800 dark:text-gray-200">LLM branch hint (when source Router uses LLM mode)</p>
+                                <p class="text-[10px] font-medium text-gray-800 dark:text-gray-200">Model branch hint (when source Router uses LLM mode)</p>
                                 <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-edge-llm-hint">Tell the router model when to choose this persona branch</label>
                                 <textarea id="sc-flow-edge-llm-hint" rows="3" class="mt-0.5 w-full resize-y rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="Example: Use when the user asks who someone is, biographical questions, or &quot;what do we know about X&quot; people queries."></textarea>
                             </div>
@@ -311,21 +334,32 @@
                         <div id="sc-flow-router-panel" class="hidden mt-3 rounded border border-violet-200 bg-violet-50/80 p-2 dark:border-violet-800 dark:bg-violet-950/40">
                             <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Router (selected)</p>
                             <label class="mt-1 block text-[10px] font-medium text-gray-700 dark:text-gray-300" for="sc-flow-router-mode">How this router picks the next step</label>
-                            <p class="mt-0.5 text-[9px] leading-snug text-gray-600 dark:text-gray-400"><strong>Deterministic</strong> = no extra LLM call; the server matches your message against each outgoing arrow’s condition. <strong>LLM</strong> = one Ollama call reads branch hints + persona summaries and returns target persona(s).</p>
+                            <p class="mt-0.5 text-[9px] leading-snug text-gray-600 dark:text-gray-400"><strong>Deterministic</strong> = no extra LLM call; the server matches your message against each outgoing arrow’s condition. <strong>LLM</strong> generates routing JSON. <strong>Decision model</strong> scores allowed branches using their hints and persona summaries.</p>
                             <select id="sc-flow-router-mode" class="mt-1 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
                                 <option value="deterministic">Deterministic — keyword / pattern on each edge</option>
                                 <option value="llm">LLM (Ollama) — natural-language hints on each edge</option>
+                                <option value="decision">Decision model (Ollama) — typed branch decisions</option>
                             </select>
+                            <div id="sc-flow-router-decision-options" class="mt-2 hidden space-y-1">
+                                <label for="sc-flow-router-decision-model" class="block text-[10px] font-medium">Dedicated decision model</label>
+                                <select id="sc-flow-router-decision-model" class="w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="">Select an installed decision model</option>
+                                </select>
+                                <button type="button" id="sc-flow-router-decision-refresh" class="rounded border px-2 py-1 text-[10px]">Refresh models</button>
+                                <p id="sc-flow-router-decision-status" role="status" aria-live="polite" class="text-[10px] text-gray-600 dark:text-gray-400"></p>
+                                <p class="text-[9px] text-gray-600 dark:text-gray-400">Use the scenario default, or choose a model for this router. Chat can override this node explicitly. Install a decision model in Ollama, then refresh. For a 16 GB machine, start with <code>ollama pull tev1:4b-q4_K_M</code>.</p>
+                            </div>
                             <div id="sc-flow-router-deterministic" class="mt-2 rounded border border-violet-200/70 bg-white/60 p-2 dark:border-violet-800/50 dark:bg-gray-950/30">
                                 <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Rule-based setup</p>
                                 <p class="mt-1 text-[9px] leading-relaxed text-gray-700 dark:text-gray-300">Select each <strong>arrow leaving this router</strong> on the canvas. In the edge panel, set a condition and match style, or leave one arrow as the default (empty condition).</p>
                                 <p class="mt-1.5 text-[9px] font-medium text-gray-700 dark:text-gray-300">Outgoing sequential edges (preview)</p>
                                 <ul id="sc-flow-router-det-edge-preview" class="mt-0.5 max-h-28 list-inside list-disc overflow-y-auto text-[9px] text-gray-600 dark:text-gray-400"></ul>
                             </div>
+                            <div id="sc-flow-router-model-wrap" class="hidden mt-2"><label for="sc-flow-router-model" class="block text-xs">Routing LLM</label><select id="sc-flow-router-model" class="w-full rounded border border-gray-300 bg-white dark:bg-gray-900"></select><p id="sc-flow-router-model-source" class="flow-muted"></p></div>
                             <div id="sc-flow-router-llm-options" class="mt-2 hidden space-y-2 rounded border border-violet-200/70 bg-white/60 p-2 dark:border-violet-800/50 dark:bg-gray-950/30">
-                                <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">LLM router setup</p>
+                                <p class="text-[10px] font-semibold text-violet-900 dark:text-violet-200">Model routing setup</p>
                                 <label class="mt-0.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-llm-instr">Global policy for this router (optional)</label>
-                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Appended to the routing prompt after per-branch hints — use for priorities, exclusions, or tone.</p>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Applied with the branch hints — use for priorities and exclusions.</p>
                                 <textarea id="sc-flow-router-llm-instr" rows="3" class="mt-0.5 w-full resize-y rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. Prefer person-query for any who-is question; never route billing text to extraction."></textarea>
                                 <label class="mt-1.5 block text-[10px] font-medium text-gray-700 dark:text-gray-300" for="sc-flow-router-target-policy">How many branches may run per message</label>
                                 <p class="text-[9px] text-gray-500 dark:text-gray-500"><strong>Single best match</strong> — one Ollama pick (highest confidence + routing hint). <strong>All matching</strong> — every branch the model marks applicable runs (needs a shared Merge when multiple LlmNodes).</p>
@@ -339,26 +373,27 @@
                                     <select id="sc-flow-router-branch-exec" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900">
                                         <option value="parallel">Parallel — run branches at the same time</option>
                                         <option value="sequential">Sequential — one branch after another</option>
-                                        <option value="auto">Auto — LLM decides per message</option>
+                                        <option value="auto">Auto — model decides per message</option>
                                     </select>
                                 </div>
                                 <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-max">Max persona branches (optional, all-matching only)</label>
                                 <p class="text-[9px] text-gray-500 dark:text-gray-500">Caps how many targets run when using <em>all matching</em>. Ignored for single best. Leave empty for no cap.</p>
                                 <input type="number" id="sc-flow-router-max" min="1" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="empty = no cap" />
                                 <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-minconf">Minimum confidence (0–1, optional)</label>
-                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Targets below this threshold are dropped before execution.</p>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Targets below this threshold are dropped before execution. Decision mode uses option probability (default 0.5); all-matching also requires probability above 0.5. These scores are not guarantees of correctness.</p>
                                 <input type="text" id="sc-flow-router-minconf" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" placeholder="e.g. 0.5" />
                                 <label class="mt-1.5 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-router-fallback">Fallback persona id (optional)</label>
-                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Must match one of the LlmNode <code class="text-[9px]">personaId</code> values on arrows below; used when the model returns no targets.</p>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">Must match one of the LlmNode <code class="text-[9px]">personaId</code> values on arrows below; used when no target meets the threshold. Decision mode asks for clarification if no fallback is set. Connection or invalid-response errors stop the run.</p>
                                 <input type="text" id="sc-flow-router-fallback" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900" />
-                                <p class="mt-2 text-[10px] font-medium text-gray-800 dark:text-gray-200">Branches the LLM may choose (sequential → LlmNode)</p>
-                                <p class="text-[9px] text-gray-600 dark:text-gray-400">Each row is one candidate. Add per-arrow guidance in the edge panel (LLM branch hint) after selecting that arrow.</p>
+                                <p class="mt-2 text-[10px] font-medium text-gray-800 dark:text-gray-200">Branches the model may choose (sequential → LlmNode)</p>
+                                <p class="text-[9px] text-gray-600 dark:text-gray-400">Each row is one candidate. Add per-arrow guidance in the edge panel (Model branch hint) after selecting that arrow.</p>
                                 <ul id="sc-flow-router-candidates" class="mt-0.5 max-h-24 list-inside list-disc overflow-y-auto text-[10px] text-gray-600 dark:text-gray-400"></ul>
-                                <p class="text-[9px] text-gray-500 dark:text-gray-500">“Simulate order” does not run Ollama; only a real flow run calls the LLM router.</p>
+                                <p class="text-[9px] text-gray-500 dark:text-gray-500">“Simulate order” does not run Ollama; only a real flow run calls the selected routing model.</p>
                             </div>
                         </div>
                         <div id="sc-flow-persona-panel" class="hidden mt-3 rounded border border-sky-200 bg-sky-50/80 p-2 dark:border-sky-800 dark:bg-sky-950/40">
                             <p class="text-[10px] font-semibold text-sky-900 dark:text-sky-200">Agent step (LlmNode)</p>
+                            <label for="sc-flow-persona-model" class="block text-xs mt-2">LLM model</label><select id="sc-flow-persona-model" class="w-full rounded border border-gray-300 bg-white dark:bg-gray-900"></select><p id="sc-flow-persona-model-source" class="flow-muted"></p>
                             <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-persona-select">Persona</label>
                             <select id="sc-flow-persona-select" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900"></select>
                             <p id="sc-flow-persona-roster-hint" class="mt-1 hidden text-[10px] text-amber-700 dark:text-amber-300">Add YAML personas to this scenario on the main form, then pick one here.</p>
@@ -393,10 +428,28 @@
                                 <div id="sc-flow-persona-cap" class="mt-2 max-h-36 overflow-y-auto rounded border border-sky-300/70 bg-white/95 p-2 text-[10px] text-gray-800 dark:border-sky-700 dark:bg-gray-950/60 dark:text-gray-100"></div>
                             </details>
                         </div>
+                        <div class="flow-connection-tools"><h3>CONNECTION TOOLS</h3>
+                        <button type="button" id="sc-flow-connect" title="Direction follows node types (ChatInput → Router → LlmNode → Merge → Output) when both are known; otherwise first selected → second." class="mt-2 w-full rounded-lg border border-gray-300 px-2 py-1.5 text-xs font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-800">Connect 2 selected</button>
+                        <button type="button" id="sc-flow-connect-loop" title="Loop-back edge: from suspend node back to an earlier step (dashed amber)." class="mt-1.5 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100 dark:hover:bg-amber-950/70">Loop back (2 selected)</button>
+                        <label class="mt-2 flex items-center gap-2 text-[10px] text-gray-700 dark:text-gray-300">
+                            <input type="checkbox" id="sc-flow-show-loop-regions" class="rounded border-gray-300 dark:border-gray-600" />
+                            Show loop regions on canvas
+                        </label>
+                        <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
+                        <details class="mt-2 rounded border border-gray-200 bg-gray-50/90 p-1.5 dark:border-gray-600 dark:bg-gray-800/60">
+                            <summary class="cursor-pointer select-none text-[10px] font-medium text-gray-700 dark:text-gray-300">Canvas shortcuts</summary>
+                            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">Nodes: click or shift+drag box-select; selected nodes show a <strong class="text-amber-600">blue outline</strong>. <strong class="text-gray-800 dark:text-gray-200">Connect 2 selected</strong> picks arrow direction from types. Edges: click to select (blue). <strong class="text-gray-800 dark:text-gray-200">Delete</strong> / <strong class="text-gray-800 dark:text-gray-200">Backspace</strong> removes selected edges. <strong class="text-gray-800 dark:text-gray-200">Alt+drag</strong> from a selected edge onto a node rewires the nearest end.</p>
+                        </details>
+                        </div>
                     </div>
-                </div>
-                <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-gray-200 bg-gray-50 outline-none dark:border-gray-600 dark:bg-gray-800" id="sc-flow-cy" tabindex="0" title="Flow canvas — click to focus for keyboard shortcuts"></div>
+                </aside>
             </div>
+            <section id="sc-flow-json-panel" class="flow-json-panel hidden" aria-label="Graph JSON">
+                <header><div><h3>Graph document</h3><p>This is the current draft sent when you save. It includes steps, connections, model settings, and canvas positions.</p></div><div class="flow-json-actions"><button type="button" id="sc-flow-json-copy">Copy JSON</button><button type="button" id="sc-flow-json-download">Download .json</button></div></header>
+                <div class="flow-json-file"><span id="sc-flow-json-filename">flow.json</span><span>READ ONLY · CURRENT DRAFT</span></div>
+                <textarea id="sc-flow-json-source" readonly spellcheck="false" wrap="off" aria-label="Generated graph JSON"></textarea>
+                <p id="sc-flow-json-status" role="status" aria-live="polite">Changes are stored in the scenario only after you save.</p>
+            </section>
             <style>
                 /* Simulate-order chips: hover links canvas node ↔ traversal step */
                 .sc-flow-traverse-wrap { margin-top: 0.15rem; }
@@ -493,6 +546,8 @@
     <script src="~/js/dashboard/scenario-flow/graph-document.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenario-flow/cytoscape-adapter.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenario-flow/graph-renderer.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/scenario-flow/flow-studio.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/persona-tools-ui.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/model-selection.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenarios-page.js" asp-append-version="true"></script>
 }
