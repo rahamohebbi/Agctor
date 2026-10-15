@@ -1,153 +1,90 @@
 @model AgctorSDK.Host.Models.RagProvidersDashboardModel
 @using AgctorSDK.Core.Rag
 @using AgctorSDK.Host.Models
-
-<div id="rag-providers-dashboard" class="space-y-6" data-selected-provider="@Model.SelectedProviderId">
-    @if (Model.DockerMismatch && Model.SelectedModel != null)
-    {
-        <div class="p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" role="status">
-            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">Docker sidecar not running</p>
-            <p class="text-sm text-amber-800 dark:text-amber-200 mt-1">
-                Saved <strong>@Model.SelectedModel.DisplayName</strong> but Docker service is
-                <strong>@(Model.DockerStatus?.State ?? "stopped")</strong>.
-                Start the sidecar or switch to <strong>Markdown only</strong>.
-            </p>
-        </div>
-    }
-
-    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Current provider</h2>
-        <dl class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
-            <div><dt class="text-gray-500 dark:text-gray-400">Provider id</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.ProviderId</dd></div>
-            <div><dt class="text-gray-500 dark:text-gray-400">Transport</dt><dd class="font-mono text-gray-900 dark:text-white">@Model.Status.Current.Transport</dd></div>
-            <div><dt class="text-gray-500 dark:text-gray-400">Provider health</dt><dd class="text-gray-900 dark:text-white">@Model.Status.Current.HealthStatus</dd></div>
-            @if (!string.IsNullOrWhiteSpace(Model.Status.Current.HealthMessage))
-            {
-                <div class="sm:col-span-2"><dt class="text-gray-500 dark:text-gray-400">Detail</dt><dd class="text-gray-900 dark:text-white">@Model.Status.Current.HealthMessage</dd></div>
-            }
-        </dl>
-        @if (Model.Health != null)
-        {
-            var healthCls = Model.Health.OverallStatus == "healthy"
-                ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
-                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
-            <p class="mt-3 text-sm flex flex-wrap items-center gap-x-2 gap-y-1" id="rag-health-row">
-                <span class="font-medium text-gray-700 dark:text-gray-300">Overall:</span>
-                <span id="rag-health-badge" class="text-xs font-medium px-2 py-0.5 rounded @healthCls">@Model.Health.OverallStatus</span>
-                <button type="button" id="rag-health-refresh"
-                        class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 disabled:opacity-50"
-                        title="Fetch latest health">
-                    Refresh
-                </button>
-                <span id="rag-health-detail"
-                      class="text-gray-500 dark:text-gray-400 @(string.IsNullOrEmpty(Model.Health.Detail) ? "hidden" : "")">@Model.Health.Detail</span>
-            </p>
-        }
-    </div>
-
-    <div class="p-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Select provider</h2>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Click a card to save and apply the default provider.</p>
-
-        <div class="grid gap-4 md:grid-cols-3 mb-6" role="list">
-            @foreach (var provider in Model.Status.Available)
-            {
-                var selected = string.Equals(provider.Id, Model.SelectedProviderId, StringComparison.OrdinalIgnoreCase);
-                var cardCls = selected
-                    ? "border-2 border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-400"
-                    : "border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600";
-                <button type="button" role="listitem"
-                        class="text-left p-4 rounded-lg shadow-sm w-full @cardCls"
-                        data-provider-select="@provider.Id">
-                    <div class="flex items-start justify-between gap-2">
-                        <h3 class="font-semibold text-gray-900 dark:text-white">@provider.DisplayName</h3>
-                        @if (selected)
-                        {
-                            <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">Selected</span>
-                        }
-                    </div>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 font-mono">@provider.Id</p>
-                    <p class="text-xs mt-2 text-gray-600 dark:text-gray-300">@provider.Maturity</p>
-                    @if (!string.IsNullOrWhiteSpace(provider.Summary))
-                    {
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@provider.Summary</p>
-                    }
-                    @if (provider.ContextStrategies?.Count > 0)
-                    {
-                        <div class="flex flex-wrap gap-1 mt-2">
-                            @foreach (var strat in provider.ContextStrategies)
-                            {
-                                <span class="text-xs font-medium px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-200">@strat</span>
-                            }
-                        </div>
-                    }
-                    @if (provider.RequiresDocker)
-                    {
-                        <p class="text-xs text-indigo-700 dark:text-indigo-300 mt-2">Docker sidecar · @provider.DefaultTransport</p>
-                    }
-                </button>
-            }
-        </div>
-
-        @if (Model.SelectedModel != null && !string.Equals(Model.SelectedModel.Id, RagProviderIds.None, StringComparison.Ordinal))
-        {
-            var cfg = Model.Status.Configured;
-            <form id="rag-save-form" class="space-y-4 max-w-xl border-t border-gray-200 dark:border-gray-700 pt-4">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-white">Configuration — @Model.SelectedModel.DisplayName</h3>
-                <input type="hidden" name="defaultProvider" value="@Model.SelectedProviderId" />
-
-                @foreach (var field in Model.SelectedModel.ConfigFields)
+@{
+    var active = Model.Status.Available.FirstOrDefault(p => string.Equals(p.Id, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase));
+    var isActive = string.Equals(Model.SelectedProviderId, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase);
+    var isMarkdown = string.Equals(Model.SelectedProviderId, RagProviderIds.None, StringComparison.OrdinalIgnoreCase);
+    var overall = Model.Health?.OverallStatus ?? "unknown";
+}
+<div id="rag-providers-dashboard" class="rp-workspace" data-selected-provider="@Model.SelectedProviderId" data-active-provider="@Model.Status.Current.ProviderId">
+    <section class="rp-current" aria-label="Current default retrieval">
+        <div><p class="rp-eyebrow">CURRENT DEFAULT</p><h2 id="rag-current-name">@(active?.DisplayName ?? Model.Status.Current.ProviderId)</h2><p class="rp-muted">Used by flows that request the default retrieval provider.</p></div>
+        <div class="rp-current-health" id="rag-health-row"><div class="rp-actions"><span id="rag-health-badge" class="rp-badge @(overall == "healthy" ? "rp-good" : "rp-warning")">@HealthLabel(overall)</span><button type="button" id="rag-health-refresh" class="rp-button rp-small">Check health</button></div><span id="rag-health-checked" class="rp-muted" role="status">Checked on page load</span></div>
+        <details class="rp-health-details"><summary>Health details</summary><p id="rag-health-detail" class="rp-muted">@(Model.Health?.Detail ?? Model.Status.Current.HealthMessage)</p><p class="rp-muted">Transport: @Model.Status.Current.Transport. Health is for the current default; local service status appears in Setup.</p></details>
+    </section>
+    <div class="rp-layout">
+        <aside class="rp-sidebar" aria-label="Select provider">
+            <h2>Select provider</h2><p class="rp-muted">Explore options without changing your default.</p>
+            <nav class="rp-provider-list" aria-label="Retrieval providers">
+                @foreach (var provider in Model.Status.Available)
                 {
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">@field.Label</label>
-                        @if (field.FieldType == "select")
-                        {
-                            var options = (field.Placeholder ?? field.DefaultValue ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                            var current = ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id);
-                            <select name="@FieldName(field.Key)" class="@InputClass">
-                                @foreach (var opt in options)
-                                {
-                                    <option value="@opt" selected="@(string.Equals(opt, current, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@opt</option>
-                                }
-                            </select>
-                        }
-                        else if (field.FieldType == "password")
-                        {
-                            <input type="password" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id)"
-                                   class="@InputClass" placeholder="@field.Placeholder" autocomplete="off" />
-                        }
-                        else
-                        {
-                            <input type="text" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, cfg, Model.SelectedModel.Id)"
-                                   class="@InputClass" placeholder="@field.Placeholder" />
-                        }
-                        @if (!string.IsNullOrWhiteSpace(field.HelpText))
-                        {
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">@field.HelpText</p>
-                        }
-                    </div>
+                    var selected = string.Equals(provider.Id, Model.SelectedProviderId, StringComparison.OrdinalIgnoreCase);
+                    var current = string.Equals(provider.Id, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase);
+                    <a class="rp-provider" href="/Dashboard/RagProviders?provider=@Uri.EscapeDataString(provider.Id)" data-provider-select="@provider.Id" aria-current="@(selected ? "page" : null)">
+                        <span class="rp-provider-title">@ProviderName(provider.Id)</span><span class="rp-provider-description">@ProviderSummary(provider.Id)</span>
+                        <span class="rp-provider-meta">@(provider.RequiresDocker ? "External service" : "No setup needed") @if(current){<span class="rp-badge rp-good">Default</span>} @if(provider.Maturity == "experimental"){<span class="rp-badge rp-warning">Experimental</span>}</span>
+                    </a>
                 }
-
-                <button type="submit" class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">
-                    Save settings to appsettings.User.json
-                </button>
-            </form>
-
-            @if (Model.SelectedModel.RequiresDocker)
-            {
+            </nav>
+        </aside>
+        <section class="rp-detail" aria-label="Provider details">
+            <header class="rp-detail-heading"><p class="rp-eyebrow">@(isActive ? "DEFAULT PROVIDER" : "EXPLORING PROVIDER")</p><h2>@ProviderName(Model.SelectedProviderId)</h2><p class="rp-muted">@ProviderSummary(Model.SelectedProviderId)</p>
+                @if (!isActive) { <p class="rp-view-note">Your default is still <strong>@(active?.DisplayName ?? Model.Status.Current.ProviderId)</strong>. Use the button in Setup to switch.</p> }
+            </header>
+            <div class="rp-tabs" role="tablist" aria-label="Provider workspace">
+                <button type="button" id="rag-tab-setup" role="tab" aria-selected="true" aria-controls="rag-panel-setup">Setup</button>
+                @if (!isMarkdown) {
+                    <button type="button" id="rag-tab-index" role="tab" aria-selected="false" aria-controls="rag-panel-index" tabindex="-1">Index data</button>
+                    <button type="button" id="rag-tab-test" role="tab" aria-selected="false" aria-controls="rag-panel-test" tabindex="-1">Test retrieval</button>
+                }
+            </div>
+            <section id="rag-panel-setup" class="rp-panel" role="tabpanel" aria-labelledby="rag-tab-setup" tabindex="0">
+                @if (isMarkdown) {
+                    <div class="rp-markdown"><span class="rp-mode-icon" aria-hidden="true">Aa</span><h3>Your files are the source</h3><p class="rp-muted">Use Project Memory markdown directly, with no external search service or Docker container.</p><p class="rp-muted">Choose an external provider when your flow needs semantic search or graph retrieval. Switching to markdown does not stop existing containers or delete their indexes.</p></div>
+                    <form id="rag-save-form"><input type="hidden" name="defaultProvider" value="@Model.SelectedProviderId" /><div class="rp-save"><p class="rp-muted">@(isActive ? "Markdown only is already your default." : "Makes markdown-only retrieval the default for this host.")</p><button type="submit" id="rag-save-btn" class="rp-button rp-primary" disabled="@(isActive ? "disabled" : null)">Use Markdown only</button></div><p id="rag-save-status" class="rp-status" role="status"></p></form>
+                } else if (Model.SelectedModel != null) {
+                    <div class="rp-guide"><h3>Connect → index → test</h3><p class="rp-muted">Configure this provider and save it as your default, start its service if needed, then index your project files and try a question.</p></div>
+                    <form id="rag-save-form" class="rp-config">
+                        <h3>Connection settings</h3><p class="rp-muted">Saved on this machine. Indexing and test queries use the saved settings for this provider.</p>
+                        <input type="hidden" name="defaultProvider" value="@Model.SelectedProviderId" />
+                        <fieldset id="rag-connection-fields">
+                        @foreach (var field in Model.SelectedModel.ConfigFields.Where(f => f.Key == "BaseUrl")) {
+                            <div class="rp-field"><label for="rag-field-@FieldName(field.Key)">@field.Label</label><input id="rag-field-@FieldName(field.Key)" type="url" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, Model.Status.Configured, Model.SelectedModel.Id)" class="@InputClass" placeholder="@field.Placeholder" required /></div>
+                        }
+                        <details class="rp-advanced"><summary>Authentication & advanced settings</summary><div class="rp-fields">
+                        @foreach (var field in Model.SelectedModel.ConfigFields.Where(f => f.Key != "BaseUrl")) {
+                            <div class="rp-field"><label for="rag-field-@FieldName(field.Key)">@field.Label</label>
+                            @if (field.FieldType == "select") {
+                                var options = (field.Placeholder ?? field.DefaultValue ?? "").Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                                var current = ResolveFieldValue(field.Key, Model.Status.Configured, Model.SelectedModel.Id);
+                                <select id="rag-field-@FieldName(field.Key)" name="@FieldName(field.Key)" class="@InputClass">
+                                @foreach (var opt in options) { <option value="@opt" selected="@(string.Equals(opt, current, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@opt</option> }
+                                </select>
+                            } else {
+                                <input id="rag-field-@FieldName(field.Key)" type="@(field.FieldType == "password" ? "password" : "text")" name="@FieldName(field.Key)" value="@ResolveFieldValue(field.Key, Model.Status.Configured, Model.SelectedModel.Id)" class="@InputClass" placeholder="@field.Placeholder" autocomplete="off" />
+                            }
+                            @if (!string.IsNullOrWhiteSpace(field.HelpText)) { <p class="rp-muted">@field.HelpText</p> }
+                            </div>
+                        }
+                        </div></details></fieldset>
+                        <div class="rp-save"><div><strong id="rag-draft-state">Saved settings</strong><p class="rp-muted">@(isActive ? "Changes apply to your current default." : "Saving also makes this provider your default.")</p></div><div class="rp-actions"><button type="button" id="rag-reset-settings" class="rp-button hidden">Discard edits</button><button type="submit" id="rag-save-btn" class="rp-button rp-primary">@(isActive ? "Save settings" : "Save & use " + Model.SelectedModel.DisplayName)</button></div></div>
+                        <p id="rag-save-status" class="rp-status" role="status"></p>
+                    </form>
+                    @if (Model.SelectedModel.RequiresDocker) {
                 var docker = Model.DockerStatus;
                 var stateCls = docker?.State?.Equals("running", StringComparison.OrdinalIgnoreCase) == true
                     ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200"
                     : docker?.State is "stopped" or "exited"
                         ? "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200"
                         : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200";
-                <div class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4"
-                     id="rag-docker-panel"
-                     data-docker-provider-id="@Model.SelectedProviderId">
+                <details class="rp-advanced rp-docker" id="rag-docker-panel" data-docker-provider-id="@Model.SelectedProviderId">
+                    <summary>Local Docker service <span id="rag-docker-summary-state" class="rp-badge">@(docker?.State ?? "unknown")</span></summary>
+                    <div class="rp-docker-body">
                     <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                         <div>
-                            <h3 class="text-base font-semibold text-gray-900 dark:text-white">Docker sidecar</h3>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Start, stop, or pull without typing commands.</p>
+                            <h3 class="text-base font-semibold text-gray-900 dark:text-white">Manage @Model.SelectedModel.DisplayName</h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Manage the local service for this provider. Saving settings does not start it.</p>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             <button type="button" data-docker-action="start"
@@ -160,7 +97,7 @@
                             </button>
                             <button type="button" data-docker-action="install"
                                     class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
-                                Pull
+                                Pull image
                             </button>
                             <button type="button" data-docker-action="refresh"
                                     class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 disabled:opacity-50">
@@ -182,6 +119,7 @@
                         <p id="rag-docker-status-message" class="text-xs text-gray-600 dark:text-gray-300 mb-4">@(docker.Message ?? "")</p>
                     }
 
+                    <details class="rp-advanced"><summary>Advanced: Docker terminal</summary>
                     @await Component.InvokeAsync("TerminalCommandPanel", new
                     {
                         componentId = "rag-provider-terminal-" + Model.SelectedModel.Id.Replace('.', '-').ToLowerInvariant(),
@@ -190,26 +128,26 @@
                         contextType = "rag-provider",
                         contextKey = Model.SelectedModel.Id
                     })
-                </div>
-            }
-
-            <details class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4" id="rag-ingest-panel"
-                     data-provider-id="@Model.SelectedProviderId">
-                <summary class="cursor-pointer text-base font-semibold text-gray-900 dark:text-white">Ingest data</summary>
-                <p class="mt-2 text-sm text-gray-600 dark:text-gray-300 max-w-2xl">
-                    Push canonical Project Memory files into the active sidecar index. More source types (PDF, folders) are listed for future expansion.
-                </p>
+                    </details>
+                    </div>
+                </details>
+                    }
+                    <details class="rp-advanced"><summary>Provider details & requirements</summary><p class="rp-muted">@Model.SelectedModel.Limitations</p><p class="rp-muted">@Model.SelectedModel.DeploymentNotes</p><p class="rp-muted">Supported flow strategies: @string.Join(", ", Model.SelectedModel.ContextStrategies)</p><p class="rp-muted">Host settings are stored in appsettings.User.json. Docker services may also need their own environment file.</p></details>
+                }
+            </section>
+            @if (!isMarkdown && Model.SelectedModel != null) {
+                <section id="rag-panel-index" class="rp-panel hidden" role="tabpanel" aria-labelledby="rag-tab-index" tabindex="0">
+                    <h3>Make your project searchable</h3><p class="rp-muted">Preview the Project Memory files, then send them to <strong>@Model.SelectedModel.DisplayName</strong> for indexing. This uses its saved connection and does not change your default provider.</p><p class="rp-draft-notice hidden" data-draft-notice>Save or discard your connection edits in Setup before indexing.</p>
+                    <div id="rag-ingest-panel" data-provider-id="@Model.SelectedProviderId">
                 <form id="rag-ingest-form" class="mt-4 space-y-3 max-w-xl">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="rag-ingest-source">Data source</label>
                         <select id="rag-ingest-source" name="sourceId" class="@InputClass">
-                            <option value="agctor_markdown">Agctor markdown (.agctor/ + scenarios/*/people/)</option>
-                            <option value="pdf_document" disabled>PDF documents (coming soon)</option>
-                            <option value="workspace_folder" disabled>Workspace folder (coming soon)</option>
+                            <option value="agctor_markdown">Project Memory markdown</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="rag-ingest-collection-id">Collection / dataset id (optional)</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300" for="rag-ingest-collection-id">Collection name (optional)</label>
                         <input type="text" id="rag-ingest-collection-id" name="collectionId"
                                class="@InputClass" placeholder="defaults to scenario id or agctor" />
                     </div>
@@ -221,83 +159,67 @@
                         <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                             <input type="checkbox" id="rag-ingest-force-reingest" name="forceReingest"
                                    class="rounded border-gray-300 dark:border-gray-600" />
-                            Force re-ingest (re-run cognify on datasets already in Cognee — slow, ~2 min per dataset)
+                            Rebuild existing datasets (slower; runs graph extraction again)
                         </label>
                     }
                     <div class="flex flex-wrap gap-2">
                         <button type="button" id="rag-ingest-preview-btn"
                                 class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
-                            Preview
+                            Preview files
                         </button>
                         <button type="submit" id="rag-ingest-run-btn"
                                 class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-emerald-600 hover:bg-emerald-700">
-                            Ingest into @Model.SelectedModel.DisplayName
+                            Index files in @Model.SelectedModel.DisplayName
                         </button>
                     </div>
                     <p id="rag-ingest-status" class="text-sm text-gray-600 dark:text-gray-300 hidden" role="status"></p>
                     <ul id="rag-ingest-preview-list" class="text-xs text-gray-600 dark:text-gray-300 space-y-1 hidden"></ul>
                     <ul id="rag-ingest-results" class="space-y-1 text-xs max-h-64 overflow-y-auto"></ul>
                 </form>
-            </details>
-
-            <details class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-4" id="rag-test-query-panel">
-                <summary class="cursor-pointer text-base font-semibold text-gray-900 dark:text-white">Test query</summary>
+                    </div>
+                </section>
+                <section id="rag-panel-test" class="rp-panel hidden" role="tabpanel" aria-labelledby="rag-tab-test" tabindex="0">
+                    <h3>Check what your agents can retrieve</h3><p class="rp-muted">Ask <strong>@Model.SelectedModel.DisplayName</strong> a question to see matching source excerpts. Index data first; this checks retrieval, not the full chat workflow.</p><p class="rp-draft-notice hidden" data-draft-notice>Save or discard your connection edits in Setup before testing.</p>
+                    <div id="rag-test-query-panel">
                 <form id="rag-test-query-form" class="mt-4 space-y-3 max-w-xl">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Sample question</label>
+                        <label for="rag-test-query-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Your question</label>
                         <input type="text" id="rag-test-query-input" name="query" required
                                class="@InputClass" placeholder="What does this project do?" />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Collection / dataset id (optional)</label>
+                        <label for="rag-test-collection-id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Collection name (optional)</label>
                         <input type="text" id="rag-test-collection-id" name="collectionId"
                                class="@InputClass" placeholder="default" />
                     </div>
                     <button type="submit" id="rag-test-run-btn"
                             class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
-                        Run test
+                        Test retrieval
                     </button>
                     <p id="rag-test-query-status" class="text-sm text-gray-600 dark:text-gray-300 hidden" role="status"></p>
                     <ul id="rag-test-query-results" class="space-y-2 text-sm"></ul>
                 </form>
-            </details>
-        }
-        else if (Model.SelectedModel != null)
-        {
-            <p class="text-sm text-gray-600 dark:text-gray-300 border-t border-gray-200 dark:border-gray-700 pt-4">
-                Markdown-only mode uses on-disk Project Memory files. No external sidecar or configuration required.
-            </p>
-        }
-    </div>
-
-    <div>
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">Provider catalog</h2>
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            @foreach (var provider in Model.Status.Available)
-            {
-                <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
-                    <h3 class="font-semibold text-gray-900 dark:text-white">@provider.DisplayName</h3>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 font-mono">@provider.Id</p>
-                    @if (!string.IsNullOrWhiteSpace(provider.Summary))
-                    {
-                        <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">@provider.Summary</p>
-                    }
-                    @if (provider.Capabilities?.Count > 0)
-                    {
-                        <div class="flex flex-wrap gap-1 mt-2">
-                            @foreach (var cap in provider.Capabilities)
-                            {
-                                <span class="text-xs font-medium px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">@cap</span>
-                            }
-                        </div>
-                    }
-                </div>
+                    </div>
+                </section>
             }
-        </div>
+        </section>
+    </div>
+    <div id="rag-leave-dialog" class="rp-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="rag-leave-title">
+        <div class="rp-dialog-backdrop"></div><div class="rp-dialog-card"><h2 id="rag-leave-title">Leave unsaved settings?</h2><p class="rp-muted">Your connection edits will be discarded. The saved provider settings will stay unchanged.</p><div class="rp-actions"><button type="button" id="rag-keep-editing" class="rp-button">Keep editing</button><button type="button" id="rag-discard-leave" class="rp-button rp-primary">Discard & continue</button></div></div>
     </div>
 </div>
 
 @functions {
+    private static string HealthLabel(string status) => status.ToLowerInvariant() switch { "healthy" => "Healthy", "degraded" => "Needs attention", _ => "Status unknown" };
+    private static string ProviderName(string id) => id == RagProviderIds.None ? "Markdown only" : id;
+    private static string ProviderSummary(string id) => id switch {
+        RagProviderIds.None => "Read your project's markdown files directly.",
+        RagProviderIds.LightRag => "Find relevant knowledge with vector and graph search.",
+        RagProviderIds.Graphiti => "Retrieve relationships and facts that change over time.",
+        RagProviderIds.Cognee => "Build a memory graph and retrieve context for your agents.",
+        _ => "Explore this retrieval provider."
+    };
+
     private const string InputClass =
         "mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm " +
         "focus:border-blue-500 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white";

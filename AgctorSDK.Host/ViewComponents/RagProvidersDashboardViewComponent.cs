@@ -33,6 +33,11 @@ public class RagProvidersDashboardViewComponent : ViewComponent
         var selectedModel = status.Available.FirstOrDefault(a =>
             string.Equals(a.Id, selected, StringComparison.OrdinalIgnoreCase));
 
+        selectedModel ??= status.Available.FirstOrDefault(a =>
+            string.Equals(a.Id, status.Configured.DefaultProvider, StringComparison.OrdinalIgnoreCase))
+            ?? status.Available.First();
+        selected = selectedModel.Id;
+
         RagProviderDockerStatusDto? dockerStatus = null;
         var dockerMismatch = false;
         if (selectedModel?.RequiresDocker == true)

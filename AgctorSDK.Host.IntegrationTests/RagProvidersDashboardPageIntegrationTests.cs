@@ -23,7 +23,8 @@ public class RagProvidersDashboardPageIntegrationTests : IClassFixture<AgctorWeb
                 var uniquePort = Interlocked.Increment(ref _portCounter);
                 config.AddInMemoryCollection(new[]
                 {
-                    new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString())
+                    new KeyValuePair<string, string?>("Mcp:Port", uniquePort.ToString()),
+                    new KeyValuePair<string, string?>("Agctor:Rag:DefaultProvider", RagProviderIds.None)
                 });
             });
         });
@@ -42,6 +43,30 @@ public class RagProvidersDashboardPageIntegrationTests : IClassFixture<AgctorWeb
         html.Should().Contain("data-terminal-command-panel");
         html.Should().Contain("Select provider");
         html.Should().Contain("RAG providers");
+    }
+
+    [Theory]
+    [InlineData("LightRAG", "LightRAG")]
+    [InlineData("graphiti", "Graphiti")]
+    [InlineData("Cognee", "Cognee")]
+    [InlineData("unknown-provider", "None")]
+    public async Task BrowsingProvider_DoesNotChangeDefault_AndNormalizesSelection(string requested, string expected)
+    {
+        var response = await _client.GetAsync("/Dashboard/RagProviders?provider=" + requested);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("data-selected-provider=\"" + expected + "\"");
+        html.Should().Contain("data-active-provider=\"None\"");
+        html.Should().Contain("href=\"/Dashboard/RagProviders?provider=LightRAG\"");
+        html.Should().Contain("id=\"rag-save-btn\"");
+        if (expected != "None")
+        {
+            html.Should().Contain("id=\"rag-panel-index\"");
+            html.Should().Contain("id=\"rag-panel-test\"");
+            html.Should().Contain("Save &amp; use " + expected);
+        }
+        var status = await _client.GetFromJsonAsync<JsonElement>("/api/rag-providers");
+        status.GetProperty("current").GetProperty("providerId").GetString().Should().Be(RagProviderIds.None);
     }
 
     [Fact]
@@ -70,15 +95,11 @@ public class RagProvidersDashboardPageIntegrationTests : IClassFixture<AgctorWeb
     [Fact]
     public async Task Query_NoneProvider_ReturnsEmptyChunks()
     {
-        await _client.PutAsJsonAsync("/api/rag-providers", new
-        {
-            defaultProvider = RagProviderIds.None
-        });
-
         var response = await _client.PostAsJsonAsync("/api/rag-providers/query", new
         {
             query = "What is Agctor?",
-            topK = 3
+            topK = 3,
+            providerId = RagProviderIds.None
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
