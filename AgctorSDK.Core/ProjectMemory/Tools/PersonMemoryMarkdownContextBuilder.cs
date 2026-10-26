@@ -136,6 +136,24 @@ public static class PersonMemoryMarkdownContextBuilder
         RagContextService? ragService = null,
         PersonMemoryRagOptions? ragOptions = null)
     {
+        Task<string> Build() => BuildAppendixCoreAsync(ops, querySpec, projectRootFull, scenarioId, strategy,
+            focusSourceUserMessage, cancellationToken, loadedViaLine, ragService, ragOptions);
+        return ragService == null ? await Build() : await ragService.InspectContextAsync(querySpec.Id, scenarioId,
+            strategy, focusSourceUserMessage, ragOptions?.ProviderId, Build);
+    }
+
+    private static async Task<string> BuildAppendixCoreAsync(
+        ProjectMemoryOperations ops,
+        AgentDefinitionSpec querySpec,
+        string projectRootFull,
+        string? scenarioId,
+        string strategy,
+        string focusSourceUserMessage,
+        CancellationToken cancellationToken,
+        string? loadedViaLine = null,
+        RagContextService? ragService = null,
+        PersonMemoryRagOptions? ragOptions = null)
+    {
         var notes = new StringBuilder();
         var effectiveStrategy = strategy;
 
@@ -154,8 +172,7 @@ public static class PersonMemoryMarkdownContextBuilder
             {
                 var sb = new StringBuilder();
                 sb.AppendLine(ragResult.Appendix.TrimEnd());
-                AppendPersonQueryInstructions(sb, querySpec, loadedViaLine
-                    ?? $"External RAG context loaded via {ragResult.ProviderId} (read-only).",
+                AppendPersonQueryInstructions(sb, querySpec, $"External RAG context loaded via {ragResult.ProviderId} (read-only).",
                     externalRag: true);
                 if (notes.Length > 0)
                     sb.AppendLine(notes.ToString().TrimEnd());
@@ -235,6 +252,7 @@ public static class PersonMemoryMarkdownContextBuilder
         var combined = body.ToString().TrimEnd();
         if (combined.Length > MaxAppendixChars)
         {
+            ragService?.NoteContextTruncated();
             notes.AppendLine(
                 $"(Context truncated to {MaxAppendixChars} characters — narrow with markdown_focus or fewer entities.)");
             combined = combined[..MaxAppendixChars];

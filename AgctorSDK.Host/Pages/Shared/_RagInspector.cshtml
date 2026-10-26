@@ -1,0 +1,22 @@
+<aside id="pm-rag-inspector" class="rag-drawer" aria-labelledby="rag-inspector-title" hidden>
+    <header>
+        <div class="rag-kicker">PLAYGROUND / RETRIEVAL</div>
+        <div class="rag-heading"><h2 id="rag-inspector-title">RAG Inspector</h2><button type="button" class="rag-small" data-rag-close aria-label="Close RAG Inspector">Close ✕</button></div>
+        <p class="rag-muted" data-rag-subtitle>Inspect the evidence behind a response.</p>
+    </header>
+    <div class="rag-controls">
+        <label for="rag-request-picker">Agent / flow step</label>
+        <select id="rag-request-picker" data-rag-picker disabled></select>
+        <div class="rag-actions"><button type="button" class="rag-small" data-rag-refresh>Refresh</button><button type="button" class="rag-small" data-rag-all>All chat requests</button><button type="button" class="rag-small" data-rag-copy disabled>Copy JSON</button><button type="button" class="rag-small" data-rag-export disabled>Download JSON</button></div>
+        <p class="rag-muted" data-rag-status role="status" aria-live="polite"></p>
+    </div>
+    <div class="rag-tabs" role="tablist" aria-label="Retrieval details">
+        <button type="button" id="rag-tab-overview" role="tab" data-rag-tab="overview" aria-controls="rag-inspector-panel" aria-selected="true">Overview</button>
+        <button type="button" id="rag-tab-query" role="tab" data-rag-tab="query" aria-controls="rag-inspector-panel" aria-selected="false" tabindex="-1">Query</button>
+        <button type="button" id="rag-tab-results" role="tab" data-rag-tab="results" aria-controls="rag-inspector-panel" aria-selected="false" tabindex="-1">Results</button>
+        <button type="button" id="rag-tab-context" role="tab" data-rag-tab="context" aria-controls="rag-inspector-panel" aria-selected="false" tabindex="-1">LLM context</button>
+        <button type="button" id="rag-tab-diagnostics" role="tab" data-rag-tab="diagnostics" aria-controls="rag-inspector-panel" aria-selected="false" tabindex="-1">Diagnostics</button>
+    </div>
+    <div id="rag-inspector-panel" class="rag-panel" role="tabpanel" aria-labelledby="rag-tab-overview" tabindex="0" data-rag-panel></div>
+    <footer class="rag-footer">Saved per message · Provider settings reflect that request · Escape to close</footer>
+</aside>

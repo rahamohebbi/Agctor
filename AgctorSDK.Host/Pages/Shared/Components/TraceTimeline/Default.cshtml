@@ -81,6 +81,7 @@
                 else if (dk === 'pm.playground.ingest-disk') kind = 'ingest';
                 else if (dk === 'pm.playground.persist-assistant') kind = 'persist';
                 else if (dk === 'pm.playground.resolve') kind = 'resolve';
+                else if (dk === 'rag.retrieval') kind = 'rag';
                 else if (dk === 'pm.playground.stream-root') kind = 'http';
             }
             var name = (evt.name || evt.Name || evt.label || '').toLowerCase();
@@ -95,6 +96,7 @@
             }
             var status = (evt.status || evt.Status || (evt.hasResult ? 'ok' : 'running')).toLowerCase();
             var palette = {
+                rag: { bar: status === 'error' ? '#b45309' : '#0891b2', badge: 'bg-cyan-100 text-cyan-900 dark:bg-cyan-900/50 dark:text-cyan-100', icon: '⌕', label: 'RAG' },
                 tool: { bar: status === 'error' ? '#b45309' : '#059669', badge: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100', icon: '🔧', label: 'Tool' },
                 llm: { bar: status === 'error' ? '#b91c1c' : '#7c3aed', badge: 'bg-violet-100 text-violet-900 dark:bg-violet-900/50 dark:text-violet-100', icon: '✦', label: 'LLM' },
                 ingest: { bar: status === 'error' ? '#b45309' : '#d97706', badge: 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-100', icon: '💾', label: 'Ingest' },
@@ -119,7 +121,7 @@
         }
 
         function isNestableUnderAgent(kind) {
-            return kind === 'tool' || kind === 'other';
+            return kind === 'tool' || kind === 'rag' || kind === 'other';
         }
 
         /** Resolve display parent: prefer trace parentId; orphan tools attach to the next LLM run. */
@@ -253,10 +255,7 @@
                     html += renderEventCard(node.evt, node.idx, depth, agentChildren.length);
                     html += '<div class="relative ml-3 pl-3 border-l-2 border-emerald-400/60 dark:border-emerald-700/70 space-y-1">';
                     agentChildren.forEach(function (child) {
-                        html += renderEventCard(child.evt, child.idx, depth + 1, child.children.length);
-                        child.children.forEach(function (grand) {
-                            html += renderEventCard(grand.evt, grand.idx, depth + 2, 0);
-                        });
+                        html += renderNode(child, depth + 1);
                     });
                     html += '</div></div>';
                     otherChildren.forEach(function (child) {
@@ -278,6 +277,7 @@
             if (!legend) return;
             var items = [
                 ['tool', '🔧 Tools', 'emerald'],
+                ['rag', '⌕ RAG', 'cyan'],
                 ['llm', '✦ LLM', 'violet'],
                 ['ingest', '💾 Ingest', 'amber'],
                 ['persist', '📝 Persist', 'indigo'],
@@ -605,6 +605,18 @@
             }
             panel.classList.remove('hidden');
             panel.innerHTML = '<p class="text-xs font-semibold text-violet-900 dark:text-violet-200 mb-2">Details · click another row to switch</p>' + formatTimelineDetailJson(raw);
+            try {
+                var rag = JSON.parse(raw);
+                if (rag.kind === 'rag.retrieval' && window.AgctorRagInspector) {
+                    var inspect = document.createElement('button');
+                    inspect.type = 'button'; inspect.className = 'rag-open'; inspect.textContent = 'Open RAG Inspector ↗';
+                    inspect.dataset.ragOpenRecord = rag.ragInspectionId;
+                    inspect.dataset.ragSession = rag.sessionId;
+                    inspect.dataset.ragTurn = rag.turnGroupId;
+                    panel.prepend(inspect);
+                }
+            } catch (_) { }
+
         }
 
         function bindTimelineDetailClicks(root) {

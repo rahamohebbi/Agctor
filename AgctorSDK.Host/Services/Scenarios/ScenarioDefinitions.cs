@@ -27,6 +27,8 @@ public sealed class ScenarioDefinition
     public List<string> AgentTypes { get; set; } = new();
     /// <summary>YAML persona ids (kind=project-memory-yaml) attached to this scenario.</summary>
     public List<string> PersonaAgentIds { get; set; } = new();
+    /// <summary>Null inherits the global RAG provider; None disables external retrieval.</summary>
+    public string? RagProviderId { get; set; }
     /// <summary>Optional role bindings into <see cref="PersonaAgentIds"/>.</summary>
     public ScenarioPersonaBindings PersonaBindings { get; set; } = new();
 

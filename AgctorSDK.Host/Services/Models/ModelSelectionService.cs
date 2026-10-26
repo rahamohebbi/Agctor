@@ -2,11 +2,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Ollama;
+using AgctorSDK.Core.Rag;
 using AgctorSDK.Host.Services.Scenarios;
 
 namespace AgctorSDK.Host.Services.Models;
 
-public sealed class ModelSelectionService(ISessionStore sessions, IScenarioCatalog scenarios, IConfiguration configuration)
+public sealed class ModelSelectionService(ISessionStore sessions, IScenarioCatalog scenarios, IConfiguration configuration, IRagProviderAdapterFactory? ragProviders = null)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -21,12 +22,18 @@ public sealed class ModelSelectionService(ISessionStore sessions, IScenarioCatal
 
     public async Task<ModelSelectionPlan> PlanAsync(string? sessionId, string? scenarioId, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(scenarioId) && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            var session = await sessions.GetSessionAsync(sessionId, ct);
+            if (session?.ProjectId is { } projectId) scenarioId = (await sessions.GetProjectAsync(projectId, ct))?.ScenarioId;
+        }
         var def = string.IsNullOrWhiteSpace(scenarioId) ? null : scenarios.Get(scenarioId);
         var settings = await SettingsAsync(sessionId, scenarioId, ct);
-        return Resolve(def, settings, OllamaRuntimeConfiguration.GetDefaultModel(), configuration["Agctor:LLM:DefaultDecisionModel"]);
+        return Resolve(def, settings, OllamaRuntimeConfiguration.GetDefaultModel(), configuration["Agctor:LLM:DefaultDecisionModel"],
+            ragProviders?.GetDefaultProviderId() ?? configuration["Agctor:Rag:DefaultProvider"] ?? RagProviderIds.None);
     }
 
-    public static ModelSelectionPlan Resolve(ScenarioDefinition? scenario, SessionModelSettings? settings, string applicationLlm, string? applicationDecision = null)
+    public static ModelSelectionPlan Resolve(ScenarioDefinition? scenario, SessionModelSettings? settings, string applicationLlm, string? applicationDecision = null, string globalRagProvider = RagProviderIds.None)
     {
         if (settings != null && !string.Equals(settings.ScenarioId, scenario?.Id, StringComparison.OrdinalIgnoreCase)) settings = null;
         var defaults = new Dictionary<string, ResolvedModel>();
@@ -49,7 +56,12 @@ public sealed class ModelSelectionService(ISessionStore sessions, IScenarioCatal
                 ? new(role, chatNode, "chat node override")
                 : nodeModel != null ? new(role, nodeModel, "flow node") : defaults[role];
         }
-        return new(scenario?.Id ?? settings?.ScenarioId, defaults, nodes);
+        var chatRag = Clean(settings?.RagProviderId);
+        var scenarioRag = Clean(scenario?.RagProviderId);
+        var rag = chatRag != null ? new RagProviderSelection(RagProviderIds.Normalize(chatRag), "chat override")
+            : scenarioRag != null ? new RagProviderSelection(RagProviderIds.Normalize(scenarioRag), "scenario default")
+            : new RagProviderSelection(RagProviderIds.Normalize(globalRagProvider), "global default");
+        return new(scenario?.Id ?? settings?.ScenarioId, defaults, nodes, rag);
     }
 
     public static string? Role(ScenarioFlowNode node) => node.Type.ToLowerInvariant() switch
@@ -69,6 +81,10 @@ public sealed class ModelSelectionService(ISessionStore sessions, IScenarioCatal
             && config.TryGetProperty(role == ModelRoles.DecisionRouting ? "decisionModel" : "llmModel", out var value)
             && value.ValueKind == JsonValueKind.String ? Clean(value.GetString()) : null;
     }
+    public static string? ConfigRagProvider(ScenarioFlowNode node) =>
+        node.Config is { ValueKind: JsonValueKind.Object } config
+            && config.TryGetProperty("ragProviderId", out var value) && value.ValueKind == JsonValueKind.String
+            ? Clean(value.GetString()) : null;
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     // Carry the snapshot explicitly across the actor mailbox, where AsyncLocal does not flow.

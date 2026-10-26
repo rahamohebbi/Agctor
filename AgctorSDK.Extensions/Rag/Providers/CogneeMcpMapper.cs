@@ -29,7 +29,7 @@ internal static class CogneeMcpMapper
         {
             return new RagQueryResult(
                 Array.Empty<RagContextChunk>(),
-                RawDebugJson: mcp.RawJson);
+                RawDebugJson: mcp.RawJson, Error: mcp.ErrorMessage ?? "Cognee search failed.");
         }
 
         var text = mcp.Text?.Trim() ?? "";

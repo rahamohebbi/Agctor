@@ -565,6 +565,14 @@
         return true;
     };
 
+    /** Removes selected nodes and edges, including all connections to removed nodes. */
+    CytoscapeRenderer.prototype.removeSelected = function () {
+        if (!this._cy) return { nodes: 0, edges: 0 };
+        // Cytoscape also removes every incident edge when a node is removed.
+        var removed = this._cy.$(':selected').remove();
+        return { nodes: removed.nodes().length, edges: removed.edges().length };
+    };
+
     /** Removes selected edges only (nodes unchanged). Returns count removed. */
     CytoscapeRenderer.prototype.removeSelectedEdges = function () {
         if (!this._cy) return 0;

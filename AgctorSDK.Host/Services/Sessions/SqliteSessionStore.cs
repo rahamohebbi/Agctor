@@ -15,7 +15,7 @@ namespace AgctorSDK.Host.Services.Sessions
     /// <summary>
     /// SQLite-backed session storage for durable chat memory.
     /// </summary>
-    public sealed class SqliteSessionStore : ISessionStore
+    public sealed partial class SqliteSessionStore : ISessionStore, AgctorSDK.Core.ProjectMemory.Rag.IRagInspectionStore
     {
         private readonly string _connectionString;
         private readonly SemaphoreSlim _dbLock = new(1, 1);
@@ -179,6 +179,7 @@ WHERE session_id = $id;";
                     "session_trace_links",
                     "session_summaries",
                     "session_model_settings",
+                    "rag_inspections",
                     "session_project_moves"
                 };
                 foreach (var table in tables)
@@ -844,6 +845,18 @@ ON session_turns(session_id, sequence);
 
 CREATE INDEX IF NOT EXISTS idx_session_turns_session_created
 ON session_turns(session_id, created_at);
+
+CREATE TABLE IF NOT EXISTS rag_inspections (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  turn_group_id TEXT NOT NULL,
+  trace_id TEXT,
+  started_at TEXT NOT NULL,
+  record_json TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_rag_inspections_session ON rag_inspections(session_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_rag_inspections_turn ON rag_inspections(session_id, turn_group_id);
 
 CREATE TABLE IF NOT EXISTS session_model_settings (
   session_id TEXT PRIMARY KEY,

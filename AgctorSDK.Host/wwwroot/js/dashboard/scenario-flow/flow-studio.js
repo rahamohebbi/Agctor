@@ -44,6 +44,8 @@
         el('connect').disabled = cy.$('node:selected').length !== 2;
         el('connect-loop').disabled = cy.$('node:selected').length !== 2;
         el('delete-edges').disabled = !cy.$('edge:selected').length;
+        el('delete-selection').disabled = !selected.length;
+        el('delete-selection').textContent = node ? 'Delete node' : selected.length === 1 ? 'Delete connection' : 'Delete selected';
         var outline = el('outline');
         var existing = Array.from(outline.children);
         cy.nodes().forEach(function (n, index) {

@@ -50,7 +50,7 @@ internal static class GraphitiApiMapper
         {
             return new RagQueryResult(
                 Array.Empty<RagContextChunk>(),
-                RawDebugJson: response.Body);
+                RawDebugJson: response.Body, Error: $"Graphiti search failed with HTTP {response.StatusCode}.");
         }
 
         try
@@ -80,7 +80,7 @@ internal static class GraphitiApiMapper
         {
             return new RagQueryResult(
                 Array.Empty<RagContextChunk>(),
-                RawDebugJson: response.Body);
+                RawDebugJson: response.Body, Error: "Graphiti returned invalid JSON.");
         }
     }
 

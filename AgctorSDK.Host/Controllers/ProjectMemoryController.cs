@@ -1,3 +1,4 @@
+using AgctorSDK.Core.ProjectMemory.Rag;
 using AgctorSDK.Host.Services.Models;
 using System.Text;
 using System.Text.Json;
@@ -341,6 +342,8 @@ public sealed class ProjectMemoryController : ControllerBase
         if (spec == null)
             return NotFound(new { error = $"Agent spec '{body.AgentId}' not found in project memory." });
 
+        using var selectionScope = ModelSelectionScope.Begin(_modelSelection == null ? null
+            : await _modelSelection.PlanAsync(body.SessionId, body.ScenarioId?.Trim(), cancellationToken));
         var sw = Stopwatch.StartNew();
         var run = await _personaLlmRunner.RunAsync(
                 root,
@@ -406,6 +409,8 @@ public sealed class ProjectMemoryController : ControllerBase
             SessionId = body.SessionId?.Trim(), // PRD-018: tags resolver mentions with the session.
         };
 
+        using var selectionScope = ModelSelectionScope.Begin(_modelSelection == null ? null
+            : await _modelSelection.PlanAsync(body.SessionId, body.ScenarioId?.Trim(), cancellationToken));
         var result = await _pipeline.RunAsync(req, cancellationToken).ConfigureAwait(false);
         return Ok(new ProjectMemoryOrchestratorRunResponseDto
         {
@@ -1295,6 +1300,11 @@ public sealed class ProjectMemoryController : ControllerBase
                 streamTraceId = tid;
         }
 
+        var inspectionContext = new RagInspectionContext(sessionId, turnGroupId, streamTraceId, AgentId: spec.Id);
+        if (modelPlan != null) modelPlan = modelPlan with { RagInspection = inspectionContext };
+        using var inspectionModelScope = ModelSelectionScope.Begin(modelPlan);
+        using var inspectionScope = RagInspectionScope.Begin(inspectionContext);
+
         void SetStreamRootDetail(
             string status,
             string? errorMessage = null,
@@ -1839,6 +1849,7 @@ public sealed class ProjectMemoryController : ControllerBase
 
             ScenarioFlowGraphInterpreter.PersonaInvoker invokeFlow = async (personaId, promptText, cancellationToken, flowNodeId) =>
             {
+                using var nodeInspection = RagInspectionScope.Begin(inspectionContext with { NodeId = flowNodeId, AgentId = personaId });
                 var modelFlow = ModelSelectionScope.GenerationModel;
                 lastPersona = personaId.Trim();
                 personasSeen.Add(lastPersona);
@@ -1846,6 +1857,10 @@ public sealed class ProjectMemoryController : ControllerBase
                     string.Equals(a.Id, personaId.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (pSpec == null)
                     throw new ScenarioFlowExecutionException($"Playground flow: agent spec '{personaId}' was not found.");
+
+                var inspectionNode = scenarioDef.Flow?.Nodes?.FirstOrDefault(n => n.Id.Equals(flowNodeId, StringComparison.OrdinalIgnoreCase));
+                if (!PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(pSpec, inspectionNode?.Config))
+                    await _ragContext.RecordNotRequestedAsync(personaId, scenarioResolved);
 
                 // Defense-in-depth for PRD-019 confirmations in scenario flow. If a short "yes/no" reaches
                 // the curator after person-extractor emitted empty JSON, do not let the LLM summarize that
@@ -2452,6 +2467,7 @@ public sealed class ProjectMemoryController : ControllerBase
         for (var i = 0; i < runIdx; i++)
             await EmitPreStepAsync(flowPlan.Steps[i]).ConfigureAwait(false);
 
+        await _ragContext.RecordNotRequestedAsync(spec.Id, scenarioResolved);
         var ollamaBase = LLMAgent.GetConfiguredOllamaApiUrl().TrimEnd('/') + "/";
         var model = ModelSelectionScope.GenerationModel;
         var personaDetail =

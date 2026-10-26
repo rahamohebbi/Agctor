@@ -1,0 +1,15 @@
+.pm-diagram { margin:8px 0; border:1px solid #cbd5e1; border-radius:10px; overflow:hidden; background:#fff; color:#172033; min-width:0; }
+.pm-diagram [hidden] { display:none!important; }
+.pm-diagram-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:8px; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
+.pm-diagram-toolbar strong { margin-right:auto; font-size:12px; }
+.pm-diagram-toolbar button { border:1px solid #cbd5e1; border-radius:5px; padding:4px 8px; font:11px/1.4 Arial,sans-serif; color:#334155; background:white; cursor:pointer; }
+.pm-diagram-toolbar button:hover { background:#eef2ff; }
+.pm-diagram-toolbar button:disabled { opacity:.45; cursor:default; }
+.pm-diagram-toolbar button:focus-visible { outline:2px solid #6366f1; outline-offset:2px; }
+.pm-diagram-viewport { overflow:auto; max-height:560px; padding:16px; background:white; }
+.pm-diagram-visual { width:max-content; min-width:100%; display:flex; justify-content:center; }
+.pm-diagram-visual svg { display:block; flex-shrink:0; }
+.pm-diagram pre { margin:0!important; padding:14px; overflow:auto; max-height:400px; white-space:pre; background:#0f172a; color:#e2e8f0; }
+.pm-diagram pre code { background:transparent!important; color:inherit!important; }
+.pm-diagram-status { padding:10px; font-size:12px; }
+.pm-diagram-error .pm-diagram-status { color:#b45309; background:#fffbeb; }

@@ -8,6 +8,7 @@
 
     const params = new URLSearchParams(window.location.search);
     const queryId = (params.get('id') || '').trim();
+    const agentEdits = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('agctor-agent-definitions') : null;
 
     function esc(s) {
         const d = document.createElement('div');
@@ -300,6 +301,7 @@
                 })
                 .then(function () {
                     msg.textContent = 'Saved.';
+                    if (agentEdits) agentEdits.postMessage({ type: 'saved', id: payload.spec.id });
                     isExisting = true;
                     if (titleEl) titleEl.textContent = 'Agent: ' + payload.spec.id;
                     window.history.replaceState({}, '', '/Dashboard/ProjectMemory/Agents/Edit?id=' + encodeURIComponent(payload.spec.id));

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AgctorSDK.Core.Interfaces;
 using AgctorSDK.Core.Ollama;
+using AgctorSDK.Core.Rag;
 using AgctorSDK.Host.Services.Models;
 using AgctorSDK.Host.Services.Scenarios;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,11 @@ namespace AgctorSDK.Host.Controllers;
 [Route("api/model-settings")]
 public sealed class ModelSettingsController(ISessionStore sessions, IScenarioCatalog scenarios, ModelSelectionService selection, ModelCapabilitiesService capabilities) : ControllerBase
 {
+    // Independent of Ollama availability: a RAG choice should still be editable offline.
+    [HttpGet("rag-providers")]
+    public IActionResult RagProviders([FromServices] IRagProviderAdapterFactory factory) =>
+        Ok(new { providers = factory.GetAvailableProviders(), globalDefault = factory.GetDefaultProviderId() });
+
     [HttpGet("models")]
     public async Task<IActionResult> Models(CancellationToken ct)
     {
@@ -27,7 +33,11 @@ public sealed class ModelSettingsController(ISessionStore sessions, IScenarioCat
         var scenarioId = project?.ScenarioId;
         var settings = await selection.SettingsAsync(sessionId, scenarioId, ct);
         var plan = await selection.PlanAsync(sessionId, scenarioId, ct);
-        return Ok(new { settings, plan, nodes = scenarios.Get(scenarioId ?? "")?.Flow?.Nodes.Select(n => new { n.Id, n.Label, role = ModelSelectionService.Role(n) }).Where(n => n.role != null) });
+        var flowNodes = scenarios.Get(scenarioId ?? "")?.Flow?.Nodes;
+        return Ok(new { settings, plan,
+            nodes = flowNodes?.Select(n => new { n.Id, n.Label, role = ModelSelectionService.Role(n) }).Where(n => n.role != null),
+            ragNodes = flowNodes?.Where(n => ModelSelectionService.ConfigRagProvider(n) != null)
+                .Select(n => new { n.Id, n.Label, providerId = RagProviderIds.Normalize(ModelSelectionService.ConfigRagProvider(n)) }) });
     }
 
     [HttpPut("sessions/{sessionId}")]
@@ -39,6 +49,9 @@ public sealed class ModelSettingsController(ISessionStore sessions, IScenarioCat
         if (!string.Equals(settings.ScenarioId, project?.ScenarioId, StringComparison.OrdinalIgnoreCase))
             return Conflict(new { error = "The session's scenario changed. Reload model settings before saving." });
         settings.Defaults ??= new();
+        if (!string.IsNullOrWhiteSpace(settings.RagProviderId) && !RagProviderIds.IsKnown(settings.RagProviderId))
+            return BadRequest(new { error = $"Unknown RAG provider '{settings.RagProviderId}'." });
+        settings.RagProviderId = string.IsNullOrWhiteSpace(settings.RagProviderId) ? null : RagProviderIds.Normalize(settings.RagProviderId);
         settings.Nodes ??= new();
         if (settings.Nodes.Count > 500) return BadRequest(new { error = "Too many node overrides." });
         var scenario = scenarios.Get(settings.ScenarioId ?? "");

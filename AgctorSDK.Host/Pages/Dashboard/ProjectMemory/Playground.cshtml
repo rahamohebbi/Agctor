@@ -42,18 +42,20 @@
                 <p class="text-sm text-gray-500 dark:text-gray-400 text-center px-4">Select or create a new session.</p>
             </div>
             <div id="pm-play-session-detail" class="space-y-4 flex-1 flex flex-col min-h-0">
+            <div class="rag-toolbar"><span class="text-xs text-gray-500">Inspect retrieval, sources, and prepared context</span><button type="button" class="rag-open" data-rag-open>RAG Inspector ↗</button></div>
             <details id="pm-chat-model-settings" class="rounded-lg border border-gray-200 p-3 dark:border-gray-600">
-                <summary class="cursor-pointer text-sm font-semibold">Models for this chat</summary>
+                <summary class="cursor-pointer text-sm font-semibold">Models &amp; RAG for this chat</summary>
                 <p class="mt-2 text-xs text-gray-500">Override scenario defaults for this session. Explicit flow-node models keep their choices unless you override those nodes below.</p>
+                <p class="mt-1 text-xs text-gray-500">RAG choices apply to RAG-enabled steps. Explicit node providers keep precedence; unavailable providers retain the existing markdown fallback.</p>
                 <div data-model-fields class="mt-3 grid gap-3 sm:grid-cols-3"></div>
                 <details class="mt-3"><summary class="cursor-pointer text-xs font-medium">Advanced: override individual flow nodes</summary><div data-model-nodes class="mt-2 grid gap-3 sm:grid-cols-2"></div></details>
                 <div class="mt-3 flex flex-wrap gap-2">
-                    <button type="button" data-model-save class="rounded-lg bg-indigo-600 px-3 py-2 text-xs text-white" disabled>Save chat models</button>
+                    <button type="button" data-model-save class="rounded-lg bg-indigo-600 px-3 py-2 text-xs text-white" disabled>Save chat settings</button>
                     <button type="button" data-model-reset class="rounded-lg border border-gray-300 px-3 py-2 text-xs dark:border-gray-600" disabled>Reset to scenario defaults</button>
-                    <button type="button" data-model-reload class="rounded-lg border border-gray-300 px-3 py-2 text-xs dark:border-gray-600">Refresh models</button>
+                    <button type="button" data-model-reload class="rounded-lg border border-gray-300 px-3 py-2 text-xs dark:border-gray-600">Refresh choices</button>
                 </div>
                 <p data-model-status class="mt-2 text-xs text-gray-500" role="status" aria-live="polite"></p>
-                <details class="mt-3"><summary class="cursor-pointer text-xs font-medium">Effective models (saved choices)</summary><ul data-model-effective class="mt-2 space-y-1 text-xs text-gray-500"></ul></details>
+                <details class="mt-3"><summary class="cursor-pointer text-xs font-medium">Effective models &amp; RAG (saved choices)</summary><ul data-model-effective class="mt-2 space-y-1 text-xs text-gray-500"></ul></details>
             </details>
             <div id="pm-play-project-header" class="hidden rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-900/40">
                 <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-0.5">Selected project</div>
@@ -323,11 +325,21 @@
     }
 </style>
 
+<partial name="_RagInspector" />
+
 @section Scripts {
+    <link rel="stylesheet" href="~/css/rag-inspector.css" asp-append-version="true" />
+    <script src="~/js/dashboard/rag-inspector.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/chat-diagrams.css" asp-append-version="true" />
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <script src="~/js/dashboard/project-memory-visual-upload.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/rag-selection.js" asp-append-version="true"></script>
+    <partial name="_RagMigration" />
+    <link rel="stylesheet" href="~/css/rag-migration.css" asp-append-version="true" />
+    <script src="~/js/dashboard/rag-migration.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/model-selection.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/chat-model-selection.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/chat-diagrams.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/project-memory-playground.js" asp-append-version="true"></script>
 }

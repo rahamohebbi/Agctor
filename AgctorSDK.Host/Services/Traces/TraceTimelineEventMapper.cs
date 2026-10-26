@@ -65,6 +65,7 @@ public static class TraceTimelineEventMapper
         "pm.playground.persist-assistant" => "persist",
         "pm.playground.stream-root" => "http",
         "pm.playground.resolve" => "resolve",
+        "rag.retrieval" => "rag",
         _ => "other"
     };
 
@@ -90,6 +91,17 @@ public static class TraceTimelineEventMapper
     {
         if (activity is ActivityInfo info && info.Status == ActivityStatus.Error)
             return "error";
+
+        if (kind == "rag" && !string.IsNullOrWhiteSpace(activity.TimelineDetailJson))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(activity.TimelineDetailJson);
+                var status = doc.RootElement.GetProperty("status").GetString();
+                return status == "running" ? "running" : status is "failed" or "cancelled" or "unavailable" ? "error" : "ok";
+            }
+            catch (JsonException) { }
+        }
 
         if (kind == "tool" && !string.IsNullOrWhiteSpace(activity.TimelineDetailJson))
         {

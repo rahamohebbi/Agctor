@@ -31,6 +31,7 @@ public sealed record NodeModelOverride(string Role, string Model);
 public sealed class SessionModelSettings
 {
     public string? ScenarioId { get; set; }
+    public string? RagProviderId { get; set; }
     public ModelDefaults Defaults { get; set; } = new();
     public Dictionary<string, NodeModelOverride> Nodes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -41,7 +42,9 @@ public sealed record ResolvedModel(string Role, string? Model, string Source);
 public sealed record ModelSelectionPlan(
     string? ScenarioId,
     IReadOnlyDictionary<string, ResolvedModel> Defaults,
-    IReadOnlyDictionary<string, ResolvedModel> Nodes);
+    IReadOnlyDictionary<string, ResolvedModel> Nodes,
+    AgctorSDK.Core.Rag.RagProviderSelection? RagProvider = null,
+    AgctorSDK.Core.ProjectMemory.Rag.RagInspectionContext? RagInspection = null);
 
 /// <summary>Async-flow-local model selection. Never mutates the application's global Ollama defaults.</summary>
 public static class ModelSelectionScope

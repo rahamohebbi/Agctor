@@ -47,6 +47,9 @@ public sealed class PersonMemoryContextTool : ToolActorBase
         try
         {
             var p = request.Parameters ?? new Dictionary<string, object>();
+            var inspectionJson = GetString(p, "ragInspection");
+            using var inspectionScope = RagInspectionScope.Begin(string.IsNullOrWhiteSpace(inspectionJson)
+                ? null : JsonSerializer.Deserialize<RagInspectionContext>(inspectionJson));
             var projectRoot = GetString(p, "projectRoot");
             if (string.IsNullOrWhiteSpace(projectRoot))
             {

@@ -48,9 +48,9 @@
                     <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Short summary of what this scenario is for (for your reference, not sent to the AI).</p>
                 </div>
 </div></details>
-<details class="sc-section" open><summary>Default models</summary><div class="sc-section-body"><p class="sc-muted">Choose a default for each job. Nodes can use their own model, and chat sessions can override these choices.</p><div><label for="sc-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+<details class="sc-section" open><summary>Default models &amp; RAG</summary><div class="sc-section-body"><p class="sc-muted">Choose a default for each job. Nodes can use their own model, and chat sessions can override these choices.</p><div><label for="sc-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
 <div><label for="sc-model-llmRouting" class="block text-xs font-medium mb-1">LLM routing</label><select id="sc-model-llmRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
-<div><label for="sc-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><p id="sc-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
+<div><label for="sc-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><div class="mt-3"><label for="sc-rag-provider" class="block text-xs font-medium mb-1">RAG provider</label><select id="sc-rag-provider" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use global default</option></select><p class="sc-muted mt-1">Used by steps with Vector RAG or Graph RAG context. Chat sessions can override this default; explicit node providers keep precedence. <a href="/Dashboard/RagProviders" target="_blank" rel="noopener" class="underline">Configure providers ↗</a></p><button type="button" id="sc-rag-migrate" class="rm-launch">Migrate markdown memory…</button><p id="sc-rag-status" class="text-xs text-amber-700" role="status"></p></div><p id="sc-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
 <details class="sc-section"><summary>Runtime agents</summary><div class="sc-section-body">                <div>
                     <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Agents to start when applied</label>
                     <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Live workers for your chat session (for example, something that coordinates messages or remembers context). Persona definitions (how the AI thinks and what it remembers) are added in the section below and on the <a href="/Dashboard/Agents" class="underline hover:no-underline">Agents</a> page.</p>
@@ -163,9 +163,9 @@
                     <label for="sc-new-display" class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Display name</label>
                     <input id="sc-new-display" type="text" autocomplete="off" placeholder="Optional — defaults to id" class="w-full rounded-lg border border-gray-300 bg-white p-2.5 text-sm dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
                 </div>
-                <details class="mt-3"><summary class="text-xs cursor-pointer">Default models (optional)</summary><div class="mt-2 space-y-2"><div><label for="sc-new-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-new-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
+                <details class="mt-3"><summary class="text-xs cursor-pointer">Default models &amp; RAG (optional)</summary><div class="mt-2 space-y-2"><div><label for="sc-new-model-generation" class="block text-xs font-medium mb-1">AI steps / answers</label><select id="sc-new-model-generation" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
 <div><label for="sc-new-model-llmRouting" class="block text-xs font-medium mb-1">LLM routing</label><select id="sc-new-model-llmRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div>
-<div><label for="sc-new-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-new-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><p id="sc-new-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
+<div><label for="sc-new-model-decisionRouting" class="block text-xs font-medium mb-1">Decision routing</label><select id="sc-new-model-decisionRouting" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use default</option></select></div><div><label for="sc-new-rag-provider" class="block text-xs font-medium mb-1">RAG provider</label><select id="sc-new-rag-provider" class="w-full rounded-lg border border-gray-300 bg-white p-2 text-xs dark:bg-gray-800 dark:border-gray-600"><option value="">Use global default</option></select></div><p id="sc-new-model-status" class="text-xs text-amber-700" role="status"></p></div></details>
             <p id="sc-new-error" class="hidden text-xs text-red-600 dark:text-red-400" role="alert"></p>
             </div>
             <div class="mt-4 flex flex-wrap justify-end gap-2">
@@ -241,10 +241,10 @@
                 </aside>
                 <div class="flow-stage">
                     <div id="sc-flow-cy" tabindex="0" role="application" aria-label="Flow graph" title="Drag to pan · scroll to zoom · Shift-click to select multiple steps"></div>
-                    <div class="flow-canvas-hint">Drag to pan <span>·</span> Scroll to zoom <span>·</span> Shift-click to select</div>
+                    <div class="flow-canvas-hint">Drag to pan <span>·</span> Scroll to zoom <span>·</span> Delete to remove selected</div>
                 </div>
                 <aside class="flow-inspector" aria-label="Selection settings">
-                    <header><p class="flow-eyebrow">INSPECTOR</p><h3 id="sc-flow-selection-title">Your flow</h3><p id="sc-flow-selection-meta" class="flow-muted">Select a step or connection to configure it.</p></header>
+                    <header><p class="flow-eyebrow">INSPECTOR</p><h3 id="sc-flow-selection-title">Your flow</h3><p id="sc-flow-selection-meta" class="flow-muted">Select a step or connection to configure it.</p><button type="button" id="sc-flow-delete-selection" disabled title="Remove selected nodes and their connected arrows (Delete / Backspace)" class="mt-2 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected</button></header>
                     <div class="flow-inspector-scroll">
                         <div id="sc-flow-selection-empty" class="flow-selection-empty"><span aria-hidden="true">↗</span><h4>Make it yours</h4><p>Choose a step on the canvas or in the list to edit its settings. Select a connection to set its routing rules.</p></div>
                         <div id="sc-flow-edge-panel" class="hidden mt-3 rounded border border-amber-200 bg-amber-50/80 p-2 dark:border-amber-800 dark:bg-amber-950/40">
@@ -396,12 +396,16 @@
                             <label for="sc-flow-persona-model" class="block text-xs mt-2">LLM model</label><select id="sc-flow-persona-model" class="w-full rounded border border-gray-300 bg-white dark:bg-gray-900"></select><p id="sc-flow-persona-model-source" class="flow-muted"></p>
                             <label class="mt-1 block text-[10px] text-gray-600 dark:text-gray-400" for="sc-flow-persona-select">Persona</label>
                             <select id="sc-flow-persona-select" class="mt-0.5 w-full rounded border border-gray-300 bg-white px-1 py-1 text-[11px] dark:border-gray-600 dark:bg-gray-900"></select>
-                            <p id="sc-flow-persona-roster-hint" class="mt-1 hidden text-[10px] text-amber-700 dark:text-amber-300">Add YAML personas to this scenario on the main form, then pick one here.</p>
+                            <div class="flow-agent-actions">
+                                <a id="sc-flow-edit-agent-link" target="_blank" rel="noopener" class="hidden flow-edit-agent" title="Edit this agent in a new tab; your flow stays open">Edit agent ↗</a>
+                                <button type="button" id="sc-flow-persona-refresh">Refresh agent library</button>
+                            </div>
+                            <p id="sc-flow-edit-agent-hint" class="hidden mt-1 text-[10px] text-gray-500 dark:text-gray-400">Opens in a new tab. Edits update this shared agent everywhere it is used.</p>
+                            <p id="sc-flow-persona-roster-hint" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">Choose any saved library agent. It is added to this scenario when you save the flow.</p>
                             <p id="sc-flow-persona-invalid-hint" class="mt-1 hidden text-[10px] text-red-600 dark:text-red-400"></p>
                             <div id="sc-flow-agent-tools-section" class="mt-2 hidden rounded-lg border border-emerald-200/80 bg-white/90 p-2 dark:border-emerald-800/60 dark:bg-gray-950/40">
                                 <div class="flex items-center justify-between gap-2">
                                     <p class="text-[10px] font-semibold text-emerald-900 dark:text-emerald-200">Tools</p>
-                                    <a id="sc-flow-edit-agent-link" href="/Dashboard/ProjectMemory/Agents" target="_blank" rel="noopener" class="text-[9px] font-medium text-emerald-800 underline hover:no-underline dark:text-emerald-300">Edit agent YAML</a>
                                 </div>
                                 <p class="mt-0.5 text-[9px] leading-snug text-gray-600 dark:text-gray-400">Agent defaults come from YAML <code class="text-[9px]">tools.allow</code>. Toggle extras for this flow step only — saved as <code class="text-[9px]">toolIds</code> on the node.</p>
                                 <p class="mt-2 text-[9px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Agent defaults</p>
@@ -420,7 +424,7 @@
                                         <option value="graph_rag">Graph RAG (fallback: focused markdown)</option>
                                     </select>
                                     <p id="sc-flow-pq-rag-hint" class="mt-2 hidden text-[10px] leading-snug text-gray-600 dark:text-gray-400">
-                                        Uses default provider: <strong id="sc-flow-pq-rag-provider-name">—</strong>
+                                        Effective provider: <strong id="sc-flow-pq-rag-provider-name">—</strong>
                                         (<a href="/Dashboard/RagProviders" target="_blank" rel="noopener" class="font-medium text-sky-700 underline hover:no-underline dark:text-sky-300">configure</a>).
                                         Falls back to focused markdown when the provider is unavailable.
                                     </p>
@@ -438,7 +442,7 @@
                         <button type="button" id="sc-flow-delete-edges" class="mt-1.5 w-full rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-xs font-medium text-red-900 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-100 dark:hover:bg-red-950">Delete selected edge(s)</button>
                         <details class="mt-2 rounded border border-gray-200 bg-gray-50/90 p-1.5 dark:border-gray-600 dark:bg-gray-800/60">
                             <summary class="cursor-pointer select-none text-[10px] font-medium text-gray-700 dark:text-gray-300">Canvas shortcuts</summary>
-                            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">Nodes: click or shift+drag box-select; selected nodes show a <strong class="text-amber-600">blue outline</strong>. <strong class="text-gray-800 dark:text-gray-200">Connect 2 selected</strong> picks arrow direction from types. Edges: click to select (blue). <strong class="text-gray-800 dark:text-gray-200">Delete</strong> / <strong class="text-gray-800 dark:text-gray-200">Backspace</strong> removes selected edges. <strong class="text-gray-800 dark:text-gray-200">Alt+drag</strong> from a selected edge onto a node rewires the nearest end.</p>
+                            <p class="mt-1.5 text-[10px] leading-relaxed text-gray-600 dark:text-gray-400">Nodes: click or shift+drag box-select; selected nodes show a <strong class="text-amber-600">blue outline</strong>. <strong class="text-gray-800 dark:text-gray-200">Connect 2 selected</strong> picks arrow direction from types. Edges: click to select (blue). <strong class="text-gray-800 dark:text-gray-200">Delete</strong> / <strong class="text-gray-800 dark:text-gray-200">Backspace</strong> removes selected nodes and connections, including arrows attached to deleted nodes. <strong class="text-gray-800 dark:text-gray-200">Alt+drag</strong> from a selected edge onto a node rewires the nearest end.</p>
                         </details>
                         </div>
                     </div>
@@ -548,6 +552,10 @@
     <script src="~/js/dashboard/scenario-flow/graph-renderer.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenario-flow/flow-studio.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/persona-tools-ui.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/rag-selection.js" asp-append-version="true"></script>
+    <partial name="_RagMigration" />
+    <link rel="stylesheet" href="~/css/rag-migration.css" asp-append-version="true" />
+    <script src="~/js/dashboard/rag-migration.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/model-selection.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenarios-page.js" asp-append-version="true"></script>
 }

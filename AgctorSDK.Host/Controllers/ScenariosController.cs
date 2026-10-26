@@ -132,6 +132,7 @@ public sealed class ScenariosController : ControllerBase
             AgentTypes = new List<string>(),
             PersonaAgentIds = new List<string>(),
             ModelDefaults = body.ModelDefaults ?? new(),
+            RagProviderId = body.RagProviderId,
             PersonaBindings = new ScenarioPersonaBindings(),
             Flow = null
         };
@@ -302,6 +303,7 @@ public sealed class ScenariosController : ControllerBase
         Handler = d.Handler,
         AgentTypes = d.AgentTypes?.ToList() ?? new List<string>(),
         PersonaAgentIds = d.PersonaAgentIds?.ToList() ?? new List<string>(),
+        RagProviderId = d.RagProviderId,
         PersonaBindings = new ScenarioPersonaBindingsDto
         {
             Extractor = d.PersonaBindings?.Extractor,
@@ -335,6 +337,7 @@ public sealed class ScenariosController : ControllerBase
         Handler = d.Handler,
         AgentTypes = d.AgentTypes?.ToList() ?? new List<string>(),
         PersonaAgentIds = d.PersonaAgentIds?.ToList() ?? new List<string>(),
+        RagProviderId = d.RagProviderId,
         PersonaBindings = new ScenarioPersonaBindings
         {
             Extractor = d.PersonaBindings?.Extractor,

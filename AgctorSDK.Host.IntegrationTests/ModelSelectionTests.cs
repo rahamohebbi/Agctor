@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using AgctorSDK.Core.Ollama;
+using AgctorSDK.Core.Rag;
 using AgctorSDK.Core.ProjectMemory.Scenarios;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Services.Models;
@@ -25,6 +26,25 @@ public sealed class ModelSelectionTests
             new() { Id = "router", Type = "Router", Config = JsonSerializer.SerializeToElement(new { routerMode = "llm" }) }
         ] }
     };
+    [Fact]
+    public void RagSelection_InheritsAndNormalizes_AndNoneIsAnExplicitOverride()
+    {
+        var scenario = Scenario();
+        var settings = new SessionModelSettings { ScenarioId = scenario.Id };
+        ModelSelectionPlan Resolve() => ModelSelectionService.Resolve(scenario, settings, "app", globalRagProvider: RagProviderIds.Cognee);
+        Resolve().RagProvider.Should().Be(new RagProviderSelection(RagProviderIds.Cognee, "global default"));
+        scenario.RagProviderId = " light-rag ";
+        Resolve().RagProvider.Should().Be(new RagProviderSelection(RagProviderIds.LightRag, "scenario default"));
+        settings.RagProviderId = "graphiti";
+        var snapshot = Resolve();
+        snapshot.RagProvider.Should().Be(new RagProviderSelection(RagProviderIds.Graphiti, "chat override"));
+        settings.RagProviderId = RagProviderIds.None;
+        Resolve().RagProvider!.ProviderId.Should().Be(RagProviderIds.None);
+        snapshot.RagProvider!.ProviderId.Should().Be(RagProviderIds.Graphiti);
+        settings.ScenarioId = "other";
+        Resolve().RagProvider!.ProviderId.Should().Be(RagProviderIds.LightRag);
+    }
+
     [Fact]
     public void Priority_IsNodeChatThenNodeThenChatThenScenarioThenApplication()
     {
@@ -79,6 +99,7 @@ public sealed class ModelSelectionTests
     public void ActorEnvelope_AndPersistedSnapshot_PreservePlan_WithoutChangingSavedGraph()
     {
         var scenario = Scenario();
+        scenario.RagProviderId = RagProviderIds.Graphiti;
         var plan = ModelSelectionService.Resolve(scenario, null, "app");
         var envelope = ModelSelectionService.ExecutionJson(scenario.Flow!, plan);
         var restored = ModelSelectionService.ReadExecutionPlan(envelope)!;
@@ -87,6 +108,7 @@ public sealed class ModelSelectionTests
             ModelSelectionScope.GenerationModel.Should().Be("node-llm");
         var snapshot = new ScenarioFlowRuntimeSnapshot { ModelPlan = restored };
         var roundTrip = JsonSerializer.Deserialize<ScenarioFlowRuntimeSnapshot>(JsonSerializer.Serialize(snapshot))!;
+        roundTrip.ModelPlan!.RagProvider.Should().Be(new RagProviderSelection(RagProviderIds.Graphiti, "scenario default"));
         roundTrip.ModelPlan!.Nodes["decision"].Model.Should().Be("scenario-decision");
         JsonSerializer.Serialize(scenario.Flow).Should().NotContain("_modelPlan");
     }
@@ -98,16 +120,19 @@ public sealed class ModelSelectionTests
         {
             var store = new SqliteSessionStore(path);
             await store.CreateSessionAsync("one"); await store.CreateSessionAsync("two");
-            var settings = new SessionModelSettings { ScenarioId = "test", Defaults = new() { Generation = "session-llm" } };
+            var settings = new SessionModelSettings { ScenarioId = "test", RagProviderId = RagProviderIds.Cognee, Defaults = new() { Generation = "session-llm" } };
             await store.SaveModelSettingsJsonAsync("one", JsonSerializer.Serialize(settings, ModelSelectionService.Json));
             var catalog = new Mock<IScenarioCatalog>(); catalog.Setup(c => c.Get("test")).Returns(Scenario());
             var restarted = new SqliteSessionStore(path);
             var service = new ModelSelectionService(restarted, catalog.Object, new ConfigurationBuilder().Build());
             (await service.SettingsAsync("one", "test", default)).Defaults.Generation.Should().Be("session-llm");
+            (await service.PlanAsync("one", "test", default)).RagProvider!.ProviderId.Should().Be(RagProviderIds.Cognee);
+            (await service.SettingsAsync("two", "test", default)).RagProviderId.Should().BeNull();
             (await service.SettingsAsync("two", "test", default)).Defaults.Generation.Should().BeNull();
             (await service.SettingsAsync("one", "another-scenario", default)).Defaults.Generation.Should().BeNull();
             await store.SaveModelSettingsJsonAsync("one", JsonSerializer.Serialize(new SessionModelSettings { ScenarioId = "test" }, ModelSelectionService.Json));
             (await service.SettingsAsync("one", "test", default)).Defaults.Generation.Should().BeNull();
+            (await service.SettingsAsync("one", "test", default)).RagProviderId.Should().BeNull();
             await store.DeleteSessionAsync("one");
             (await restarted.GetModelSettingsJsonAsync("one")).Should().BeNull();
         }

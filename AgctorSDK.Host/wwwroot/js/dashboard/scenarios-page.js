@@ -344,6 +344,8 @@
         bindCurator.value = (s.personaBindings && s.personaBindings.curator) || '';
         bindQuery.value = (s.personaBindings && s.personaBindings.query) || '';
         window.AgctorModels.form('sc-model-', s.modelDefaults);
+        window.AgctorRag.populate(document.getElementById('sc-rag-provider'), s.ragProviderId, false)
+            .catch(function (e) { document.getElementById('sc-rag-status').textContent = e.message; });
         renderScenarioTypeHelp(s);
         renderAgentTypeEditor();
         renderPersonaEditor();
@@ -353,6 +355,7 @@
         var s = currentScenario();
         if (!s) return;
         s.modelDefaults = window.AgctorModels.readForm('sc-model-');
+        s.ragProviderId = document.getElementById('sc-rag-provider').value || null;
         s.displayName = String(displayEl.value || '').trim();
         s.description = String(descEl.value || '').trim();
         s.agentTypes = String(typesEl.value || '')
@@ -679,6 +682,8 @@
     });
 
     Object.keys(window.AgctorModels.labels).forEach(function (role) { document.getElementById('sc-model-' + role).addEventListener('change', updateScenarioFromForm); });
+    document.getElementById('sc-rag-provider').addEventListener('change', updateScenarioFromForm);
+    document.getElementById('sc-rag-migrate').addEventListener('click', function () { window.AgctorRagMigration.open(selectedId, document.getElementById('sc-rag-provider').value); });
     displayEl.addEventListener('input', updateScenarioFromForm);
     descEl.addEventListener('input', updateScenarioFromForm);
     typesEl.addEventListener('input', updateScenarioFromForm);
@@ -768,6 +773,8 @@
         if (hasUnsavedChanges()) { status.textContent = 'Save or discard catalog edits before creating another scenario.'; return; }
         if (!newModal || !newIdInput) return;
         window.AgctorModels.form('sc-new-model-', {});
+        window.AgctorRag.populate(document.getElementById('sc-new-rag-provider'), null, false)
+            .catch(function (e) { document.getElementById('sc-new-model-status').textContent = e.message; });
         newIdInput.value = '';
         if (newDisplayInput) newDisplayInput.value = '';
         showNewError('');
@@ -801,7 +808,7 @@
         api('/api/scenarios', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: id, displayName: disp, description: '', modelDefaults: window.AgctorModels.readForm('sc-new-model-') })
+            body: JSON.stringify({ id: id, displayName: disp, description: '', modelDefaults: window.AgctorModels.readForm('sc-new-model-'), ragProviderId: document.getElementById('sc-new-rag-provider').value || null })
         })
             .then(function (created) {
                 selectedId = (created && created.id) || id;
@@ -991,7 +998,7 @@
         var pqContextStrategyEl = document.getElementById('sc-flow-pq-context-strategy');
         var pqRagHintEl = document.getElementById('sc-flow-pq-rag-hint');
         var pqRagProviderNameEl = document.getElementById('sc-flow-pq-rag-provider-name');
-        var cachedDefaultRagProvider = null;
+        var ragHintRevision = 0;
         var personaRosterHint = document.getElementById('sc-flow-persona-roster-hint');
         var personaInvalidHint = document.getElementById('sc-flow-persona-invalid-hint');
         var personaCapEl = document.getElementById('sc-flow-persona-cap');
@@ -1004,21 +1011,24 @@
             var isRag = strategy === 'rag' || strategy === 'graph_rag';
             pqRagHintEl.classList.toggle('hidden', !isRag);
             if (!isRag) return;
-            if (cachedDefaultRagProvider) {
-                if (pqRagProviderNameEl) pqRagProviderNameEl.textContent = cachedDefaultRagProvider;
+            var revision = ++ragHintRevision;
+            var cfg = {};
+            var cy = renderer && renderer.getCy();
+            var node = cy && cy.nodes(':selected').first();
+            try { if (node && node.length) cfg = JSON.parse(node.data('agctorConfig') || '{}'); } catch (_) { }
+            var scenario = currentScenario();
+            var explicit = cfg.ragProviderId || (scenario && scenario.ragProviderId);
+            var source = cfg.ragProviderId ? 'flow node' : 'scenario default';
+            if (explicit) {
+                pqRagProviderNameEl.textContent = window.AgctorRag.label(explicit) + ' · ' + source;
                 return;
             }
-            fetch('/api/rag-providers')
-                .then(function (res) { return res.ok ? res.json() : null; })
-                .then(function (data) {
-                    if (!data) return;
-                    var name = (data.configured && data.configured.defaultProvider)
-                        || (data.current && data.current.providerId)
-                        || 'None';
-                    cachedDefaultRagProvider = name;
-                    if (pqRagProviderNameEl) pqRagProviderNameEl.textContent = name;
-                })
-                .catch(function () { /* ignore */ });
+            pqRagProviderNameEl.textContent = 'Loading…';
+            window.AgctorRag.load().then(function (data) {
+                if (revision === ragHintRevision) pqRagProviderNameEl.textContent = window.AgctorRag.label(data.globalDefault) + ' · global default';
+            }).catch(function () {
+                if (revision === ragHintRevision) pqRagProviderNameEl.textContent = 'Global default (unavailable)';
+            });
         }
 
         if (!window.AgctorScenarioFlow || typeof window.AgctorScenarioFlow.createGraphRenderer !== 'function') return;
@@ -1358,7 +1368,7 @@
             if (!doc) return Promise.reject(new Error('Flow canvas is not ready.'));
             var payload = flowDocForTargetScenario(doc, targetId);
             var target = scenarioById(targetId);
-            var roster = (target && target.personaAgentIds) ? target.personaAgentIds.slice() : [];
+            var roster = flowPersonaRoster(target);
             if (window.AgctorScenarioFlow && typeof window.AgctorScenarioFlow.validateFlowDocument === 'function') {
                 var v = window.AgctorScenarioFlow.validateFlowDocument(payload, { personaAgentIds: roster });
                 if (!v.ok) {
@@ -1508,8 +1518,10 @@
                 (rows || []).forEach(function (a) {
                     if (a && a.id) flowModalAgentLabels[normalizeType(a.id).toLowerCase()] = a;
                 });
+                return true;
             }).catch(function () {
-                flowModalAgentLabels = {};
+                setFlowMsg('<span class="text-red-600">Could not refresh the agent library. Try Refresh agent library again.</span>');
+                return false;
             });
         }
 
@@ -1523,6 +1535,15 @@
             var r = String(row.role || '').trim();
             if (r) return r + ' — ' + pid;
             return pid;
+        }
+
+        function flowPersonaRoster(scenario) {
+            var ids = ((scenario && scenario.personaAgentIds) || []).map(normalizeType).filter(Boolean);
+            Object.keys(flowModalAgentLabels).forEach(function (key) {
+                var id = normalizeType(flowModalAgentLabels[key].id);
+                if (id && !hasType(ids, id)) ids.push(id);
+            });
+            return ids;
         }
 
         /** Canvas label for LlmNode — same display name as the persona dropdown (without id suffix). */
@@ -1877,10 +1898,6 @@
                     '<span class="text-[9px] text-gray-500 dark:text-gray-400">Pick a persona first.</span>';
                 return;
             }
-            if (flowEditAgentLink) {
-                flowEditAgentLink.href =
-                    '/Dashboard/ProjectMemory/Agents/Edit?id=' + encodeURIComponent(pid);
-            }
             var dto = personaToolsById[normPersonaKey(pid)];
             if (window.AgctorPersonaToolsUi && dto) {
                 window.AgctorPersonaToolsUi.renderYamlBaselinePills(flowYamlToolsEl, dto);
@@ -1958,8 +1975,8 @@
             }
             personaPanel.classList.remove('hidden');
             var s = currentScenario();
-            var roster = (s && s.personaAgentIds) ? s.personaAgentIds.map(normalizeType).filter(Boolean) : [];
-            personaRosterHint.classList.toggle('hidden', roster.length > 0);
+            var roster = flowPersonaRoster(s);
+            personaRosterHint.classList.remove('hidden');
             var cfg = {};
             try {
                 cfg = JSON.parse(sel.data('agctorConfig') || '{}');
@@ -1971,7 +1988,7 @@
             personaInvalidHint.classList.add('hidden');
             personaInvalidHint.textContent = '';
             if (cur && roster.length > 0 && !hasType(roster, cur)) {
-                personaInvalidHint.textContent = 'personaId "' + cur + '" is not on this scenario roster — pick a listed persona or add it on the scenario form.';
+                personaInvalidHint.textContent = 'Agent "' + cur + '" is unavailable. Refresh the agent library or choose another agent.';
                 personaInvalidHint.classList.remove('hidden');
             }
             var idsForSelect = roster.slice();
@@ -1980,12 +1997,13 @@
                 return getFlowPersonaLabel(a).localeCompare(getFlowPersonaLabel(b), undefined, { sensitivity: 'base' });
             });
             personaSelect.innerHTML = '';
-            if (!idsForSelect.length) {
+            if (!cur) {
                 var o0 = document.createElement('option');
                 o0.value = '';
-                o0.textContent = '(add YAML personas on scenario form)';
+                o0.textContent = idsForSelect.length ? '(select an agent)' : '(no agents available — refresh library)';
                 personaSelect.appendChild(o0);
-            } else {
+            }
+            if (idsForSelect.length) {
                 idsForSelect.forEach(function (id) {
                     var o = document.createElement('option');
                     o.value = id;
@@ -2011,6 +2029,15 @@
                 personaSelect.selectedIndex = 0;
             }
             var effectivePid = normalizeType(personaSelect.value || cur);
+            flowEditAgentLink.classList.toggle('hidden', !effectivePid);
+            document.getElementById('sc-flow-edit-agent-hint').classList.toggle('hidden', !effectivePid);
+            if (effectivePid) {
+                flowEditAgentLink.href = '/Dashboard/ProjectMemory/Agents/Edit?id=' + encodeURIComponent(effectivePid);
+                flowEditAgentLink.setAttribute('aria-label', 'Edit agent: ' + getFlowPersonaLabel(effectivePid) + ' (opens in a new tab)');
+            } else {
+                flowEditAgentLink.removeAttribute('href');
+                flowEditAgentLink.removeAttribute('aria-label');
+            }
             renderFlowPersonaCapabilityPanel(effectivePid);
             if (effectivePid) {
                 var expectedLabel = getLlmNodeCanvasLabel(effectivePid);
@@ -2199,6 +2226,43 @@
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('change', persistFlowRouterInspector);
         if (routerLlmInstrEl) routerLlmInstrEl.addEventListener('blur', persistFlowRouterInspector);
         if (personaSelect) personaSelect.addEventListener('change', persistFlowPersonaInspector);
+        // A saved definition in the editor tab refreshes metadata without remounting
+        // the graph or losing any unsaved node/connection changes.
+        if (typeof BroadcastChannel !== 'undefined') {
+            var agentEdits = new BroadcastChannel('agctor-agent-definitions');
+            agentEdits.addEventListener('message', function (event) {
+                var pid = event.data && typeof event.data.id === 'string' ? normalizeType(event.data.id) : '';
+                if (!pid || event.data.type !== 'saved') return;
+                delete personaToolsById[normPersonaKey(pid)];
+                if (window.AgctorPersonaToolsUi) window.AgctorPersonaToolsUi.invalidatePersona(pid);
+                if (!renderer || modal.classList.contains('hidden')) return;
+                loadFlowModalAgentLabels().then(function (loaded) {
+                    if (!loaded || !renderer) return;
+                    renderer.getCy().nodes().forEach(function (node) {
+                        if (node.data('agctorType') !== 'LlmNode') return;
+                        var config;
+                        try { config = JSON.parse(node.data('agctorConfig') || '{}'); } catch (_) { return; }
+                        if (normalizeType(config.personaId).toLowerCase() === pid.toLowerCase()) {
+                            node.data('label', getLlmNodeCanvasLabel(pid));
+                        }
+                    });
+                    refreshFlowInspectors();
+                    setFlowMsg('<span class="text-emerald-600">Agent updated. Your flow draft is preserved.</span>');
+                });
+            });
+        }
+        document.getElementById('sc-flow-persona-refresh').addEventListener('click', function () {
+            var button = this;
+            button.disabled = true;
+            Object.keys(personaToolsById).forEach(function (pid) {
+                if (window.AgctorPersonaToolsUi) window.AgctorPersonaToolsUi.invalidatePersona(pid);
+            });
+            personaToolsById = {};
+            loadFlowModalAgentLabels().finally(function () {
+                button.disabled = false;
+                refreshFlowPersonaInspector();
+            });
+        });
         if (pqContextStrategyEl) pqContextStrategyEl.addEventListener('change', function () {
             refreshPqRagHint(pqContextStrategyEl.value || 'markdown_all');
             persistFlowPersonaInspector();
@@ -2326,26 +2390,37 @@
             });
         }
 
+        function deleteFlowSelection() {
+            if (!renderer) return false;
+            var removed = renderer.removeSelected();
+            if (!removed.nodes && !removed.edges) return false;
+            refreshFlowInspectors();
+            refreshLoopRegionOverlay();
+            resetFlowSimState();
+            updateV2StudioUi();
+            setFlowMsg('<span class="text-emerald-600">Removed ' + removed.nodes + ' node(s) and ' + removed.edges + ' connection(s). Save the flow to keep this change.</span>');
+            cyHost.focus();
+            return true;
+        }
+
+        document.getElementById('sc-flow-delete-selection').addEventListener('click', deleteFlowSelection);
+        cyHost.addEventListener('pointerdown', function () { cyHost.focus(); });
+
         modal.addEventListener('keydown', function (e) {
             if (modal.classList.contains('hidden') || !renderer) return;
             trapDialog(e, modal);
             var tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
-            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'BUTTON') return;
+            if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+            if (!cyHost.contains(e.target) && !e.target.closest('#sc-flow-outline, #sc-flow-delete-selection')) return;
             if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-            if (typeof renderer.removeSelectedEdges !== 'function') return;
-            var n = renderer.removeSelectedEdges();
-            if (n > 0) {
-                e.preventDefault();
-                setFlowMsg('<span class="text-emerald-600">Removed ' + n + ' edge(s).</span>');
-                refreshFlowInspectors();
-            }
+            if (deleteFlowSelection()) e.preventDefault();
         });
 
         btnValidate.addEventListener('click', function () {
             if (!renderer || !draftBase) return;
             var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
             var sc = currentScenario();
-            var roster = (sc && sc.personaAgentIds) ? sc.personaAgentIds.slice() : [];
+            var roster = flowPersonaRoster(sc);
             var v = window.AgctorScenarioFlow.validateFlowDocument(doc, { personaAgentIds: roster });
             setFlowMsg(v.ok ? '<span class="text-emerald-600">Client checks OK (server validates on catalog save).</span>' : '<span class="text-red-600">' + esc(v.errors.join('; ')) + '</span>');
         });

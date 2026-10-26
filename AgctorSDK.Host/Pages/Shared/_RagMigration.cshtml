@@ -1,0 +1,27 @@
+<dialog id="rag-migration" aria-labelledby="rag-migration-title">
+    <header class="rm-header"><div><span class="rm-eyebrow">MEMORY TRANSFER</span><h2 id="rag-migration-title">Bring your markdown to RAG</h2><p id="rm-scenario"></p></div><button type="button" data-rm-close aria-label="Close migration">✕</button></header>
+    <div class="rm-body">
+        <div class="rm-steps" aria-label="Migration steps"><span data-rm-step="1">1 · Choose destination</span><span data-rm-step="2">2 · Review files</span><span data-rm-step="3">3 · Transfer & verify</span></div>
+        <div class="rm-note">Your markdown stays yours. This copies memory into the provider; it does not move or delete files, switch your RAG settings, or enable automatic sync.</div>
+        <section id="rm-setup">
+            <div class="rm-grid"><label>Memory source<select id="rm-source"><option value="scenario">This scenario’s markdown</option><option value="legacy">Legacy project people/ folder</option></select></label><label>Destination provider<select id="rm-provider"></select></label></div>
+            <p class="rm-muted">Only markdown in the selected memory folder is included. Other scenarios, agent instructions and templates stay out. Each file can be up to 500 KB.</p>
+            <details><summary>Advanced: reimport previously accepted files</summary><label class="rm-check"><input id="rm-force" type="checkbox" /> Send unchanged files again</label><p class="rm-muted">Use this if you cleared the destination index. It may create duplicates. Changed files are sent as new content; this does not remove older versions from the provider.</p></details>
+        </section>
+        <p id="rm-destination" class="rm-muted"></p>
+        <div id="rm-readiness" class="rm-readiness" hidden>
+            <p id="rm-health" role="status" aria-live="polite"></p>
+            <div><button type="button" id="rm-recheck">Check connection</button> <a href="/Dashboard/RagProviders" target="_blank" rel="noopener">Start or configure provider ↗</a></div>
+        </div>
+        <section id="rm-review" hidden>
+            <div class="rm-summary" id="rm-counts"></div>
+            <progress id="rm-progress" max="1" value="0" hidden aria-label="Files processed"></progress>
+            <div class="rm-file-toolbar"><label class="rm-check" id="rm-select-label"><input id="rm-all" type="checkbox" checked /> Select all ready files</label><input id="rm-filter" type="search" placeholder="Filter files…" aria-label="Filter migration files" /></div>
+            <div class="rm-files" id="rm-files"></div>
+            <p class="rm-muted">Accepted means the provider acknowledged the request. Some providers continue indexing in the background. To retrieve this memory, use Vector RAG or Graph RAG context on the flow’s AI steps, then verify a question in Playground’s RAG inspector.</p>
+        </section>
+        <p id="rm-status" role="status" aria-live="polite"></p>
+        <details id="rm-history"><summary>Recent transfers for this scenario</summary><div id="rm-history-list"></div></details>
+    </div>
+    <footer class="rm-footer"><button type="button" id="rm-back" hidden>New preview / retry remaining</button><button type="button" id="rm-stop" hidden>Stop after current request</button><button type="button" data-rm-close>Close</button><button type="button" class="rm-primary" id="rm-action">Preview files</button></footer>
+</dialog>

@@ -192,8 +192,18 @@ public static class PlaygroundPersonQueryContextBuilder
             }
         };
 
-        if (!string.IsNullOrWhiteSpace(ragOptions.ProviderId))
-            toolReq.Parameters["ragProviderId"] = ragOptions.ProviderId;
+        // Tool actors run across a mailbox boundary, so carry the frozen provider
+        // explicitly instead of relying on AsyncLocal reaching the tool actor.
+        var provider = !string.IsNullOrWhiteSpace(ragOptions.ProviderId) ? ragOptions.ProviderId
+            : AgctorSDK.Core.Ollama.ModelSelectionScope.Plan?.RagProvider?.ProviderId;
+        if (!string.IsNullOrWhiteSpace(provider)) toolReq.Parameters["ragProviderId"] = provider;
+        var inspection = RagInspectionScope.Current ?? AgctorSDK.Core.Ollama.ModelSelectionScope.Plan?.RagInspection;
+        if (inspection != null)
+        {
+            var source = !string.IsNullOrWhiteSpace(ragOptions.ProviderId) ? "flow node"
+                : AgctorSDK.Core.Ollama.ModelSelectionScope.Plan?.RagProvider?.Source ?? "global default";
+            toolReq.Parameters["ragInspection"] = JsonSerializer.Serialize(inspection with { AgentId = personaId, ProviderSource = source });
+        }
         if (!string.IsNullOrWhiteSpace(ragOptions.CollectionId))
             toolReq.Parameters["ragCollectionId"] = ragOptions.CollectionId;
         if (ragOptions.TopK != 8)

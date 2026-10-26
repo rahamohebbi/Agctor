@@ -18,17 +18,28 @@
         wrap.append(label, select); return {wrap: wrap, select: select};
     }
     Object.keys(labels).forEach(function (role) { var r = row(labels[role], 'pm-model-' + role); r.select.dataset.role = role; fields.appendChild(r.wrap); });
+    var ragRow = row('RAG provider', 'pm-rag-provider'); fields.appendChild(ragRow.wrap);
+    var migrate = document.createElement('button'); migrate.type = 'button'; migrate.className = 'rm-launch';
+    migrate.textContent = 'Migrate markdown memory…'; ragRow.wrap.appendChild(migrate);
+    migrate.addEventListener('click', async function () {
+        if (!state || !state.settings.scenarioId) { status.textContent = 'Select a chat session and wait for its settings to load, then try again.'; return; }
+        if (!global.AgctorRagMigration) { status.textContent = 'The migration dialog could not load. Reload this page and try again.'; return; }
+        try { await global.AgctorRagMigration.open(state.settings.scenarioId, ragRow.select.value || (state.plan.ragProvider && state.plan.ragProvider.providerId)); }
+        catch (_) { status.textContent = 'The migration dialog could not open. Reload this page and try again.'; }
+    });
+
     function busy(value) {
         save.disabled = reset.disabled = reload.disabled = value;
         root.querySelectorAll('select').forEach(function (s) { s.disabled = value; });
     }
     async function api(url, options) {
         var r = await fetch(url, options); var data = await r.json();
-        if (!r.ok) throw new Error(data.error || 'Could not load model settings.');
+        if (!r.ok) throw new Error(data.error || 'Could not load chat settings.');
         return data;
     }
     function render(data) {
         state = data;
+        global.AgctorRag.populate(ragRow.select, data.settings.ragProviderId, true).catch(function (e) { status.textContent = e.message; });
         Object.keys(labels).forEach(function (role) {
             global.AgctorModels.populate(document.getElementById('pm-model-' + role), role, data.settings.defaults[role], '')
                 .catch(function (e) { status.textContent = e.message; });
@@ -50,13 +61,15 @@
             effective.appendChild(li);
         }
         Object.keys(labels).forEach(function (role) { line(labels[role], data.plan.defaults[role]); });
+        if (data.plan.ragProvider) line('RAG provider', { model: global.AgctorRag.label(data.plan.ragProvider.providerId), source: data.plan.ragProvider.source });
+        (data.ragNodes || []).forEach(function (node) { line((node.label || node.id) + ' · RAG', { model: global.AgctorRag.label(node.providerId), source: 'flow node' }); });
         (data.nodes || []).forEach(function (node) { if (data.plan.nodes[node.id]) line(node.label || node.id, data.plan.nodes[node.id]); });
     }
     async function openSession(id, scenario, force) {
         var key = (id || '') + ':' + (scenario || '');
         if (!force && key === activeKey) return;
         activeKey = key; activeSession = id; state = null;
-        var token = ++revision; busy(true); status.textContent = id ? 'Loading model choices…' : 'Select a session first.';
+        var token = ++revision; busy(true); status.textContent = id ? 'Loading model and RAG choices…' : 'Select a session first.';
         fields.querySelectorAll('select').forEach(function (s) { s.disabled = true; });
         nodes.replaceChildren(); effective.replaceChildren();
         if (!id) return;
@@ -71,26 +84,26 @@
     async function persist(clear) {
         if (!state || !activeSession) return;
         var session = activeSession, token = revision;
-        var settings = { scenarioId: state.settings.scenarioId, defaults: {}, nodes: {} };
+        var settings = { scenarioId: state.settings.scenarioId, defaults: {}, nodes: {}, ragProviderId: clear ? null : ragRow.select.value || null };
         if (!clear) {
-            fields.querySelectorAll('select').forEach(function (s) { if (s.value) settings.defaults[s.dataset.role] = s.value; });
+            fields.querySelectorAll('select[data-role]').forEach(function (s) { if (s.value) settings.defaults[s.dataset.role] = s.value; });
             nodes.querySelectorAll('select').forEach(function (s) { if (s.value) settings.nodes[s.dataset.node] = { role:s.dataset.role, model:s.value }; });
         }
-        busy(true); status.textContent = 'Saving model choices…';
+        busy(true); status.textContent = 'Saving model and RAG choices…';
         try {
             var data = await api('/api/model-settings/sessions/' + encodeURIComponent(session), { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(settings) });
             if (revision !== token) return;
-            render(data); status.textContent = clear ? 'Chat overrides cleared. Scenario defaults and explicit node models apply.' : 'Saved for this chat. Applies to the next message.';
+            render(data); status.textContent = clear ? 'Chat overrides cleared. Scenario defaults and explicit node choices apply.' : 'Saved for this chat. Applies to the next message.';
         } catch (e) { if (revision === token) status.textContent = e.message; }
         finally { if (revision === token) busy(false); }
     }
     save.addEventListener('click', function () { persist(false); });
     reset.addEventListener('click', function () { persist(true); });
     root.addEventListener('change', function (event) {
-        if (event.target.matches('select')) status.textContent = 'Unsaved model choices. Save to apply them to the next message.';
+        if (event.target.matches('select')) status.textContent = 'Unsaved model and RAG choices. Save to apply them to the next message.';
     });
     reload.addEventListener('click', function () {
-        global.AgctorModels.load(true).then(function () { return openSession(activeSession, state && state.settings.scenarioId, true); }).catch(function (e) { status.textContent = e.message; });
+        Promise.allSettled([global.AgctorModels.load(true), global.AgctorRag.load(true)]).then(function () { return openSession(activeSession, state && state.settings.scenarioId, true); }).catch(function (e) { status.textContent = e.message; });
     });
     global.AgctorChatModels = { openSession:openSession };
 })(window);

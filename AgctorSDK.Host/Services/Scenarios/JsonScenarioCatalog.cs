@@ -129,6 +129,18 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
             var updated = CloneDef(current);
             updated.Flow = flow == null ? null : ScenarioFlowDocument.Clone(flow);
             Normalize(updated);
+            // Selecting a library persona in the designer attaches it to this scenario
+            // atomically with the flow. Validate below still rejects unknown agents.
+            foreach (var node in updated.Flow?.Nodes ?? [])
+            {
+                if (!string.Equals(node.Type, "LlmNode", StringComparison.OrdinalIgnoreCase) ||
+                    node.Config is not { ValueKind: JsonValueKind.Object } config ||
+                    !config.TryGetProperty("personaId", out var value) || value.ValueKind != JsonValueKind.String)
+                    continue;
+                var personaId = value.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(personaId) && !updated.PersonaAgentIds.Contains(personaId, StringComparer.OrdinalIgnoreCase))
+                    updated.PersonaAgentIds.Add(personaId);
+            }
 
             var userDoc = await ReadDocumentAsync(_userPath, cancellationToken).ConfigureAwait(false);
             var userList = (userDoc?.Scenarios ?? new List<ScenarioDefinition>()).Select(CloneDef).ToList();
@@ -289,6 +301,7 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
             Query = src.PersonaBindings?.Query
         },
         ModelDefaults = JsonSerializer.Deserialize<AgctorSDK.Core.Ollama.ModelDefaults>(JsonSerializer.Serialize(src.ModelDefaults ?? new()))!,
+        RagProviderId = src.RagProviderId,
         Flow = ScenarioFlowDocument.Clone(src.Flow)
     };
 
@@ -394,6 +407,13 @@ public sealed class JsonScenarioCatalog : IScenarioCatalog
         for (var i = 0; i < defs.Count; i++)
         {
             var d = Normalize(defs[i]);
+            if (!string.IsNullOrWhiteSpace(d.RagProviderId))
+            {
+                if (!AgctorSDK.Core.Rag.RagProviderIds.IsKnown(d.RagProviderId))
+                    errors.Add($"Scenario '{d.Id}' references unknown RAG provider '{d.RagProviderId}'.");
+                else d.RagProviderId = AgctorSDK.Core.Rag.RagProviderIds.Normalize(d.RagProviderId);
+            }
+            else d.RagProviderId = null;
             if (string.IsNullOrWhiteSpace(d.Id))
             {
                 errors.Add($"Scenario at index {i} is missing id.");

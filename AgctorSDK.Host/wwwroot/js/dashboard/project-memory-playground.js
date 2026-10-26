@@ -319,6 +319,7 @@
      */
     function syncSessionColumn() {
         window.AgctorChatModels.openSession(activeSessionId, activeProjectScenarioId);
+        if (window.AgctorRagInspector) window.AgctorRagInspector.setSession(activeSessionId);
         var has = !!activeSessionId;
         var deletingActive = !!(deletingSessionId && deletingSessionId === activeSessionId);
         if (has) {
@@ -377,12 +378,13 @@
 
     function renderChatMarkdown(text) {
         var source = String(text || '');
+        if (window.AgctorDiagrams) source = window.AgctorDiagrams.markdown(source);
         if (window.marked && typeof window.marked.parse === 'function') {
             var raw = window.marked.parse(source, { gfm: true, breaks: true });
             if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
                 return window.DOMPurify.sanitize(raw);
             }
-            return raw;
+            return esc(source);
         }
         return esc(source);
     }
@@ -568,10 +570,12 @@
                 html += buildUserTurnHtml(userInner, attachHtml, '');
             } else {
                 var agentId = turn.agentId || 'assistant';
-                html += buildAssistantTurnHtml(agentId, '<div class="pm-play-md">' + renderChatMarkdown(content) + '</div>', {});
+                html += buildAssistantTurnHtml(agentId, '<div class="pm-play-md">' + renderChatMarkdown(content) + '</div>', { turnGroupId: turn.turnGroupId });
             }
         });
         messages.innerHTML = html;
+        if (window.AgctorRagInspector) window.AgctorRagInspector.refreshBadges();
+        if (window.AgctorDiagrams) window.AgctorDiagrams.enhance(messages);
         messages.scrollTop = messages.scrollHeight;
     }
 
@@ -732,7 +736,9 @@
             (opts.streaming ? ' pm-chat-bubble--streaming' : '') +
             '" data-role="chat-bubble">' +
             innerHtml +
-            '</div></div></div>'
+            '</div>' +
+            (opts.turnGroupId ? '<button type="button" class="rag-badge" data-rag-turn="' + esc(opts.turnGroupId) + '" data-rag-agent="' + esc(agentId) + '">Inspect RAG ↗</button>' : '') +
+            '</div></div>'
         );
     }
 
@@ -2167,6 +2173,7 @@
             )
         );
 
+        if (window.AgctorRagInspector) window.AgctorRagInspector.begin(streamTurnGroupId);
         var streamUi = createStreamingAssistantBubble(agentId);
         var streamBody = streamUi.bodyEl;
         var acc = '';
@@ -2422,6 +2429,7 @@
                         if (result.done) {
                             if (markdownRaf != null) cancelAnimationFrame(markdownRaf);
                             applyMd();
+                            if (window.AgctorDiagrams) window.AgctorDiagrams.enhance(streamBody);
                             streamUi.finalize();
                             return;
                         }
@@ -2456,6 +2464,7 @@
                 if (streamBody) streamBody.textContent = msg;
             })
             .finally(function () {
+                if (window.AgctorRagInspector) window.AgctorRagInspector.end();
                 setSendBusy(false);
             });
     }

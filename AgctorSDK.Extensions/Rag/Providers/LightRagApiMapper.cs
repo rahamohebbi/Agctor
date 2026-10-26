@@ -69,7 +69,7 @@ internal static class LightRagApiMapper
         {
             return new RagQueryResult(
                 Array.Empty<RagContextChunk>(),
-                RawDebugJson: response.Body);
+                RawDebugJson: response.Body, Error: $"LightRAG search failed with HTTP {response.StatusCode}.");
         }
 
         try
@@ -114,7 +114,7 @@ internal static class LightRagApiMapper
         {
             return new RagQueryResult(
                 Array.Empty<RagContextChunk>(),
-                RawDebugJson: response.Body);
+                RawDebugJson: response.Body, Error: "LightRAG returned invalid JSON.");
         }
     }
 

@@ -12,7 +12,8 @@ public sealed record RagQueryRequest(
 public sealed record RagQueryResult(
     IReadOnlyList<RagContextChunk> Chunks,
     string? ProviderTraceId = null,
-    string? RawDebugJson = null);
+    string? RawDebugJson = null,
+    string? Error = null);
 
 /// <summary>One retrieved context unit with optional provenance.</summary>
 public sealed record RagContextChunk(

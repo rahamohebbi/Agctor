@@ -69,6 +69,9 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
         var plan = ModelSelectionScope.Plan?.ScenarioId == request.ScenarioId ? ModelSelectionScope.Plan
             : _models == null ? null : await _models.PlanAsync(request.SessionId, request.ScenarioId, cancellationToken);
         using var runScope = ModelSelectionScope.Begin(plan);
+        var inspection = RagInspectionScope.Current ?? plan?.RagInspection;
+        using var inspectionScope = RagInspectionScope.Begin(inspection == null ? null
+            : inspection with { NodeId = request.FlowNodeId, AgentId = request.AgentId });
         using var nodeScope = ModelSelectionScope.Node(request.FlowNodeId ?? "", ModelRoles.Generation,
             request.FlowNodeConfig is { ValueKind: JsonValueKind.Object } modelConfig && modelConfig.TryGetProperty("llmModel", out var modelValue) && modelValue.ValueKind == JsonValueKind.String ? modelValue.GetString() : null);
 
@@ -95,6 +98,8 @@ public sealed class ScenarioFlowPersonaLlmRunner : IScenarioFlowPersonaLlmRunner
             .ConfigureAwait(false);
 
         var appendixParts = new List<string>();
+        if (!PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(spec, request.FlowNodeConfig))
+            await _ragContext.RecordNotRequestedAsync(agentId, scenarioId);
         if (PlaygroundPersonQueryContextBuilder.ShouldLoadPersonMemoryContext(spec, request.FlowNodeConfig))
         {
             try

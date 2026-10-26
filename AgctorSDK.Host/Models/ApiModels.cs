@@ -438,6 +438,7 @@ namespace AgctorSDK.Host.Models
 
         /// <summary>PRD-014 optional visual flow (canonical GraphDocument).</summary>
     public AgctorSDK.Core.Ollama.ModelDefaults ModelDefaults { get; set; } = new();
+    public string? RagProviderId { get; set; }
 
         public ScenarioFlowDocument? Flow { get; set; }
     }
@@ -461,6 +462,7 @@ namespace AgctorSDK.Host.Models
     public sealed class CreateScenarioRequest
     {
         public AgctorSDK.Core.Ollama.ModelDefaults ModelDefaults { get; set; } = new();
+        public string? RagProviderId { get; set; }
         public string Id { get; set; } = "";
         public string? DisplayName { get; set; }
         public string? Description { get; set; }
@@ -565,4 +567,4 @@ namespace AgctorSDK.Host.Models
         /// <summary>ok | error | running — for badges and row styling.</summary>
         public string? Status { get; set; }
     }
-} 
+}

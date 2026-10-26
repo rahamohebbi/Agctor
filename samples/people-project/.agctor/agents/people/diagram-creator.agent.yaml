@@ -1,0 +1,33 @@
+id: diagram-creator
+name: Create Diagram
+role: create diagrams
+description: Creates diagrams using mermaid format
+projectTypes: []
+toolBundles: 
+instructions:
+- create diagrams using mermaid format. here is an example
+- 'Here is the approval process:'
+- '```mermaid'
+- flowchart LR
+- A["Request received"] --> B{"Approved?"}
+- B -->|Yes| C["Process request"]
+- B -->|No| D["Ask for changes"]
+- '```'
+input:
+  type: ''
+output:
+  type: ''
+tools:
+  allow: []
+  deny: []
+memoryAccess:
+  read: []
+  write: []
+guardrails:
+- create only
+- 1. flowcharts
+- 2. sequence diagrams
+- 3. ER diagrams
+- 4. state diagrams
+runtimeHints: 
+sourcePath: 

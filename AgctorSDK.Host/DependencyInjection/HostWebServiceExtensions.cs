@@ -54,11 +54,26 @@ public static class HostWebServiceExtensions
             SummaryRefreshTurns = configuration.GetValue<int?>("Agctor:SessionMemory:SummaryRefreshTurns") ?? 12,
             MaxContextChars = configuration.GetValue<int?>("Agctor:SessionMemory:MaxContextChars") ?? 12000
         });
-        services.AddSingleton<ISessionStore>(_ => new SqliteSessionStore(sessionStorePath));
+        services.AddSingleton<SqliteSessionStore>(_ => new SqliteSessionStore(sessionStorePath));
+        services.AddSingleton<ISessionStore>(sp => sp.GetRequiredService<SqliteSessionStore>());
+        services.AddSingleton<AgctorSDK.Core.ProjectMemory.Rag.IRagInspectionStore>(sp => sp.GetRequiredService<SqliteSessionStore>());
+        // Replace the generic optional-dependency registration with an explicit host instance.
+        // This guarantees that Playground retrieval and its inspector write to the same durable session store.
+        services.AddSingleton<AgctorSDK.Core.ProjectMemory.Rag.RagContextService>(sp => new(
+            sp.GetRequiredService<AgctorSDK.Core.Rag.IRagProviderAdapterFactory>(),
+            sp.GetRequiredService<AgctorSDK.Core.ProjectMemory.Rag.IRagInspectionStore>(),
+            sp.GetService<AgctorSDK.Core.Utils.ActivityTracking.IActivityTracker>()));
         var traceStorePath = configuration.GetValue<string>("Agctor:TraceStorePath")
             ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-traces-{configuredMcpPort}.db");
         services.AddSingleton<ITraceTimelineStore>(_ => new SqliteTraceTimelineStore(traceStorePath));
         services.AddSingleton<ISessionContextComposer, SessionContextComposer>();
+        services.AddSingleton<Services.Rag.RagMigrationService>(sp => new(
+            sp.GetRequiredService<AgctorSDK.Core.Rag.IRagProviderAdapterFactory>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<AgctorSDK.Core.ProjectMemory.ProjectMemoryAgentOptions>>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<AgctorSDK.Core.Rag.RagOptions>>(),
+            sp.GetRequiredService<IScenarioCatalog>(), sessionStorePath + ".rag-migrations"));
+        services.AddHostedService(sp => sp.GetRequiredService<Services.Rag.RagMigrationService>());
+
 
         services.Configure<ScenarioCatalogOptions>(configuration.GetSection("Agctor:Scenarios"));
         services.AddSingleton<IScenarioCatalog, JsonScenarioCatalog>();
