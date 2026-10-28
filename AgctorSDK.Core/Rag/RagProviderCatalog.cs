@@ -9,7 +9,7 @@ namespace AgctorSDK.Core.Rag;
 /// </summary>
 public static class RagProviderCatalog
 {
-    /// <summary>One row per selectable provider.</summary>
+    /// <summary>One row per browsable knowledge or scene-memory provider.</summary>
     public static IReadOnlyList<RagProviderDescriptor> All { get; } = new[]
     {
         new RagProviderDescriptor(
@@ -22,7 +22,8 @@ public static class RagProviderCatalog
             Capabilities: new[] { "markdown", "local_files" },
             ContextStrategies: Array.Empty<string>(),
             RequiresDocker: false,
-            DefaultTransport: RagTransportKind.None),
+            DefaultTransport: RagTransportKind.None,
+            Kind: RagProviderKind.Markdown),
         new RagProviderDescriptor(
             Id: RagProviderIds.LightRag,
             DisplayName: "LightRAG",
@@ -55,7 +56,19 @@ public static class RagProviderCatalog
             Capabilities: new[] { "local_docker", "graph", "memory", "mcp" },
             ContextStrategies: new[] { "graph_rag" },
             RequiresDocker: true,
-            DefaultTransport: RagTransportKind.McpHttp)
+            DefaultTransport: RagTransportKind.McpHttp),
+        new RagProviderDescriptor(
+            Id: RagProviderIds.SceneMemory,
+            DisplayName: "Scene Memory",
+            Maturity: "mvp",
+            Summary: "Tracks explicit entity properties and their changes across a story.",
+            Limitations: "Manual entry and exact-name queries. No media analysis, semantic search or clip generation.",
+            DeploymentNotes: "Built into AGCTOR Host. Local SQLite storage; no Docker or AI model required.",
+            Capabilities: new[] { "entity_state", "change_history", "historical_queries", "agent_tool", "local_storage" },
+            ContextStrategies: Array.Empty<string>(),
+            RequiresDocker: false,
+            DefaultTransport: RagTransportKind.None,
+            Kind: RagProviderKind.SceneMemory)
     };
 
     /// <summary>Case-insensitive lookup by catalog id.</summary>
@@ -69,7 +82,7 @@ public static class RagProviderCatalog
     }
 }
 
-/// <summary>Dashboard catalog row for one RAG provider.</summary>
+/// <summary>Dashboard catalog row for knowledge retrieval or scene memory.</summary>
 public sealed record RagProviderDescriptor(
     string Id,
     string DisplayName,
@@ -80,4 +93,20 @@ public sealed record RagProviderDescriptor(
     IReadOnlyList<string> Capabilities,
     IReadOnlyList<string> ContextStrategies,
     bool RequiresDocker,
-    RagTransportKind DefaultTransport);
+    RagTransportKind DefaultTransport,
+    RagProviderKind Kind = RagProviderKind.KnowledgeRag)
+{
+    /// <summary>Whether this entry can supply the existing document/graph RAG pipeline.</summary>
+    public bool CanBeDefaultProvider => Kind != RagProviderKind.SceneMemory;
+}
+
+/// <summary>Retrieval semantics shown in the shared provider catalog.</summary>
+public enum RagProviderKind
+{
+    /// <summary>Retrieve relevant document or graph context.</summary>
+    KnowledgeRag,
+    /// <summary>Retrieve explicitly recorded scene state and history.</summary>
+    SceneMemory,
+    /// <summary>Read Project Memory files directly.</summary>
+    Markdown
+}

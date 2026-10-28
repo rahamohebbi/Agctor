@@ -26,9 +26,9 @@ public class RagProvidersDashboardViewComponent : ViewComponent
         var status = await _dashboard.GetStatusAsync(HttpContext.RequestAborted).ConfigureAwait(false);
         var health = await _dashboard.GetHealthAsync(HttpContext.RequestAborted).ConfigureAwait(false);
 
-        var selected = selectedProviderId
+        var selected = RagProviderIds.Normalize(selectedProviderId
             ?? status.Configured.DefaultProvider
-            ?? RagProviderIds.None;
+            ?? RagProviderIds.None);
 
         var selectedModel = status.Available.FirstOrDefault(a =>
             string.Equals(a.Id, selected, StringComparison.OrdinalIgnoreCase));

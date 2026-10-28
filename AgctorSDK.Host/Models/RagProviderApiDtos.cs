@@ -58,6 +58,10 @@ public sealed class CogneeProviderConfigDto
 public sealed class AvailableRagProviderDto
 {
     public string Id { get; set; } = null!;
+    /// <summary>KnowledgeRag, SceneMemory, or Markdown; indicates the entry's retrieval semantics.</summary>
+    public string Kind { get; set; } = "KnowledgeRag";
+    /// <summary>False for Scene Memory, which is attached to agents independently of the default RAG provider.</summary>
+    public bool CanBeDefaultProvider { get; set; } = true;
     public string DisplayName { get; set; } = null!;
     public string Maturity { get; set; } = null!;
     public string Summary { get; set; } = null!;
@@ -120,11 +124,8 @@ public sealed class RagProviderQueryRequestDto
 }
 
 /// <summary>POST /api/rag-providers/query response.</summary>
-public sealed class RagProviderQueryResponseDto
+public sealed class RagProviderQueryResponseDto : ProviderQueryResponseDto
 {
-    public bool Success { get; set; }
-    public string ProviderId { get; set; } = null!;
-    public string Message { get; set; } = null!;
     public IReadOnlyList<RagContextChunkDto> Chunks { get; set; } = Array.Empty<RagContextChunkDto>();
 }
 

@@ -46,6 +46,9 @@ public static class HostWebServiceExtensions
         services.AddSingleton<IPersonaHostToolsService, PersonaHostToolsService>();
         services.AddSingleton<IToolInvoker, ToolInvoker>();
 
+        services.AddAgctorSceneMemory(configuration["Agctor:SceneMemory:StorePath"]
+            ?? Path.Combine(AppContext.BaseDirectory, "data", "scene-memory.db"));
+
         var sessionStorePath = configuration.GetValue<string>("Agctor:SessionStorePath")
             ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");
         services.AddSingleton(new SessionMemoryOptions

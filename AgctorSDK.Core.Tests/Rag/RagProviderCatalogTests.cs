@@ -4,7 +4,7 @@ using Xunit;
 
 namespace AgctorSDK.Core.Tests.Rag;
 
-/// <summary>PRD-025: catalog ids stay aligned with IRagProviderAdapterFactory keys.</summary>
+/// <summary>The shared catalog distinguishes document retrieval adapters from independent Scene Memory.</summary>
 public class RagProviderCatalogTests
 {
     public static readonly string[] FactoryIds =
@@ -13,10 +13,25 @@ public class RagProviderCatalogTests
     };
 
     [Fact]
-    public void All_Contains_Exactly_Factory_Ids()
+    public void Default_capable_entries_match_factory_ids()
     {
-        var ids = RagProviderCatalog.All.Select(a => a.Id).OrderBy(s => s).ToArray();
+        var ids = RagProviderCatalog.All.Where(a => a.CanBeDefaultProvider).Select(a => a.Id).OrderBy(s => s).ToArray();
         ids.Should().Equal(FactoryIds.OrderBy(s => s).ToArray());
+    }
+
+    [Fact]
+    public void Scene_memory_has_distinct_semantics_and_no_document_ingest_or_docker_configuration()
+    {
+        var scene = RagProviderCatalog.GetById(RagProviderIds.SceneMemory)!;
+        scene.Kind.Should().Be(RagProviderKind.SceneMemory);
+        scene.CanBeDefaultProvider.Should().BeFalse();
+        scene.RequiresDocker.Should().BeFalse();
+        scene.ContextStrategies.Should().BeEmpty();
+        scene.Capabilities.Should().Contain("historical_queries");
+        RagProviderConfigSchema.GetFields(scene.Id).Should().BeEmpty();
+        RagProviderIds.IsKnown(scene.Id).Should().BeFalse();
+        RagProviderCatalog.All.Where(p => FactoryIds.Contains(p.Id) && p.Id != RagProviderIds.None)
+            .Should().OnlyContain(p => p.Kind == RagProviderKind.KnowledgeRag);
     }
 
     [Theory]
@@ -24,6 +39,7 @@ public class RagProviderCatalogTests
     [InlineData("lightrag")]
     [InlineData("graphiti")]
     [InlineData("COGNEE")]
+    [InlineData("scene-memory")]
     public void GetById_Is_Case_Insensitive(string key)
     {
         var d = RagProviderCatalog.GetById(key);
@@ -43,6 +59,7 @@ public class RagProviderCatalogTests
     [InlineData(RagProviderIds.LightRag, true)]
     [InlineData(RagProviderIds.Graphiti, true)]
     [InlineData(RagProviderIds.Cognee, true)]
+    [InlineData(RagProviderIds.SceneMemory, false)]
     public void RequiresDocker_matches_provider(string id, bool expected)
     {
         RagProviderCatalog.GetById(id)!.RequiresDocker.Should().Be(expected);

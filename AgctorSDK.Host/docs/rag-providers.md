@@ -5,6 +5,64 @@ External retrieval backends for Project Memory **`contextStrategy: rag | graph_r
 **Product spec:** [Project/prd-025/](../../Project/prd-025/prd-025-readme.md)  
 **Docker sidecars:** [docker/rag-providers/README.md](../../docker/rag-providers/README.md)
 
+## Provider kinds
+
+The dashboard shares one catalog with explicit kinds:
+
+| Kind | Purpose | Action |
+|---|---|---|
+| Knowledge RAG | Retrieve relevant document or graph context using LightRAG, Graphiti or Cognee | Configure, index and test retrieval |
+| Scene Memory | Retrieve manually recorded entity state and change history | Open the Scene Memory workspace and test directly or through an agent |
+| File memory | Read Project Memory markdown directly | Use Markdown only |
+
+`GET /api/rag-providers` includes `kind` (`KnowledgeRag`, `SceneMemory`, `Markdown`) and
+`canBeDefaultProvider` on catalog entries. Scene Memory works alongside the selected RAG provider;
+it uses `ISceneMemoryStore` and `SceneMemoryQueryTool`, and cannot be selected as the default
+`IRagProviderAdapter`. Its current MVP supports manual facts and exact-name queries without a model
+or Docker. Open `/Dashboard/RagProviders?provider=SceneMemory` to find its workspace.
+
+## Shared retrieval contract
+
+Both provider families implement `IRetrievalProvider<TRequest, TResult>` (Core/Retrieval):
+`ProviderId`, `GetHealthAsync`, and `QueryAsync`. The existing `RagHealthResult` and `RagHealthStatus`
+types are reused for compatibility. RAG retains `RagQueryRequest`/`RagQueryResult`; Scene Memory uses
+`SceneMemoryQueryRequest`/`SceneQueryResult`, preserving workspace, entity, sequence and provenance.
+
+`IRagProviderAdapter` adds document ingestion to the shared read contract. Scene mutation stays on
+`ISceneMemoryStore`; scene providers have no unsupported document-ingestion method. The controller
+and agent tool depend on `ISceneMemoryProvider`. Its default implementation delegates to the store,
+so replacing storage does not require changing HTTP or agent code.
+
+Register scene services with `AddAgctorSceneMemory(databasePath)` from Extensions. Like
+`AddAgctorRagProviders`, it uses `TryAdd` registrations so applications can supply their own implementations.
+The existing actor factory's service bridge is confined to the tool's runtime constructor; standalone
+callers and tests inject the provider directly.
+
+| Operation | Knowledge RAG | Scene Memory |
+|---|---|---|
+| Health | `GET /api/rag-providers/health` | `GET /api/scene-memory/health` |
+| Query | `POST /api/rag-providers/query` | `POST /api/scene-memory/query` |
+| Query scope | `collectionId` | Required `workspaceId` |
+| Query input | `query`, optional mode and ranking options | `query` or `entityId`, optional `atSequence` |
+| Query outcome | `success`, `providerId`, `message`, `chunks` | `success`, `providerId`, `message`, `result` |
+
+Both health endpoints use the same response mapper. Both query response DTOs inherit the common
+outcome fields; domain results remain typed. Example scene request:
+
+```json
+{"workspaceId":"your-workspace-id","query":"Where is CupA?","atSequence":1}
+```
+
+A successful scene lookup may have `result.status` of `found`, `no_facts`, `not_found` or `ambiguous`;
+`success` means retrieval completed, not that facts exist. Valid-body query validation errors return
+400 and missing workspaces return 404 with the common outcome fields. ASP.NET request-binding errors
+retain its standard validation response. Cancellation propagates from the scene provider.
+
+The earlier `/api/scene-memory/workspaces/{id}/query` route retains its raw `SceneQueryResult` response
+and `question` input. It now delegates to the same provider as the new endpoint and agent tool.
+The tool accepts `query`, with `question` retained as a compatibility alias. Existing RAG HTTP response
+fields and default-provider selection remain unchanged.
+
 ## Architecture delta
 
 Canonical markdown under `.agctor/` stays **source of truth**. RAG sidecars hold **derived indexes** queried at prompt-build time.

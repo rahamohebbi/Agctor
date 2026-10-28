@@ -66,7 +66,7 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         var health = await adapter.GetHealthAsync(cancellationToken).ConfigureAwait(false);
 
         var available = RagProviderCatalog.All
-            .Where(d => _factory.IsProviderAvailable(d.Id))
+            .Where(d => d.Kind == RagProviderKind.SceneMemory || _factory.IsProviderAvailable(d.Id))
             .Select(BuildAvailableDto)
             .ToList();
 
@@ -92,6 +92,8 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         ArgumentNullException.ThrowIfNull(body);
 
         var canonical = RagProviderIds.Normalize(body.DefaultProvider);
+        if (RagProviderCatalog.GetById(canonical)?.CanBeDefaultProvider == false)
+            throw new InvalidOperationException("Scene Memory is used alongside your RAG provider. Open its workspace to create memory and attach a test agent.");
         if (!_factory.IsProviderAvailable(canonical))
             throw new InvalidOperationException($"Unknown RAG provider '{body.DefaultProvider}'.");
 
@@ -125,37 +127,19 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         var adapter = _factory.CreateDefaultProvider();
         var health = await adapter.GetHealthAsync(cancellationToken).ConfigureAwait(false);
 
-        RagProviderDockerStatusDto? dockerDto = null;
-        var overall = MapHealthOverall(health.Status);
-        string? detail = health.Message;
+        var response = ProviderHealthResponseMapper.Map(providerId, health);
 
         if (RagProviderConfigSchema.DockerBackedProviders.Contains(providerId))
         {
             var docker = await _docker.GetStatusAsync(providerId, cancellationToken).ConfigureAwait(false);
-            dockerDto = MapDocker(docker);
+            response.Docker = MapDocker(docker);
             if (docker.State is not ("running" or "not_applicable"))
             {
-                overall = "degraded";
-                detail = docker.Message ?? "Docker sidecar is not running.";
-            }
-            else if (health.Status is RagHealthStatus.Unavailable or RagHealthStatus.NotConfigured)
-            {
-                overall = "degraded";
+                response.OverallStatus = "degraded";
+                response.Detail = docker.Message ?? "Docker sidecar is not running.";
             }
         }
-        else if (health.Status is RagHealthStatus.Unavailable or RagHealthStatus.NotConfigured)
-        {
-            overall = "degraded";
-        }
-
-        return new RagProviderHealthResponseDto
-        {
-            ProviderId = providerId,
-            OverallStatus = overall,
-            ProviderHealthStatus = health.Status.ToString(),
-            Detail = detail,
-            Docker = dockerDto
-        };
+        return response;
     }
 
     /// <inheritdoc />
@@ -422,6 +406,8 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
         return new AvailableRagProviderDto
         {
             Id = cat.Id,
+            Kind = cat.Kind.ToString(),
+            CanBeDefaultProvider = cat.CanBeDefaultProvider,
             DisplayName = cat.DisplayName,
             Maturity = cat.Maturity,
             Summary = cat.Summary,
@@ -443,14 +429,6 @@ public sealed class RagProvidersDashboardService : IRagProvidersDashboardService
             RagProviderIds.Graphiti => configured.Graphiti.Transport,
             RagProviderIds.Cognee => configured.Cognee.Transport,
             _ => "None"
-        };
-
-    private static string MapHealthOverall(RagHealthStatus status) =>
-        status switch
-        {
-            RagHealthStatus.Healthy => "healthy",
-            RagHealthStatus.Degraded => "degraded",
-            _ => "degraded"
         };
 
     private static LightRagProviderOptions MapLightRagOptions(LightRagProviderConfigDto dto) => new()

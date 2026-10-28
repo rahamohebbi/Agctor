@@ -1,0 +1,112 @@
+@page
+@{
+    ViewData["Title"] = "Scene Memory";
+}
+<style>
+    .scene-memory { --sm-border: #d1d5db; --sm-surface: #fff; --sm-muted: #4b5563; }
+    .dark .scene-memory { --sm-border: #4b5563; --sm-surface: #1f2937; --sm-muted: #cbd5e1; }
+    .scene-memory h1 { font-size: 1.8rem; font-weight: 650; }
+    .scene-memory h2 { font-size: 1.15rem; font-weight: 650; margin-bottom: .6rem; }
+    .scene-memory p { color: var(--sm-muted); margin-bottom: 1rem; }
+    .scene-memory section { background: var(--sm-surface); border: 1px solid var(--sm-border); border-radius: .75rem; padding: 1.25rem; margin-top: 1.25rem; }
+    .scene-memory .sm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+    .scene-memory label { display: block; font-size: .875rem; margin-bottom: .9rem; }
+    .scene-memory input, .scene-memory select { display: block; width: 100%; background: var(--sm-surface); color: inherit; border: 1px solid var(--sm-border); border-radius: .4rem; padding: .55rem; margin-top: .3rem; }
+    .scene-memory button { background: #1d4ed8; color: white; border-radius: .4rem; padding: .6rem .9rem; font-size: .875rem; }
+    .scene-memory button:disabled { opacity: .45; cursor: not-allowed; }
+    .scene-memory :focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
+    .scene-memory table { width: 100%; font-size: .875rem; text-align: left; }
+    .scene-memory th, .scene-memory td { padding: .65rem; border-bottom: 1px solid var(--sm-border); vertical-align: top; overflow-wrap: anywhere; }
+    .scene-memory .sm-scroll { overflow-x: auto; margin-top: .8rem; }
+    .scene-memory .sm-result { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid #60a5fa; padding: .8rem; margin-top: 1rem; }
+    .scene-memory fieldset { min-width: 0; }
+    .scene-memory legend { font-weight: 600; margin-bottom: .8rem; }
+    .scene-memory details { margin-top: 1rem; }
+    .scene-memory summary { cursor: pointer; font-weight: 600; }
+    #sm-message { margin-top: 1rem; color: #b91c1c; }
+    .dark #sm-message { color: #fca5a5; }
+    @@media (max-width: 700px) { .scene-memory .sm-grid { grid-template-columns: 1fr; } }
+</style>
+<div class="scene-memory" id="scene-memory">
+    <h1>Scene Memory</h1>
+    <p>Record what exists in a scene and how it changes. Test the saved facts directly, then through an agent.</p>
+    <div id="sm-message" role="alert"></div>
+
+    <section aria-labelledby="sm-workspaces-title">
+        <h2 id="sm-workspaces-title">1. Choose a workspace</h2>
+        <div class="sm-grid">
+            <label>Saved workspace<select id="sm-workspace" aria-label="Saved workspace"></select></label>
+            <form id="sm-create-workspace">
+                <label>New workspace name<input name="name" placeholder="Kitchen story" maxlength="100" required /></label>
+                <button>Create workspace</button>
+            </form>
+        </div>
+        <p>Workspaces keep separate entities and histories. Saved facts survive a Host restart.</p>
+    </section>
+
+    <section aria-labelledby="sm-facts-title">
+        <h2 id="sm-facts-title">2. Add entities and record changes</h2>
+        <p>Use stable names such as ActorA, CupA, Kitchen or MusicA. Each change replaces one property's current value and preserves its history.</p>
+        <div class="sm-grid">
+            <form id="sm-add-entity">
+                <fieldset id="sm-entity-fields" disabled>
+                    <legend>Add an entity</legend>
+                    <label>Name<input name="name" placeholder="CupA" maxlength="100" required /></label>
+                    <label>Type<select name="kind"><option>Object</option><option>Character</option><option>Location</option><option>Audio</option><option>Music</option><option>Other</option></select></label>
+                    <button>Add entity</button>
+                </fieldset>
+            </form>
+            <form id="sm-record-fact">
+                <fieldset id="sm-fact-fields" disabled>
+                    <legend>Record a change</legend>
+                    <label>Entity<select name="entityId" id="sm-fact-entity" required></select></label>
+                    <label>Property<input name="property" placeholder="location" maxlength="100" required /></label>
+                    <label>Value<input name="value" placeholder="On the kitchen table" maxlength="1000" required /></label>
+                    <label>Event note (optional)<input name="note" placeholder="Clip 1: ActorA puts CupA on the table" maxlength="2000" /></label>
+                    <button>Save change</button>
+                </fieldset>
+            </form>
+        </div>
+        <p>Notes are labels for your records. Only the property and value change the saved state.</p>
+        <div id="sm-current" class="sm-scroll"></div>
+        <details><summary id="sm-history-title">Change history</summary><p>Change numbers follow entry order. To correct a fact, record a new value.</p><div id="sm-history" class="sm-scroll"></div></details>
+    </section>
+
+    <div class="sm-grid">
+        <section aria-labelledby="sm-direct-title">
+            <h2 id="sm-direct-title">3. Test memory directly</h2>
+            <p>Choose an entity or mention its exact name. This returns its saved properties without using an agent or AI model.</p>
+            <form id="sm-direct-query">
+                <fieldset id="sm-direct-fields" disabled>
+                    <label>Entity<select name="entityId" id="sm-query-entity"></select></label>
+                    <label>Question (when no entity is selected)<input name="question" placeholder="Where is CupA?" maxlength="2000" /></label>
+                    <label>As of change (optional)<input name="atSequence" type="number" min="0" step="1" placeholder="Latest" /></label>
+                    <button>Query memory</button>
+                </fieldset>
+            </form>
+            <div id="sm-direct-result" class="sm-result" role="status">Results will appear here.</div>
+        </section>
+        <section aria-labelledby="sm-agent-title">
+            <h2 id="sm-agent-title">4. Test through an agent</h2>
+            <p>Create a test agent attached to this workspace. It calls the Scene Memory tool with no AI model. Test agents last until the Host or runtime restarts.</p>
+            <form id="sm-create-agent">
+                <fieldset id="sm-create-agent-fields" disabled>
+                    <label>Agent name<input name="name" placeholder="Continuity test" maxlength="100" required /></label>
+                    <button>Create test agent</button>
+                </fieldset>
+            </form>
+            <form id="sm-agent-query" style="margin-top: 1rem">
+                <fieldset id="sm-agent-fields" disabled>
+                    <label>Test agent<select name="agentId" id="sm-agent" required></select></label>
+                    <label>Question<input name="question" placeholder="Where is CupA?" maxlength="2000" required /></label>
+                    <label>As of change (optional)<input name="atSequence" type="number" min="0" step="1" placeholder="Latest" /></label>
+                    <button>Ask agent</button>
+                </fieldset>
+            </form>
+            <div id="sm-agent-result" class="sm-result" role="status">Agent → Scene Memory tool → saved facts</div>
+        </section>
+    </div>
+</div>
+@section Scripts {
+    <script src="~/js/dashboard/scene-memory.js" asp-append-version="true"></script>
+}

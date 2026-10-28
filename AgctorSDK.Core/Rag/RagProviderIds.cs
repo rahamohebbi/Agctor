@@ -7,8 +7,10 @@ public static class RagProviderIds
     public const string LightRag = "LightRAG";
     public const string Cognee = "Cognee";
     public const string Graphiti = "Graphiti";
+    /// <summary>Scene-state catalog entry; accessed through ISceneMemoryStore rather than a document RAG adapter.</summary>
+    public const string SceneMemory = "SceneMemory";
 
-    /// <summary>Factory/catalog ids in display order.</summary>
+    /// <summary>Document retrieval adapter ids in display order. Scene Memory has a separate store/tool contract.</summary>
     public static readonly IReadOnlyList<string> All = new[] { None, LightRag, Graphiti, Cognee };
 
     /// <summary>Maps aliases to canonical ids; returns None when blank.</summary>
@@ -18,6 +20,9 @@ public static class RagProviderIds
             return None;
 
         var t = providerId.Trim();
+        if (t.Equals(SceneMemory, StringComparison.OrdinalIgnoreCase)
+            || t.Equals("scene-memory", StringComparison.OrdinalIgnoreCase))
+            return SceneMemory;
         if (t.Equals(None, StringComparison.OrdinalIgnoreCase)
             || t.Equals("MarkdownOnly", StringComparison.OrdinalIgnoreCase)
             || t.Equals("markdown_only", StringComparison.OrdinalIgnoreCase))
@@ -40,7 +45,7 @@ public static class RagProviderIds
         return t;
     }
 
-    /// <summary>True for registered v1 catalog ids.</summary>
+    /// <summary>True for registered document retrieval adapter ids, usable as the default RAG provider.</summary>
     public static bool IsKnown(string? providerId)
     {
         var id = Normalize(providerId);

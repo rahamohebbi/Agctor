@@ -28,6 +28,17 @@ public class RagProviderAdapterFactoryTests
     }
 
     [Fact]
+    public void Scene_memory_cannot_accidentally_become_a_document_retrieval_adapter()
+    {
+        using var sp = BuildServices(o => o.DefaultProvider = RagProviderIds.SceneMemory);
+        var factory = sp.GetRequiredService<IRagProviderAdapterFactory>();
+        factory.GetDefaultProviderId().Should().Be(RagProviderIds.None);
+        factory.IsProviderAvailable(RagProviderIds.SceneMemory).Should().BeFalse();
+        var create = () => factory.CreateProvider(RagProviderIds.SceneMemory);
+        create.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
     public void CreateProvider_None_returns_null_adapter()
     {
         using var sp = BuildServices();

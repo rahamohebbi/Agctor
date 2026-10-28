@@ -5,9 +5,10 @@
     var active = Model.Status.Available.FirstOrDefault(p => string.Equals(p.Id, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase));
     var isActive = string.Equals(Model.SelectedProviderId, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase);
     var isMarkdown = string.Equals(Model.SelectedProviderId, RagProviderIds.None, StringComparison.OrdinalIgnoreCase);
+    var isSceneMemory = Model.SelectedModel?.Kind == nameof(RagProviderKind.SceneMemory);
     var overall = Model.Health?.OverallStatus ?? "unknown";
 }
-<div id="rag-providers-dashboard" class="rp-workspace" data-selected-provider="@Model.SelectedProviderId" data-active-provider="@Model.Status.Current.ProviderId">
+<div id="rag-providers-dashboard" class="rp-workspace" data-selected-provider="@Model.SelectedProviderId" data-active-provider="@Model.Status.Current.ProviderId" data-provider-kind="@Model.SelectedModel?.Kind">
     <section class="rp-current" aria-label="Current default retrieval">
         <div><p class="rp-eyebrow">CURRENT DEFAULT</p><h2 id="rag-current-name">@(active?.DisplayName ?? Model.Status.Current.ProviderId)</h2><p class="rp-muted">Used by flows that request the default retrieval provider.</p></div>
         <div class="rp-current-health" id="rag-health-row"><div class="rp-actions"><span id="rag-health-badge" class="rp-badge @(overall == "healthy" ? "rp-good" : "rp-warning")">@HealthLabel(overall)</span><button type="button" id="rag-health-refresh" class="rp-button rp-small">Check health</button></div><span id="rag-health-checked" class="rp-muted" role="status">Checked on page load</span></div>
@@ -23,24 +24,33 @@
                     var current = string.Equals(provider.Id, Model.Status.Current.ProviderId, StringComparison.OrdinalIgnoreCase);
                     <a class="rp-provider" href="/Dashboard/RagProviders?provider=@Uri.EscapeDataString(provider.Id)" data-provider-select="@provider.Id" aria-current="@(selected ? "page" : null)">
                         <span class="rp-provider-title">@ProviderName(provider.Id)</span><span class="rp-provider-description">@ProviderSummary(provider.Id)</span>
-                        <span class="rp-provider-meta">@(provider.RequiresDocker ? "External service" : "No setup needed") @if(current){<span class="rp-badge rp-good">Default</span>} @if(provider.Maturity == "experimental"){<span class="rp-badge rp-warning">Experimental</span>}</span>
+                        <span class="rp-provider-meta"><span class="rp-badge">@KindLabel(provider.Kind)</span> @(provider.RequiresDocker ? "External service" : "Built in") @if(current){<span class="rp-badge rp-good">Default</span>} @if(provider.Maturity == "experimental"){<span class="rp-badge rp-warning">Experimental</span>} @if(provider.Maturity == "mvp"){<span class="rp-badge">MVP</span>}</span>
                     </a>
                 }
             </nav>
         </aside>
         <section class="rp-detail" aria-label="Provider details">
             <header class="rp-detail-heading"><p class="rp-eyebrow">@(isActive ? "DEFAULT PROVIDER" : "EXPLORING PROVIDER")</p><h2>@ProviderName(Model.SelectedProviderId)</h2><p class="rp-muted">@ProviderSummary(Model.SelectedProviderId)</p>
-                @if (!isActive) { <p class="rp-view-note">Your default is still <strong>@(active?.DisplayName ?? Model.Status.Current.ProviderId)</strong>. Use the button in Setup to switch.</p> }
+                @if (isSceneMemory) { <p class="rp-view-note">Use Scene Memory alongside <strong>@(active?.DisplayName ?? Model.Status.Current.ProviderId)</strong>. Attach a scene workspace to a test agent to retrieve its recorded state.</p> }
+                else if (!isActive) { <p class="rp-view-note">Your default is still <strong>@(active?.DisplayName ?? Model.Status.Current.ProviderId)</strong>. Use the button in Setup to switch.</p> }
             </header>
             <div class="rp-tabs" role="tablist" aria-label="Provider workspace">
-                <button type="button" id="rag-tab-setup" role="tab" aria-selected="true" aria-controls="rag-panel-setup">Setup</button>
-                @if (!isMarkdown) {
+                <button type="button" id="rag-tab-setup" role="tab" aria-selected="true" aria-controls="rag-panel-setup">@(isSceneMemory ? "Overview" : "Setup")</button>
+                @if (!isMarkdown && !isSceneMemory) {
                     <button type="button" id="rag-tab-index" role="tab" aria-selected="false" aria-controls="rag-panel-index" tabindex="-1">Index data</button>
                     <button type="button" id="rag-tab-test" role="tab" aria-selected="false" aria-controls="rag-panel-test" tabindex="-1">Test retrieval</button>
                 }
             </div>
             <section id="rag-panel-setup" class="rp-panel" role="tabpanel" aria-labelledby="rag-tab-setup" tabindex="0">
-                @if (isMarkdown) {
+                @if (isSceneMemory) {
+                    <div class="rp-guide" id="rag-scene-memory-overview">
+                        <h3>Remember what changed in your story</h3>
+                        <p class="rp-muted">Create a workspace for your story. Add characters, locations, objects, audio and music, then record their properties and changes.</p>
+                        <p class="rp-muted">Query current state or an earlier change number, with the source records included. Test it directly or through an AGCTOR agent.</p>
+                    </div>
+                    <div class="rp-save"><p class="rp-muted">Built into Host. No model or external service needed.</p><a href="/Dashboard/SceneMemory" id="rag-open-scene-memory" class="rp-button rp-primary">Open Scene Memory</a></div>
+                    <p class="rp-muted">MVP: manually entered facts and exact-name queries. Media analysis and video generation are future work.</p>
+                } else if (isMarkdown) {
                     <div class="rp-markdown"><span class="rp-mode-icon" aria-hidden="true">Aa</span><h3>Your files are the source</h3><p class="rp-muted">Use Project Memory markdown directly, with no external search service or Docker container.</p><p class="rp-muted">Choose an external provider when your flow needs semantic search or graph retrieval. Switching to markdown does not stop existing containers or delete their indexes.</p></div>
                     <form id="rag-save-form"><input type="hidden" name="defaultProvider" value="@Model.SelectedProviderId" /><div class="rp-save"><p class="rp-muted">@(isActive ? "Markdown only is already your default." : "Makes markdown-only retrieval the default for this host.")</p><button type="submit" id="rag-save-btn" class="rp-button rp-primary" disabled="@(isActive ? "disabled" : null)">Use Markdown only</button></div><p id="rag-save-status" class="rp-status" role="status"></p></form>
                 } else if (Model.SelectedModel != null) {
@@ -135,7 +145,7 @@
                     <details class="rp-advanced"><summary>Provider details & requirements</summary><p class="rp-muted">@Model.SelectedModel.Limitations</p><p class="rp-muted">@Model.SelectedModel.DeploymentNotes</p><p class="rp-muted">Supported flow strategies: @string.Join(", ", Model.SelectedModel.ContextStrategies)</p><p class="rp-muted">Host settings are stored in appsettings.User.json. Docker services may also need their own environment file.</p></details>
                 }
             </section>
-            @if (!isMarkdown && Model.SelectedModel != null) {
+            @if (!isMarkdown && !isSceneMemory && Model.SelectedModel != null) {
                 <section id="rag-panel-index" class="rp-panel hidden" role="tabpanel" aria-labelledby="rag-tab-index" tabindex="0">
                     <h3>Make your project searchable</h3><p class="rp-muted">Preview the Project Memory files, then send them to <strong>@Model.SelectedModel.DisplayName</strong> for indexing. This uses its saved connection and does not change your default provider.</p><p class="rp-draft-notice hidden" data-draft-notice>Save or discard your connection edits in Setup before indexing.</p>
                     <div id="rag-ingest-panel" data-provider-id="@Model.SelectedProviderId">
@@ -211,12 +221,14 @@
 
 @functions {
     private static string HealthLabel(string status) => status.ToLowerInvariant() switch { "healthy" => "Healthy", "degraded" => "Needs attention", _ => "Status unknown" };
-    private static string ProviderName(string id) => id == RagProviderIds.None ? "Markdown only" : id;
+    private static string ProviderName(string id) => id switch { RagProviderIds.None => "Markdown only", RagProviderIds.SceneMemory => "Scene Memory", _ => id };
+    private static string KindLabel(string kind) => kind switch { nameof(RagProviderKind.SceneMemory) => "Scene Memory", nameof(RagProviderKind.Markdown) => "File memory", _ => "Knowledge RAG" };
     private static string ProviderSummary(string id) => id switch {
         RagProviderIds.None => "Read your project's markdown files directly.",
         RagProviderIds.LightRag => "Find relevant knowledge with vector and graph search.",
         RagProviderIds.Graphiti => "Retrieve relationships and facts that change over time.",
         RagProviderIds.Cognee => "Build a memory graph and retrieve context for your agents.",
+        RagProviderIds.SceneMemory => "Recall entity state and changes across your story.",
         _ => "Explore this retrieval provider."
     };
 
