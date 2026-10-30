@@ -11,7 +11,48 @@
     .scene-memory section { background: var(--sm-surface); border: 1px solid var(--sm-border); border-radius: .75rem; padding: 1.25rem; margin-top: 1.25rem; }
     .scene-memory .sm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
     .scene-memory label { display: block; font-size: .875rem; margin-bottom: .9rem; }
-    .scene-memory input, .scene-memory select { display: block; width: 100%; background: var(--sm-surface); color: inherit; border: 1px solid var(--sm-border); border-radius: .4rem; padding: .55rem; margin-top: .3rem; }
+    .scene-memory input, .scene-memory select, .scene-memory textarea { display: block; width: 100%; background: var(--sm-surface); color: inherit; border: 1px solid var(--sm-border); border-radius: .4rem; padding: .55rem; margin-top: .3rem; }
+    .scene-memory textarea { resize: vertical; min-height: 8rem; }
+    .scene-memory .sm-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .8rem 0; }
+    .scene-memory button.sm-secondary { background: var(--sm-surface); color: inherit; border: 1px solid var(--sm-border); }
+    .scene-memory .sm-preview { border: 1px solid #93c5fd; border-radius: .6rem; padding: 1rem; margin-top: 1rem; }
+    .scene-memory .sm-preview h3 { font-weight: 650; }
+    .scene-memory .sm-editor-section { border-top: 1px solid var(--sm-border); padding-top: 1rem; margin-top: 1rem; }
+    .scene-memory .sm-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: .75rem; }
+    .scene-memory .sm-editor-heading h4 { font-weight: 650; margin: 0; }
+    .scene-memory .sm-editor-list { display: grid; gap: .75rem; margin-top: .75rem; }
+    .scene-memory .sm-editor-row { border: 1px solid var(--sm-border); border-radius: .55rem; padding: .8rem; background: color-mix(in srgb, var(--sm-surface) 94%, #60a5fa 6%); }
+    .scene-memory .sm-editor-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+    .scene-memory .sm-editor-row label { margin-bottom: 0; }
+    .scene-memory .sm-editor-row select[multiple] { min-height: 6.8rem; }
+    .scene-memory .sm-editor-row .sm-actions { margin-bottom: 0; }
+    .scene-memory .sm-editor-row button { padding: .4rem .65rem; }
+    .scene-memory .sm-danger { color: #b91c1c !important; border-color: #fca5a5 !important; }
+    .dark .scene-memory .sm-danger { color: #fecaca !important; border-color: #991b1b !important; }
+    .scene-memory .sm-hint { font-size: .875rem; }
+    .scene-memory .sm-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 1rem; margin: 1rem 0; align-items: start; }
+    .scene-memory .sm-card { border: 1px solid var(--sm-border); border-radius: .75rem; padding: 1rem; min-width: 0; overflow-wrap: anywhere; }
+    .scene-memory .sm-card h4 { font-size: 1.05rem; font-weight: 650; }
+    .scene-memory .sm-badge { display: inline-block; font-size: .75rem; color: var(--sm-muted); background: color-mix(in srgb, var(--sm-surface) 88%, #60a5fa); border-radius: 1rem; padding: .2rem .6rem; margin: .3rem 0 .7rem; }
+    .scene-memory .sm-delta { display: grid; grid-template-columns: 1fr auto 1fr; gap: .65rem; padding: .65rem 0; border-bottom: 1px solid var(--sm-border); align-items: start; }
+    .scene-memory .sm-delta small { display: block; color: var(--sm-muted); font-size: .75rem; margin-bottom: .25rem; }
+    .scene-memory .sm-delta strong { color: #166534; font-weight: 600; }
+    .dark .scene-memory .sm-delta strong { color: #86efac; }
+    .scene-memory .sm-card p { margin-bottom: .5rem; }
+    .scene-memory .sm-card details { font-size: .875rem; }
+    .scene-memory .sm-card blockquote { border-left: 2px solid #93c5fd; padding-left: .65rem; margin: .65rem 0; }
+    .scene-memory .sm-card-editor { padding: 1.25rem; }
+    .scene-memory .sm-card-editor h4 { font-weight: 650; margin-bottom: .75rem; }
+    .scene-memory .sm-edit-dialog { width: min(720px, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); margin: auto; padding: 0; background: var(--sm-surface); color: inherit; border: 1px solid var(--sm-border); border-radius: 1rem; box-shadow: 0 24px 80px #0004; overflow-y: auto; }
+    .scene-memory .sm-edit-dialog::backdrop { background: #0f172a99; }
+    .scene-memory .sm-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.25rem; position: sticky; top: 0; background: var(--sm-surface); border-bottom: 1px solid var(--sm-border); z-index: 1; }
+    .scene-memory .sm-dialog-header h3 { font-size: 1.15rem; font-weight: 650; }
+    .scene-memory .sm-dialog-footer { position: sticky; bottom: 0; background: var(--sm-surface); border-top: 1px solid var(--sm-border); padding: .75rem 1.25rem; margin: 0; }
+    .scene-memory .sm-check { display: flex; align-items: center; gap: .5rem; }
+    .scene-memory input[type=checkbox] { width: auto; display: inline-block; margin: 0; }
+    .scene-memory .sm-review-footer { border-top: 1px solid var(--sm-border); padding-top: .7rem; }
+    .scene-memory .sm-questions { white-space: pre-wrap; color: #92400e; }
+    .dark .scene-memory .sm-questions { color: #fcd34d; }
     .scene-memory button { background: #1d4ed8; color: white; border-radius: .4rem; padding: .6rem .9rem; font-size: .875rem; }
     .scene-memory button:disabled { opacity: .45; cursor: not-allowed; }
     .scene-memory :focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
@@ -19,17 +60,45 @@
     .scene-memory th, .scene-memory td { padding: .65rem; border-bottom: 1px solid var(--sm-border); vertical-align: top; overflow-wrap: anywhere; }
     .scene-memory .sm-scroll { overflow-x: auto; margin-top: .8rem; }
     .scene-memory .sm-result { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid #60a5fa; padding: .8rem; margin-top: 1rem; }
+    .scene-memory .sm-progress { border: 1px solid #93c5fd; background: color-mix(in srgb, var(--sm-surface) 92%, #dbeafe 8%); border-radius: .65rem; padding: 1rem; margin-top: 1rem; }
+    .scene-memory .sm-progress-header { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+    .scene-memory .sm-progress h3 { font-weight: 650; margin: 0; }
+    .scene-memory .sm-diagnostics { margin: 1rem 0; border: 1px solid #f59e0b; border-radius: .65rem; padding: 1rem; }
+    .scene-memory .sm-diagnostics h3, .scene-memory .sm-diagnostics h4 { font-weight: 650; margin-bottom: .5rem; }
+    .scene-memory .sm-diagnostics article + article { border-top: 1px solid var(--sm-border); margin-top: 1rem; padding-top: 1rem; }
+    .scene-memory .sm-diagnostics blockquote { border-left: 3px solid #f59e0b; padding: .5rem .75rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: .5rem 0; }
+    .scene-memory .sm-diagnostics pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 22rem; overflow-y: auto; }
+    .scene-memory .sm-diagnostics mark { background: #fef08a; color: #422006; }
+    .scene-memory .sm-progress-time { color: var(--sm-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .scene-memory .sm-progress-track { height: .45rem; overflow: hidden; border-radius: 999px; background: #bfdbfe; margin: .8rem 0; }
+    .scene-memory .sm-progress-track::before { content: ""; display: block; width: 38%; height: 100%; border-radius: inherit; background: #2563eb; animation: sm-progress-slide 1.25s ease-in-out infinite; }
+    .scene-memory .sm-progress-steps { display: flex; flex-wrap: wrap; gap: .45rem .9rem; margin: .65rem 0 0; padding: 0; list-style: none; font-size: .875rem; color: var(--sm-muted); }
+    .scene-memory .sm-progress-steps li::before { content: "○"; margin-right: .35rem; }
+    .scene-memory .sm-progress-steps li[data-state="done"] { color: #166534; }
+    .scene-memory .sm-progress-steps li[data-state="done"]::before { content: "✓"; }
+    .scene-memory .sm-progress-steps li[data-state="active"] { color: #1d4ed8; font-weight: 600; }
+    .dark .scene-memory .sm-progress-steps li[data-state="done"] { color: #86efac; }
+    .dark .scene-memory .sm-progress-steps li[data-state="active"] { color: #bfdbfe; }
+    @@keyframes sm-progress-slide { from { transform: translateX(-120%); } to { transform: translateX(310%); } }
     .scene-memory fieldset { min-width: 0; }
     .scene-memory legend { font-weight: 600; margin-bottom: .8rem; }
     .scene-memory details { margin-top: 1rem; }
     .scene-memory summary { cursor: pointer; font-weight: 600; }
+    .scene-memory .sm-page-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+    .scene-memory .sm-page-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+    .scene-memory .sm-link-button { display: inline-flex; padding: .58rem .85rem; border: 1px solid #4f46e5; color: #4338ca; border-radius: .55rem; font-weight: 600; white-space: nowrap; }
+    .dark .scene-memory .sm-link-button { color: #c7d2fe; border-color: #818cf8; }
     #sm-message { margin-top: 1rem; color: #b91c1c; }
     .dark #sm-message { color: #fca5a5; }
-    @@media (max-width: 700px) { .scene-memory .sm-grid { grid-template-columns: 1fr; } }
+    @@media (max-width: 700px) {
+        .scene-memory .sm-grid, .scene-memory .sm-editor-fields { grid-template-columns: 1fr; }
+    }
 </style>
 <div class="scene-memory" id="scene-memory">
-    <h1>Scene Memory</h1>
-    <p>Record what exists in a scene and how it changes. Test the saved facts directly, then through an agent.</p>
+    <div class="sm-page-heading">
+        <div><h1>Scene Memory</h1><p>Describe a scene. Discover its characters, objects and places, then follow what changes from one prompt to the next.</p></div>
+        <div class="sm-page-actions"><a id="sm-open-timeline" href="/Dashboard/SceneMemoryTimeline" class="sm-link-button">Shot timeline</a><a href="/Dashboard/SceneMemoryEvaluation" class="sm-link-button">Evaluation suite</a></div>
+    </div>
     <div id="sm-message" role="alert"></div>
 
     <section aria-labelledby="sm-workspaces-title">
@@ -44,8 +113,109 @@
         <p>Workspaces keep separate entities and histories. Saved facts survive a Host restart.</p>
     </section>
 
+    <section aria-labelledby="sm-prompt-title">
+        <h2 id="sm-prompt-title">2. Describe what happens</h2>
+        <p>No Studio setup needed. New things are discovered from your prompt; existing entities are reused. Review the interpretation before saving it to this story.</p>
+        <form id="sm-prompt-form">
+            <fieldset id="sm-prompt-fields" disabled>
+                <div class="sm-grid">
+                    <label>Interpretation model (Ollama)<select id="sm-prompt-model" name="model"><option value="">Use default chat model</option></select></label>
+                    <label>Scene name (optional)<input id="sm-scene-label" name="sceneLabel" maxlength="100" placeholder="Scene 1 · Kitchen" /></label>
+                    <label>Shot name (optional)<input id="sm-prompt-label" name="label" maxlength="100" placeholder="Wide establishing shot" /></label>
+                    <label>Planned duration (seconds, optional)<input id="sm-shot-duration" name="durationSeconds" type="number" min="0.1" max="3600" step="0.1" placeholder="5" /></label>
+                </div>
+                <button type="button" id="sm-refresh-models" class="sm-secondary">Refresh models</button>
+                <p id="sm-model-status" class="sm-hint" role="status">Use a chat model that supports structured output.</p>
+                <label>Scene prompt<textarea id="sm-prompt-text" name="prompt" maxlength="12000" required placeholder="Maya enters the kitchen carrying a red mug. She places it on the counter."></textarea></label>
+                <div class="sm-actions" aria-label="Example prompts">
+                    <span class="sm-hint">Try in a new workspace:</span>
+                    <button type="button" class="sm-secondary" id="sm-example-discover">1. Discover a scene</button>
+                    <button type="button" class="sm-secondary" id="sm-example-transfer">2. Continue the story</button>
+                    <button type="button" class="sm-secondary" id="sm-example-ambiguity">3. Test ambiguity</button>
+                </div>
+                <label for="sm-example-scenario">Explore more situations</label>
+                <select id="sm-example-scenario">
+                    <option value="">Choose an example to load…</option>
+                    <option value="discard">Discard and recover an object</option>
+                    <option value="mortality">Death and continuing history</option>
+                    <option value="ability">Abilities, sickness and recovery</option>
+                    <option value="place">Places, weather and movement</option>
+                    <option value="object">Damage, repair, locks and power</option>
+                    <option value="intention">Plans and things that did not happen</option>
+                </select>
+                <p id="sm-example-expectation" class="sm-hint">Examples fill the prompt only. Use a new workspace to explore a separate story.</p>
+                <button id="sm-interpret">Preview scene changes</button>
+            </fieldset>
+        </form>
+        <p id="sm-prompt-status" role="status" aria-live="polite" style="margin-top:1rem"></p>
+        <div id="sm-prompt-diagnostics" class="sm-diagnostics" role="region" aria-label="Why the preview failed" hidden>
+            <h3 tabindex="-1" id="sm-diagnostics-heading">Why the preview failed</h3>
+            <p id="sm-diagnostics-summary"></p>
+            <div id="sm-diagnostics-issues"></div>
+            <details><summary>Correction history and technical details</summary><pre id="sm-diagnostics-report"></pre></details>
+        </div>
+        <section id="sm-preview-progress" class="sm-progress" role="region" aria-label="Scene preview progress" aria-live="polite" aria-atomic="true" hidden>
+            <div class="sm-progress-header"><h3 id="sm-preview-progress-title">Preparing your scene preview</h3><span id="sm-preview-progress-time" class="sm-progress-time">0:00</span></div>
+            <div class="sm-progress-track" aria-hidden="true"></div>
+            <p id="sm-preview-progress-detail" class="sm-hint">Sending your prompt to the selected model. Your saved scene will not change.</p>
+            <ol class="sm-progress-steps" aria-label="Preview progress">
+                <li id="sm-progress-sent" data-state="active">Prompt sent</li>
+                <li id="sm-progress-model">Model interpreting the scene</li>
+                <li id="sm-progress-ready">Preview ready to review</li>
+            </ol>
+            <div class="sm-actions"><button type="button" id="sm-cancel-interpret" class="sm-secondary">Cancel preview</button></div>
+        </section>
+        <div id="sm-prompt-preview" class="sm-preview" hidden>
+            <h3 id="sm-review-heading" tabindex="-1">What will change</h3>
+            <p id="sm-preview-summary"></p>
+            <div id="sm-prompt-questions" class="sm-questions" role="status"></div>
+            <p class="sm-hint">Review the before and after. Edit a card or exclude changes you don’t want. Nothing is saved to your story until you apply.</p>
+            <fieldset id="sm-review-controls">
+            <div id="sm-change-cards" class="sm-cards"></div>
+            <details id="sm-story-events"><summary id="sm-story-events-title">Story moments</summary><div id="sm-event-cards" class="sm-cards"></div></details>
+            <details id="sm-advanced-editor"><summary>Advanced · detailed changes and JSON</summary>
+            <p class="sm-hint">Use these fields for custom properties or precise ordering. Check your changes before applying.</p>
+            <div class="sm-editor-section">
+                <div class="sm-editor-heading"><h4>Entities</h4><button id="sm-add-preview-entity" type="button" class="sm-secondary">Add entity</button></div>
+                <div id="sm-preview-entities" class="sm-editor-list"></div>
+            </div>
+            <div class="sm-editor-section">
+                <div class="sm-editor-heading"><h4>Detailed changes</h4><button id="sm-add-preview-change" type="button" class="sm-secondary">Add state change</button></div>
+                <p class="sm-hint">Order matters for transfers, recovery, death and other multi-step actions. Relationship targets use entities; attributes use a text value.</p>
+                <div id="sm-preview-changes" class="sm-editor-list"></div>
+            </div>
+            <div class="sm-editor-section">
+                <div class="sm-editor-heading"><h4>Events and participants</h4><button id="sm-add-preview-event" type="button" class="sm-secondary">Add event</button></div>
+                <div id="sm-preview-events" class="sm-editor-list"></div>
+            </div>
+            <div class="sm-actions">
+                <button id="sm-save-corrections" type="button">Check changes</button>
+            </div>
+            <details><summary>Resulting state</summary><div id="sm-preview-state" class="sm-scroll"></div></details>
+            <details><summary>Interpretation JSON</summary><pre id="sm-preview-json" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
+            </details>
+            <p id="sm-editor-status" class="sm-hint" role="status" aria-live="polite"></p>
+            <div class="sm-actions sm-review-footer"><button id="sm-apply-prompt" type="button">Apply to scene</button><button id="sm-reset-corrections" type="button" class="sm-secondary">Restore original</button><button id="sm-discard-prompt" type="button" class="sm-secondary">Discard preview</button></div>
+            </fieldset>
+        </div>
+        <p class="sm-hint">These are story intentions from your text, not observations of a generated video. Applying adds to this workspace's history. To try a different take independently, use a separate workspace.</p>
+        <details><summary id="sm-prompts-title">Applied prompts</summary><div id="sm-prompt-history" class="sm-scroll"></div></details>
+    </section>
+
+    <dialog id="sm-edit-dialog" class="sm-edit-dialog" aria-labelledby="sm-edit-dialog-title">
+        <div class="sm-dialog-header">
+            <h3 id="sm-edit-dialog-title">Edit scene change</h3>
+            <button id="sm-close-editor" type="button" class="sm-secondary" aria-label="Close editor without saving">Close ×</button>
+        </div>
+        <fieldset id="sm-guided-fields">
+            <div id="sm-guided-editor" class="sm-card-editor"></div>
+            <div id="sm-guided-actions" class="sm-actions sm-dialog-footer"></div>
+        </fieldset>
+    </dialog>
+
     <section aria-labelledby="sm-facts-title">
-        <h2 id="sm-facts-title">2. Add entities and record changes</h2>
+        <h2 id="sm-facts-title">3. Inspect the scene</h2>
+        <details><summary>Manual setup and corrections</summary>
         <p>Use stable names such as ActorA, CupA, Kitchen or MusicA. Each change replaces one property's current value and preserves its history.</p>
         <div class="sm-grid">
             <form id="sm-add-entity">
@@ -67,15 +237,36 @@
                 </fieldset>
             </form>
         </div>
-        <p>Notes are labels for your records. Only the property and value change the saved state.</p>
+        <p>Property values and notes are stored as written. Text such as “giving it to ActorB” does not transfer an object. Use the action below to record who holds it.</p>
+        <form id="sm-set-holder">
+            <fieldset id="sm-holder-fields" disabled>
+                <legend>Set holder / transfer</legend>
+                <p>Choose the object and its new holder. The previous holder automatically stops holding it; history is preserved.</p>
+                <div class="sm-grid">
+                    <label>Object to transfer<select name="objectId" id="sm-holder-object" required></select></label>
+                    <label>New holder<select name="holderId" id="sm-holder-character" required></select></label>
+                </div>
+                <p id="sm-holder-preview" role="status"></p>
+                <label>Transfer note (optional)<input name="note" placeholder="ActorA gives Apple to ActorB" maxlength="2000" /></label>
+                <button>Save holder</button>
+            </fieldset>
+        </form>
+        </details>
+        <h3 style="font-weight:600;margin-top:1rem">Current possession</h3>
+        <div id="sm-possession" class="sm-scroll"></div>
+        <h3 style="font-weight:600;margin-top:1rem">Saved properties</h3>
+        <p class="sm-hint">Abilities, health, activity and physical state are independent. Events below preserve what happened to everyone involved.</p>
         <div id="sm-current" class="sm-scroll"></div>
+        <h3>Story events</h3>
+        <p class="sm-hint">Occurred and ongoing events are distinguished from plans, hypothetical actions and negations. Entries follow recording order; they are not video timestamps.</p>
+        <div id="sm-events" class="sm-scroll"></div>
         <details><summary id="sm-history-title">Change history</summary><p>Change numbers follow entry order. To correct a fact, record a new value.</p><div id="sm-history" class="sm-scroll"></div></details>
     </section>
 
     <div class="sm-grid">
         <section aria-labelledby="sm-direct-title">
-            <h2 id="sm-direct-title">3. Test memory directly</h2>
-            <p>Choose an entity or mention its exact name. This returns its saved properties without using an agent or AI model.</p>
+            <h2 id="sm-direct-title">4. Test memory directly</h2>
+            <p>Choose an object to see its holder, or a character to see what they hold. Other saved properties are included. You can also mention an entity's exact name in a question.</p>
             <form id="sm-direct-query">
                 <fieldset id="sm-direct-fields" disabled>
                     <label>Entity<select name="entityId" id="sm-query-entity"></select></label>
@@ -87,7 +278,7 @@
             <div id="sm-direct-result" class="sm-result" role="status">Results will appear here.</div>
         </section>
         <section aria-labelledby="sm-agent-title">
-            <h2 id="sm-agent-title">4. Test through an agent</h2>
+            <h2 id="sm-agent-title">5. Test through an agent</h2>
             <p>Create a test agent attached to this workspace. It calls the Scene Memory tool with no AI model. Test agents last until the Host or runtime restarts.</p>
             <form id="sm-create-agent">
                 <fieldset id="sm-create-agent-fields" disabled>

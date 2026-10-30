@@ -1,0 +1,63 @@
+@page
+@{
+    ViewData["Title"] = "Scene Memory timeline";
+}
+<style>
+    .smt { --border:#d1d5db; --surface:#fff; --muted:#5b6474; --soft:#f8fafc; --accent:#4f46e5; --line:#c7d2fe; }
+    .dark .smt { --border:#4b5563; --surface:#1f2937; --muted:#cbd5e1; --soft:#111827; --accent:#a5b4fc; --line:#4338ca; }
+    .smt h1 { font-size:1.8rem; font-weight:700; } .smt h2 { font-size:1.15rem; font-weight:650; } .smt h3 { font-weight:650; }
+    .smt p { color:var(--muted); } .smt a { color:var(--accent); font-weight:600; }
+    .smt .head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; }
+    .smt .nav { display:flex; gap:.55rem; flex-wrap:wrap; }
+    .smt .panel { margin-top:1.2rem; padding:1.2rem; border:1px solid var(--border); border-radius:.85rem; background:var(--surface); }
+    .smt label { display:block; font-size:.875rem; font-weight:600; } .smt input,.smt select { width:100%; margin-top:.35rem; padding:.58rem; border:1px solid var(--border); border-radius:.55rem; background:var(--surface); color:inherit; }
+    .smt button { padding:.58rem .82rem; border-radius:.55rem; background:#4f46e5; color:#fff; font-weight:650; }
+    .smt button.secondary { color:inherit; background:transparent; border:1px solid var(--border); } .smt button:disabled { opacity:.45; }
+    .smt .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.7rem; margin-top:1rem; }
+    .smt .metric { padding:.75rem; background:var(--soft); border:1px solid var(--border); border-radius:.65rem; } .smt .metric strong { display:block; font-size:1.25rem; } .smt .metric span { font-size:.78rem; color:var(--muted); }
+    .smt .timeline { margin-top:1.2rem; overflow-x:auto; padding:.25rem .15rem 1rem; }
+    .smt .scene { min-width:max-content; margin-bottom:1rem; }
+    .smt .scene-title { display:flex; align-items:center; gap:.6rem; margin-bottom:.55rem; color:var(--muted); font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
+    .smt .scene-title::after { content:""; height:2px; background:var(--line); flex:1; min-width:4rem; }
+    .smt .shot-row { display:flex; align-items:stretch; gap:.65rem; padding-left:.2rem; }
+    .smt .shot { position:relative; width:13rem; min-height:7rem; text-align:left; color:inherit; background:var(--surface); border:1px solid var(--border); padding:.75rem; }
+    .smt .shot::before { content:""; position:absolute; width:.7rem; height:.7rem; border-radius:50%; left:-.36rem; top:1rem; background:var(--accent); border:2px solid var(--surface); }
+    .smt .shot[aria-pressed=true] { border:2px solid #4f46e5; background:color-mix(in srgb,var(--surface) 92%,#818cf8); box-shadow:0 5px 18px #312e8122; }
+    .smt .shot small { color:var(--muted); display:block; margin-bottom:.35rem; } .smt .shot strong { display:block; line-height:1.25; } .smt .shot span { display:block; color:var(--muted); margin-top:.45rem; font-size:.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .smt .detail-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(18rem,.65fr); gap:1rem; margin-top:1rem; }
+    .smt .card { border:1px solid var(--border); border-radius:.7rem; padding:1rem; background:var(--surface); margin-top:.75rem; }
+    .smt .shot-meta { display:flex; gap:.45rem; flex-wrap:wrap; margin:.55rem 0; } .smt .pill { border-radius:999px; padding:.22rem .55rem; background:var(--soft); color:var(--muted); font-size:.77rem; }
+    .smt blockquote { margin-top:.8rem; padding:.7rem .85rem; border-left:3px solid #818cf8; background:var(--soft); white-space:pre-wrap; }
+    .smt .delta { display:grid; grid-template-columns:minmax(7rem,.8fr) minmax(0,1fr) auto minmax(0,1fr); gap:.65rem; align-items:center; border-bottom:1px solid var(--border); padding:.65rem 0; }
+    .smt .delta .entity { font-weight:600; } .smt .delta .before { color:var(--muted); } .smt .delta .after { color:#047857; font-weight:600; } .dark .smt .delta .after { color:#6ee7b7; }
+    .smt .state-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(14rem,1fr)); gap:.7rem; margin-top:.7rem; }
+    .smt .entity-card { border:1px solid var(--border); border-radius:.65rem; padding:.75rem; } .smt .entity-card h4 { font-weight:650; } .smt .entity-card small { color:var(--muted); }
+    .smt .entity-card dl { margin-top:.5rem; } .smt .entity-card div { display:flex; justify-content:space-between; gap:.6rem; font-size:.82rem; border-top:1px solid var(--border); padding:.35rem 0; } .smt dt { color:var(--muted); } .smt dd { text-align:right; }
+    .smt .events li,.smt .introduced li { margin:.45rem 0; } .smt .empty { text-align:center; padding:2rem; color:var(--muted); }
+    .smt .detail-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+    .smt dialog { width:min(540px,calc(100vw - 2rem)); padding:0; border:1px solid var(--border); border-radius:.85rem; background:var(--surface); color:inherit; box-shadow:0 24px 80px #0005; } .smt dialog::backdrop { background:#0f172a99; }
+    .smt .dialog-body { padding:1.1rem; } .smt .dialog-head,.smt .dialog-foot { display:flex; align-items:center; justify-content:space-between; gap:.7rem; padding:1rem 1.1rem; border-bottom:1px solid var(--border); } .smt .dialog-foot { border-top:1px solid var(--border); border-bottom:0; justify-content:flex-end; }
+    #smt-error { color:#b91c1c; margin-top:.7rem; } .dark #smt-error { color:#fca5a5; }
+    @@media(max-width:780px) { .smt .head { flex-direction:column; } .smt .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .smt .detail-grid { grid-template-columns:1fr; } .smt .delta { grid-template-columns:1fr; gap:.2rem; } .smt .delta .arrow { display:none; } }
+</style>
+<div class="smt" id="scene-memory-timeline">
+    <div class="head"><div><p>SCENE MEMORY / CONTINUITY</p><h1>Shot and scene timeline</h1><p>Follow the story shot by shot. Select any point to see what changed and what is still true.</p></div><div class="nav"><a id="smt-edit-memory" href="/Dashboard/SceneMemory">Edit memory</a><a href="/Dashboard/SceneMemoryEvaluation">Evaluation suite</a></div></div>
+    <section class="panel">
+        <label for="smt-workspace">Story workspace</label><select id="smt-workspace"></select>
+        <div id="smt-metrics" class="metrics" hidden><div class="metric"><strong id="smt-scenes">0</strong><span>Scenes</span></div><div class="metric"><strong id="smt-shots">0</strong><span>Shots</span></div><div class="metric"><strong id="smt-runtime">—</strong><span>Planned runtime</span></div><div class="metric"><strong id="smt-changes">0</strong><span>State entries</span></div></div>
+        <p id="smt-baseline" hidden></p>
+        <div id="smt-error" role="alert"></div>
+    </section>
+    <section class="panel" id="smt-story" hidden>
+        <div class="head"><div><h2>Story order</h2><p>Scenes and shots stay in applied order. Horizontal scrolling never changes the story.</p></div><div class="detail-actions"><button id="smt-previous" class="secondary" type="button">← Previous</button><button id="smt-next" class="secondary" type="button">Next →</button></div></div>
+        <div id="smt-timeline" class="timeline" aria-label="Story timeline"></div>
+    </section>
+    <section class="panel" id="smt-detail" hidden aria-live="polite">
+        <div class="head"><div><p id="smt-position"></p><h2 id="smt-shot-title"></h2></div><button id="smt-edit" class="secondary" type="button">Edit shot details</button></div>
+        <div id="smt-shot-meta" class="shot-meta"></div><blockquote id="smt-prompt"></blockquote>
+        <div class="detail-grid"><div><div class="card"><h3>What changed in this shot</h3><div id="smt-deltas"></div></div><div class="card"><h3>State after this shot</h3><p>Everything Scene Memory knows at this point in the story.</p><div id="smt-state" class="state-grid"></div></div></div><aside><div class="card"><h3>Introduced here</h3><ul id="smt-introduced" class="introduced"></ul></div><div class="card"><h3>Story moments</h3><ul id="smt-events" class="events"></ul></div></aside></div>
+    </section>
+    <section class="panel empty" id="smt-empty" hidden><h2>No shots yet</h2><p>Apply a scene prompt in Scene Memory, then return here to see its timeline.</p><a id="smt-create-shot" href="/Dashboard/SceneMemory">Create the first shot</a></section>
+    <dialog id="smt-edit-dialog" aria-labelledby="smt-edit-title"><div class="dialog-head"><h2 id="smt-edit-title">Edit shot details</h2><button id="smt-edit-close" class="secondary" type="button">Close ×</button></div><form id="smt-edit-form"><div class="dialog-body"><label>Scene name<input name="sceneLabel" maxlength="100" placeholder="Scene 1 · Kitchen" /></label><label>Shot name<input name="shotLabel" maxlength="100" placeholder="Wide establishing shot" /></label><label>Planned duration (seconds)<input name="durationSeconds" type="number" min="0.1" max="3600" step="0.1" placeholder="Not set" /></label><p>Changing these details reorganizes the visual timeline only. Story state and sequence order are unchanged.</p></div><div class="dialog-foot"><button id="smt-edit-cancel" class="secondary" type="button">Cancel</button><button type="submit">Save details</button></div></form></dialog>
+</div>
+@section Scripts { <script src="~/js/dashboard/scene-memory-timeline.js" asp-append-version="true"></script> }

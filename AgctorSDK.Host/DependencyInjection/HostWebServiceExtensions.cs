@@ -48,6 +48,10 @@ public static class HostWebServiceExtensions
 
         services.AddAgctorSceneMemory(configuration["Agctor:SceneMemory:StorePath"]
             ?? Path.Combine(AppContext.BaseDirectory, "data", "scene-memory.db"));
+        services.AddHttpClient(OllamaScenePromptInterpreter.ClientName, client => client.Timeout = TimeSpan.FromMinutes(5));
+        services.AddSingleton<IScenePromptInterpreter, OllamaScenePromptInterpreter>();
+        services.AddSingleton<ScenePromptService>();
+        services.AddSingleton<SceneMemoryEvaluationService>();
 
         var sessionStorePath = configuration.GetValue<string>("Agctor:SessionStorePath")
             ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");

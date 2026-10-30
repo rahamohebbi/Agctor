@@ -1,0 +1,62 @@
+@page
+@{
+    ViewData["Title"] = "Scene Memory evaluation";
+}
+<style>
+    .sme { --border:#d1d5db; --surface:#fff; --muted:#5b6474; --soft:#f8fafc; --good:#047857; --bad:#b91c1c; }
+    .dark .sme { --border:#4b5563; --surface:#1f2937; --muted:#cbd5e1; --soft:#111827; --good:#6ee7b7; --bad:#fca5a5; }
+    .sme h1 { font-size:1.8rem; font-weight:700; } .sme h2 { font-size:1.12rem; font-weight:650; }
+    .sme p { color:var(--muted); } .sme a { color:#4f46e5; font-weight:600; }
+    .dark .sme a { color:#a5b4fc; }
+    .sme .head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+    .sme .panel { margin-top:1.2rem; padding:1.2rem; border:1px solid var(--border); border-radius:.8rem; background:var(--surface); }
+    .sme .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+    .sme label { display:block; font-weight:600; margin-top:.75rem; }
+    .sme select { width:100%; margin-top:.35rem; border:1px solid var(--border); border-radius:.55rem; padding:.6rem; background:var(--surface); }
+    .sme select[multiple] { min-height:8.5rem; }
+    .sme button { border-radius:.55rem; padding:.62rem .9rem; background:#4f46e5; color:#fff; font-weight:650; }
+    .sme button.secondary { color:inherit; background:transparent; border:1px solid var(--border); }
+    .sme button:disabled { opacity:.5; cursor:not-allowed; }
+    .sme .actions { display:flex; gap:.65rem; flex-wrap:wrap; align-items:center; margin-top:1rem; }
+    .sme .categories { display:flex; gap:.45rem; flex-wrap:wrap; margin-top:.5rem; }
+    .sme .categories label { display:flex; gap:.4rem; align-items:center; margin:0; padding:.42rem .6rem; border:1px solid var(--border); border-radius:999px; font-weight:500; }
+    .sme .metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:.75rem; margin-top:1rem; }
+    .sme .metric { background:var(--soft); border:1px solid var(--border); border-radius:.7rem; padding:.8rem; }
+    .sme .metric strong { display:block; font-size:1.35rem; } .sme .metric span { color:var(--muted); font-size:.82rem; }
+    .sme progress { width:100%; height:.75rem; margin-top:1rem; accent-color:#4f46e5; }
+    .sme table { width:100%; border-collapse:collapse; margin-top:.75rem; }
+    .sme th,.sme td { text-align:left; padding:.65rem; border-bottom:1px solid var(--border); vertical-align:top; }
+    .sme th { font-size:.78rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .sme .scroll { overflow:auto; } .sme .pass { color:var(--good); font-weight:650; } .sme .fail { color:var(--bad); font-weight:650; }
+    .sme details { margin-top:.35rem; } .sme summary { cursor:pointer; font-weight:600; }
+    .sme pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:26rem; overflow:auto; background:var(--soft); padding:.7rem; border-radius:.5rem; font-size:.78rem; }
+    .sme .hint { font-size:.88rem; color:var(--muted); } #sme-error { color:var(--bad); margin-top:.75rem; }
+    @@media(max-width:800px) { .sme .grid { grid-template-columns:1fr; } .sme .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .sme .head { flex-direction:column; } }
+</style>
+<div class="sme" id="scene-memory-evaluation">
+    <div class="head"><div><p class="hint">SCENE MEMORY / QUALITY</p><h1>Evaluation suite</h1><p>Compare local models against the same 100 scene-understanding cases without changing any saved story.</p></div><a href="/Dashboard/SceneMemory">← Scene Memory</a></div>
+
+    <section class="panel" aria-labelledby="sme-config-title">
+        <h2 id="sme-config-title">Choose models and test scope</h2>
+        <div class="grid">
+            <div><label for="sme-models">Installed Ollama models <span class="hint">(up to 3)</span></label><select id="sme-models" multiple aria-describedby="sme-model-hint"></select><p id="sme-model-hint" class="hint">Select more than one model to compare accuracy and speed.</p></div>
+            <div><label for="sme-limit">Number of cases per model</label><select id="sme-limit"><option value="10">10 · quick check</option><option value="25">25 · focused run</option><option value="50">50 · broad run</option><option value="100">100 · full suite</option></select><p class="hint">Runs are sequential to fit a 16 GB machine. A full local run can take a while.</p></div>
+        </div>
+        <label>Categories</label><div id="sme-categories" class="categories"></div>
+        <div class="actions"><button id="sme-start" type="button">Run evaluation</button><button id="sme-cancel" type="button" class="secondary" hidden>Cancel run</button><button id="sme-refresh-models" type="button" class="secondary">Refresh models</button></div>
+        <div id="sme-error" role="alert"></div>
+    </section>
+
+    <section class="panel" id="sme-run-panel" aria-labelledby="sme-run-title" hidden>
+        <div class="head"><div><h2 id="sme-run-title">Run progress</h2><p id="sme-run-status" class="hint" role="status" aria-live="polite"></p></div><button id="sme-export" type="button" class="secondary" disabled>Download JSON</button></div>
+        <progress id="sme-progress" value="0" max="1"></progress>
+        <div class="metrics"><div class="metric"><strong id="sme-completed">0</strong><span>Completed</span></div><div class="metric"><strong id="sme-passed">0</strong><span>Passed</span></div><div class="metric"><strong id="sme-rate">—</strong><span>Pass rate</span></div><div class="metric"><strong id="sme-latency">—</strong><span>Average latency</span></div><div class="metric"><strong id="sme-memory">—</strong><span>Host memory change</span></div></div>
+    </section>
+
+    <section class="panel" id="sme-comparison-panel" hidden aria-labelledby="sme-comparison-title"><h2 id="sme-comparison-title">Model comparison</h2><div id="sme-comparison" class="scroll"></div></section>
+    <section class="panel" id="sme-results-panel" hidden aria-labelledby="sme-results-title">
+        <div class="head"><div><h2 id="sme-results-title">Case results</h2><p class="hint">Open a failed case to see the missing, wrong, or invented state.</p></div><label>Show<select id="sme-result-filter"><option value="failed">Failures</option><option value="all">All results</option><option value="passed">Passes</option></select></label></div>
+        <div id="sme-results" class="scroll"></div>
+    </section>
+</div>
+@section Scripts { <script src="~/js/dashboard/scene-memory-evaluation.js" asp-append-version="true"></script> }

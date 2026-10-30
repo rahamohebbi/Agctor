@@ -20,6 +20,51 @@ public sealed class SceneMemoryTests : IDisposable
     private SqliteSceneMemoryStore Store() => new(Database);
 
     [Fact]
+    public async Task Exchanged_objects_have_one_holder_and_reverse_queries_preserve_history_after_reopening()
+    {
+        var store = Store();
+        var workspace = await store.CreateAsync("Exchange");
+        foreach (var (name, kind) in new[] { ("ActorA", "Character"), ("ActorB", "Character"), ("Apple", "Object"), ("Bread", "Object") })
+            workspace = await store.AddEntityAsync(workspace.Id, name, kind);
+        string Id(string name) => workspace.Entities.Single(e => e.Name == name).Id;
+        await store.RecordAsync(workspace.Id, Id("ActorA"), "apple", "giving it to ActorB", "Original text");
+        Assert.Equal("no_facts", (await store.QueryAsync(workspace.Id, new(Id("Apple")))).Status);
+        await store.SetHolderAsync(workspace.Id, Id("Apple"), Id("ActorA"), null);
+        await store.SetHolderAsync(workspace.Id, Id("Bread"), Id("ActorB"), null);
+        await store.SetHolderAsync(workspace.Id, Id("Bread"), Id("ActorA"), "ActorB gives Bread to ActorA");
+        // A character can hold multiple objects; transferring one does not replace the other.
+        Assert.Equal(2, (await store.QueryAsync(workspace.Id, new(Id("ActorA")))).Facts.Count(f => f.Property == "holding"));
+        await store.SetHolderAsync(workspace.Id, Id("Apple"), Id("ActorB"), "ActorA gives Apple to ActorB");
+        store = Store();
+        Assert.Equal("ActorB", Assert.Single((await store.QueryAsync(workspace.Id, new(Id("Apple")))).Facts).Value);
+        Assert.Equal("ActorA", Assert.Single((await store.QueryAsync(workspace.Id, new(Id("Bread")))).Facts).Value);
+        var a = await store.QueryAsync(workspace.Id, new(Question: "What is ActorA holding?"));
+        var holding = Assert.Single(a.Facts.Where(f => f.Property == "holding"));
+        Assert.Equal("Bread", holding.Value);
+        Assert.Equal(4, holding.Sequence);
+        Assert.Equal(Id("Bread"), holding.RelatedEntityId);
+        Assert.Equal("Apple", Assert.Single((await store.QueryAsync(workspace.Id, new(Id("ActorB")))).Facts).Value);
+        Assert.Equal("ActorA", Assert.Single((await store.QueryAsync(workspace.Id, new(Id("Apple"), AtSequence: 3))).Facts).Value);
+        Assert.Equal("Bread", Assert.Single((await store.QueryAsync(workspace.Id, new(Id("ActorB"), AtSequence: 3))).Facts).Value);
+        Assert.Equal(5, (await store.GetAsync(workspace.Id)).History.Count);
+    }
+
+    [Fact]
+    public async Task Possession_rejects_foreign_entities_and_invalid_kinds_without_appending_changes()
+    {
+        var store = Store();
+        var workspace = await store.CreateAsync("Scene");
+        workspace = await store.AddEntityAsync(workspace.Id, "Apple", "Object");
+        workspace = await store.AddEntityAsync(workspace.Id, "ActorA", "Character");
+        var other = await store.CreateAsync("Other");
+        other = await store.AddEntityAsync(other.Id, "ActorB", "Character");
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => store.SetHolderAsync(workspace.Id, workspace.Entities[0].Id, other.Entities[0].Id, null));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SetHolderAsync(workspace.Id, workspace.Entities[1].Id, workspace.Entities[0].Id, null));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.RecordAsync(workspace.Id, workspace.Entities[0].Id, "held_by", "ActorA", null));
+        Assert.Empty((await store.GetAsync(workspace.Id)).History);
+    }
+
+    [Fact]
     public async Task Provider_registration_preserves_custom_store_and_supports_shared_retrieval_contract()
     {
         var store = Store();

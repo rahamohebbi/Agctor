@@ -17,6 +17,38 @@ public sealed class SceneMemoryIntegrationTests : IClassFixture<SceneMemoryWebAp
     public SceneMemoryIntegrationTests(SceneMemoryWebApplicationFactory factory) => _client = factory.CreateClient();
 
     [Fact]
+    public async Task Holder_endpoint_updates_object_and_character_queries_including_agent_and_history()
+    {
+        var created = await _client.PostAsJsonAsync("/api/scene-memory/workspaces", new { name = "Exchange" });
+        created.EnsureSuccessStatusCode();
+        var workspace = (await created.Content.ReadFromJsonAsync<SceneWorkspace>())!;
+        var path = $"/api/scene-memory/workspaces/{workspace.Id}";
+        foreach (var (name, kind) in new[] { ("ActorA", "Character"), ("ActorB", "Character"), ("Apple", "Object") })
+        {
+            var added = await _client.PostAsJsonAsync(path + "/entities", new { name, kind });
+            added.EnsureSuccessStatusCode();
+            workspace = (await added.Content.ReadFromJsonAsync<SceneWorkspace>())!;
+        }
+        string Id(string name) => workspace.Entities.Single(e => e.Name == name).Id;
+        foreach (var name in new[] { "ActorA", "ActorB" })
+            (await _client.PostAsJsonAsync(path + "/holder", new { objectId = Id("Apple"), holderId = Id(name), note = "Transfer" })).EnsureSuccessStatusCode();
+        var direct = await _client.PostAsJsonAsync(path + "/query", new SceneQuery(Id("Apple")));
+        Assert.Equal("ActorB", Assert.Single((await direct.Content.ReadFromJsonAsync<SceneQueryResult>())!.Facts).Value);
+        var old = await _client.PostAsJsonAsync(path + "/query", new SceneQuery(Id("Apple"), AtSequence: 1));
+        Assert.Equal("ActorA", Assert.Single((await old.Content.ReadFromJsonAsync<SceneQueryResult>())!.Facts).Value);
+        var agent = await _client.PostAsJsonAsync(path + "/agents", new { name = "Holder test" });
+        agent.EnsureSuccessStatusCode();
+        var agentId = (await agent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+        var reply = await _client.PostAsJsonAsync(path + $"/agents/{agentId}/query", new SceneQuery(Question: "What is ActorB holding?"));
+        reply.EnsureSuccessStatusCode();
+        var result = (await reply.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("result")
+            .Deserialize<SceneQueryResult>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        Assert.Equal("Apple", Assert.Single(result.Facts).Value);
+        var invalid = await _client.PostAsJsonAsync(path + "/holder", new { objectId = Id("ActorA"), holderId = Id("Apple") });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
     public async Task Host_can_record_query_and_create_a_real_agent_that_retrieves_the_same_history()
     {
         var created = await _client.PostAsJsonAsync("/api/scene-memory/workspaces", new { name = "Kitchen story" });
@@ -124,6 +156,14 @@ public sealed class SceneMemoryIntegrationTests : IClassFixture<SceneMemoryWebAp
         var page = await _client.GetStringAsync("/Dashboard/SceneMemory");
         Assert.Contains("Test memory directly", page);
         Assert.Contains("scene-memory.js", page);
+        Assert.Contains("href=\"/Dashboard/SceneMemoryEvaluation\"", page);
+        Assert.Contains("href=\"/Dashboard/SceneMemoryTimeline\"", page);
+        var evaluationPage = await _client.GetStringAsync("/Dashboard/SceneMemoryEvaluation");
+        Assert.Contains("Evaluation suite", evaluationPage);
+        Assert.Contains("scene-memory-evaluation.js", evaluationPage);
+        var catalog = await _client.GetFromJsonAsync<JsonElement>("/api/scene-memory/evaluations/catalog");
+        Assert.Equal(100, catalog.GetProperty("count").GetInt32());
+        Assert.Equal(100, catalog.GetProperty("cases").GetArrayLength());
         var invalid = await _client.PostAsJsonAsync("/api/scene-memory/workspaces", new { name = " " });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         var missing = await _client.PostAsJsonAsync("/api/scene-memory/workspaces/missing/query", new SceneQuery(Question: "CupA"));
@@ -131,7 +171,7 @@ public sealed class SceneMemoryIntegrationTests : IClassFixture<SceneMemoryWebAp
     }
 }
 
-public sealed class SceneMemoryWebApplicationFactory : AgctorWebApplicationFactory
+public class SceneMemoryWebApplicationFactory : AgctorWebApplicationFactory
 {
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "agctor-scene-host-" + Guid.NewGuid().ToString("N"));
 
