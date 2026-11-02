@@ -11,7 +11,7 @@ using Microsoft.Data.Sqlite;
 namespace AgctorSDK.Core.SceneMemory;
 
 /// <summary>Small durable scene store. SQLite transactions serialize changes even across store instances.</summary>
-public sealed class SqliteSceneMemoryStore : ISceneMemoryStore
+public sealed partial class SqliteSceneMemoryStore : ISceneMemoryStore
 {
     private readonly string _connectionString;
     private static readonly string[] Kinds = { "Character", "Object", "Location", "Audio", "Music", "Other" };
@@ -26,6 +26,13 @@ public sealed class SqliteSceneMemoryStore : ISceneMemoryStore
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = "CREATE TABLE IF NOT EXISTS scene_workspaces (id TEXT PRIMARY KEY, document TEXT NOT NULL)";
+        command.ExecuteNonQuery();
+        command.CommandText = """
+            CREATE TABLE IF NOT EXISTS scene_workspace_connections (
+                application TEXT NOT NULL, project_id TEXT NOT NULL, story_id TEXT NOT NULL,
+                workspace_id TEXT NOT NULL UNIQUE,
+                PRIMARY KEY (application, project_id, story_id))
+            """;
         command.ExecuteNonQuery();
     }
 

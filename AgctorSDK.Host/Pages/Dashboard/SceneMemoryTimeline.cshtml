@@ -15,15 +15,37 @@
     .smt button.secondary { color:inherit; background:transparent; border:1px solid var(--border); } .smt button:disabled { opacity:.45; }
     .smt .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.7rem; margin-top:1rem; }
     .smt .metric { padding:.75rem; background:var(--soft); border:1px solid var(--border); border-radius:.65rem; } .smt .metric strong { display:block; font-size:1.25rem; } .smt .metric span { font-size:.78rem; color:var(--muted); }
-    .smt .timeline { margin-top:1.2rem; overflow-x:auto; padding:.25rem .15rem 1rem; }
-    .smt .scene { min-width:max-content; margin-bottom:1rem; }
-    .smt .scene-title { display:flex; align-items:center; gap:.6rem; margin-bottom:.55rem; color:var(--muted); font-size:.8rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; }
-    .smt .scene-title::after { content:""; height:2px; background:var(--line); flex:1; min-width:4rem; }
-    .smt .shot-row { display:flex; align-items:stretch; gap:.65rem; padding-left:.2rem; }
-    .smt .shot { position:relative; width:13rem; min-height:7rem; text-align:left; color:inherit; background:var(--surface); border:1px solid var(--border); padding:.75rem; }
-    .smt .shot::before { content:""; position:absolute; width:.7rem; height:.7rem; border-radius:50%; left:-.36rem; top:1rem; background:var(--accent); border:2px solid var(--surface); }
-    .smt .shot[aria-pressed=true] { border:2px solid #4f46e5; background:color-mix(in srgb,var(--surface) 92%,#818cf8); box-shadow:0 5px 18px #312e8122; }
-    .smt .shot small { color:var(--muted); display:block; margin-bottom:.35rem; } .smt .shot strong { display:block; line-height:1.25; } .smt .shot span { display:block; color:var(--muted); margin-top:.45rem; font-size:.78rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .smt .story-panel { padding:1.5rem; overflow:hidden; }
+    .smt .story-head { display:flex; justify-content:space-between; align-items:center; gap:1rem; }
+    .smt .story-head p { font-size:.875rem; margin-top:.25rem; }
+    .smt .story-nav { display:flex; align-items:center; gap:.25rem; flex-shrink:0; padding:.25rem; border:1px solid var(--border); border-radius:.75rem; background:var(--soft); }
+    .smt .story-nav button { border:0; padding:.45rem .65rem; min-height:2.25rem; font-size:.8rem; white-space:nowrap; }
+    .smt .story-nav button:not(:disabled):hover { background:var(--surface); box-shadow:0 1px 4px #0f172a12; }
+    .smt .story-position { color:var(--muted); min-width:3rem; text-align:center; font-size:.75rem; font-variant-numeric:tabular-nums; }
+    .smt button:focus-visible { outline:3px solid var(--accent); outline-offset:4px; }
+    .smt .timeline { margin-top:1.6rem; overflow-x:auto; padding:.25rem .25rem 1rem; scrollbar-width:thin; scrollbar-color:var(--line) transparent; scroll-snap-type:x proximity; }
+    .smt .scene { min-width:max-content; }
+    .smt .scene + .scene { margin-top:1.75rem; }
+    .smt .scene-title { display:flex; align-items:center; gap:.65rem; margin-bottom:1.7rem; color:var(--muted); font-size:.75rem; font-weight:700; letter-spacing:.04em; }
+    .smt .scene-name { text-transform:uppercase; max-width:24rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .smt .scene-count { font-size:.7rem; font-weight:500; letter-spacing:0; padding:.15rem .5rem; border:1px solid var(--border); border-radius:999px; background:var(--soft); }
+    .smt .shot-row { display:flex; align-items:stretch; gap:1rem; position:relative; }
+    .smt .shot-row::before { content:""; position:absolute; left:1.25rem; right:1.25rem; top:-.8rem; height:2px; background:var(--line); }
+    .smt .shot { display:flex; flex-direction:column; position:relative; flex:0 0 17.5rem; width:17.5rem; min-height:13rem; text-align:left; color:inherit; background:var(--surface); border:1px solid var(--border); border-radius:.85rem; padding:1rem; scroll-snap-align:start; transition:border-color .15s,box-shadow .15s,background .15s; }
+    .smt .shot::before { content:""; position:absolute; width:.65rem; height:.65rem; border-radius:50%; left:1rem; top:-1.06rem; background:var(--surface); border:2px solid var(--line); }
+    .smt .shot:hover { border-color:var(--accent); box-shadow:0 4px 14px #312e8110; }
+    .smt .shot[aria-pressed=true] { border-color:var(--accent); background:color-mix(in srgb,var(--surface) 96%,#818cf8); box-shadow:0 0 0 1px var(--accent),0 6px 16px #312e8112; }
+    .smt .shot[aria-pressed=true]::before { background:var(--accent); border-color:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb,var(--surface) 85%,#818cf8); }
+    .smt .shot-top { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-bottom:.75rem; min-height:1.3rem; }
+    .smt .shot-number { color:var(--muted); font-size:.68rem; font-weight:700; letter-spacing:.08em; }
+    .smt .shot-selected { color:var(--accent); background:color-mix(in srgb,var(--surface) 88%,#818cf8); border-radius:999px; padding:.15rem .5rem; font-size:.65rem; font-weight:650; }
+    .smt .shot strong { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; font-size:.95rem; line-height:1.4; font-weight:650; min-height:2.65rem; overflow-wrap:anywhere; }
+    .smt .shot-excerpt { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; color:var(--muted); margin:.55rem 0 1rem; font-size:.8rem; line-height:1.55; font-weight:400; overflow-wrap:anywhere; }
+    .smt .shot-footer { display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-top:auto; padding-top:.75rem; border-top:1px solid var(--border); color:var(--muted); font-size:.7rem; font-weight:500; }
+    .smt .shot-duration { display:inline-flex; align-items:center; gap:.35rem; }
+    .smt .shot-duration::before { content:""; width:.7rem; height:.7rem; border:1px solid currentColor; border-radius:50%; background:linear-gradient(currentColor,currentColor) 50% 25% / 1px 35% no-repeat,linear-gradient(currentColor,currentColor) 70% 55% / 30% 1px no-repeat; }
+    @@media(max-width:600px) { .smt .story-panel { padding:1rem; } .smt .story-head { align-items:flex-start; flex-direction:column; gap:.8rem; } .smt .shot { flex-basis:15.5rem; width:15.5rem; } .smt .scene-name { max-width:14rem; } }
+    @@media(prefers-reduced-motion:reduce) { .smt .shot { transition:none; } }
     .smt .detail-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(18rem,.65fr); gap:1rem; margin-top:1rem; }
     .smt .card { border:1px solid var(--border); border-radius:.7rem; padding:1rem; background:var(--surface); margin-top:.75rem; }
     .smt .shot-meta { display:flex; gap:.45rem; flex-wrap:wrap; margin:.55rem 0; } .smt .pill { border-radius:999px; padding:.22rem .55rem; background:var(--soft); color:var(--muted); font-size:.77rem; }
@@ -41,15 +63,15 @@
     @@media(max-width:780px) { .smt .head { flex-direction:column; } .smt .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .smt .detail-grid { grid-template-columns:1fr; } .smt .delta { grid-template-columns:1fr; gap:.2rem; } .smt .delta .arrow { display:none; } }
 </style>
 <div class="smt" id="scene-memory-timeline">
-    <div class="head"><div><p>SCENE MEMORY / CONTINUITY</p><h1>Shot and scene timeline</h1><p>Follow the story shot by shot. Select any point to see what changed and what is still true.</p></div><div class="nav"><a id="smt-edit-memory" href="/Dashboard/SceneMemory">Edit memory</a><a href="/Dashboard/SceneMemoryEvaluation">Evaluation suite</a></div></div>
+    <div class="head"><div><p>SCENE MEMORY / CONTINUITY</p><h1>Shot and scene timeline</h1><p>Follow the story shot by shot. Select any point to see what changed and what is still true.</p></div><div class="nav"><a id="smt-edit-memory" href="/Dashboard/SceneMemory">Edit memory</a><a href="/Dashboard/SceneMemoryEvaluation">Evaluation suite</a><a href="/swagger/scene-memory">Scene Memory API</a></div></div>
     <section class="panel">
         <label for="smt-workspace">Story workspace</label><select id="smt-workspace"></select>
         <div id="smt-metrics" class="metrics" hidden><div class="metric"><strong id="smt-scenes">0</strong><span>Scenes</span></div><div class="metric"><strong id="smt-shots">0</strong><span>Shots</span></div><div class="metric"><strong id="smt-runtime">—</strong><span>Planned runtime</span></div><div class="metric"><strong id="smt-changes">0</strong><span>State entries</span></div></div>
         <p id="smt-baseline" hidden></p>
         <div id="smt-error" role="alert"></div>
     </section>
-    <section class="panel" id="smt-story" hidden>
-        <div class="head"><div><h2>Story order</h2><p>Scenes and shots stay in applied order. Horizontal scrolling never changes the story.</p></div><div class="detail-actions"><button id="smt-previous" class="secondary" type="button">← Previous</button><button id="smt-next" class="secondary" type="button">Next →</button></div></div>
+    <section class="panel story-panel" id="smt-story" hidden>
+        <div class="story-head"><div><h2>Story order</h2><p>Select a shot to explore its changes.</p></div><nav class="story-nav" aria-label="Shot navigation"><button id="smt-previous" class="secondary" type="button" aria-label="Previous shot">← Previous</button><span id="smt-story-position" class="story-position" aria-live="polite"></span><button id="smt-next" class="secondary" type="button" aria-label="Next shot">Next →</button></nav></div>
         <div id="smt-timeline" class="timeline" aria-label="Story timeline"></div>
     </section>
     <section class="panel" id="smt-detail" hidden aria-live="polite">

@@ -11,7 +11,14 @@
     function node(tag, text, className) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text; if(className)n.className=className; return n; }
     const prompts = () => workspace?.prompts || [];
     const entity = id => workspace.entities.find(e => e.id === id);
-    const shotName = (shot,index) => shot.label || `Shot ${index + 1}`;
+    function shotPresentation(shot,index) {
+        // Use an explicit prompt heading as a display title; saved metadata stays unchanged.
+        const prompt=(shot.prompt||'').trim(), firstLine=prompt.split(/\r?\n/,1)[0];
+        const timedHeading=firstLine.match(/^\d{1,2}:\d{2}\s*[–—-]\s*\d{1,2}:\d{2}\s*[—–-]\s*(.+)$/);
+        const hasHeading=firstLine.length<=120 && /\r?\n\s*\r?\n/.test(prompt.slice(firstLine.length,firstLine.length+6)) && (timedHeading || (firstLine===firstLine.toUpperCase() && /[A-Z]/.test(firstLine)));
+        return {title:shot.label || (hasHeading ? timedHeading?.[1] || firstLine : `Shot ${index+1}`), excerpt:hasHeading ? prompt.slice(firstLine.length).trim() : prompt};
+    }
+    const shotName = (shot,index) => shotPresentation(shot,index).title;
     const sceneName = shot => shot.sceneLabel || 'Unassigned scene';
     function formatDuration(seconds) { if (!seconds) return 'Duration not set'; const minutes=Math.floor(seconds/60), rest=Math.round((seconds%60)*10)/10; return minutes ? `${minutes}m ${rest ? `${rest}s` : ''}`.trim() : `${rest}s`; }
     function groupScenes(items) {
@@ -44,12 +51,31 @@
         el('smt-story').hidden=!list.length; el('smt-detail').hidden=!list.length; el('smt-empty').hidden=!!list.length;
         if(!list.length)return; selectedIndex=Math.max(0,Math.min(selectedIndex,list.length-1));
         const target=el('smt-timeline'); target.replaceChildren(); groups.forEach(group => {
-            const section=node('section',undefined,'scene'); const title=node('div',group.name,'scene-title'); const row=node('div',undefined,'shot-row');
-            group.shots.forEach(({shot,index}) => { const button=node('button',undefined,'shot'); button.type='button'; button.setAttribute('aria-pressed',String(index===selectedIndex)); button.setAttribute('aria-label',`${group.name}, ${shotName(shot,index)}`); button.append(node('small',`Shot ${index+1}`),node('strong',shotName(shot,index)),node('span',shot.prompt),node('span',formatDuration(shot.durationSeconds))); button.addEventListener('click',()=>select(index)); row.append(button); });
+            const section=node('section',undefined,'scene'), title=node('div',undefined,'scene-title'), sceneLabel=node('span',group.name,'scene-name'), row=node('div',undefined,'shot-row');
+            sceneLabel.title=group.name;
+            title.append(sceneLabel,node('span',`${group.shots.length} shot${group.shots.length===1?'':'s'}`,'scene-count'));
+            group.shots.forEach(({shot,index}) => {
+                const presentation=shotPresentation(shot,index), button=node('button',undefined,'shot'), top=node('span',undefined,'shot-top'), footer=node('span',undefined,'shot-footer');
+                button.type='button'; button.title=presentation.title;
+                button.setAttribute('aria-pressed',String(index===selectedIndex));
+                button.setAttribute('aria-label',`Shot ${index+1}: ${presentation.title}, ${group.name}`);
+                top.append(node('span',`SHOT ${String(index+1).padStart(2,'0')}`,'shot-number'));
+                if(index===selectedIndex) top.append(node('span','Viewing','shot-selected'));
+                const moments=workspace.history.filter(f=>f.promptId===shot.id && f.isEvent).length;
+                footer.append(node('span',formatDuration(shot.durationSeconds),'shot-duration'),node('span',`${moments} moment${moments===1?'':'s'}`));
+                button.append(top,node('strong',presentation.title),node('span',presentation.excerpt,'shot-excerpt'),footer);
+                button.addEventListener('click',()=>select(index)); row.append(button);
+            });
             section.append(title,row); target.append(section);
         }); renderDetail();
     }
-    function select(index) { selectedIndex=index; renderTimeline(); document.querySelectorAll('.smt .shot')[index]?.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}); }
+    function select(index) {
+        const restoreFocus=el('smt-timeline').contains(document.activeElement);
+        selectedIndex=index; renderTimeline();
+        const selected=document.querySelectorAll('.smt .shot')[selectedIndex];
+        if(restoreFocus)selected?.focus({preventScroll:true});
+        selected?.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'nearest',inline:'center'});
+    }
     function renderDetail() {
         const shot=prompts()[selectedIndex], before=stateBefore(shot), after=stateAfter(shot), shotFacts=workspace.history.filter(f=>f.promptId===shot.id && !f.isEvent), changedKeys=[...new Set(shotFacts.map(f=>`${f.entityId}:${f.property.toLowerCase()}`))];
         el('smt-position').textContent=`${sceneName(shot)} · Shot ${selectedIndex+1} of ${prompts().length}`; el('smt-shot-title').textContent=shotName(shot,selectedIndex); el('smt-prompt').textContent=shot.prompt;
@@ -63,6 +89,7 @@
         introducedIds.map(entity).filter(Boolean).forEach(item=>introduced.append(node('li',`${item.name} · ${item.kind}`))); if(!introduced.children.length)introduced.append(node('li','No new entities recorded.'));
         const events=el('smt-events'); events.replaceChildren(); workspace.history.filter(f=>f.promptId===shot.id&&f.isEvent).forEach(event=>events.append(node('li',`[${event.eventMode}] ${event.value}`))); if(!events.children.length)events.append(node('li','No story moments recorded.'));
         el('smt-previous').disabled=selectedIndex===0; el('smt-next').disabled=selectedIndex===prompts().length-1;
+        el('smt-story-position').textContent=`${selectedIndex+1} / ${prompts().length}`;
     }
     async function loadWorkspace(id) { el('smt-error').textContent=''; if(!id){workspace=null;return;} try { workspace=await api(`/api/scene-memory/workspaces/${encodeURIComponent(id)}`); selectedIndex=0; const memoryUrl=`/Dashboard/SceneMemory?workspaceId=${encodeURIComponent(id)}`; el('smt-edit-memory').href=memoryUrl; el('smt-create-shot').href=memoryUrl; renderTimeline(); const url=new URL(location.href); url.searchParams.set('workspaceId',id); history.replaceState(null,'',url); } catch(error){el('smt-error').textContent=error.message;} }
     async function init() {

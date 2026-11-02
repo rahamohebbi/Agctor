@@ -46,6 +46,16 @@ builder.Services.AddSwaggerGen(c =>
         Version = "v1",
         Description = "HTTP + MCP Integration Gateway for the AGCTOR Agent Framework"
     });
+    c.SwaggerDoc("scene-memory-v1", new()
+    {
+        Title = "Scene Memory integration API",
+        Version = "v1",
+        Description = "Standalone HTTP contract for Character/Object/Location Studios, prompt review and shot timelines. " +
+            "No AGCTOR assembly is required by clients. Intended for a private service connection; application/project IDs are not authorization."
+    });
+    c.DocInclusionPredicate((document, api) => document == "scene-memory-v1"
+        ? api.GroupName == "scene-memory-v1"
+        : document == "v1" && api.GroupName != "scene-memory-v1");
 
     var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
     var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
@@ -159,7 +169,14 @@ AgctorSDK.CodeGraph.Snippets.SnippetProviderRegistry.Register(snippetResolver);
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
+    c.SwaggerEndpoint("/swagger/scene-memory-v1/swagger.json", "Scene Memory v1");
+    c.RoutePrefix = "swagger/scene-memory";
+    c.DocumentTitle = "Scene Memory integration API";
+});
+app.UseSwaggerUI(c =>
+{
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "AGCTOR Host API v1");
+    c.SwaggerEndpoint("/swagger/scene-memory-v1/swagger.json", "Scene Memory integration API v1");
     c.RoutePrefix = "swagger";
 });
 

@@ -29,6 +29,26 @@ public sealed class ScenePromptIntegrationTests : IClassFixture<ScenePromptWebAp
         return (await response.Content.ReadFromJsonAsync<ScenePromptReview>())!;
     }
 
+    [Theory]
+    [InlineData("Maya holds a mug.", false)]
+    [InlineData("Diagnostic failure", true)]
+    public async Task Progress_stream_returns_one_result_or_diagnostic_and_never_writes(string prompt, bool failed)
+    {
+        var path = await CreateWorkspace();
+        var response = await _client.PostAsJsonAsync(path + "/prompts/preview-stream", new { prompt, model = "test" });
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("application/x-ndjson", response.Content.Headers.ContentType?.MediaType);
+        var events = (await response.Content.ReadAsStringAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => JsonDocument.Parse(line).RootElement.Clone()).ToArray();
+        Assert.Equal("progress", events[0].GetProperty("type").GetString());
+        Assert.Equal(failed ? "error" : "result", events.Last().GetProperty("type").GetString());
+        if (failed)
+            Assert.Equal("invalid_property", events.Last().GetProperty("detail").GetProperty("diagnostics").GetProperty("issues")[0].GetProperty("code").GetString());
+        else
+            Assert.Equal(2, events.Last().GetProperty("review").GetProperty("proposed").GetProperty("entities").GetArrayLength());
+        Assert.Empty((await _client.GetFromJsonAsync<SceneWorkspace>(path))!.Entities);
+    }
+
     [Fact]
     public async Task Preview_does_not_write_apply_is_atomic_and_followup_receives_persisted_context()
     {
@@ -248,6 +268,13 @@ public sealed class ScenePromptWebApplicationFactory : SceneMemoryWebApplication
 
 public sealed class TestScenePromptInterpreter : IScenePromptInterpreter
 {
+    public Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace workspace, string prompt, string model,
+        IProgress<ScenePromptProgress>? progress, CancellationToken ct)
+    {
+        progress?.Report(new("interpreting", 1, 1, 0, "Interpreting section 1 of 1."));
+        return InterpretAsync(workspace, prompt, model, ct);
+    }
+
     public Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace workspace, string prompt, string model, CancellationToken ct)
     {
         if (prompt == "Offline") throw new HttpRequestException("Test model unavailable.");
@@ -624,6 +651,9 @@ public sealed class OllamaScenePromptInterpreterTests
         else Assert.Empty((await interpreter.InterpretAsync(workspace, "A scene", "local-model", default)).Changes);
         Assert.Equal("local-model", handler.Payload.GetProperty("model").GetString());
         Assert.False(handler.Payload.GetProperty("stream").GetBoolean());
+        Assert.Equal(0, handler.Payload.GetProperty("options").GetProperty("presence_penalty").GetInt32());
+        Assert.Equal(0, handler.Payload.GetProperty("options").GetProperty("frequency_penalty").GetInt32());
+        Assert.Equal(1, handler.Payload.GetProperty("options").GetProperty("repeat_penalty").GetInt32());
         Assert.Equal("object", handler.Payload.GetProperty("format").GetProperty("type").GetString());
         Assert.Contains("A scene", handler.Payload.GetProperty("messages")[1].GetProperty("content").GetString());
     }

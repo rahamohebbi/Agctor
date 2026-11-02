@@ -48,7 +48,9 @@ public static class HostWebServiceExtensions
 
         services.AddAgctorSceneMemory(configuration["Agctor:SceneMemory:StorePath"]
             ?? Path.Combine(AppContext.BaseDirectory, "data", "scene-memory.db"));
-        services.AddHttpClient(OllamaScenePromptInterpreter.ClientName, client => client.Timeout = TimeSpan.FromMinutes(5));
+        services.Configure<ScenePromptRuntimeOptions>(configuration.GetSection("Agctor:SceneMemory:Interpretation"));
+        // The interpreter owns per-call and whole-preview deadlines, including cancellation during repairs.
+        services.AddHttpClient(OllamaScenePromptInterpreter.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton<IScenePromptInterpreter, OllamaScenePromptInterpreter>();
         services.AddSingleton<ScenePromptService>();
         services.AddSingleton<SceneMemoryEvaluationService>();

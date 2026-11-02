@@ -12,6 +12,10 @@ public interface ISceneMemoryStore
     Task<IReadOnlyList<SceneWorkspace>> ListAsync(CancellationToken cancellationToken = default);
     /// <summary>Creates an empty workspace.</summary>
     Task<SceneWorkspace> CreateAsync(string name, CancellationToken cancellationToken = default);
+    /// <summary>Creates or resolves a workspace by the caller's stable application/project/story identity.</summary>
+    Task<SceneWorkspace> ConnectAsync(string name, SceneWorkspaceConnection connection, string? workspaceId = null, CancellationToken cancellationToken = default);
+    /// <summary>Upserts a Studio instance or explicitly links an existing discovered entity. Does not rewrite story facts.</summary>
+    Task<SceneWorkspace> SyncStudioAsync(string workspaceId, string instanceKey, SceneStudioInput input, CancellationToken cancellationToken = default);
     /// <summary>Loads a workspace or throws KeyNotFoundException.</summary>
     Task<SceneWorkspace> GetAsync(string workspaceId, CancellationToken cancellationToken = default);
     /// <summary>Adds a named entity; names are unique within a workspace.</summary>
@@ -32,9 +36,9 @@ public interface ISceneMemoryStore
 /// <summary>A scene workspace and its append-only fact history.</summary>
 public sealed record SceneWorkspace(string Id, string Name, DateTimeOffset CreatedAt,
     IReadOnlyList<SceneEntity> Entities, IReadOnlyList<SceneFact> History,
-    IReadOnlyList<ScenePromptRecord>? Prompts = null);
+    IReadOnlyList<ScenePromptRecord>? Prompts = null, SceneWorkspaceConnection? Connection = null);
 /// <summary>A stable identity with a human-maintained type.</summary>
-public sealed record SceneEntity(string Id, string Name, string Kind);
+public sealed record SceneEntity(string Id, string Name, string Kind, SceneStudioBinding? Studio = null, long? CreatedAtSequence = null);
 /// <summary>An explicit state change; sequence is entry order, not inferred story time.</summary>
 public sealed record SceneFact(long Sequence, string EntityId, string Property, string Value, string Note, DateTimeOffset RecordedAt,
     string? RelatedEntityId = null, bool Removed = false, string? PromptId = null,

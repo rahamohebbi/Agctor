@@ -199,11 +199,16 @@
         const container = el('sm-diagnostics-issues');
         container.replaceChildren();
         el('sm-diagnostics-summary').textContent = `${diagnostics.model ? `Model: ${diagnostics.model}. ` : ''}` +
-            `${diagnostics.attempts?.length || 1} interpretation attempt(s) failed validation. These are problems in the generated interpretation; your prompt may already be clear.`;
+            (diagnostics.issues.some(i => i.code?.includes('timeout'))
+                ? 'The model ran out of processing time. The highlighted section shows where processing stopped; it does not mean your wording is wrong.'
+                : `${diagnostics.attempts?.length || 1} interpretation attempt(s) failed validation. These are problems in the generated interpretation; your prompt may already be clear.`);
         diagnostics.issues.forEach(issue => {
             const card = document.createElement('article');
-            const pathMatch = /^(changes|events)\[(\d+)\]/.exec(issue.path || '');
-            const label = pathMatch ? `${pathMatch[1] === 'changes' ? 'Change' : 'Story moment'} ${Number(pathMatch[2]) + 1}` : 'Scene interpretation';
+            const sectionMatch = /^parts\\[(\\d+)\\]/.exec(issue.path || '');
+            const pathMatch = /(changes|events)\[(\d+)\]/.exec(issue.path || '');
+            const section = issue.path?.startsWith('continuity') ? 'Final continuity check · ' :
+                sectionMatch ? `Section ${Number(sectionMatch[1]) + 1} · ` : '';
+            const label = section + (pathMatch ? `${pathMatch[1] === 'changes' ? 'Change' : 'Story moment'} ${Number(pathMatch[2]) + 1}` : 'Scene interpretation');
             const subjectName = workspace?.entities.find(e => e.id === issue.subject)?.name || issue.subject;
             card.append(node('h4', `${label}${subjectName ? ` · ${subjectName}` : ''}`), node('p', issue.message));
             if (issue.property) card.append(node('p', `${issue.property.replaceAll('_', ' ')}: ${issue.value || issue.target || '(missing value)'}`));
@@ -246,23 +251,51 @@
         return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
     }
 
-    function updatePromptProgress() {
-        const elapsed = Date.now() - promptStartedAt;
-        const seconds = Math.floor(elapsed / 1000);
-        el('sm-preview-progress-time').textContent = formatElapsed(elapsed);
+    function updatePromptProgress(progress) {
+        el('sm-preview-progress-time').textContent = formatElapsed(Date.now() - promptStartedAt);
+        if (!progress) return;
         el('sm-progress-sent').dataset.state = 'done';
-        el('sm-progress-model').dataset.state = 'active';
-        el('sm-progress-ready').dataset.state = '';
-        if (seconds < 8) {
-            el('sm-preview-progress-title').textContent = 'Starting your scene preview';
-            el('sm-preview-progress-detail').textContent = 'Your prompt is with the selected model. Saved memory is unchanged.';
-        } else if (seconds < 30) {
-            el('sm-preview-progress-title').textContent = 'Your model is interpreting the scene';
-            el('sm-preview-progress-detail').textContent = 'It is identifying characters, objects, places, and state changes.';
-        } else {
-            el('sm-preview-progress-title').textContent = 'Still interpreting your scene';
-            el('sm-preview-progress-detail').textContent = 'Local models can take a few minutes for a detailed scene. You can safely keep this page open or cancel the preview.';
+        el('sm-progress-model').dataset.state = progress.stage === 'validating' ? 'done' : 'active';
+        el('sm-progress-ready').dataset.state = progress.stage === 'validating' ? 'active' : '';
+        el('sm-preview-progress-title').textContent = progress.stage === 'continuity' ? 'Checking story continuity' : progress.totalParts
+            ? `Section ${progress.part} of ${progress.totalParts} · ${progress.completedParts} checked`
+            : progress.stage === 'waiting' ? 'Waiting to start your preview' : 'Checking your scene preview';
+        el('sm-preview-progress-detail').textContent = progress.message + ' Saved memory is unchanged.';
+    }
+
+    async function streamPromptPreview(data, signal) {
+        const response = await fetch(`${url()}/prompts/preview-stream`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), signal
+        });
+        if (!response.ok) {
+            const detail = await response.json().catch(() => ({}));
+            throw Object.assign(new Error(detail.error || detail.title || 'Could not start the preview.'), { diagnostics: detail.diagnostics });
         }
+        if (!response.body) throw new Error('This browser could not open the preview progress stream.');
+        const reader = response.body.getReader(), decoder = new TextDecoder();
+        let pending = '', review;
+        function receive(line) {
+            if (!line.trim()) return;
+            const event = JSON.parse(line);
+            if (event.type === 'progress') updatePromptProgress(event.progress);
+            else if (event.type === 'result') review = event.review;
+            else if (event.type === 'error') throw Object.assign(new Error(event.detail?.error || 'Preview failed. No changes were saved.'),
+                { diagnostics: event.detail?.diagnostics });
+        }
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                pending += decoder.decode(value, { stream: !done });
+                let newline;
+                while ((newline = pending.indexOf('\n')) >= 0) {
+                    receive(pending.slice(0, newline)); pending = pending.slice(newline + 1);
+                }
+                if (done) break;
+            }
+            receive(pending);
+            if (!review) throw new Error('The preview connection ended before completion. No changes were saved. Please retry.');
+            return review;
+        } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     }
 
     function startPromptProgress(controller) {
@@ -270,6 +303,11 @@
         promptStartedAt = Date.now();
         el('sm-preview-progress').hidden = false;
         el('sm-cancel-interpret').disabled = false;
+        el('sm-preview-progress-title').textContent = 'Starting your scene preview';
+        el('sm-preview-progress-detail').textContent = 'Connecting to the selected model. Saved memory is unchanged.';
+        el('sm-progress-sent').dataset.state = 'active';
+        el('sm-progress-model').dataset.state = '';
+        el('sm-progress-ready').dataset.state = '';
         updatePromptProgress();
         promptProgressTimer = window.setInterval(updatePromptProgress, 1000);
     }
@@ -847,7 +885,7 @@
         startPromptProgress(controller);
         el('sm-prompt-status').textContent = 'Creating a preview. Your saved scene is unchanged.';
         try {
-            showPreview(await api(`${url()}/prompts/preview`, data, controller.signal));
+            showPreview(await streamPromptPreview(data, controller.signal));
             el('sm-prompt-status').textContent = 'Review the proposed changes below. Edit the prompt to correct an interpretation.';
         } catch (error) {
             if (error.name === 'AbortError') {

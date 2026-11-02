@@ -6,6 +6,8 @@ using AgctorSDK.Core.Tools.Models;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using System.Threading.Channels;
 
 namespace AgctorSDK.Host.Controllers;
 
@@ -18,6 +20,44 @@ public sealed class SceneMemoryController(ISceneMemoryStore store, ISceneMemoryP
     [HttpPost("workspaces/{id}/prompts/preview")]
     public Task<IActionResult> PreviewPrompt(string id, PromptRequest body, CancellationToken ct) =>
         Execute(async () => Ok(await prompts.PreviewAsync(id, body.Prompt, body.Label, body.Model, body.SceneLabel, body.DurationSeconds, ct)));
+
+    /// <summary>Streams actual interpretation stages, followed by one complete preview or a diagnostic error.</summary>
+    [HttpPost("workspaces/{id}/prompts/preview-stream")]
+    public async Task PreviewPromptStream(string id, PromptRequest body, CancellationToken ct)
+    {
+        Response.ContentType = "application/x-ndjson";
+        Response.Headers.CacheControl = "no-store";
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var updates = Channel.CreateUnbounded<object>(new() { SingleReader = true, SingleWriter = true });
+        var progress = new ScenePromptProgressReporter(value => updates.Writer.TryWrite(new { type = "progress", progress = value }));
+        async Task Produce()
+        {
+            try
+            {
+                var result = await Execute(async () => Ok(await prompts.PreviewAsync(id, body.Prompt, body.Label,
+                    body.Model, body.SceneLabel, body.DurationSeconds, stop.Token, progress)));
+                if (result is OkObjectResult ok) updates.Writer.TryWrite(new { type = "result", review = ok.Value });
+                else if (result is ObjectResult failure) updates.Writer.TryWrite(new { type = "error", detail = failure.Value });
+            }
+            finally { updates.Writer.TryComplete(); }
+        }
+        var producer = Produce();
+        try
+        {
+            var json = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+            await foreach (var update in updates.Reader.ReadAllAsync(stop.Token))
+            {
+                await Response.WriteAsync(JsonSerializer.Serialize(update, json) + "\n", stop.Token);
+                await Response.Body.FlushAsync(stop.Token);
+            }
+            await producer;
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            try { await producer; } catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+        }
+    }
 
     [HttpPost("workspaces/{id}/prompts/apply")]
     public Task<IActionResult> ApplyPrompt(string id, ApplyPromptRequest body, CancellationToken ct) =>
