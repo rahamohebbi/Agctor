@@ -6,6 +6,7 @@ This directory contains the **solution-level** architecture documentation for th
 
 - **system-overview-diagram**: High-level assembly and component interaction (start here)
 - **architecture-diagram**: One picture of the whole system: host, actors, messages, and tools
+- **mcp-diagram**: How a TCP client reaches an agent, and how Agctor calls Cognee
 - **class-diagram**: Key classes and inheritance across all projects
 - **endpoints-diagram**: All external-facing interfaces (HTTP, MCP, CLI)
 - **dependencies-diagram**: Full project dependency graph with NuGet packages

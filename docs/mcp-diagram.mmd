@@ -1,0 +1,36 @@
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, Noto Sans, sans-serif","fontSize":"18px","primaryTextColor":"#1c1917","primaryBorderColor":"#44403c","lineColor":"#57534e","background":"#ffffff","clusterBkg":"#fafaf9","clusterBorder":"#e7e5e4","edgeLabelBackground":"#ffffff","titleColor":"#57534e"},"flowchart":{"curve":"basis","padding":20,"nodeSpacing":40,"rankSpacing":48,"htmlLabels":true}}}%%
+flowchart TB
+    subgraph into [Clients call Agctor]
+        direction TB
+        client([TCP client])
+        listen["Host listener<br/>127.0.0.1:8080"]
+        dispatch["Message dispatcher"]
+        named["Named agent"]
+        client -->|JSON line| listen
+        listen --> dispatch
+        dispatch -->|message| named
+    end
+
+    subgraph outto [Agctor calls Cognee]
+        direction TB
+        person["Person-query agent"]
+        memory["Person memory tool"]
+        rag["Rag context"]
+        cognee["Cognee server<br/>HTTP /mcp"]
+        person -->|BuildContext| memory
+        memory --> rag
+        rag -->|recall| cognee
+    end
+
+    %% Invisible link keeps the client lane above Cognee.
+    into ~~~ outto
+
+    class client,listen door
+    class dispatch,rag spine
+    class named,person,memory actor
+    class cognee modelNode
+
+    classDef door fill:#f7f4ef,stroke:#44403c,stroke-width:1.5px,color:#1c1917
+    classDef spine fill:#e8f1f6,stroke:#334155,stroke-width:1.5px,color:#1c1917
+    classDef actor fill:#e7f2ea,stroke:#3f6212,stroke-width:1.5px,color:#1c1917
+    classDef modelNode fill:#fff7ed,stroke:#9a3412,stroke-width:1.5px,color:#1c1917
