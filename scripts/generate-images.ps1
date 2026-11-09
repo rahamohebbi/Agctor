@@ -19,7 +19,8 @@ try {
         $tmpPng = Join-Path $resolved ($base + ".__tmp__.png")
         $jpg = Join-Path $resolved ($base + ".jpg")
         Write-Host "Rendering $($mmd.Name) -> $jpg"
-        npx -y @mermaid-js/mermaid-cli -i $mmd.FullName -o $tmpPng -b white -w 2400 -H 1800 -s 2
+        # Scale 3 keeps labels sharp when the JPEG is zoomed. Height follows the diagram.
+        npx -y @mermaid-js/mermaid-cli -i $mmd.FullName -o $tmpPng -b white -s 3
         $img = [System.Drawing.Image]::FromFile($tmpPng)
         try {
             $jpgCodec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }

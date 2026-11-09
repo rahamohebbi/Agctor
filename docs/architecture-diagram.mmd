@@ -1,85 +1,36 @@
-graph TB
-    subgraph consumers [Consumers]
-        HTTPClient[HTTP clients and dashboard]
-        MCPClient[MCP TCP clients]
-        CLIUser[AgctorCLI users]
-    end
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"Inter, Noto Sans, sans-serif","fontSize":"18px","primaryTextColor":"#1c1917","primaryBorderColor":"#44403c","lineColor":"#57534e","background":"#ffffff","clusterBkg":"#ffffff","clusterBorder":"#ffffff","edgeLabelBackground":"#ffffff","titleColor":"#57534e"},"flowchart":{"curve":"basis","padding":18,"nodeSpacing":36,"rankSpacing":40,"htmlLabels":true}}}%%
+flowchart TB
+    you([You])
+    host["Host<br/>dashboard, web, MCP"]
+    cli["CLI<br/>one prompt"]
+    ext["Extensions<br/>starts the runtime"]
+    rt["Actor runtime<br/>one message at a time"]
+    agents["Agents<br/>own a task"]
+    tools["Tools<br/>do one job"]
+    model["Ollama<br/>language model"]
+    core["Core<br/>shared actor rules"]
 
-    subgraph app [Application hosts]
-        subgraph host [AgctorSDK.Host]
-            Http["HTTP API default http://localhost:5274 unless ASPNETCORE_URLS set"]
-            Swagger[Swagger UI at /swagger]
-            Mcp["McpListener TCP Mcp:Port default 8080 JSON messages"]
-            Ctrls["Controllers agents goals tools scenarios test chat project-memory resolution visualization CodeGraph Llm Config Runtime"]
-            Svcs["MessageDispatcher Sqlite session and trace stores ToolInvoker scenarios"]
-            Bg["TaskScoperHostedService TaskFlowHostedService"]
-        end
-        subgraph cli [AgctorCLI]
-            CliApp[Single-prompt runner]
-        end
-    end
+    you --> host
+    you --> cli
+    host --> ext
+    cli --> ext
+    ext --> rt
+    rt -->|message| agents
+    agents -->|reply| rt
+    agents -->|message| tools
+    tools -->|result| agents
+    agents -->|ask| model
+    tools ~~~ core
+    model ~~~ core
 
-    subgraph ext [AgctorSDK.Extensions]
-        Di["ServiceCollectionExtensions AddAgctor variants"]
-        Factory[IActorRuntimeAdapterFactory ActorRuntimeAdapterFactory]
-        Feat[Code graph generation PR automation activity tracking]
-    end
+    class you,host,cli door
+    class ext,rt spine
+    class agents,tools actor
+    class model modelNode
+    class core rules
 
-    subgraph intel [Agents and code intelligence]
-        subgraph agents [AgctorSDK.Agents]
-            RuntimeImpl[InMemoryActorRuntime ProtoActorAdapter OrleansAdapter]
-            Af[AgentFactory AgentRegistry]
-            Ag[Agent LLMAgent CoderAgent session and project-memory agents]
-        end
-        subgraph cg [AgctorSDK.CodeGraph]
-            Graph[Graph actors Indexer Search Query Refactor and snippet resolver]
-        end
-    end
-
-    subgraph tools [AgctorSDK.Tools]
-        ToolActors[CodeEditor CodeExecutor Compile Format TestRunner FileSystem tools]
-    end
-
-    subgraph core [AgctorSDK.Core]
-        Abstractions[IActor IAgent messages goals tasks project memory resolution interfaces]
-        ObsCore[Logging activity metrics visualization helpers]
-    end
-
-    subgraph external [External]
-        Ollama[Ollama LLM and embeddings]
-        Roslyn[Roslyn analysis]
-        OTelBack[OpenTelemetry backends optional]
-        FS[File system and git]
-    end
-
-    HTTPClient --> Http
-    HTTPClient --> Swagger
-    MCPClient --> Mcp
-    CLIUser --> CliApp
-
-    Http --> Di
-    CliApp --> Di
-    Mcp --> Svcs
-    Ctrls --> Svcs
-    Bg --> Abstractions
-
-    Di --> Factory
-    Di --> Af
-    Factory --> RuntimeImpl
-    Af --> Ag
-    Ag --> Abstractions
-    RuntimeImpl --> Abstractions
-    ToolActors --> Ag
-    ToolActors --> Abstractions
-    Graph --> Ag
-    Graph --> Abstractions
-
-    Ag --> Ollama
-    Graph --> Ollama
-    ToolActors --> Roslyn
-    ObsCore --> OTelBack
-    Abstractions --> FS
-
-    style core fill:#e1f5ff
-    style host fill:#fff9c4
-    style agents fill:#b3e5fc
+    classDef door fill:#f7f4ef,stroke:#44403c,stroke-width:1.5px,color:#1c1917
+    classDef spine fill:#e8f1f6,stroke:#334155,stroke-width:1.5px,color:#1c1917
+    classDef actor fill:#e7f2ea,stroke:#3f6212,stroke-width:1.5px,color:#1c1917
+    classDef modelNode fill:#fff7ed,stroke:#9a3412,stroke-width:1.5px,color:#1c1917
+    classDef rules fill:#eef2ff,stroke:#3730a3,stroke-width:1.5px,color:#1c1917
