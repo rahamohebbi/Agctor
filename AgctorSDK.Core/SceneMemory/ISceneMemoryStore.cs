@@ -16,6 +16,9 @@ public interface ISceneMemoryStore
     Task<SceneWorkspace> ConnectAsync(string name, SceneWorkspaceConnection connection, string? workspaceId = null, CancellationToken cancellationToken = default);
     /// <summary>Upserts a Studio instance or explicitly links an existing discovered entity. Does not rewrite story facts.</summary>
     Task<SceneWorkspace> SyncStudioAsync(string workspaceId, string instanceKey, SceneStudioInput input, CancellationToken cancellationToken = default);
+    /// <summary>Atomically replace or unlink an entity's Studio binding, preserving all scene facts and identity.</summary>
+    Task<SceneWorkspace> ChangeStudioLinkAsync(string workspaceId, string entityId, string expectedRevision,
+        string? instanceKey, SceneStudioInput? input, CancellationToken cancellationToken = default);
     /// <summary>Loads a workspace or throws KeyNotFoundException.</summary>
     Task<SceneWorkspace> GetAsync(string workspaceId, CancellationToken cancellationToken = default);
     /// <summary>Adds a named entity; names are unique within a workspace.</summary>
@@ -29,6 +32,10 @@ public interface ISceneMemoryStore
     /// <summary>Updates presentation metadata for an applied prompt without changing state or sequence order.</summary>
     Task<SceneWorkspace> UpdatePromptMetadataAsync(string workspaceId, string promptId, string? sceneLabel,
         string? shotLabel, double? durationSeconds, CancellationToken cancellationToken = default);
+    /// <summary>Explicitly replaces only one shot's design snapshots after a revision-checked review.</summary>
+    Task<SceneWorkspace> PinShotDesignsAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default);
+    /// <summary>Deletes one applied shot and its facts atomically, preserving entities and other shots.</summary>
+    Task<SceneWorkspace> DeleteShotAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default);
     /// <summary>Retrieves current or historical facts by entity ID or exact name mentioned in a question.</summary>
     Task<SceneQueryResult> QueryAsync(string workspaceId, SceneQuery query, CancellationToken cancellationToken = default);
 }
@@ -36,7 +43,7 @@ public interface ISceneMemoryStore
 /// <summary>A scene workspace and its append-only fact history.</summary>
 public sealed record SceneWorkspace(string Id, string Name, DateTimeOffset CreatedAt,
     IReadOnlyList<SceneEntity> Entities, IReadOnlyList<SceneFact> History,
-    IReadOnlyList<ScenePromptRecord>? Prompts = null, SceneWorkspaceConnection? Connection = null);
+    IReadOnlyList<ScenePromptRecord>? Prompts = null, SceneWorkspaceConnection? Connection = null, IReadOnlyList<string>? DeletedShotIds = null);
 /// <summary>A stable identity with a human-maintained type.</summary>
 public sealed record SceneEntity(string Id, string Name, string Kind, SceneStudioBinding? Studio = null, long? CreatedAtSequence = null);
 /// <summary>An explicit state change; sequence is entry order, not inferred story time.</summary>

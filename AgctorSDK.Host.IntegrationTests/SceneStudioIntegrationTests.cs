@@ -71,6 +71,51 @@ public sealed class SceneStudioIntegrationTests : IClassFixture<SceneStudioWebAp
     }
 
     [Fact]
+    public async Task Continuity_and_approved_shot_handoff_are_revision_checked_over_HTTP()
+    {
+        var w = await Connect();
+        w = await Sync(w.Id, "maya", new("character", 1, "Maya", "Character", new() { ["appearance"] = "Blue coat" }));
+        var initial = await Read<SceneContinuityResponse>(await _client.GetAsync(Path(w.Id) + "/context"));
+        Assert.Empty(initial.CurrentFacts);
+        var review = await Preview(w.Id);
+        var saved = await Read<SceneMemoryWorkspaceResponse>(await _client.PostAsync(Path(w.Id) + "/previews/" + review.Preview.Id + "/apply", null));
+        var stale = await _client.PostAsJsonAsync(Path(w.Id) + "/previews", new InterpretSceneRequest("She drops it.", Model: "test", ExpectedRevision: initial.Revision));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        var continuity = await Read<SceneContinuityResponse>(await _client.GetAsync(Path(w.Id) + "/context"));
+        Assert.Single(continuity.CurrentFacts);
+        var second = await Read<SceneMemoryPreviewResponse>(await _client.PostAsJsonAsync(Path(w.Id) + "/previews",
+            new InterpretSceneRequest("She drops it.", Model: "test", ExpectedRevision: continuity.Revision)));
+        saved = await Read<SceneMemoryWorkspaceResponse>(await _client.PostAsync(Path(w.Id) + "/previews/" + second.Preview.Id + "/apply", null));
+        var draft = await Read<SceneVideoPromptResponse>(await _client.PostAsJsonAsync(Path(w.Id) + "/shots/" + second.Preview.Id + "/video-prompt", new PrepareSceneVideoRequest(saved.Revision)));
+        Assert.Single(draft.StateBefore); Assert.Empty(draft.StateAfter);
+        Assert.Contains("cleared in this shot", draft.Prompt);
+        Assert.Equal(saved.LatestSequence, (await Read<SceneMemoryWorkspaceResponse>(await _client.GetAsync(Path(w.Id)))).LatestSequence);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync(Path(w.Id) + "/shots/" + second.Preview.Id + "/video-prompt", new PrepareSceneVideoRequest(initial.Revision))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync(Path(w.Id) + "/shots/missing/video-prompt", new PrepareSceneVideoRequest(saved.Revision))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Video_simulation_reuses_handoff_preserves_story_and_rejects_stale_or_invalid_inputs()
+    {
+        var w = await Connect();
+        w = await Sync(w.Id, "maya", new("character", 1, "Maya", "Character"));
+        var review = await Preview(w.Id);
+        var saved = await Read<SceneMemoryWorkspaceResponse>(await _client.PostAsync(Path(w.Id) + "/previews/" + review.Preview.Id + "/apply", null));
+        var path = Path(w.Id) + "/shots/" + review.Preview.Id + "/video-prompt";
+        var handoff = await Read<SceneVideoPromptResponse>(await _client.PostAsJsonAsync(path, new PrepareSceneVideoRequest(saved.Revision)));
+        var simulation = await Read<SceneVideoPromptSimulationResponse>(await _client.PostAsJsonAsync(path + "/simulate", new SimulateSceneVideoRequest(saved.Revision, DurationSeconds: 12)));
+        Assert.Equal(handoff.Prompt, simulation.Handoff.Prompt);
+        Assert.Equal(handoff.Prompt, simulation.ModelPrompt);
+        Assert.Equal(12, simulation.TargetSeconds); Assert.Equal(15, simulation.ModelSeconds);
+        var after = await Read<SceneMemoryWorkspaceResponse>(await _client.GetAsync(Path(w.Id)));
+        Assert.Equal(saved.Revision, after.Revision); Assert.Equal(saved.LatestSequence, after.LatestSequence);
+        Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsJsonAsync(path + "/simulate", new SimulateSceneVideoRequest(w.Revision, DurationSeconds: 12))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(path + "/simulate", new SimulateSceneVideoRequest(saved.Revision, DurationSeconds: 20))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _client.PostAsJsonAsync(path + "/simulate", new SimulateSceneVideoRequest(saved.Revision, DurationSeconds: 12, ReferenceLabels: Enumerable.Repeat("image",9).ToArray()))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsJsonAsync(Path(w.Id) + "/shots/missing/video-prompt/simulate", new SimulateSceneVideoRequest(saved.Revision, DurationSeconds: 12))).StatusCode);
+    }
+
+    [Fact]
     public async Task Connect_is_idempotent_and_project_and_story_scoped()
     {
         var project = Guid.NewGuid().ToString("N");

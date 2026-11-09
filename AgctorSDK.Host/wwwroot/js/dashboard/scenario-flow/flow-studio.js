@@ -32,7 +32,7 @@
         var node = selected.length === 1 && selected[0].isNode() ? selected[0] : null;
         el('selection-title').textContent = node ? node.data('label') : selected.length === 1 ? 'Connection' : selected.length ? selected.length + ' selected' : 'Your flow';
         el('selection-meta').textContent = node ? typeLabel(node.data('agctorType')) + ' · ' + node.id() : selected.length === 1 ? selected[0].source().data('label') + ' → ' + selected[0].target().data('label') : selected.length ? 'Connect two steps, or select one item to edit.' : 'Select a step or connection to configure it.';
-        var configurable = node && ['Router', 'LlmNode', 'Gate', 'WaitForInput', 'AwaitEvent', 'Notify'].indexOf(node.data('agctorType')) >= 0;
+        var configurable = node && ['AgentLoop', 'Router', 'LlmNode', 'Gate', 'WaitForInput', 'AwaitEvent', 'Notify'].indexOf(node.data('agctorType')) >= 0;
         el('selection-empty').classList.toggle('hidden', !!configurable || (selected.length === 1 && !node));
         if (node && !configurable) {
             el('selection-empty').querySelector('h4').textContent = typeLabel(node.data('agctorType'));

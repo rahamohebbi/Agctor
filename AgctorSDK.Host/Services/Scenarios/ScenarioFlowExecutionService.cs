@@ -62,6 +62,9 @@ public sealed class ScenarioFlowExecutionService : IScenarioFlowExecutionService
         if (def.Flow == null)
             return ScenarioFlowRunResponse.Fail("NO_FLOW", $"Scenario '{scenarioId}' has no flow to execute.");
 
+        if (def.Flow.Nodes.Any(Services.VideoWorkflow.SceneVideoScenario.IsLoop))
+            return ScenarioFlowRunResponse.Fail("DURABLE_RUN_REQUIRED", "Start this workflow from its Run workflow page or POST /api/scenarios/{id}/runs with a Scene Memory workspace and duration.");
+
         var plan = ModelSelectionScope.Plan?.ScenarioId == scenarioId ? ModelSelectionScope.Plan
             : _models == null ? ModelSelectionService.Resolve(def, null, OllamaRuntimeConfiguration.GetDefaultModel())
                 : await _models.PlanAsync(request.SessionId, scenarioId, cancellationToken);

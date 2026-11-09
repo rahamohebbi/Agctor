@@ -59,6 +59,18 @@
     .smt .detail-actions { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
     .smt dialog { width:min(540px,calc(100vw - 2rem)); padding:0; border:1px solid var(--border); border-radius:.85rem; background:var(--surface); color:inherit; box-shadow:0 24px 80px #0005; } .smt dialog::backdrop { background:#0f172a99; }
     .smt .dialog-body { padding:1.1rem; } .smt .dialog-head,.smt .dialog-foot { display:flex; align-items:center; justify-content:space-between; gap:.7rem; padding:1rem 1.1rem; border-bottom:1px solid var(--border); } .smt .dialog-foot { border-top:1px solid var(--border); border-bottom:0; justify-content:flex-end; }
+    #smt-design-dialog { width:min(760px,calc(100vw - 2rem)); } #smt-design-dialog .dialog-body { max-height:60vh; overflow:auto; } #smt-design-error { color:#b91c1c; }
+    #smt-video-dialog { width:min(1050px,calc(100vw - 2rem)); max-height:92vh; }
+    #smt-video-dialog .dialog-body { max-height:calc(92vh - 150px); overflow:auto; padding:1.5rem; }
+    #smt-video-dialog .dialog-head { align-items:flex-start; }
+    #smt-video-dialog .dialog-head p { margin-top:.4rem; font-size:.85rem; }
+    #smt-video-dialog pre { white-space:pre-wrap; overflow-wrap:anywhere; font: .85rem/1.7 ui-monospace,monospace; background:var(--soft); border:1px solid var(--border); border-radius:.7rem; padding:1.2rem; margin:.75rem 0 1.4rem; max-height:55vh; overflow:auto; }
+    #smt-video-dialog summary { cursor:pointer; font-weight:650; padding:.65rem 0; }
+    #smt-video-dialog textarea { width:100%; padding:.7rem; margin-top:.4rem; border:1px solid var(--border); border-radius:.55rem; background:var(--surface); color:inherit; }
+    #smt-video-dialog .simulation-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; margin:1rem 0; }
+    #smt-video-dialog .simulation-notes { padding:1rem 1rem 1rem 2rem; border-radius:.7rem; background:var(--soft); margin:1rem 0; color:var(--muted); font-size:.85rem; line-height:1.6; }
+    #smt-video-dialog .simulation-notes li + li { margin-top:.55rem; }
+    #smt-video-error { color:#b91c1c; } .dark #smt-video-error { color:#fca5a5; }
     #smt-error { color:#b91c1c; margin-top:.7rem; } .dark #smt-error { color:#fca5a5; }
     @@media(max-width:780px) { .smt .head { flex-direction:column; } .smt .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .smt .detail-grid { grid-template-columns:1fr; } .smt .delta { grid-template-columns:1fr; gap:.2rem; } .smt .delta .arrow { display:none; } }
 </style>
@@ -75,11 +87,45 @@
         <div id="smt-timeline" class="timeline" aria-label="Story timeline"></div>
     </section>
     <section class="panel" id="smt-detail" hidden aria-live="polite">
-        <div class="head"><div><p id="smt-position"></p><h2 id="smt-shot-title"></h2></div><button id="smt-edit" class="secondary" type="button">Edit shot details</button></div>
+        <div class="head"><div><p id="smt-position"></p><h2 id="smt-shot-title"></h2></div><div class="detail-actions"><button id="smt-video-preview" type="button">Simulate video prompt</button><button id="smt-edit" class="secondary" type="button">Edit shot details</button></div></div>
         <div id="smt-shot-meta" class="shot-meta"></div><blockquote id="smt-prompt"></blockquote>
+        <div class="card"><h3>Shot designs</h3><p id="smt-design-status">Uses the latest linked design details.</p><button id="smt-design-review" class="secondary" type="button">View linked designs</button></div>
         <div class="detail-grid"><div><div class="card"><h3>What changed in this shot</h3><div id="smt-deltas"></div></div><div class="card"><h3>State after this shot</h3><p>Everything Scene Memory knows at this point in the story.</p><div id="smt-state" class="state-grid"></div></div></div><aside><div class="card"><h3>Introduced here</h3><ul id="smt-introduced" class="introduced"></ul></div><div class="card"><h3>Story moments</h3><ul id="smt-events" class="events"></ul></div></aside></div>
     </section>
     <section class="panel empty" id="smt-empty" hidden><h2>No shots yet</h2><p>Apply a scene prompt in Scene Memory, then return here to see its timeline.</p><a id="smt-create-shot" href="/Dashboard/SceneMemory">Create the first shot</a></section>
     <dialog id="smt-edit-dialog" aria-labelledby="smt-edit-title"><div class="dialog-head"><h2 id="smt-edit-title">Edit shot details</h2><button id="smt-edit-close" class="secondary" type="button">Close ×</button></div><form id="smt-edit-form"><div class="dialog-body"><label>Scene name<input name="sceneLabel" maxlength="100" placeholder="Scene 1 · Kitchen" /></label><label>Shot name<input name="shotLabel" maxlength="100" placeholder="Wide establishing shot" /></label><label>Planned duration (seconds)<input name="durationSeconds" type="number" min="0.1" max="3600" step="0.1" placeholder="Not set" /></label><p>Changing these details reorganizes the visual timeline only. Story state and sequence order are unchanged.</p></div><div class="dialog-foot"><button id="smt-edit-cancel" class="secondary" type="button">Cancel</button><button type="submit">Save details</button></div></form></dialog>
+    <dialog id="smt-design-dialog" aria-labelledby="smt-design-title"><div class="dialog-head"><h2 id="smt-design-title">Shot designs</h2></div><div class="dialog-body"><p id="smt-design-explanation"></p><div id="smt-design-comparison"></div><p id="smt-design-error" role="alert"></p></div><div class="dialog-foot"><button id="smt-design-close" class="secondary" type="button">Close</button></div></dialog>
+    <dialog id="smt-video-dialog" aria-labelledby="smt-video-title">
+        <div class="dialog-head"><div><h2 id="smt-video-title">Video prompt debugger</h2><p id="smt-video-shot"></p></div><button id="smt-video-close" class="secondary" type="button">Close ×</button></div>
+        <div class="dialog-body">
+            <p>Inspect the same saved-shot handoff Cynelo requests, then simulate its MiniMax H3 formatting. This preview does not generate a video.</p>
+            <form id="smt-video-form">
+                <details id="smt-video-options"><summary>Simulation settings · film, duration, and image labels</summary>
+                    <p>AGCTOR cannot read your active Cynelo film or selected images. Match them here to reproduce the prompt formatting.</p>
+                    <div class="simulation-grid">
+                        <label for="smt-video-clips">Existing clips in Cynelo’s film<input id="smt-video-clips" type="number" value="0" min="0" max="10000" step="1" required /><small>0 starts a new film; 1 or more uses the last frame.</small></label>
+                        <label for="smt-video-duration">Duration override (seconds)<input id="smt-video-duration" type="number" min="1" max="15" step="1" placeholder="Use saved shot duration" /><small>Optional, for this simulation only.</small></label>
+                    </div>
+                    <label for="smt-video-labels">Uploaded reference-image labels, in upload order</label>
+                    <textarea id="smt-video-labels" rows="3" maxlength="1608" placeholder="One label per line, up to 8. Leave empty for no images."></textarea>
+                    <p>Use the exact labels from Cynelo. The previous film’s opening frame is added automatically for continuation when references are selected.</p>
+                </details>
+                <div class="detail-actions" style="margin-top:1rem"><button id="smt-video-run" type="submit">Refresh simulation</button><span id="smt-video-status" role="status"></span></div>
+            </form>
+            <p id="smt-video-error" role="alert"></p>
+            <section id="smt-video-result" hidden>
+                <div id="smt-video-metrics" class="shot-meta"></div>
+                <ul id="smt-video-warnings" class="simulation-notes"></ul>
+                <div class="head"><h3>Simulated model prompt</h3><button id="smt-video-copy" class="secondary" type="button">Copy model prompt</button></div>
+                <pre id="smt-video-model" tabindex="0"></pre>
+                <details><summary>1. Original shot action</summary><pre id="smt-video-original"></pre></details>
+                <details><summary>2. AGCTOR handoff · action, saved designs, starting and ending state</summary><pre id="smt-video-handoff"></pre></details>
+                <details><summary>3. Cynelo continuation formatting · before image tags</summary><pre id="smt-video-continuation"></pre></details>
+                <details><summary>Included characters, objects, and locations</summary><div id="smt-video-entities" class="state-grid"></div></details>
+                <details><summary>Request and response JSON</summary><pre id="smt-video-json"></pre></details>
+            </section>
+        </div>
+        <div class="dialog-foot"><span id="smt-video-copy-status" role="status"></span><button id="smt-video-download" class="secondary" type="button" disabled>Download debug JSON</button></div>
+    </dialog>
 </div>
 @section Scripts { <script src="~/js/dashboard/scene-memory-timeline.js" asp-append-version="true"></script> }

@@ -17,7 +17,8 @@ public sealed record ScenePromptPreview(string Id, string Revision, string Promp
     ScenePromptExtraction Extraction, string SceneLabel = "", double? DurationSeconds = null);
 public sealed record ScenePromptRecord(string Id, string Prompt, string Label, string Model,
     long FirstSequence, long LastSequence, DateTimeOffset RecordedAt, string SceneLabel = "", double? DurationSeconds = null,
-    IReadOnlyList<string>? IntroducedEntityIds = null);
+    IReadOnlyList<string>? IntroducedEntityIds = null, IReadOnlyList<SceneEntity>? DesignSnapshots = null,
+    IReadOnlyList<string>? KnownEntityIds = null);
 
 /// <summary>Shared validation and state reduction for preview and commit. No model output writes directly to storage.</summary>
 public static class ScenePromptReducer
@@ -32,6 +33,8 @@ public static class ScenePromptReducer
 
     public static SceneWorkspace Apply(SceneWorkspace workspace, ScenePromptPreview preview, bool allowQuestions = false)
     {
+        if (workspace.DeletedShotIds?.Contains(preview.Id) == true)
+            throw new InvalidOperationException("This shot was deleted. Preview it again to create a new shot.");
         if (workspace.Prompts?.Any(p => p.Id == preview.Id) == true) return workspace;
         if (preview.Revision != Revision(workspace))
             throw new InvalidOperationException("Scene Memory changed since this preview. Interpret the prompt again before applying it.");
@@ -272,7 +275,8 @@ public static class ScenePromptReducer
         var originalEntityIds = workspace.Entities.Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
         var record = new ScenePromptRecord(preview.Id, preview.Prompt, preview.Label, preview.Model,
             workspace.History.Count + 1L, history.Count, DateTimeOffset.UtcNow, preview.SceneLabel,
-            preview.DurationSeconds, entities.Where(e => !originalEntityIds.Contains(e.Id)).Select(e => e.Id).ToArray());
+            preview.DurationSeconds, entities.Where(e => !originalEntityIds.Contains(e.Id)).Select(e => e.Id).ToArray(),
+            SceneShotDesigns.Capture(entities));
         return workspace with { Entities = entities.ToArray(), History = history.ToArray(),
             Prompts = (workspace.Prompts ?? Array.Empty<ScenePromptRecord>()).Append(record).ToArray() };
     }

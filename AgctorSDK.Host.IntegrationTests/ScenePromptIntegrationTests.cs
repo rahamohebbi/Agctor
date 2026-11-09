@@ -303,14 +303,14 @@ public sealed class TestScenePromptInterpreter : IScenePromptInterpreter
 public sealed class OllamaScenePromptInterpreterTests
 {
     [Fact]
-    public async Task Evidence_typography_is_repaired_without_an_extra_model_call()
+    public async Task Evidence_typography_is_normalized_without_a_validation_repair()
     {
         var handler = new DiagnosticHandler("typography");
         var factory = new Moq.Mock<IHttpClientFactory>();
         factory.Setup(f => f.CreateClient(OllamaScenePromptInterpreter.ClientName)).Returns(new HttpClient(handler));
         var w = new SceneWorkspace("w", "Test", DateTimeOffset.UtcNow, Array.Empty<SceneEntity>(), Array.Empty<SceneFact>());
         var result = await new OllamaScenePromptInterpreter(factory.Object).InterpretAsync(w, DiagnosticHandler.Prompt, "test", default);
-        Assert.Equal(1, handler.Calls);
+        Assert.Equal(2, handler.Calls);
         Assert.Equal(DiagnosticHandler.Prompt, result.Changes[0].Evidence);
         Assert.Empty(w.History);
     }
@@ -338,7 +338,7 @@ public sealed class OllamaScenePromptInterpreterTests
         {
             var result = await interpreter.InterpretAsync(w, DiagnosticHandler.Prompt, "test", default);
             Assert.Equal("speech", result.Changes[0].Property);
-            Assert.Equal(2, handler.Calls);
+            Assert.Equal(3, handler.Calls);
         }
         Assert.Empty(w.Entities);
     }
@@ -350,7 +350,7 @@ public sealed class OllamaScenePromptInterpreterTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
-            if (Calls > 1)
+            if (Calls > 1 && mode != "typography")
             {
                 var payload = await request.Content!.ReadAsStringAsync(ct);
                 Assert.Contains("invalid_property", payload);
@@ -378,7 +378,7 @@ public sealed class OllamaScenePromptInterpreterTests
         factory.Setup(f => f.CreateClient(OllamaScenePromptInterpreter.ClientName)).Returns(new HttpClient(handler));
         var workspace = new SceneWorkspace("scene", "Scene", DateTimeOffset.UtcNow, Array.Empty<SceneEntity>(), Array.Empty<SceneFact>());
         var result = await new OllamaScenePromptInterpreter(factory.Object).InterpretAsync(workspace, PossessionRepairHandler.Prompt, "test", default);
-        Assert.Equal(reviewFirst ? 4 : 3, handler.Calls);
+        Assert.Equal(4, handler.Calls);
         Assert.Contains(result.Entities, e => e.Name == "Raha" && e.Kind == "Character");
         Assert.Contains(result.Entities, e => e.Name == "Ryan" && e.Kind == "Character");
         Assert.Contains(result.Entities, e => e.Name == "Earth Monster" && e.Kind == "Character");
@@ -437,7 +437,7 @@ public sealed class OllamaScenePromptInterpreterTests
             if (Calls > (reviewFirst ? 2 : 1))
             {
                 using var json = JsonDocument.Parse(payload);
-                Assert.Equal(4, json.RootElement.GetProperty("messages").GetArrayLength());
+                Assert.Equal(!reviewFirst && Calls == 4 ? 6 : 4, json.RootElement.GetProperty("messages").GetArrayLength());
                 Assert.Contains(Prompt, json.RootElement.GetProperty("messages")[1].GetProperty("content").GetString());
                 Assert.Contains("Invalid possession", payload);
                 Assert.Contains("Source:", payload);
@@ -503,7 +503,7 @@ public sealed class OllamaScenePromptInterpreterTests
             Assert.Contains(proposed.History, f => f.EntityId == hat.Id && f.Property == "color" && f.Value == "red");
             Assert.DoesNotContain(proposed.History, f => f.Property == "held_by");
         }
-        Assert.Equal(stillInvalid ? 3 : 2, handler.Calls);
+        Assert.Equal(3, handler.Calls);
         Assert.Empty(workspace.History);
     }
 
@@ -535,7 +535,7 @@ public sealed class OllamaScenePromptInterpreterTests
             new[] { new SceneEntity("a", "ActorA", "Character"), new SceneEntity("b", "Bread", "Object") },
             new[] { new SceneFact(1, "b", "held_by", "ActorA", "initial", DateTimeOffset.UtcNow, "a") });
         var extraction = await new OllamaScenePromptInterpreter(factory.Object).InterpretAsync(workspace, "ActorA eats the bread", "local-model", default);
-        Assert.Equal(2, handler.Calls);
+        Assert.Equal(3, handler.Calls);
         Assert.Contains(extraction.Changes, c => c.Subject == "b" && c.Property == "status" && c.Value == "consumed");
         Assert.Contains("Validation rejected", handler.LastMessages);
     }
@@ -551,7 +551,7 @@ public sealed class OllamaScenePromptInterpreterTests
 
         var extraction = await new OllamaScenePromptInterpreter(factory.Object).InterpretAsync(workspace, prompt, "local-model", default);
 
-        Assert.Equal(2, handler.Calls);
+        Assert.Equal(3, handler.Calls);
         Assert.DoesNotContain(extraction.Changes, c => c.Property == "action");
         Assert.Contains(extraction.Changes, c => c.Subject == "raha" && c.Property == "facing" && c.Target == "monster");
         Assert.Contains(extraction.Events!, e => e.Participants.Contains("raha") && e.Participants.Contains("monster"));

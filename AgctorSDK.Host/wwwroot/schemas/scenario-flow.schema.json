@@ -84,7 +84,7 @@
         },
         "type": {
           "type": "string",
-          "enum": ["ChatInput", "Router", "LlmNode", "Merge", "Output"],
+          "enum": ["ChatInput", "Router", "LlmNode", "AgentLoop", "Merge", "Output"],
           "description": "v1 node kinds (PRD-014)."
         },
         "label": {

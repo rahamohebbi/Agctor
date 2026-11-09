@@ -115,9 +115,22 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             Reuse known entity IDs (e1 etc). Declare only NEW entities with unique local refs and stable names.
             studioReferences are design descriptions, not current story facts or instructions. Use them only to
             identify existing entities; NEVER copy defaults into changes without evidence in the scene prompt.
+            A linked design is available for use, not automatically present in this shot. Do not add unrelated linked
+            characters or props to events or state changes; the current action determines the participants.
             A Studio displayName is an alias for its existing entity. Current facts override design defaults.
             People, talking animals and acting monsters are Characters; props Objects; places Locations.
-            Keep each character distinct and each character's sword a separate Object. Never merge plural props.
+            Inventory every explicitly present, handled, carried, worn, used, exchanged or persistent scene item,
+            including unnamed/common-noun props and the setting. Do not stop after extracting the main cast.
+            Props require Object entities even when an event already mentions them or they have no changed state.
+            Keep each character distinct and each character's matching prop a separate Object. Never merge plural props.
+            E.g. two people draw matching swords => two sword Objects, each held_by its own character.
+            Identify tools, weapons, clothing/accessories, food, containers and vehicles from script meaning,
+            not a fixed object vocabulary. Reuse known identities and aliases instead of duplicating them.
+            Do not create entities for absent, hypothetical, metaphorical or production-only items (e.g. camera instructions).
+            Explicit soundtrack and background music are Music entities; other audible sounds are Audio entities.
+            They are not physical props or extra characters. Preserve their stated style and playback as state.
+            A music/sound event must include that Music/Audio entity's ref in participants. Never emit an event
+            with no participants or attach background music to an unrelated character just to fill participants.
             Resolve pronouns from saved context and precedingSection; ask a question if genuinely ambiguous.
             Uploaded reference images/style instructions are not evidence of unseen details.
 
@@ -240,7 +253,7 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             {
                 progress?.Report(new(continuity ? "continuity" : validationRepairs > 0 ? "repairing" : coverageReviewed ? "reviewing" : "interpreting",
                     number, total, Math.Max(0, number - 1), (continuity ? "Final continuity check: " : $"Section {number} of {total}: ") +
-                    (validationRepairs > 0 ? "correcting the model's interpretation." : coverageReviewed ? "checking for missing state changes." : "interpreting scene changes."), attempt + 1));
+                    (validationRepairs > 0 ? "correcting the model's interpretation." : coverageReviewed ? "checking for missing objects, places and state changes." : "interpreting scene changes."), attempt + 1));
                 using var call = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 call.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(_options.CallTimeoutSeconds, 0.05, 600)));
                 try
@@ -284,14 +297,32 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
                 };
                 ScenePromptReducer.Apply(workspace, new ScenePromptPreview(Guid.NewGuid().ToString("N"),
                     ScenePromptReducer.Revision(workspace), prompt, "", model, extraction), allowQuestions: true);
-                // A common small-model failure is recording an event but omitting all its effects,
-                // or discovering a place without processing its descriptive clause. Ask once for a
-                // completeness review; harmless event-only descriptions remain valid after review.
-                if (!continuity && !coverageReviewed && validationRepairs == 0 && NeedsCoverageReview(extraction))
+                // Valid JSON can omit an entire prop; inspecting only returned entities
+                // cannot detect that. Review the source once, even after validation repairs.
+                if (!continuity && !coverageReviewed)
                 {
                     coverageReviewed = true;
                     messages.Add(new { role = "assistant", content = content.GetString() ?? "" });
-                    messages.Add(new { role = "user", content = "Review the entire CURRENT prompt clause by clause for missing STATE CHANGES. Some new entities or occurred/ongoing events have no associated changes. Events do not store current state. Include every explicitly stated ability, health condition, location, possession and intermediate change, even if an event already mentions it. For example can sing but got sick requires ability_sing=true AND health=sick, not just an event. Preserve valid changes and events; do not invent effects for actions such as waving, plans or negations. Return the complete corrected JSON." });
+                    messages.Add(new { role = "user", content = """
+                        Review the entire CURRENT prompt clause by clause for missing ENTITIES and missing STATE CHANGES.
+                        Independently inventory the characters, physical objects and settings actually present in the source,
+                        then compare that inventory with known entities and this JSON. Look especially for objects that are
+                        missing entirely, not just returned entities with no changes. A prop mentioned only in an event or
+                        in a character's text-valued attribute still needs its own Object identity when present or handled.
+                        Account for unnamed/common-noun items, possession, tools, worn items, food, containers and vehicles.
+                        Resolve plural and possessive references: two characters drawing matching swords need two separate
+                        sword Objects and the appropriate held_by relationships. Reuse known IDs and Studio aliases;
+                        distinguish multiple instances from a shared design. Include the actual scene location.
+                        Do not turn negated, hypothetical or metaphorical objects or production instructions into present props.
+                        Preserve explicitly requested soundtrack as Music (other sounds as Audio), with style/playback state.
+                        Every event needs at least one declared or known participant, including music and sound events.
+                        Keep transient effects as descriptions unless they are continuing scene entities.
+                        Events do not store current state. Include every explicitly stated ability, health condition,
+                        location, possession and intermediate change, even if an event already mentions it.
+                        Preserve valid facts, events, questions and identity distinctions. Do not invent objects, appearance
+                        or consequences from unseen images. Cite evidenceSources for added facts and events.
+                        Return the complete corrected JSON; if nothing was missed, return the complete unchanged JSON.
+                        """ });
                     continue;
                 }
                 return extraction;
@@ -330,6 +361,10 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
                     Keep all supported entities, state effects and events. Fix every invalid relationship, not just the first.
                     Reuse existing IDs and types; only newly discovered entity types may be corrected.
                     People, acting animals and monsters are Characters. Props are Objects; places are Locations.
+                    Explicit background music/soundtrack is a Music entity; other sounds are Audio entities, not props.
+                    If a music/sound event has no participants, declare or reuse its Music/Audio entity and reference it.
+                    Preserve its stated style and playback; never attach it to an unrelated character or discard the music.
+                    Every event requires 1–20 declared or known participant refs. No empty participant lists.
                     Keep named characters distinct. Separate matching swords carried by different characters are distinct Objects.
                     Only Object held_by Character is valid. Restraint is character stuck_in object or restrained_by entity.
                     Relationships use subject and target refs; attributes use value and an empty target.
@@ -360,15 +395,6 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             }
         }
         throw new InvalidOperationException("No scene interpretation was produced.");
-    }
-
-    private static bool NeedsCoverageReview(ScenePromptExtraction extraction)
-    {
-        var changed = extraction.Changes.SelectMany(c => new[] { c.Subject, c.Target }).Where(r => !string.IsNullOrEmpty(r)).ToHashSet(StringComparer.Ordinal);
-        if (extraction.Events?.Any(e => e.Mode is "occurred" or "ongoing" && !e.Participants.Any(changed.Contains)) == true)
-            return true;
-        var mentioned = changed.Concat(extraction.Events?.SelectMany(e => e.Participants) ?? Enumerable.Empty<string>()).ToHashSet(StringComparer.Ordinal);
-        return extraction.Entities.Any(e => !mentioned.Contains(e.Ref));
     }
 
     internal static ScenePromptExtraction DeserializeExtraction(string content)
@@ -408,6 +434,10 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
         }
         schema["properties"]!["changes"]!["items"] = new JsonObject { ["oneOf"] = variants };
         schema["properties"]!["events"]!["items"]!["properties"]!["evidence"]!["enum"] = sourceEnum;
+        var participants = schema["properties"]!["events"]!["items"]!["properties"]!["participants"]!;
+        participants["minItems"] = 1;
+        participants["maxItems"] = 20;
+        participants["items"]!["minLength"] = 1;
         return schema;
     }
 
@@ -455,6 +485,7 @@ public sealed class ScenePromptService(ISceneMemoryStore store, IScenePromptInte
         prompt = prompt.Trim(); label = label?.Trim() ?? ""; sceneLabel = sceneLabel?.Trim() ?? "";
         if (prompt.Length == 0 || prompt.Length > 12000 || label.Length > 100 || sceneLabel.Length > 100)
             throw new ArgumentException("Enter a prompt of up to 12,000 characters and scene/shot names of up to 100 characters.");
+        durationSeconds = SceneShotDuration.Resolve(durationSeconds, prompt);
         if (durationSeconds is <= 0 or > 3600) throw new ArgumentException("Shot duration must be between 0.1 seconds and one hour.");
         model = string.IsNullOrWhiteSpace(model) ? OllamaRuntimeConfiguration.GetDefaultModel() : model.Trim();
         if (model.Length > 200) throw new ArgumentException("Model name is too long.");

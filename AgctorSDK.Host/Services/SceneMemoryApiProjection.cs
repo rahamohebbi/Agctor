@@ -27,7 +27,8 @@ public static class SceneMemoryApiProjection
                     after.TryGetValue(key, out var next) && !next.Removed ? next : null)).ToArray();
             return new SceneTimelineShot(p.Id, index + 1, p.SceneLabel, p.Label, p.Prompt, p.DurationSeconds,
                 p.FirstSequence, p.LastSequence, p.IntroducedEntityIds ?? [], changes,
-                w.History.Where(f => f.IsEvent && f.PromptId == p.Id).ToArray(), after.Values.Where(f => !f.Removed).ToArray());
+                w.History.Where(f => f.IsEvent && f.PromptId == p.Id).ToArray(), after.Values.Where(f => !f.Removed).ToArray(), SceneShotDesigns.Review(w, p.Id),
+                SceneVideoPromptBuilder.Participants(w, p.Id));
         }).ToArray();
         return new(w.Id, ScenePromptReducer.Revision(w), w.Entities, shots);
     }

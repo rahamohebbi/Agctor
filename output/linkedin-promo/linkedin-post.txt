@@ -1,0 +1,16 @@
+I’ve been quietly building Agctor since May 2025. It’s time to share more of it.
+
+The idea is simple: agents are actors. Each owns its state and communicates through messages. Agctor brings that approach to an open-source .NET framework for agentic systems.
+
+Now I’m putting it to work in Cynelo, my AI video studio: coordinating shot planning, tracking characters and objects through Scene Memory, and handing rendering work to Cynelo—with human input when the workflow needs it.
+
+That’s the part I’m excited about: taking an architecture I’ve been building quietly and using it to tackle real creative workflows.
+
+Still building. Now sharing.
+
+Explore Agctor: https://agctor.com/
+Code: https://github.com/rahamohebbi/Agctor
+
+If you’re building agentic systems or AI creative tools, I’d love to compare notes.
+
+#Agctor #Cynelo #AgenticAI #OpenSource

@@ -10,7 +10,7 @@ public static class ScenarioFlowValidator
 {
     private static readonly HashSet<string> NodeTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "ChatInput", "Router", "LlmNode", "Merge", "Output",
+        "ChatInput", "Router", "LlmNode", "Merge", "Output", "AgentLoop",
         "Gate", "WaitForInput", "AwaitEvent", "Notify"
     };
 
@@ -49,6 +49,8 @@ public static class ScenarioFlowValidator
             return errors;
         }
 
+        if (flow.Edges != null && Services.VideoWorkflow.SceneVideoScenario.Validate(flow) is { } loopError)
+            errors.Add(loopError);
         var edgeList = flow.Edges ?? new List<ScenarioFlowEdge>();
         if (flow.Edges == null)
             errors.Add($"Scenario '{scenario.Id}' flow: edges is required (may be empty array).");

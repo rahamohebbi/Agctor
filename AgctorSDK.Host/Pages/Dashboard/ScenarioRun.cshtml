@@ -1,0 +1,50 @@
+@page "/Dashboard/ScenarioRun"
+@{
+    ViewData["Title"] = "Video sequence";
+}
+<link rel="stylesheet" href="~/css/scenario-run.css" asp-append-version="true" />
+<main class="vr-page">
+    <a href="/Dashboard/Scenarios">← Scenarios</a>
+    <header><p class="vr-eyebrow">SCENE MEMORY WORKFLOW</p><h1>One idea. A continuous sequence.</h1>
+        <p>Agctor plans the shots and preserves the story. Cynelo renders each clip, continuing from the previous frame.</p></header>
+    <div class="vr-grid">
+        <section class="vr-card"><h2>Start a sequence</h2>
+            <form id="vr-start">
+                <fieldset class="vr-story-mode" aria-describedby="vr-story-help">
+                    <legend>Start with</legend>
+                    <label><input id="vr-mode-new" type="radio" name="storyMode" value="new" checked /><span><strong>New story</strong><small>A fresh start for your idea</small></span></label>
+                    <label><input id="vr-mode-continue" type="radio" name="storyMode" value="continue" /><span><strong>Continue an existing story</strong><small>Use its characters and continuity</small></span></label>
+                </fieldset>
+                <p id="vr-story-help" class="vr-muted">We’ll create fresh Scene Memory automatically. Other stories and library designs won’t be added.</p>
+                <div id="vr-existing-story" hidden>
+                    <label for="vr-workspace">Choose a story</label><select id="vr-workspace" disabled></select>
+                    <button id="vr-refresh-stories" type="button" class="vr-secondary">Refresh stories</button>
+                </div>
+                <label for="vr-prompt">What should happen?</label><textarea id="vr-prompt" rows="5" maxlength="12000" required placeholder="Describe the action from beginning to end…"></textarea>
+                <div class="vr-pair"><div><label for="vr-total">Total length · seconds</label><input id="vr-total" type="number" min="1" max="360" value="30" required /></div>
+                    <div><label for="vr-clip">Each clip · seconds</label><input id="vr-clip" type="number" min="1" max="15" value="15" required /></div></div>
+                <label for="vr-model">Planning model <span class="vr-muted">(optional)</span></label><input id="vr-model" maxlength="200" placeholder="Use the scenario’s default model" />
+                <label class="vr-check"><input id="vr-review" type="checkbox" checked /> Let me review the plan before rendering</label>
+                <p id="vr-connection" class="vr-muted"></p>
+                <button id="vr-start-button" type="submit">Start sequence</button>
+            </form>
+            <h2 class="vr-recent-title">Recent sequences</h2><div id="vr-recent"></div>
+        </section>
+        <section class="vr-card" aria-label="Workflow progress">
+            <div class="vr-run-heading"><h2>Live activity</h2><span id="vr-status" class="vr-status">Ready</span></div>
+            <p id="vr-summary" role="status" aria-live="polite">Start a sequence or open a recent run to follow its progress.</p>
+            <p id="vr-story-info" class="vr-muted" hidden></p>
+            <p id="vr-monitor" class="vr-muted" hidden></p>
+            <p id="vr-error" role="alert"></p>
+            <form id="vr-question" hidden><h3>Your input is needed</h3><p id="vr-question-text"></p>
+                <fieldset id="vr-choices"><legend>Choose an answer</legend></fieldset>
+                <label for="vr-answer">Or explain in your own words</label><textarea id="vr-answer" rows="3" maxlength="4000"></textarea>
+                <button type="submit">Send answer &amp; continue</button>
+            </form>
+            <ol id="vr-clips" class="vr-clips"></ol>
+            <button id="vr-cancel" class="vr-secondary" hidden>Cancel sequence</button>
+            <h3>Activity history</h3><ol id="vr-events" class="vr-events"></ol>
+        </section>
+    </div>
+</main>
+<script src="~/js/dashboard/scenario-run.js" asp-append-version="true"></script>

@@ -90,7 +90,7 @@
                     selector: 'node',
                     style: {
                         label: function (node) {
-                            var labels = { ChatInput: 'INPUT', Output: 'OUTPUT', Router: 'ROUTER', LlmNode: 'AI STEP', Merge: 'MERGE', Gate: 'GATE', WaitForInput: 'ASK USER', AwaitEvent: 'WAIT FOR EVENT', Notify: 'NOTIFY' };
+                            var labels = { AgentLoop: 'AGENT', ChatInput: 'INPUT', Output: 'OUTPUT', Router: 'ROUTER', LlmNode: 'AI STEP', Merge: 'MERGE', Gate: 'GATE', WaitForInput: 'ASK USER', AwaitEvent: 'WAIT FOR EVENT', Notify: 'NOTIFY' };
                             return (labels[node.data('agctorType')] || 'STEP') + '\n' + node.data('label');
                         },
                         shape: 'round-rectangle',
@@ -421,6 +421,10 @@
                           loopConfig: loopConfig
                       })
                     : mode;
+            var from = doc.nodes.find(function (n) { return n.id === e.fromNodeId; });
+            var to = doc.nodes.find(function (n) { return n.id === e.toNodeId; });
+            if (to && to.config && to.config.role === 'audio-engineer') cap = 'Inspect / improve';
+            if (from && from.config && from.config.role === 'audio-engineer') cap = 'Report / recheck';
             out.push({
                 group: 'edges',
                 data: {

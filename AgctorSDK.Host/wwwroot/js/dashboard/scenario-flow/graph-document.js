@@ -2,7 +2,7 @@
  * PRD-014 + PRD-024: portable GraphDocument helpers (no Cytoscape).
  */
 (function (global) {
-    var nodeTypesV1 = ['ChatInput', 'Router', 'LlmNode', 'Merge', 'Output'];
+    var nodeTypesV1 = ['ChatInput', 'Router', 'LlmNode', 'Merge', 'Output', 'AgentLoop'];
     var nodeTypesV2 = ['Gate', 'WaitForInput', 'AwaitEvent', 'Notify'];
     var nodeTypes = nodeTypesV1.concat(nodeTypesV2);
     var edgeModes = ['sequential', 'parallel', 'loopBack'];
@@ -55,6 +55,7 @@
 
     function defaultConfigForNodeType(type) {
         switch (type) {
+            case 'AgentLoop': return { workflow: 'scene-video', maxAttempts: 3, instructions: '' };
             case 'Gate':
                 return {
                     fact: 'visual.hasPhotos',

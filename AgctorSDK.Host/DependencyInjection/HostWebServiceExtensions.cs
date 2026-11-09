@@ -50,10 +50,26 @@ public static class HostWebServiceExtensions
             ?? Path.Combine(AppContext.BaseDirectory, "data", "scene-memory.db"));
         services.Configure<ScenePromptRuntimeOptions>(configuration.GetSection("Agctor:SceneMemory:Interpretation"));
         // The interpreter owns per-call and whole-preview deadlines, including cancellation during repairs.
-        services.AddHttpClient(OllamaScenePromptInterpreter.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddHttpClient(OllamaScenePromptInterpreter.ClientName, client => client.Timeout = Timeout.InfiniteTimeSpan).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("ollama"));
         services.AddSingleton<IScenePromptInterpreter, OllamaScenePromptInterpreter>();
         services.AddSingleton<ScenePromptService>();
         services.AddSingleton<SceneMemoryEvaluationService>();
+
+        services.Configure<Services.VideoWorkflow.SceneVideoOptions>(configuration.GetSection("Agctor:SceneVideo"));
+        services.AddSingleton<AgctorSDK.Core.Workflows.IAgentRunStore>(_ => new AgctorSDK.Core.Workflows.SqliteAgentRunStore(
+            configuration["Agctor:SceneVideo:StorePath"] ?? Path.Combine(AppContext.BaseDirectory, "data", "agent-runs.db")));
+        services.AddHttpClient("SceneVideoPlanner", client => client.Timeout = Timeout.InfiniteTimeSpan).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("ollama"));
+        services.AddHttpClient("SceneVideoRenderer", client => client.Timeout = TimeSpan.FromSeconds(60)).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("cynelo"));
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoPlanner, Services.VideoWorkflow.OllamaSceneVideoPlanner>();
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoRenderer, Services.VideoWorkflow.HttpSceneVideoRenderer>();
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoStoryGateway, Services.VideoWorkflow.HttpSceneVideoStoryGateway>();
+        services.AddHttpClient("SceneVideoProduction", client => client.Timeout = TimeSpan.FromMinutes(6)).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("cynelo"));
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoProduction, Services.VideoWorkflow.HttpSceneVideoProduction>();
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoCritic, Services.VideoWorkflow.OllamaSceneVideoCritic>();
+        services.AddSingleton<Services.VideoWorkflow.ISceneAudioEngineer, Services.VideoWorkflow.OllamaSceneAudioEngineer>();
+        services.AddSingleton<Services.VideoWorkflow.SceneVideoScenario>();
+        services.AddSingleton<Services.VideoWorkflow.SceneVideoLoop>();
+        services.AddHostedService<Services.VideoWorkflow.SceneVideoWorker>();
 
         var sessionStorePath = configuration.GetValue<string>("Agctor:SessionStorePath")
             ?? Path.Combine(AppContext.BaseDirectory, "data", $"agctor-sessions-{configuredMcpPort}.db");

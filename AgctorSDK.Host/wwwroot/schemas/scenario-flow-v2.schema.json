@@ -87,7 +87,7 @@
           "enum": [
             "ChatInput",
             "Router",
-            "LlmNode",
+            "LlmNode", "AgentLoop",
             "Merge",
             "Output",
             "Gate",

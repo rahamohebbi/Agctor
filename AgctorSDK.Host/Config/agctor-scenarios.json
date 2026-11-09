@@ -44,6 +44,96 @@
         "CoderAgent",
         "SessionCoordinatorAgent"
       ]
+    },
+    {
+      "id": "scene-video-chain",
+      "displayName": "Scene Memory \u2014 video sequence",
+      "description": "Plan a sequence from your prompt, maintain Scene Memory, and ask Cynelo to render consecutive clips. Pause for human decisions and follow live progress.",
+      "kind": "declarative",
+      "agentTypes": [],
+      "flow": {
+        "schemaVersion": "1.0",
+        "graphId": "scene-video-chain",
+        "name": "Scene video sequence",
+        "outputPolicy": "first_non_empty",
+        "nodes": [
+          {
+            "id": "input",
+            "type": "ChatInput",
+            "label": "Your idea"
+          },
+          {
+            "id": "director",
+            "type": "AgentLoop",
+            "label": "Director \u00b7 Plan / Render / Review",
+            "config": {
+              "workflow": "scene-video",
+              "maxAttempts": 3,
+              "instructions": "Keep identities, locations, props and actions consistent across clips. Ask the creator when essential story intent is unclear."
+            }
+          },
+          {
+            "id": "audio-engineer",
+            "type": "AgentLoop",
+            "label": "Audio Engineer \u00b7 Inspect / Narrate / Mix / Verify",
+            "config": {
+              "workflow": "scene-video",
+              "role": "audio-engineer"
+            }
+          },
+          {
+            "id": "output",
+            "type": "Output",
+            "label": "Finished video with reviewed audio"
+          }
+        ],
+        "edges": [
+          {
+            "id": "start",
+            "fromNodeId": "input",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "finish",
+            "fromNodeId": "director",
+            "toNodeId": "output",
+            "mode": "sequential"
+          },
+          {
+            "id": "audio-request",
+            "fromNodeId": "director",
+            "toNodeId": "audio-engineer",
+            "mode": "sequential"
+          },
+          {
+            "id": "audio-report",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "director",
+            "mode": "sequential"
+          }
+        ],
+        "ui": {
+          "nodeLayouts": {
+            "input": {
+              "x": 0,
+              "y": 0
+            },
+            "director": {
+              "x": 0,
+              "y": 180
+            },
+            "audio-engineer": {
+              "x": 360,
+              "y": 180
+            },
+            "output": {
+              "x": 0,
+              "y": 360
+            }
+          }
+        }
+      }
     }
   ]
 }

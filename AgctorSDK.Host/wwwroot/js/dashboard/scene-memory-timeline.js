@@ -5,7 +5,7 @@
 
     async function api(path, options) {
         const response = await fetch(path, options); const text = await response.text(); const data = text ? JSON.parse(text) : {};
-        if (!response.ok) throw new Error(data.error || data.message || data.title || Object.values(data.errors || {}).flat().join(' ') || 'Request failed.');
+        if (!response.ok) throw new Error(data.detail || data.error || data.message || data.title || Object.values(data.errors || {}).flat().join(' ') || 'Request failed.');
         return data;
     }
     function node(tag, text, className) { const n=document.createElement(tag); if(text!==undefined)n.textContent=text; if(className)n.className=className; return n; }
@@ -79,6 +79,7 @@
     function renderDetail() {
         const shot=prompts()[selectedIndex], before=stateBefore(shot), after=stateAfter(shot), shotFacts=workspace.history.filter(f=>f.promptId===shot.id && !f.isEvent), changedKeys=[...new Set(shotFacts.map(f=>`${f.entityId}:${f.property.toLowerCase()}`))];
         el('smt-position').textContent=`${sceneName(shot)} · Shot ${selectedIndex+1} of ${prompts().length}`; el('smt-shot-title').textContent=shotName(shot,selectedIndex); el('smt-prompt').textContent=shot.prompt;
+        el('smt-design-status').textContent='New generations use the latest linked designs. Story facts and completed videos stay unchanged.';
         const meta=el('smt-shot-meta'); meta.replaceChildren(); [shot.model,formatDuration(shot.durationSeconds),shot.lastSequence>=shot.firstSequence?`Changes #${shot.firstSequence}–#${shot.lastSequence}`:'No state entries'].forEach(v=>meta.append(node('span',v,'pill')));
         const deltas=el('smt-deltas'); deltas.replaceChildren();
         if(!changedKeys.length)deltas.append(node('p','No state properties changed. This may be an event-only or entity-only shot.'));
@@ -99,5 +100,97 @@
     function closeEditor(){el('smt-edit-dialog').close();}
     el('smt-workspace').addEventListener('change',e=>loadWorkspace(e.target.value)); el('smt-previous').addEventListener('click',()=>select(selectedIndex-1)); el('smt-next').addEventListener('click',()=>select(selectedIndex+1)); el('smt-edit').addEventListener('click',openEditor); el('smt-edit-close').addEventListener('click',closeEditor); el('smt-edit-cancel').addEventListener('click',closeEditor);
     el('smt-edit-form').addEventListener('submit',async event=>{event.preventDefault(); const form=new FormData(event.currentTarget), shot=prompts()[selectedIndex]; try { workspace=await api(`/api/scene-memory/workspaces/${encodeURIComponent(workspace.id)}/prompts/${encodeURIComponent(shot.id)}/metadata`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({sceneLabel:form.get('sceneLabel'),shotLabel:form.get('shotLabel'),durationSeconds:form.get('durationSeconds')?Number(form.get('durationSeconds')):null})}); closeEditor(); renderTimeline(); } catch(error){el('smt-error').textContent=error.message;closeEditor();} });
+
+    const designDialog=el('smt-design-dialog');
+    function designCard(label,design) {
+        const card=node('div',undefined,'entity-card'); card.append(node('h4',label),node('strong',design?.displayName || 'No linked design'));
+        Object.entries(design?.defaults||{}).filter(([k])=>!k.startsWith('cynelo_')).forEach(([key,value])=>card.append(node('p',`${key.replace(/^design_/,'').replaceAll('_',' ')}: ${value}`)));
+        return card;
+    }
+    el('smt-design-review').addEventListener('click',async()=>{
+        const workspaceId=workspace.id,shotId=prompts()[selectedIndex].id;
+        el('smt-design-review').disabled=true;
+        try {
+            const path=`/api/scene-memory/v1/workspaces/${encodeURIComponent(workspaceId)}/shots/${encodeURIComponent(shotId)}/designs`;
+            const review=await api(path);
+            if(workspace.id!==workspaceId || prompts()[selectedIndex].id!==shotId)return;
+            const target=el('smt-design-comparison');target.replaceChildren();
+            el('smt-design-title').textContent='Current linked designs';
+            el('smt-design-explanation').textContent='Cynelo refreshes these links from the Design Library before preparing a video. Link or unlink scene items in Cynelo. Completed videos keep the inputs used to create them.';
+            const designs=review.current.filter(e=>e.studio);
+            designs.forEach(e=>target.append(designCard(`${e.name} · ${e.kind}`,e.studio)));
+            if(!designs.length)target.append(node('p','No linked designs. Link a library design to a detected scene item in Cynelo.'));
+            el('smt-design-error').textContent='';designDialog.showModal();
+        }catch(error){el('smt-error').textContent=error.message;}
+        finally{el('smt-design-review').disabled=false;}
+    });
+    el('smt-design-close').addEventListener('click',()=>designDialog.close());
+    let videoTarget=null, videoDebug=null, videoRequest=0, videoAbort=null;
+    const videoDialog=el('smt-video-dialog');
+    function clearVideoResult() {
+        videoDebug=null; el('smt-video-result').hidden=true; el('smt-video-download').disabled=true;
+        el('smt-video-copy-status').textContent='';
+    }
+    function stopVideoRequest() { videoRequest++; videoAbort?.abort(); videoAbort=null; }
+    async function simulateVideo() {
+        stopVideoRequest(); const request=videoRequest; videoAbort=new AbortController(); const signal=videoAbort.signal;
+        clearVideoResult(); el('smt-video-error').textContent=''; el('smt-video-run').disabled=true; el('smt-video-status').textContent='Building prompt…';
+        const target={...videoTarget};
+        try {
+            const root=`/api/scene-memory/v1/workspaces/${encodeURIComponent(target.workspaceId)}`;
+            const current=await api(root,{signal});
+            const body={expectedRevision:current.revision,existingClips:Number(el('smt-video-clips').value),
+                durationSeconds:el('smt-video-duration').value ? Number(el('smt-video-duration').value) : null,
+                referenceLabels:el('smt-video-labels').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)};
+            const path=`${root}/shots/${encodeURIComponent(target.shotId)}/video-prompt/simulate`;
+            const result=await api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal});
+            if(request!==videoRequest || !videoDialog.open)return;
+            videoDebug={request:{method:'POST',path,body},response:result};
+            el('smt-video-model').textContent=result.modelPrompt;
+            el('smt-video-original').textContent=target.prompt;
+            el('smt-video-handoff').textContent=result.handoff.prompt;
+            el('smt-video-continuation').textContent=result.continuationPrompt;
+            el('smt-video-json').textContent=JSON.stringify(videoDebug,null,2);
+            const metrics=el('smt-video-metrics'); metrics.replaceChildren();
+            [result.workflow,`Keep ${result.targetSeconds}s · model generates ${result.modelSeconds}s`,`Film clip ${result.clipSlot}`,`${result.modelPrompt.length.toLocaleString()} characters`,result.formatter]
+                .forEach(text=>metrics.append(node('span',text,'pill')));
+            const warnings=el('smt-video-warnings'); warnings.replaceChildren();result.warnings.forEach(w=>warnings.append(node('li',w)));
+            const included=el('smt-video-entities');included.replaceChildren();
+            result.handoff.entities.forEach(e=>{
+                const card=designCard(`${e.name} · ${e.kind}`,e.studio);
+                card.append(node('p',e.studio?'Current linked design':'Scene facts and action only.'));
+                included.append(card);
+            });
+            if(!result.handoff.entities.length)included.append(node('p','No participants resolved for this shot.'));
+            el('smt-video-result').hidden=false;el('smt-video-download').disabled=false;
+            el('smt-video-status').textContent='Ready · no video generated';
+        } catch(error) {
+            if(request!==videoRequest || error.name==='AbortError')return;
+            el('smt-video-error').textContent=error.message;el('smt-video-status').textContent='';el('smt-video-options').open=true;
+        } finally { if(request===videoRequest)el('smt-video-run').disabled=false; }
+    }
+    el('smt-video-preview').addEventListener('click',()=>{
+        const shot=prompts()[selectedIndex];if(!shot)return;
+        videoTarget={workspaceId:workspace.id,shotId:shot.id,prompt:shot.prompt};
+        el('smt-video-shot').textContent=`${workspace.name} · ${shotName(shot,selectedIndex)}`;
+        el('smt-video-form').reset();el('smt-video-options').open=false;clearVideoResult();videoDialog.showModal();simulateVideo();
+    });
+    el('smt-video-form').addEventListener('submit',event=>{event.preventDefault();simulateVideo();});
+    el('smt-video-form').addEventListener('input',()=>{
+        stopVideoRequest();clearVideoResult();el('smt-video-run').disabled=false;
+        el('smt-video-error').textContent='';el('smt-video-status').textContent='Settings changed · refresh to see the new prompt';
+    });
+    el('smt-video-close').addEventListener('click',()=>videoDialog.close());
+    videoDialog.addEventListener('close',()=>{stopVideoRequest();clearVideoResult();});
+    el('smt-video-copy').addEventListener('click',async()=>{
+        if(!videoDebug)return;
+        try { await navigator.clipboard.writeText(videoDebug.response.modelPrompt);el('smt-video-copy-status').textContent='Model prompt copied'; }
+        catch { el('smt-video-copy-status').textContent='Copy unavailable. Select the prompt text and copy it manually.'; }
+    });
+    el('smt-video-download').addEventListener('click',()=>{
+        if(!videoDebug)return;
+        const url=URL.createObjectURL(new Blob([JSON.stringify(videoDebug,null,2)],{type:'application/json'}));
+        const link=node('a');link.href=url;link.download=`scene-video-debug-${videoTarget.shotId}.json`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    });
     init();
 })();

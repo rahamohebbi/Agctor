@@ -1,0 +1,797 @@
+[
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 1,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 1\u003E and @Ryan raise the \u003CPicture 2\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 1\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 1\u003E, \u003CPicture 2\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 3\u003E, \u003CPicture 4\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nSHOT ACTION\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is reference 1. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is mug. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 2\u003E and \u003CPicture 3\u003E raise the Golden \u003CPicture 5\u003E beside the \u003CPicture 6\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 5,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 1\u003E and @Ryan raise the \u003CPicture 2\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 1\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 1\u003E, \u003CPicture 2\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 3\u003E, \u003CPicture 4\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nSHOT ACTION\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is reference 1. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is mug. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 2\u003E and \u003CPicture 3\u003E raise the Golden \u003CPicture 5\u003E beside the \u003CPicture 6\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 8,
+    "referenceLabels": [],
+    "modelSeconds": 10,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 1\u003E and @Ryan raise the \u003CPicture 2\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 1\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 1\u003E, \u003CPicture 2\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 3\u003E, \u003CPicture 4\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nSHOT ACTION\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is reference 1. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is mug. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 2\u003E and \u003CPicture 3\u003E raise the Golden \u003CPicture 5\u003E beside the \u003CPicture 6\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 12,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 1\u003E and @Ryan raise the \u003CPicture 2\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 1\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 1\u003E, \u003CPicture 2\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 3\u003E, \u003CPicture 4\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nSHOT ACTION\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is reference 1. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is mug. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 2\u003E and \u003CPicture 3\u003E raise the Golden \u003CPicture 5\u003E beside the \u003CPicture 6\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 15,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 1\u003E and @Ryan raise the \u003CPicture 2\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 1\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 1\u003E, \u003CPicture 2\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 3\u003E, \u003CPicture 4\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nSHOT ACTION\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 3\u003E, \u003CPicture 4\u003E) \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 0,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is reference 1. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is mug. Keep that identity, wardrobe, and look.\n\nSHOT ACTION\n\u003CPicture 2\u003E and \u003CPicture 3\u003E raise the Golden \u003CPicture 5\u003E beside the \u003CPicture 6\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 1,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 5,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 8,
+    "referenceLabels": [],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 12,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 15,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 1,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 1,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 1,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 5,
+    "referenceLabels": [],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 5,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 5,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 5-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 8,
+    "referenceLabels": [],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 8,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 10,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 10-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 12,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 12,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 15,
+    "referenceLabels": [],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Raha",
+      "Golden sword"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Golden sword. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 2\u003E and @Ryan raise the \u003CPicture 3\u003E beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 2\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "Hoda",
+      "Hoda",
+      "Raha",
+      "Raha"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Hoda. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Raha. Keep that identity, wardrobe, and look.\n\u003CPicture 2\u003E, \u003CPicture 3\u003E show different views of the same subject, Hoda. Preserve one identity; do not create a separate person or object for each photo.\n\u003CPicture 4\u003E, \u003CPicture 5\u003E show different views of the same subject, Raha. Preserve one identity; do not create a separate person or object for each photo.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) and @Ryan raise the Golden sword beside the bakery. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\nRaha (\u003CPicture 4\u003E, \u003CPicture 5\u003E) \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  },
+  {
+    "prompt": "SHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.",
+    "existingClips": 3,
+    "durationSeconds": 15,
+    "referenceLabels": [
+      "",
+      "Raha",
+      "Ryan",
+      "Earth Monster",
+      "sword",
+      "bakery",
+      "baker",
+      "mug"
+    ],
+    "modelSeconds": 15,
+    "continuationPrompt": "The supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\nRaha and @Ryan raise the Golden sword beside the bakery. \u003Cimage 2\u003E remains still.\n\nEND OF SHOT\nRaha \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.",
+    "modelPrompt": "Subject references from the previous film:\n- \u003CPicture 1\u003E is opening frame. Keep that identity, wardrobe, and look.\n- \u003CPicture 2\u003E is reference 2. Keep that identity, wardrobe, and look.\n- \u003CPicture 3\u003E is Raha. Keep that identity, wardrobe, and look.\n- \u003CPicture 4\u003E is Ryan. Keep that identity, wardrobe, and look.\n- \u003CPicture 5\u003E is Earth Monster. Keep that identity, wardrobe, and look.\n- \u003CPicture 6\u003E is sword. Keep that identity, wardrobe, and look.\n- \u003CPicture 7\u003E is bakery. Keep that identity, wardrobe, and look.\n- \u003CPicture 8\u003E is baker. Keep that identity, wardrobe, and look.\n- \u003CPicture 9\u003E is mug. Keep that identity, wardrobe, and look.\n\nThe supplied image is the first frame of this shot. Animate from this exact pose. Do not start a new scene. This is shot 4 of 4. The story is already in progress.\n\nWhat already happened (do not replay it):\nSHOT ACTION\n\u003CPicture 3\u003E and \u003CPicture 4\u003E raise the Golden \u003CPicture 6\u003E beside the \u003CPicture 7\u003E. \u003CPicture 2\u003E remains still.\n\nEND OF SHOT\n\u003CPicture 3\u003E \u2014 status: free.\n\nMatch this frame exactly: same person, face, clothes, place, lighting, time of day, camera, lens, framing, and color.\n\nFirst second: almost no camera move. Continue only the smallest motion already in the pose \u2014 breath, blink, weight shift, or a hand already moving. No cut. No snap zoom.\n\nRest of this 15-second shot:\nStay in this moment. Take one small next action that follows from the current pose. Do not walk in again. Do not reintroduce anyone or re-establish the place.\n\nNever: titles, jump cuts, new people, wardrobe changes, time skips, sudden lighting changes, or establishing the location again.\n\nWhenever the prompt names one of those subjects, match the matching tagged still."
+  }
+]

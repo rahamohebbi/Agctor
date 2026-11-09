@@ -225,6 +225,14 @@
         var nodes = flow && (flow.nodes || flow.Nodes) || [];
         document.getElementById('sc-flow-summary').textContent = flow ? nodes.length + ' steps configured. Open the designer to explore routing, AI steps, and replies.' : 'No flow configured. Add a flow to define how messages move through this scenario.';
         document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
+        var runLink = document.getElementById('sc-run-workflow');
+        runLink.hidden = !nodes.some(function (n) { return n.type === 'AgentLoop'; });
+        if (!runLink.hidden) {
+            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run and routes the next task to them.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Continuity critic', 'Editor agent'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []), '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
+        }
+
+        runLink.href = '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(s.id);
+
     }
     function selectSection(name, focus) {
         activeSection = name;
@@ -923,6 +931,9 @@
         var awaitPanel = document.getElementById('sc-flow-await-panel');
         var awaitEventEl = document.getElementById('sc-flow-await-event');
         var awaitTimeoutEl = document.getElementById('sc-flow-await-timeout');
+        var loopPanel = document.getElementById('sc-flow-agent-loop-panel');
+        var loopAttempts = document.getElementById('sc-flow-agent-loop-attempts');
+        var loopInstructions = document.getElementById('sc-flow-agent-loop-instructions');
         var notifyPanel = document.getElementById('sc-flow-notify-panel');
         var notifyTargetEl = document.getElementById('sc-flow-notify-target');
         var notifySignalEl = document.getElementById('sc-flow-notify-signal');
@@ -1052,6 +1063,7 @@
         }
 
         function hideAllV2Panels() {
+            if (loopPanel) loopPanel.classList.add('hidden');
             if (gatePanel) gatePanel.classList.add('hidden');
             if (waitPanel) waitPanel.classList.add('hidden');
             if (awaitPanel) awaitPanel.classList.add('hidden');
@@ -1116,7 +1128,9 @@
                 cfg = {};
             }
             var doc = renderer.read(JSON.parse(JSON.stringify(draftBase)));
-            if (type === 'Gate' && gatePanel) {
+            if (type === 'AgentLoop' && loopPanel) {
+                loopPanel.classList.remove('hidden'); loopAttempts.value = cfg.maxAttempts || 3; loopInstructions.value = cfg.instructions || '';
+            } else if (type === 'Gate' && gatePanel) {
                 gatePanel.classList.remove('hidden');
                 populateGateFactOptions(cfg.fact || 'visual.hasPhotos');
                 populateGateOperatorOptions(cfg.operator || 'isFalse');
@@ -1150,7 +1164,9 @@
             } catch (e) {
                 cfg = {};
             }
-            if (type === 'Gate') {
+            if (type === 'AgentLoop') {
+                cfg.workflow = 'scene-video'; cfg.maxAttempts = Number(loopAttempts.value); cfg.instructions = loopInstructions.value;
+            } else if (type === 'Gate') {
                 if (gateFactEl) cfg.fact = gateFactEl.value;
                 if (gateOpEl) cfg.operator = gateOpEl.value;
                 if (gateTrueEdgeEl) cfg.trueEdgeId = gateTrueEdgeEl.value;
@@ -2287,6 +2303,8 @@
         if (awaitEventEl) awaitEventEl.addEventListener('change', persistFlowV2NodeInspectors);
         if (awaitTimeoutEl) awaitTimeoutEl.addEventListener('change', persistFlowV2NodeInspectors);
         if (notifyTargetEl) notifyTargetEl.addEventListener('change', persistFlowV2NodeInspectors);
+        if (loopAttempts) loopAttempts.addEventListener('change', persistFlowV2NodeInspectors);
+        if (loopInstructions) loopInstructions.addEventListener('change', persistFlowV2NodeInspectors);
         if (notifySignalEl) notifySignalEl.addEventListener('change', persistFlowV2NodeInspectors);
         if (showLoopRegionsEl) {
             showLoopRegionsEl.addEventListener('change', refreshLoopRegionOverlay);

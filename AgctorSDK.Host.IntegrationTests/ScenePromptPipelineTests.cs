@@ -354,7 +354,7 @@ public sealed class ScenePromptPipelineTests
         handler.Release.TrySetResult();
         await first.WaitAsync(TimeSpan.FromSeconds(3));
         await interpreter.InterpretAsync(Empty(), "Raha waves.", "test", default);
-        Assert.Equal(2, handler.Calls);
+        Assert.Equal(4, handler.Calls);
     }
 
     private sealed class QueuedHandler : HttpMessageHandler

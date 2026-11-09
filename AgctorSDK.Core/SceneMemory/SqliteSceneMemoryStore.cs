@@ -177,6 +177,13 @@ public sealed partial class SqliteSceneMemoryStore : ISceneMemoryStore
         }, cancellationToken);
     }
 
+    public Task<SceneWorkspace> PinShotDesignsAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default) =>
+        ChangeAsync(workspaceId, workspace => SceneShotDesigns.Pin(workspace, shotId, expectedRevision), cancellationToken);
+
+    /// <inheritdoc />
+    public Task<SceneWorkspace> DeleteShotAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default) =>
+        ChangeAsync(workspaceId, workspace => SceneShotDeletion.Delete(workspace, shotId, expectedRevision), cancellationToken);
+
     /// <inheritdoc />
     public async Task<SceneQueryResult> QueryAsync(string workspaceId, SceneQuery query, CancellationToken cancellationToken = default)
     {
