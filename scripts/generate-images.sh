@@ -8,6 +8,7 @@
 # Examples:
 #   ./scripts/generate-images.sh docs
 #   ./scripts/generate-images.sh docs architecture-diagram.mmd
+#   ./scripts/generate-images.sh docs mcp-diagram.mmd
 #
 # Needs Node (npx) for Mermaid CLI when `mmdc` is not installed.
 # Converts PNG to JPEG with sips, ImageMagick, or ffmpeg.

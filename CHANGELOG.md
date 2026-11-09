@@ -11,6 +11,7 @@ are tagged.
 ### Added
 
 - High-level architecture page (`docs/architecture-diagram.md`) with a generated JPEG.
+- MCP connection page (`docs/mcp-diagram.md`) with a generated JPEG.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can
   keep required attribution.
 - Contributor guide, code of conduct, security policy, and GitHub issue/PR templates.
