@@ -22,6 +22,17 @@ internal static class SimulatedCyneloContinuation
             """;
     }
 
+    /// <summary>A saved scene is the next approved action, never historical context to skip.</summary>
+    public static string ForScene(string prompt, int seconds) => $"""
+        The supplied image is the first frame of this shot. Continue from its pose, identity, clothing, place and lighting.
+        Keep the opening camera motion gentle. Follow the current shot below, including its exact dialogue; this action has not happened yet.
+
+        Rest of this {seconds}-second shot:
+        {prompt.Trim()}
+
+        Preserve continuity with the opening frame while completing this shot's requested action and spoken lines.
+        """;
+
     public static string Build(string originalPrompt, string continuationPrompt) =>
         ForChain(originalPrompt, segmentIndex: 2, segmentCount: 2, segmentSeconds: 15, extraPrompt: continuationPrompt);
 

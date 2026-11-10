@@ -98,5 +98,48 @@ public sealed class SceneVideoTraceTests : IDisposable
         Assert.Equal(4,routes.Length);
         Assert.All(routes.Skip(2),r=>{Assert.Equal("reported",r.Outcome);Assert.Equal("model",r.ToKind);Assert.Equal("Audio production",r.From);});
     }
+    [Fact]
+    public async Task Pending_call_survives_history_paging_and_store_reopen_and_clears_on_response()
+    {
+        var lease=await Lease("pending");
+        var release=new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int> work;
+        using(SceneVideoTrace.Begin(Store,lease,"Planner",NullLogger.Instance))
+            work=SceneVideoTrace.InvokeAsync("Ollama · gemma4:latest","llm","gemma4:latest","Request model response",()=>release.Task);
+        try {
+            for(var i=0;i<220;i++) await Store.ActivityAsync(lease,"Director","Other diagnostic event");
+            var reopened=new SqliteAgentRunStore(file);
+            var call=Assert.Single((await reopened.GetAsync(lease.Run.Id))!.ActiveCalls!);
+            Assert.Equal("Planner",call.From); Assert.Equal("Ollama · gemma4:latest",call.To);
+            Assert.True(call.ConfirmedUntil>call.StartedAt);
+            Assert.DoesNotContain(lease.Token,JsonSerializer.Serialize(call));
+            Assert.Single((await reopened.GraphAsync(lease.Run.Id)).ActiveCalls!);
+            Assert.True(await reopened.RenewAsync(lease,TimeSpan.FromMinutes(2)));
+            var renewed=Assert.Single((await reopened.GetAsync(lease.Run.Id))!.ActiveCalls!);
+            Assert.Equal(call.StartedAt,renewed.StartedAt); Assert.True(renewed.ConfirmedUntil>call.ConfirmedUntil);
+        } finally { release.SetResult(1); await work; }
+        Assert.Empty((await Store.GetAsync(lease.Run.Id))!.ActiveCalls!);
+    }
+    [Theory]
+    [InlineData("save")]
+    [InlineData("cancel")]
+    [InlineData("expire")]
+    public async Task Interrupted_or_finished_work_is_never_shown_as_pending(string end)
+    {
+        var lease=await Lease("lifecycle");
+        await Store.ActivityAsync(lease,"Planner","Started",route:new("Planner","Model","plan","pending",Operation:"Plan",Outcome:"started"));
+        Assert.Single((await Store.GetAsync(lease.Run.Id))!.ActiveCalls!);
+        if(end=="save") await Store.SaveAsync(lease,"Planner","completed","Plan done");
+        else if(end=="cancel") await Store.CancelAsync(lease.Run.Id);
+        else {
+            using var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+file); db.Open();
+            using var command=db.CreateCommand(); command.CommandText="UPDATE agent_runs SET lease_until=0"; command.ExecuteNonQuery();
+        }
+        Assert.Empty((await Store.GraphAsync(lease.Run.Id)).ActiveCalls!);
+        if(end!="cancel") {
+            var next=(await Store.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+            Assert.Empty((await Store.GetAsync(next.Run.Id))!.ActiveCalls!);
+        }
+    }
     public void Dispose() { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); foreach(var path in new[]{file,file+"-shm",file+"-wal"}) if(File.Exists(path)) File.Delete(path); }
 }

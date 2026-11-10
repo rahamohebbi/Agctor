@@ -476,7 +476,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         lease.Run.State = JsonSerializer.SerializeToElement(state);
         await runs.SaveAsync(lease, "test", "ready", "Ready");
         production.AudioAvailable = available;
-        for (var i = 0; i < 25 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        run = await ReachFinalAudioReview(run);
         Assert.Equal("audio-review", run.Question!.Kind);
         Assert.Equal(available, run.Question.Choices.Any(c => c.Id == "improved"));
         Assert.Empty(production.Deliveries);
@@ -504,6 +504,29 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         lease.Run.State = JsonSerializer.SerializeToElement(state);
         await runs.SaveAsync(lease,"test","ready","Speech enabled");
         return (await runs.GetAsync(run.Id))!;
+    }
+    [Fact]
+    public async Task Native_H3_tags_reach_renderer_and_matching_language_does_not_hide_changed_words()
+    {
+        planner.Spoken = "The traveller says: \"Do not cross the bridge.\"";
+        production.Speech = new("detected","en",.99,"Do cross the bridge.","English speech");
+        var run = await SpeechRun();
+        for(var i=0;i<25 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("speech-review",run.Question!.Kind);
+        Assert.Contains("do not match",run.Question.Prompt);
+        var request=Assert.Single(renderer.Requests);
+        Assert.Contains("<d>[English] Do not cross the bridge.</d>",request.Prompt);
+        Assert.Contains("verbatim and in order",request.SpeechInstruction);
+        Assert.False(SceneVideoLoop.State(run).Clips[0].SpeechAccepted);
+        // Explicit retry changes only this take, with the corrected words and a new durable key.
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"english","The traveller says: \"Stay here.\""));
+        run=await ActorTick(run.Id);
+        production.Speech=new("detected","en",.99,"Stay here.","English speech");
+        run=await ActorTick(run.Id);
+        Assert.Equal(2,renderer.Requests.Count);
+        Assert.Contains("<d>[English] Stay here.</d>",renderer.Requests[1].Prompt);
+        Assert.DoesNotContain("<d>[English] Do not cross the bridge.</d>",renderer.Requests[1].Prompt);
+        Assert.NotEqual(renderer.Keys[0],renderer.Keys[1]);
     }
     [Fact]
     public async Task Matching_non_English_speech_continues_without_forcing_English()
@@ -618,6 +641,84 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Single(renderer.Requests);
     }
     [Fact]
+    public async Task Visual_acceptance_requires_separate_audio_choice_even_after_machine_pass_and_restart()
+    {
+        critic.Throw = true;
+        production.Speech = new("detected","en",.99,"Hello my friend","English speech");
+        var run = await SpeechRun();
+        for(var i=0;i<30 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("continuity",run.Question!.Kind);
+        Assert.True(SceneVideoLoop.State(run).Clips[0].SpeechVerified);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"accept",null));
+        run=await ActorTick(run.Id); // ActorTick recreates runtime and store each time.
+        Assert.Equal("speech-review",run.Question!.Kind);
+        Assert.Equal(0,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
+        Assert.True(SceneVideoLoop.State(run).Clips[0].AudioReviewRequired);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,null,"The speech still sounds wrong."));
+        run=await ActorTick(run.Id);
+        Assert.Equal("waiting",run.Status); Assert.Equal(0,SceneVideoLoop.State(run).Current);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"recheck",null));
+        run=await ActorTick(run.Id); run=await ActorTick(run.Id);
+        Assert.Equal(2,production.SpeechCalls); Assert.Equal("speech-review",run.Question!.Kind);
+        Assert.Equal(0,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"accept",null));
+        run=await ActorTick(run.Id);
+        Assert.Equal(1,SceneVideoLoop.State(run).Current);
+        Assert.Equal("keep-original",SceneVideoLoop.State(run).Clips[0].AudioDecision);
+    }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Clip_audio_preview_waits_for_approval_survives_restart_and_retries_without_video(bool available)
+    {
+        critic.Throw=true; production.Speech=new("uncertain",null,.1,"gibberish","Unclear speech");
+        var run=await SpeechRun();
+        var lease=(await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state=SceneVideoLoop.State(lease.Run); state.AudioEnabled=true;
+        state.Input=state.Input with {NarrationMode="dedicated"};
+        lease.Run.State=JsonSerializer.SerializeToElement(state); await runs.SaveAsync(lease,"test","ready","Narration enabled");
+        for(var i=0;i<30 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"approve",null));
+        run=await ActorTick(run.Id);
+        for(var i=0;i<30 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("continuity",run.Question!.Kind);
+        Assert.False(SceneVideoLoop.State(run).Clips[0].SpeechAccepted);
+        production.PreviewAvailable=available;
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"accept",null));
+        run=await ActorTick(run.Id);
+        Assert.Equal("clip-audio-plan",run.Phase);
+        for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("clip-audio-review",run.Question!.Kind);
+        Assert.Equal(available,run.Question.Choices.Any(c=>c.Id=="approve"));
+        Assert.Equal(0,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
+        var question=run.Question.Id;
+        await runs.ReplyAsync(run.Id,run.Revision,new(question,null,"Please make speech clear"));
+        run=await ActorTick(run.Id);
+        Assert.Equal("waiting",run.Status); Assert.Equal(1,production.PreviewCalls);
+        Assert.Null(SceneVideoLoop.State(run).Clips[0].ApprovedAudioVersion);
+        production.PreviewAvailable=true;
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"retry",null));
+        run=await ActorTick(run.Id);
+        for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal(2,production.PreviewCalls); Assert.Single(renderer.Requests);
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"approve",null));
+        run=await ActorTick(run.Id);
+        Assert.Equal(1,SceneVideoLoop.State(run).Current);
+        Assert.Equal("version-1",SceneVideoLoop.State(run).Clips[0].ApprovedAudioVersion);
+        Assert.False(SceneVideoLoop.State(run).Clips[0].SpeechAccepted);
+        Assert.Single(renderer.Requests); Assert.Empty(production.Deliveries);
+    }
+    private async Task<AgentRun> ReachFinalAudioReview(AgentRun run)
+    {
+        for(var i=0;i<80;i++) {
+            run=await ActorTick(run.Id);
+            if(run.Status!="waiting") continue;
+            if(run.Question!.Kind!="clip-audio-review") return run;
+            await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"approve",null));
+        }
+        throw new InvalidOperationException("Audio review did not finish");
+    }
+    [Fact]
     public async Task Dedicated_narration_is_approved_before_render_and_does_not_rerender_bad_native_speech()
     {
         var run=await SpeechRun();
@@ -632,21 +733,17 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.All(SceneVideoLoop.State(run).Clips,c=>Assert.Equal("A journey begins.",c.NarrationText));
         await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"approve",null));
         run=await ActorTick(run.Id);
-        for(var i=0;i<35 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        run=await ReachFinalAudioReview(run);
         Assert.Equal("audio-review",run.Question!.Kind);
         Assert.Equal(2,renderer.Requests.Count);
         Assert.All(renderer.Requests,r=>Assert.Contains("added separately",r.SpeechInstruction));
         Assert.Equal(new[]{"A journey begins.","A journey begins."},production.AudioPlan!.Narration!.Scripts);
         Assert.Empty(production.Deliveries);
-        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"narration","Shorter lines, please."));
+        Assert.Equal(new[]{"version-1","version-2"}, production.AudioPlan!.Approved!.Select(x=>x.Version));
+        Assert.All(SceneVideoLoop.State(run).Clips,c=>Assert.NotNull(c.ApprovedAudioVersion));
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"improved",null));
         run=await ActorTick(run.Id); run=await ActorTick(run.Id);
-        Assert.Equal("narration-review",run.Question!.Kind);
-        Assert.Equal(2,renderer.Requests.Count);
-        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"approve",null));
-        run=await ActorTick(run.Id);
-        for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
-        Assert.Equal("audio-review",run.Question!.Kind);
-        Assert.Equal(2,production.AudioCalls); Assert.Equal(2,renderer.Requests.Count);
+        Assert.Equal("completed",run.Status); Assert.Equal(2,renderer.Requests.Count);
     }
     [Fact]
     public async Task Existing_clip_can_switch_to_narration_without_resubmitting_video()
@@ -663,7 +760,10 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("narration-review",run.Question!.Kind); Assert.Single(renderer.Requests);
         await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"approve",null));
         run=await ActorTick(run.Id);
-        Assert.Equal(1,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
+        Assert.Equal(0,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
+        Assert.Equal("clip-audio-plan",run.Phase);
+        for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("clip-audio-review",run.Question!.Kind);
         Assert.Equal(1,SceneVideoLoop.State(run).Clips[0].RenderAttempt);
     }
     [Fact]
@@ -730,6 +830,11 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public string? RequestedProject; public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");
         public Task<SceneSpeechReport> InspectSpeechAsync(string key,CancellationToken ct) { SpeechCalls++; return Task.FromResult(Speech); }
+        public int PreviewCalls; public bool PreviewAvailable = true;
+        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) {
+            PreviewCalls++; AudioPlan = plan;
+            return Task.FromResult(new SceneAudioDraft(PreviewAvailable, "Clip audio prepared", JsonSerializer.SerializeToElement(new { }), PreviewAvailable ? "version-" + keys.Count : null));
+        }
         public bool AudioAvailable = true; public int AudioCalls; public string? AudioChoice;
         public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) { AudioCalls++; AudioPlan=plan; return Task.FromResult(new SceneAudioDraft(AudioAvailable, "Compared audio", JsonSerializer.SerializeToElement(new { }))); }
         public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) { AudioChoice=choice; return FinishAsync(run, project, keys, ct); }
@@ -752,10 +857,11 @@ public sealed class SceneVideoWorkflowTests : IDisposable
     }
     private sealed class Planner : ISceneVideoPlanner
     {
+        public string? Spoken;
         public string? Clarifications;
         public string[] ContextNames = [];
         public Task<SceneVideoPlan> PlanAsync(SceneWorkspace workspace, SceneVideoState state, IReadOnlyList<int> durations, CancellationToken ct)
-        { ContextNames = workspace.Entities.Select(e => e.Name).ToArray(); Clarifications = state.Clarifications; return Task.FromResult(new SceneVideoPlan(durations.Select((_, i) => $"The traveller advances to stage {i + 1}.").ToArray())); }
+        { ContextNames = workspace.Entities.Select(e => e.Name).ToArray(); Clarifications = state.Clarifications; return Task.FromResult(new SceneVideoPlan(durations.Select((_, i) => i == 0 && Spoken != null ? Spoken : $"The traveller advances to stage {i + 1}.").ToArray())); }
     }
     private sealed class Interpreter : IScenePromptInterpreter
     {
@@ -786,6 +892,23 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal(2, renderer.Requests.Count);
         Assert.All(renderer.Requests, request => Assert.Equal(mode, request.StoryMode));
     }
+    [Fact]
+    public async Task Offline_monitor_replaces_unclear_question_then_recovers_same_job_without_submission()
+    {
+        var run=await WaitingRun(kind:"retry");
+        renderer.Intervention=new("ComfyUI is not responding. Start ComfyUI, then check again.","comfyui_unavailable");
+        run=await Tick(run.Id);
+        Assert.Equal(renderer.Intervention.Message,run.Question!.Prompt);
+        Assert.Equal("Check connection and existing render",run.Question.Choices.Single().Label);
+        var questionId=run.Question.Id;
+        MakeDue(run.Id); run=await Tick(run.Id);
+        Assert.Equal(questionId,run.Question!.Id); Assert.Empty(renderer.Requests);
+        renderer.Intervention=null;
+        MakeDue(run.Id); run=await Tick(run.Id);
+        Assert.Equal("running",run.Status); Assert.Null(run.Question);
+        Assert.Equal("existing-job",SceneVideoLoop.State(run).Clips[0].ProviderJobId);
+        Assert.Empty(renderer.Requests);
+    }
     private sealed class Renderer : ISceneVideoRenderer
     {
         public bool IsConfigured { get; set; } = true;
@@ -793,6 +916,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public bool ReportQueued;
         public string PollStatus = "running";
         public bool PollFailure;
+        public SceneRenderInterventionException? Intervention;
         public SceneRenderProgress? PollProgress;
         public int CheckCount;
         public List<string> Keys = []; public List<SceneRenderRequest> Requests = [];
@@ -806,6 +930,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public Task<SceneRenderJob> GetAsync(string key, CancellationToken ct)
         {
             CheckCount++;
+            if (Intervention != null) throw Intervention;
             if (PollFailure) throw new HttpRequestException("private upstream detail");
             return Task.FromResult(new SceneRenderJob("existing-job", PollStatus, "https://cynelo.test/completed.mp4", "https://cynelo.test/last.jpg", Progress: PollProgress));
         }

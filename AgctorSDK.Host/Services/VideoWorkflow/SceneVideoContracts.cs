@@ -68,7 +68,17 @@ public sealed class SceneVideoClip
     public int ChecksVersion { get; set; }
     public bool VisualAccepted { get; set; }
     public bool SpeechAccepted { get; set; }
+    public bool? SpeechVerified { get; set; }
+    public string? ExpectedSpeechText { get; set; }
+    public bool AudioReviewRequired { get; set; }
+    // Explicit human disposition; a planned replacement is not evidence of verified speech.
+    public string? AudioDecision { get; set; }
+    public SceneAudioDraft? AudioPreview { get; set; }
+    public SceneContinuityReport? AudioPreviewReview { get; set; }
+    public string? ApprovedAudioVersion { get; set; }
     public string? NarrationText { get; set; }
+    // Version zero preserves the request body of already-submitted legacy takes.
+    public int NativeSpeechVersion { get; set; }
 }
 public sealed record SceneVideoPlan(IReadOnlyList<string> Clips, string? Question = null, IReadOnlyList<string>? Choices = null);
 public interface ISceneVideoPlanner
@@ -127,13 +137,15 @@ public interface ISceneVideoProduction
     Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct);
     Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct);
     Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
+    Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Clip audio production is not configured.");
     Task<SceneVideoDelivery> FinishAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, string choice, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
     Task<SceneSpeechReport> InspectSpeechAsync(string key, CancellationToken ct) => throw new NotSupportedException("Speech inspection is not configured.");
 }
-public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string? Separator = null, SceneNarrationPlan? Narration = null);
+public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string? Separator = null, SceneNarrationPlan? Narration = null, IReadOnlyList<SceneAudioApproval>? Approved = null);
+public sealed record SceneAudioApproval(int ClipNumber, string Version);
 public sealed record SceneNarrationPlan(string Model, string Voice, string Language, IReadOnlyList<string> Scripts);
 public sealed record SceneSpeechReport(string Status, string? Language, double Confidence, string Transcript, string Summary);
-public sealed record SceneAudioDraft(bool ImprovedAvailable, string Summary, System.Text.Json.JsonElement Evidence);
+public sealed record SceneAudioDraft(bool ImprovedAvailable, string Summary, System.Text.Json.JsonElement Evidence, string? PreviewVersion = null);
 public interface ISceneAudioEngineer
 {
     Task<IReadOnlyList<string>> NarrationAsync(string prompt, string model, IReadOnlyList<SceneVideoClip> clips, CancellationToken ct) => throw new NotSupportedException("Narration planning is not configured.");

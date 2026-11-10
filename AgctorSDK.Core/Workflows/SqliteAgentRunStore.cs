@@ -34,6 +34,9 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
               seq INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, at TEXT NOT NULL,
               agent TEXT NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS agent_run_event_lookup ON agent_run_events(run_id,seq);
+            CREATE TABLE IF NOT EXISTS agent_run_active_calls (
+              run_id TEXT NOT NULL, exchange_id TEXT NOT NULL, lease TEXT NOT NULL, at TEXT NOT NULL, body TEXT NOT NULL,
+              PRIMARY KEY(run_id,exchange_id));
             CREATE TABLE IF NOT EXISTS agent_run_event_routes (
               event_seq INTEGER PRIMARY KEY REFERENCES agent_run_events(seq), body TEXT NOT NULL);
             """;
@@ -81,13 +84,15 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         Event(db, tx, run.Id, "Director", "queued", run.Summary); tx.Commit(); return Task.FromResult(run);
     }
     public Task<AgentRun?> GetAsync(string id, CancellationToken ct = default)
-    { ct.ThrowIfCancellationRequested(); using var db = Open(); return Task.FromResult(Read(db, null, id)); }
+    { ct.ThrowIfCancellationRequested(); using var db = Open(); var run = Read(db, null, id); if (run != null) run.ActiveCalls = ActiveCalls(db, id); return Task.FromResult(run); }
     public Task<IReadOnlyList<AgentRun>> ListAsync(string? scenarioId = null, CancellationToken ct = default)
     {
         ct.ThrowIfCancellationRequested(); using var db = Open();
         using var cmd = Command(db, null, "SELECT body FROM agent_runs WHERE ($s IS NULL OR scenario=$s) ORDER BY rowid DESC LIMIT 100", ("$s", scenarioId));
         using var reader = cmd.ExecuteReader(); var rows = new List<AgentRun>();
         while (reader.Read()) rows.Add(JsonSerializer.Deserialize<AgentRun>(reader.GetString(0), Json)!);
+        reader.Close();
+        foreach (var run in rows) run.ActiveCalls = ActiveCalls(db, run.Id);
         return Task.FromResult<IReadOnlyList<AgentRun>>(rows);
     }
     public Task<AgentRunLease?> ClaimAsync(TimeSpan lifetime, CancellationToken ct = default, IReadOnlyList<AgentWaitMonitor>? monitors = null)
@@ -107,7 +112,9 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         var token = Guid.NewGuid().ToString("N");
         using var claim = Command(db, tx, "UPDATE agent_runs SET lease=$lease,lease_until=$until WHERE id=$id",
             ("$lease", token), ("$until", (now + lifetime).ToUnixTimeMilliseconds()), ("$id", id));
-        claim.ExecuteNonQuery(); var run = Read(db, tx, id)!; tx.Commit(); return Task.FromResult<AgentRunLease?>(new(run, token));
+        claim.ExecuteNonQuery();
+        using (var clear = Command(db, tx, "DELETE FROM agent_run_active_calls WHERE run_id=$id", ("$id", id))) clear.ExecuteNonQuery();
+        var run = Read(db, tx, id)!; tx.Commit(); return Task.FromResult<AgentRunLease?>(new(run, token));
     }
     public Task<bool> RenewAsync(AgentRunLease lease, TimeSpan lifetime, CancellationToken ct = default)
     {
@@ -130,6 +137,7 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
             """, ("$workspace", run.WorkspaceId), ("$status", run.Status), ("$next", run.Revision), ("$due", run.DueAt.ToUnixTimeMilliseconds()),
             ("$body", JsonSerializer.Serialize(run, Json)), ("$id", run.Id), ("$old", previous), ("$lease", lease.Token), ("$now", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
         if (cmd.ExecuteNonQuery() != 1) throw new InvalidOperationException("The run changed or its work lease expired. This worker cannot overwrite it.");
+        using (var clear = Command(db, tx, "DELETE FROM agent_run_active_calls WHERE run_id=$id", ("$id", run.Id))) clear.ExecuteNonQuery();
         if (kind != "observation" || changed || route != null) Event(db, tx, run.Id, agent, kind, message, route);
         if (kind != "observation" && run.Question != null && run.Status == "waiting")
             Event(db, tx, run.Id, "Director", "question", run.Question.Prompt, new("Director", "Human", run.Phase, route?.ExchangeId ?? Guid.NewGuid().ToString("N")));
@@ -141,7 +149,17 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         using var cmd = Command(db, tx, "SELECT COUNT(*) FROM agent_runs WHERE id=$id AND lease=$lease AND lease_until>$now AND revision=$revision",
             ("$id", lease.Run.Id), ("$lease", lease.Token), ("$now", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), ("$revision", lease.Run.Revision));
         if ((long)cmd.ExecuteScalar()! != 1) throw new OperationCanceledException("The run no longer belongs to this worker.");
-        Event(db, tx, lease.Run.Id, agent, "activity", message, route); tx.Commit(); return Task.CompletedTask;
+        Event(db, tx, lease.Run.Id, agent, "activity", message, route);
+        if (route?.Outcome == "started") {
+            using var pending = Command(db, tx, "INSERT OR IGNORE INTO agent_run_active_calls(run_id,exchange_id,lease,at,body) VALUES($id,$exchange,$lease,$at,$body)",
+                ("$id", lease.Run.Id), ("$exchange", route.ExchangeId), ("$lease", lease.Token), ("$at", DateTimeOffset.UtcNow.ToString("O")), ("$body", JsonSerializer.Serialize(route, Json)));
+            pending.ExecuteNonQuery();
+        } else if (route?.Outcome is "completed" or "failed" or "cancelled") {
+            using var finished = Command(db, tx, "DELETE FROM agent_run_active_calls WHERE run_id=$id AND exchange_id=$exchange AND lease=$lease",
+                ("$id", lease.Run.Id), ("$exchange", route.ExchangeId), ("$lease", lease.Token));
+            finished.ExecuteNonQuery();
+        }
+        tx.Commit(); return Task.CompletedTask;
     }
     public Task<AgentRun> ReplyAsync(string id, long revision, AgentReply reply, CancellationToken ct = default)
     {
@@ -174,6 +192,8 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         using var cmd = Command(db, tx, "UPDATE agent_runs SET body=$body,status=$status,revision=$revision,due=$due,lease=NULL,lease_until=NULL WHERE id=$id",
             ("$body", JsonSerializer.Serialize(run, Json)), ("$status", run.Status), ("$revision", run.Revision), ("$due", run.DueAt.ToUnixTimeMilliseconds()), ("$id", run.Id));
         cmd.ExecuteNonQuery();
+        using var clear = Command(db, tx, "DELETE FROM agent_run_active_calls WHERE run_id=$id", ("$id", run.Id));
+        clear.ExecuteNonQuery();
     }
     public Task<AgentRunGraph> GraphAsync(string id, CancellationToken ct = default)
     {
@@ -196,7 +216,24 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
             nodes[route.To] = new(route.To, route.To == "Human" ? "human" : route.ToKind, route.ToDetail ?? nodes.GetValueOrDefault(route.To)?.Detail);
             edges.Add(new(route.From, route.To, route.Operation, route.Outcome, reader.GetInt64(2), DateTimeOffset.Parse(reader.GetString(1))));
         }
-        return Task.FromResult(new AgentRunGraph(nodes.Values.ToArray(), edges));
+        reader.Close();
+        return Task.FromResult(new AgentRunGraph(nodes.Values.ToArray(), edges, ActiveCalls(db, id)));
+    }
+    // A projection only: never infer pending work from the last N history messages.
+    // Matching the current lease excludes cancelled, superseded and interrupted attempts.
+    private static IReadOnlyList<AgentActiveCall> ActiveCalls(SqliteConnection db, string id)
+    {
+        using var cmd = Command(db, null, """
+            SELECT c.body,c.at,r.lease_until FROM agent_run_active_calls c JOIN agent_runs r ON r.id=c.run_id AND r.lease=c.lease
+            WHERE c.run_id=$id AND r.status IN ('queued','running','waiting') AND r.lease_until>$now ORDER BY c.at,c.exchange_id
+            """, ("$id", id), ("$now", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        using var reader = cmd.ExecuteReader(); var calls = new List<AgentActiveCall>();
+        while (reader.Read()) {
+            var route = JsonSerializer.Deserialize<AgentMessageRoute>(reader.GetString(0), Json)!;
+            calls.Add(new(route.ExchangeId, route.From, route.To, route.Operation ?? "Processing request", DateTimeOffset.Parse(reader.GetString(1)),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(2)), route.FromKind, route.ToKind));
+        }
+        return calls;
     }
     public Task<IReadOnlyList<AgentRunEvent>> EventsAsync(string id, long after = 0, CancellationToken ct = default)
     {

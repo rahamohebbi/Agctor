@@ -5,7 +5,7 @@ namespace AgctorSDK.Host.Services;
 /// <summary>Versioned compatibility simulation, not a recording of a submitted Cynelo job.</summary>
 public static class CyneloH3PromptSimulation
 {
-    public const string Formatter = "cynelo-h3-2026-11-04";
+    public const string Formatter = "cynelo-h3-2026-11-09";
     public static SceneVideoPromptSimulationResponse Prepare(SceneVideoPromptResponse handoff, SimulateSceneVideoRequest input)
     {
         var labels = input.ReferenceLabels ?? [];
@@ -19,7 +19,7 @@ public static class CyneloH3PromptSimulation
         var slot = input.ExistingClips + 1;
         var continuation = input.ExistingClips > 0;
         var staged = continuation
-            ? SimulatedCyneloContinuation.ForChain(handoff.Prompt, slot, slot, modelSeconds, null)
+            ? SimulatedCyneloContinuation.ForScene(handoff.Prompt, modelSeconds)
             : handoff.Prompt.Trim();
         var modelPrompt = labels.Length > 0
             ? SimulatedCyneloReferences.Bind(staged, SimulatedCyneloReferences.TagsFor(labels, continuation ? "opening frame" : null))
@@ -28,7 +28,7 @@ public static class CyneloH3PromptSimulation
             "Simulation of the inspected Cynelo H3 formatter, not a captured model request. Match the active film and the actual uploaded image order in Cynelo; other versions or providers can behave differently.",
             "No model call, image upload, video generation, or story change was made."
         };
-        if (continuation) warnings.Add("Current Cynelo behavior places this shot's handoff under ‘What already happened’ and uses a generic next action. Inspect this section if the generated video misses your intended action.");
+        if (continuation) warnings.Add("This shot's action and dialogue remain current instructions; the previous clip supplies only the opening-frame continuity.");
         if (labels.Length > 0) warnings.Add("Each label assumes its image is selected and successfully uploaded. AGCTOR cannot check Cynelo's image files. Labels are replaced with <Picture N> in the model prompt.");
         if (target != modelSeconds) warnings.Add($"The model generates {modelSeconds} seconds; Cynelo trims the result to {target} seconds.");
         if (input.DurationSeconds != null && input.DurationSeconds != handoff.DurationSeconds)

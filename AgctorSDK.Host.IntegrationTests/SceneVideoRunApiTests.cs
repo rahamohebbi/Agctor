@@ -33,7 +33,13 @@ public sealed class SceneVideoRunApiTests
         var reply = new { run.Revision, QuestionId = run.Question.Id, Choice = "approve", Text = (string?)null };
         Assert.Equal(HttpStatusCode.OK, (await http.PostAsJsonAsync($"/api/agent-runs/{run.Id}/reply", reply)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await http.PostAsJsonAsync($"/api/agent-runs/{run.Id}/reply", reply)).StatusCode);
-        for (var i = 0; i < 20; i++) await factory.Tick();
+        for (var i = 0; i < 50; i++) {
+            await factory.Tick();
+            run = (await http.GetFromJsonAsync<AgentRun>($"/api/agent-runs/{run.Id}"))!;
+            if (run.Question?.Kind == "clip-audio-review")
+                (await http.PostAsJsonAsync($"/api/agent-runs/{run.Id}/reply", new { run.Revision, QuestionId = run.Question.Id, Choice = "approve" })).EnsureSuccessStatusCode();
+            else if (run.Question?.Kind == "audio-review") break;
+        }
         run = (await http.GetFromJsonAsync<AgentRun>($"/api/agent-runs/{run.Id}"))!;
         Assert.Equal("audio-review", run.Question!.Kind);
         (await http.PostAsJsonAsync($"/api/agent-runs/{run.Id}/reply", new { run.Revision, QuestionId = run.Question.Id, Choice = "improved" })).EnsureSuccessStatusCode();
@@ -163,6 +169,7 @@ public sealed class SceneVideoRunApiTests
     private sealed class Production : ISceneVideoProduction {
         public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct, string? projectId = null) => Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["a", "b", "c"]));
+        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Clip audio ready", JsonSerializer.SerializeToElement(new { }), "version-" + keys.Count));
         public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Audio ready", JsonSerializer.SerializeToElement(new { })));
         public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) => FinishAsync(run, project, keys, ct);
         public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct) => Task.FromResult(new SceneVideoDelivery("https://example.test/finished.mp4"));

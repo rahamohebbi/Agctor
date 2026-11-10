@@ -7,7 +7,7 @@ namespace AgctorSDK.Host.IntegrationTests;
 public sealed class CyneloH3PromptSimulationTests
 {
     // Golden results generated from Cynelo's actual ContinuationPrompt, ReferencePrompt,
-    // and H3Timing sources on 2026-11-04, rather than from this simulation.
+    // and H3Timing sources on 2026-11-09, rather than from this simulation.
     public static IEnumerable<object[]> CyneloCases()
     {
         using var stream = typeof(CyneloH3PromptSimulationTests).Assembly.GetManifestResourceStream(
@@ -36,9 +36,9 @@ public sealed class CyneloH3PromptSimulationTests
     {
         var result = CyneloH3PromptSimulation.Prepare(Handoff("Raha runs."), new("revision", 1));
         Assert.Equal(12, result.TargetSeconds); Assert.Equal(15, result.ModelSeconds);
-        Assert.Contains(result.Warnings, w => w.Contains("generic next action"));
+        Assert.Contains(result.Warnings, w => w.Contains("current instructions"));
         Assert.Contains(result.Warnings, w => w.Contains("trims"));
-        Assert.Contains("What already happened", result.ModelPrompt);
+        Assert.DoesNotContain("What already happened", result.ModelPrompt);
     }
 
     [Theory]

@@ -27,6 +27,8 @@ public sealed class AgentRun
     public AgentQuestion? Question { get; set; }
     public AgentReply? Reply { get; set; }
     public JsonElement State { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<AgentActiveCall>? ActiveCalls { get; set; }
     public bool IsTerminal => Status is "completed" or "cancelled" or "failed";
 }
 
@@ -39,7 +41,8 @@ public sealed record AgentMessageRoute(string From, string To, string Phase, str
     string? Operation = null, string? Outcome = null, long? DurationMs = null);
 public sealed record AgentGraphNode(string Id, string Kind, string? Detail);
 public sealed record AgentGraphEdge(string From, string To, string? Operation, string? Outcome, long Count, DateTimeOffset LastAt);
-public sealed record AgentRunGraph(IReadOnlyList<AgentGraphNode> Nodes, IReadOnlyList<AgentGraphEdge> Edges);
+public sealed record AgentActiveCall(string ExchangeId, string From, string To, string Operation, DateTimeOffset StartedAt, DateTimeOffset ConfirmedUntil, string FromKind, string ToKind);
+public sealed record AgentRunGraph(IReadOnlyList<AgentGraphNode> Nodes, IReadOnlyList<AgentGraphEdge> Edges, IReadOnlyList<AgentActiveCall>? ActiveCalls = null);
 public sealed record AgentRunEvent(long Sequence, string RunId, DateTimeOffset At, string Agent, string Kind, string Message, AgentMessageRoute? Route = null);
 public sealed record AgentRunLease(AgentRun Run, string Token);
 /// <summary>Opt-in read-only monitoring for a workflow's specific human-wait states.</summary>

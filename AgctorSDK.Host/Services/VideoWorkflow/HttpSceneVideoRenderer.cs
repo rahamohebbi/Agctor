@@ -20,6 +20,13 @@ public sealed class HttpSceneVideoRenderer(IHttpClientFactory clients, IOptionsM
         request.Headers.Add("Idempotency-Key", key);
         using var http = clients.CreateClient("SceneVideoRenderer");
         using var response = await http.SendAsync(request, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable) {
+            try {
+                var detail = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: ct);
+                if (detail.ValueKind == System.Text.Json.JsonValueKind.Object && detail.TryGetProperty("code", out var code) && code.GetString() == "comfyui_unavailable")
+                    throw new SceneRenderInterventionException("ComfyUI is not responding. Start ComfyUI or check its address in Cynelo Settings. Status checks will continue automatically. Check again only looks for the existing render; it does not submit another video.", "comfyui_unavailable");
+            } catch (System.Text.Json.JsonException) { }
+        }
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
             throw new SceneRenderInterventionException("Cynelo rejected the integration request. Check that its token-free Agctor rendering endpoints are available at the configured URL.");
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -49,7 +56,7 @@ public sealed class HttpSceneVideoRenderer(IHttpClientFactory clients, IOptionsM
                 "film_changed" or "changed_prompt" or "wrong_previous" => "Cynelo's film or Scene Memory changed. Cancel this run and start a new sequence from the updated scene.",
                 "renderer_busy" => "Cynelo is finishing another job. Wait for it to finish, then retry.",
                 "submission_uncertain" or "interrupted_render" => "Cynelo lost track of this submission after an interruption. Inspect or recover its existing job before retrying; Agctor will keep the same request key.",
-                "recovery_uncertain" => "Cynelo cannot yet prove which renderer job belongs to this clip. Recovery will recheck the queue and history; no duplicate will be submitted.",
+                "recovery_uncertain" => "The saved clip could not be matched to a render job. Check ComfyUI’s queue and history for the existing render, then check again. This only looks for that job; it does not start another video.",
                 "recovery_cancelled" => "This render was cancelled in Cynelo. It will not be resumed automatically.",
                 "recovery_not_found" => "The saved render is not available in the configured Cynelo studio. Check the studio connection before recovery.",
                 "too_many_references" => "This shot has more than eight designs with reference images. Cynelo keeps at least one image per design. Reduce the linked designs, then start a new sequence.",
@@ -71,4 +78,4 @@ public sealed class HttpSceneVideoRenderer(IHttpClientFactory clients, IOptionsM
         && url.Scheme is "http" or "https";
 }
 
-public sealed class SceneRenderInterventionException(string message) : Exception(message);
+public sealed class SceneRenderInterventionException(string message, string? code = null) : Exception(message) { public string? Code { get; } = code; }

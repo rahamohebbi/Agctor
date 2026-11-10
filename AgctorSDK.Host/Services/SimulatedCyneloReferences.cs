@@ -15,11 +15,11 @@ internal static class SimulatedCyneloReferences
     {
         prompt = prompt.Trim();
         // Older prompts used &lt;image N&gt;; the tokenizer labels vision blocks &lt;Picture N&gt;.
-        prompt = System.Text.RegularExpressions.Regex.Replace(
-            prompt,
+        prompt = OutsideDialogue(prompt, part => System.Text.RegularExpressions.Regex.Replace(
+            part,
             @"<image\s+(\d+)>",
             "<Picture $1>",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase));
         if (subjects.Count == 0)
         {
             return prompt;
@@ -31,7 +31,7 @@ internal static class SimulatedCyneloReferences
         {
             var tags = group.Select(s => s.Tag).ToArray();
             var replacement = tags.Length == 1 ? tags[0] : $"{group.Key} ({string.Join(", ", tags)})";
-            prompt = ReplaceName(prompt, group.Key, replacement);
+            prompt = OutsideDialogue(prompt, part => ReplaceName(part, group.Key, replacement));
         }
 
         var lines = subjects.Select(s =>
@@ -77,6 +77,17 @@ internal static class SimulatedCyneloReferences
         }
 
         return list;
+    }
+
+    // Spoken words are immutable. A name in dialogue is speech, not a visual reference token.
+    private static string OutsideDialogue(string prompt, Func<string,string> transform)
+    {
+        var result = new System.Text.StringBuilder(); var start = 0;
+        foreach (System.Text.RegularExpressions.Match block in System.Text.RegularExpressions.Regex.Matches(prompt, @"<d>.*?</d>", System.Text.RegularExpressions.RegexOptions.Singleline)) {
+            result.Append(transform(prompt[start..block.Index])).Append(block.Value);
+            start = block.Index + block.Length;
+        }
+        return result.Append(transform(prompt[start..])).ToString();
     }
 
     private static string ReplaceName(string prompt, string name, string tag)

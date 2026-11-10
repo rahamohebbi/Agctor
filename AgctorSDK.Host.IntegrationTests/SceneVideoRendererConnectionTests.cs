@@ -55,6 +55,19 @@ public sealed class SceneVideoRendererConnectionTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.Conflict) { Content = JsonContent.Create(new { code, error = "private upstream detail" }) });
     }
+    [Fact]
+    public async Task Comfy_outage_is_distinct_from_missing_job_and_does_not_expose_upstream_details()
+    {
+        var renderer=new HttpSceneVideoRenderer(new Clients(new Unavailable()),new Settings());
+        var error=await Assert.ThrowsAsync<SceneRenderInterventionException>(()=>renderer.GetAsync("run-1-1",default));
+        Assert.Equal("comfyui_unavailable",error.Code);
+        Assert.Contains("Start ComfyUI",error.Message); Assert.Contains("does not submit another video",error.Message);
+        Assert.DoesNotContain("private",error.Message);
+    }
+    private sealed class Unavailable : HttpMessageHandler {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) {Content=JsonContent.Create(new {code="comfyui_unavailable",error="private upstream details"})});
+    }
     private sealed class Recorder : HttpMessageHandler
     {
         public List<HttpMethod> Methods { get; } = [];

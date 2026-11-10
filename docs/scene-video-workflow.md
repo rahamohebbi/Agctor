@@ -199,3 +199,38 @@ The graph now uses a left-to-right layout with typed agent, tool, LLM, memory an
 Invocation-scoped tracing surrounds actual named-client HTTP calls and Scene Memory reads/writes. Ollama nodes use the exact model in each outgoing request, including repair calls. HTTP responses, failures and elapsed call times are paired with the request. These observations do not replace actor state, leases, approvals or recovery. Trace-storage failure cannot turn a successful external operation into a workflow retry. Prompts, credentials, endpoint URLs and response content are not copied into these diagnostic events.
 
 Cynelo audio/speech responses can provide downstream model evidence. Those nodes are explicitly marked as reported evidence and never animated as new model invocations: the response may describe cached work. The graph does not claim token streaming, unseen internal provider traffic or retrospectively reconstruct tool calls from before tracing was enabled. Polling is approximately once a second for events and every five seconds for topology, only while the modal is open.
+
+
+### Native H3 speech conditioning
+
+Native speech stays the default; dedicated narration remains an explicit choice. Following the [official H3 prompt guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md), the planner uses stable speaker IDs outside `<d>[English] ...</d>` blocks and preserves supplied spoken words. A deterministic fallback formats explicit quoted speech cues while leaving ordinary quoted titles/signs alone. Unsupported or ambiguous prose is left to planning rather than guessed as dialogue. Conflicting tagged languages, changes to explicitly quoted dialogue, or English speech exceeding the conservative two-words-per-second planning allowance request clarification before rendering; no words are silently shortened.
+
+Each new plan records its native-speech formatting version. Legacy render requests retain their previous body for idempotent recovery. An explicitly requested speech correction uses a new render attempt, replaces the old tagged dialogue, and preserves the scene action. The existing two-correction limit and human choices remain authoritative. No new automatic paid render loop is introduced.
+
+Recognized speech is compared with the requested words before the Audio Engineer's semantic review. Punctuation/case and apostrophe forms are normalized; missing, extra or changed words cause an uncertain result requiring a human decision. Speech recognition can be wrong, so a mismatch is not proof that the audio is bad. The dedicated narration checks remain separate.
+
+Cynelo's saved-scene continuation passes the next scene's dialogue as current action, not already-completed history. Reference binding transforms names outside `<d>` blocks only, preserving the actual words inside the final H3 workflow. These changes improve conditioning and verification; they do not guarantee audio quality. Validate perceptual improvement by listening to fresh H3 renders with short explicit scripts.
+
+### Separate human visual and audio decisions
+
+Accepting a visual-review question sets a durable `AudioReviewRequired` flag for clips with speech review enabled. The same clip must then receive a distinct audio decision, even if automatic speech recognition previously passed. Rechecking speech refreshes evidence but cannot satisfy that human gate. Notes alone keep the run waiting, and question IDs/revisions continue protecting against stale replies. A final advancement guard prevents an unresolved audio decision from starting the next clip.
+
+`SpeechVerified` describes the automated result; `SpeechAccepted` covers acceptance of original speech; `AudioDecision` records explicit `keep-original` or `replace-with-narration`. Dedicated narration does not set original speech to verified or accepted. After manual visual approval, a narration-mode run asks whether to replace the speech with the approved narration (final audio review remains later) review or revise its narration script, or recheck the original speech. These checks do not submit another render or change the audio mode of already accepted clips. Regeneration still requires its existing explicit choice and resets the changed clip's approvals.
+
+The Cynelo review UI shows visual and audio status separately, labels playback as original audio, and displays expected words and the machine transcript in expandable details. Replacement narration is explicitly pending until production and verification finish. This change does not rewind clips that advanced before the update or approve any pending decisions for the user.
+
+
+### Per-clip improved audio
+
+Audio-enabled production runs now checkpoint `clip-audio-plan` → `clip-audio-process` → `clip-audio-check` → `clip-audio-decision` before advancing each clip. The Audio Engineer owns planning, preparation and evidence review; the Director requests explicit human approval. Notes alone never advance the run. Audio-only retry and narration revision preserve the video take. A failed/unavailable preview has no approve action.
+
+Cynelo receives `preview: true` and the completed prefix of render keys through the existing audio endpoint. Each immutable draft has a `PreviewVersion`, a clip-only video and a lossless 48 kHz mix. AGCTOR checkpoints the preview and approved version on that clip. Subsequent previews and final assembly receive explicit `{ clipNumber, version }` approvals. Cynelo validates take identity, duration, soundtrack policy and narration against those versions before reusing them. A stale/foreign/missing approval is rejected. Approved narration remains fixed when later lines are revised.
+
+The music bed uses the same absolute timeline as more clips arrive. Final assembly reuses approved PCM samples exactly; AAC export is lossy. Original clips remain separately playable. The final whole-film comparison remains available, including an explicit choice to use original audio instead. Old completed sequences are not retroactively changed. Existing in-progress runs pick up preview review at their next clip transition.
+
+
+### In-flight work visibility
+
+The run and graph APIs expose `activeCalls` containing operation, sender, recipient, start time and the current worker lease deadline. A separate SQLite projection records paired request starts/responses transactionally with diagnostic events. It survives history paging and reconnects; checkpoint completion, cancellation, lease expiry and replacement attempts remove the pending state. Lease tokens and request payloads are never exposed. This projection does not schedule work or change actor decisions.
+
+Cynelo shows the deepest outstanding request in a compact status strip and highlights its chain in the graph, distinguishing waiting callers from the in-progress recipient. Elapsed time is not a completion estimate. Pending spinners respect animation pause and reduced motion; the text remains visible. Stale status stops the working indicators. During asynchronous rendering, the last confirmed provider state identifies queued/rendering work between polls, with a bounded freshness window.
