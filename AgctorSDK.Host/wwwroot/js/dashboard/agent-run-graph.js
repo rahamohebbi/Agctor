@@ -1,6 +1,6 @@
 /**
- * Live agent-run topology — same projection Cynelo draws from GET /api/agent-runs/{id}/graph.
- * Only recorded routes appear; pending work comes from activeCalls, not guessed history.
+ * Live agent-run topology — definition skeleton ∪ observed routes from GET /api/agent-runs/{id}/graph.
+ * Pending work comes from activeCalls; model evidence appears only when observed.
  */
 (function (global) {
     'use strict';
@@ -11,6 +11,7 @@
         'Project agent': 'Project',
         'Editor agent': 'Editor',
         'Continuity critic': 'Visual critic',
+        'Visual critic': 'Visual critic',
         Human: 'You'
     };
     var COLORS = {
@@ -131,7 +132,7 @@
             '  <div class="arg-world">' +
             '    <canvas class="arg-canvas"></canvas>' +
             '    <div class="arg-nodes"></div>' +
-            '    <p class="arg-empty">No recorded connections yet. Start or open a sequence to watch Director, specialists, tools, and models.</p>' +
+            '    <p class="arg-empty">Loading agent topology…</p>' +
             '  </div>' +
             '</div>' +
             '<p class="arg-legend">Highlighted nodes = pending work · Moving dots = messages · Drag to explore</p>';
@@ -260,7 +261,11 @@
                 if (f.to) active[f.to] = true;
             });
 
-            emptyEl.hidden = Object.keys(laid.positions).length > 0;
+            var nodeCount = Object.keys(laid.positions).length;
+            emptyEl.hidden = nodeCount > 0;
+            if (!nodeCount) {
+                emptyEl.textContent = 'No agent topology yet. Open Scene Memory — video sequence to load the shared definition.';
+            }
             nodesEl.replaceChildren();
             Object.keys(laid.positions).forEach(function (id) {
                 var node = filtered.nodes[id];
@@ -432,8 +437,18 @@
         };
     }
 
+    /** Convert catalog topology JSON into a graph snapshot (skeleton only). */
+    function definitionToSnapshot(definition) {
+        var nodes = (definition && definition.nodes || []).filter(function (n) { return n && n.id && n.kind !== 'model'; })
+            .map(function (n) { return { id: n.id, kind: n.kind || 'agent', detail: n.detail }; });
+        var edges = (definition && definition.edges || []).filter(function (e) { return e && e.from && e.to; })
+            .map(function (e) { return { from: e.from, to: e.to, operation: e.intent || 'defined', outcome: 'defined', count: 0 }; });
+        return { nodes: nodes, edges: edges, activeCalls: [], definition: definition || null };
+    }
+
     /**
      * Polls graph + events for one scenario run and keeps a viewer updated.
+     * opts.topologyUrl — when set, empty/new runs show the definition skeleton.
      */
     function mountLive(host, getRunId, opts) {
         opts = opts || {};
@@ -442,6 +457,7 @@
         var busy = false;
         var timer = 0;
         var lastRun = null;
+        var skeleton = null;
 
         async function api(url) {
             var response = await fetch(url);
@@ -450,22 +466,30 @@
             return data;
         }
 
+        async function ensureSkeleton() {
+            if (skeleton || !opts.topologyUrl) return skeleton;
+            skeleton = definitionToSnapshot(await api(opts.topologyUrl));
+            return skeleton;
+        }
+
         async function poll() {
             if (busy) return;
             var id = typeof getRunId === 'function' ? getRunId() : getRunId;
-            if (!id) {
-                lastRun = null;
-                cursor = 0;
-                viewer.setData({ nodes: [], edges: [], activeCalls: [] }, [], { replaceEvents: true });
-                return;
-            }
-            var reset = id !== lastRun;
-            if (reset) { lastRun = id; cursor = 0; }
             busy = true;
             try {
+                if (!id) {
+                    lastRun = null;
+                    cursor = 0;
+                    var def = await ensureSkeleton();
+                    viewer.setData(def || { nodes: [], edges: [], activeCalls: [] }, [], { replaceEvents: true });
+                    if (opts.onStatus) opts.onStatus(null);
+                    return;
+                }
+                var reset = id !== lastRun;
+                if (reset) { lastRun = id; cursor = 0; }
                 var graph = await api('/api/agent-runs/' + encodeURIComponent(id) + '/graph');
                 var events = await api('/api/agent-runs/' + encodeURIComponent(id) + '/events?after=' + cursor);
-                // First snapshot loads history quietly; later polls animate only new routes.
+                // Server already unions definition ∪ observed for scene-video-chain.
                 viewer.setData(graph, events, { replaceEvents: reset || cursor === 0 });
                 events.forEach(function (e) { cursor = Math.max(cursor, e.sequence || 0); });
                 if (opts.onStatus) opts.onStatus(null);
@@ -495,6 +519,7 @@
         create: create,
         mountLive: mountLive,
         label: label,
-        buildTopology: buildTopology
+        buildTopology: buildTopology,
+        definitionToSnapshot: definitionToSnapshot
     };
 })(window);

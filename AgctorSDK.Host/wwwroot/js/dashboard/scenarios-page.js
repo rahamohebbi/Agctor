@@ -239,11 +239,39 @@
         runGraphScenarioId = scenarioId;
         runGraphSelectedId = keepId;
         runGraphLive = window.AgctorAgentRunGraph.mountLive(runGraphHost, function () { return runGraphSelectedId; }, {
+            topologyUrl: '/api/scenarios/' + encodeURIComponent(scenarioId) + '/topology',
             onStatus: function (err) {
                 if (!runGraphStatus) return;
                 runGraphStatus.textContent = err ? ('Graph updates paused: ' + err.message) : '';
             }
         });
+    }
+    async function renderTopologyReadonly(scenarioId) {
+        var panel = document.getElementById('sc-topology-readonly');
+        var body = document.getElementById('sc-topology-readonly-body');
+        if (!panel || !body) return;
+        try {
+            var response = await fetch('/api/scenarios/' + encodeURIComponent(scenarioId) + '/topology');
+            var topo = await response.json().catch(function () { return null; });
+            if (!response.ok || !topo) {
+                panel.classList.add('hidden');
+                return;
+            }
+            panel.classList.remove('hidden');
+            var agents = (topo.nodes || []).filter(function (n) { return n.kind === 'agent'; });
+            var caps = (topo.nodes || []).filter(function (n) { return n.kind === 'tool' || n.kind === 'llm' || n.kind === 'memory'; });
+            body.innerHTML =
+                '<p class="sc-muted">Read-only shared definition (Phase A). Roster is fixed; layout/audio toggles come later. Model evidence appears only when observed.</p>' +
+                '<p class="sc-muted"><strong>Policy:</strong> ' + esc(topo.modelEvidencePolicy || 'observed-only') +
+                ' · <strong>Audio engineer:</strong> ' + (topo.audioEnabled === false ? 'off' : 'on') + '</p>' +
+                '<div class="sc-overview-grid"><section><h4>Agents</h4><ul class="sc-roster">' +
+                agents.map(function (n) { return '<li>' + esc(n.label || n.id) + '</li>'; }).join('') +
+                '</ul></section><section><h4>Tools / LLM / memory</h4><ul class="sc-roster">' +
+                caps.map(function (n) { return '<li>' + esc(n.id) + (n.ownerAgentId ? ' · ' + esc(n.ownerAgentId) : '') + '</li>'; }).join('') +
+                '</ul></section></div>';
+        } catch (e) {
+            panel.classList.add('hidden');
+        }
     }
     function syncRunGraphOpenLink(scenarioId) {
         if (!runGraphOpen) return;
@@ -345,9 +373,12 @@
             if (!runLink.hidden) {
                 runGraphPanel.classList.remove('hidden');
                 refreshRunGraphList(s.id);
+                renderTopologyReadonly(s.id);
             } else {
                 runGraphPanel.classList.add('hidden');
                 stopRunGraph();
+                var topoPanel = document.getElementById('sc-topology-readonly');
+                if (topoPanel) topoPanel.classList.add('hidden');
             }
         }
 

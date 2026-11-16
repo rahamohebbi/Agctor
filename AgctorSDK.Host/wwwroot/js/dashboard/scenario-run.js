@@ -5,9 +5,11 @@
     const scenario = params.get('scenario') || 'scene-video-chain';
     let runId = params.get('run'), current, cursor = 0, questionId, polling = false, requestId, requestBody;
     let starting = false, loadingStories = false;
-    // Same observed topology Cynelo draws; fed from Agctor's /graph + /events.
+    // Definition skeleton ∪ observed routes (same graph Cynelo proxies).
     const graphLive = window.AgctorAgentRunGraph
-        ? window.AgctorAgentRunGraph.mountLive(document.getElementById('vr-graph'), () => runId)
+        ? window.AgctorAgentRunGraph.mountLive(document.getElementById('vr-graph'), () => runId, {
+            topologyUrl: '/api/scenarios/' + encodeURIComponent(scenario) + '/topology'
+        })
         : null;
     function updateStoryMode() {
         const continuing = $('mode-continue').checked;

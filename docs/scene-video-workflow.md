@@ -67,7 +67,8 @@ Optional `model` overrides the Scenario's planning model. Repeating the same `re
 | --- | --- |
 | `GET /api/agent-runs?scenarioId=scene-video-chain` | Latest 100 runs |
 | `GET /api/agent-runs/{id}` | Current status, question, plan and ordered clip outputs |
-| `GET /api/agent-runs/{id}/graph` | Observed nodes and relationships across the run’s recorded history. Cynelo’s Agent activity graph and Agctor’s Scenarios / ScenarioRun live graph both render this payload. |
+| `GET /api/agent-runs/{id}/graph` | Observed nodes and relationships **unioned with** the scene-video topology skeleton (`definition`). Cynelo’s Agent activity graph and Agctor’s Scenarios / ScenarioRun live graph both render this payload. |
+| `GET /api/scenarios/scene-video-chain/topology` | Read-only shared agent/tool topology (Phase A). Model evidence is observed-only. |
 | `GET /api/agent-runs/{id}/events?after=0` | Up to 200 durable activity events; resume with the last sequence number |
 | `POST /api/agent-runs/{id}/reply` | Answer the current question |
 | `POST /api/agent-runs/{id}/cancel` | Stop scheduling further work |

@@ -5,9 +5,20 @@ using Microsoft.AspNetCore.Mvc;
 namespace AgctorSDK.Host.Controllers;
 
 [ApiController]
-public sealed class AgentRunsController(SceneVideoScenario scenario, IAgentRunStore runs, ISceneVideoRenderer renderer, ISceneVideoStoryGateway stories) : ControllerBase
+public sealed class AgentRunsController(
+    SceneVideoScenario scenario,
+    IAgentRunStore runs,
+    ISceneVideoRenderer renderer,
+    ISceneVideoStoryGateway stories,
+    ISceneVideoTopologyCatalog topology) : ControllerBase
 {
     public sealed record ReplyRequest(long Revision, string QuestionId, string? Choice, string? Text);
+    /// <summary>Observed activity unioned with the scenario topology skeleton (Phase A).</summary>
+    public sealed record GraphResponse(
+        IReadOnlyList<AgentGraphNode> Nodes,
+        IReadOnlyList<AgentGraphEdge> Edges,
+        IReadOnlyList<AgentActiveCall>? ActiveCalls,
+        SceneVideoTopologyDocument? Definition);
     [HttpPost("api/scenarios/{scenarioId}/runs")]
     public Task<IActionResult> Start(string scenarioId, StartSceneVideoRun request, CancellationToken ct) => Guard(async () =>
     {
@@ -26,8 +37,16 @@ public sealed class AgentRunsController(SceneVideoScenario scenario, IAgentRunSt
     public async Task<IActionResult> Events(string id, [FromQuery] long after, CancellationToken ct) =>
         await runs.GetAsync(id, ct) == null ? NotFound() : Ok(await runs.EventsAsync(id, Math.Max(0, after), ct));
     [HttpGet("api/agent-runs/{id}/graph")]
-    public async Task<IActionResult> Graph(string id, CancellationToken ct) =>
-        await runs.GetAsync(id, ct) == null ? NotFound() : Ok(await runs.GraphAsync(id, ct));
+    public async Task<IActionResult> Graph(string id, CancellationToken ct)
+    {
+        var run = await runs.GetAsync(id, ct);
+        if (run == null) return NotFound();
+        var observed = await runs.GraphAsync(id, ct);
+        var definition = topology.GetForScenario(run.ScenarioId);
+        if (definition == null) return Ok(new GraphResponse(observed.Nodes, observed.Edges, observed.ActiveCalls, null));
+        var composed = SceneVideoGraphComposer.Compose(definition, observed);
+        return Ok(new GraphResponse(composed.Nodes, composed.Edges, composed.ActiveCalls, definition));
+    }
     [HttpPost("api/agent-runs/{id}/reply")]
     public Task<IActionResult> Reply(string id, ReplyRequest request, CancellationToken ct) => Guard(async () =>
         Ok(await runs.ReplyAsync(id, request.Revision, new(request.QuestionId, request.Choice, request.Text), ct)));
