@@ -31,8 +31,10 @@ object.
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - .NET 8 runtime to run tests or applications targeting `net8.0`
-- Optional: [Ollama](https://ollama.com) with a local model (default `mistral`)
-  for LLM agents
+- Optional: [Ollama](https://ollama.com) for LLM agents. The Host is configured
+  for `gemma4:latest` at `http://localhost:11434` (`Agctor:LLM:DefaultModel` in
+  `appsettings.json`). `LLMAgent` falls back to `mistral` only when those Host
+  defaults were never applied.
 
 ## Quick start
 
@@ -121,9 +123,8 @@ Both paths return the stored properties with their source change numbers. An opt
 retrieves an earlier state. Offscreen entities retain their last recorded values.
 
 Retrieval is deterministic: questions match an entity's exact name (case insensitive), or callers
-can supply its ID. Ambiguous matches ask for an explicit entity. It does not interpret arbitrary
-questions, infer facts from event notes, analyze media, generate clips, or integrate with Cynelo yet.
-Audio/music references can be stored as text properties; media files are not uploaded or analyzed.
+can supply its ID. Ambiguous matches ask for an explicit entity. Retrieval does not interpret arbitrary
+questions or infer facts from event notes. Audio and music references can be stored as text properties.
 
 `ISceneMemoryStore` in Core works independently of actors and RAG providers. SQLite stores the
 workspaces and append-only change history at `data/scene-memory.db` under the Host output directory.
@@ -174,10 +175,15 @@ they do not prove that a model understood every sentence. **Explore more situati
 page loads example prompts with expected effects. **Story events** and query results show what happened
 alongside **Saved properties**. Existing saved workspaces remain readable; past prompts are not reinterpreted.
 
-These are planned story facts, not verified observations of generated video. Take branching, timeline
-editing, media analysis and Cynelo Studio linking are not implemented; use separate workspaces for alternatives.
+These Scene Memory records are the planned story. Clip generation, media analysis, and Cynelo Studio
+linking are implemented: `SceneVideoWorker` calls Cynelo at `http://127.0.0.1:5080/api/agctor/render`
+by default. Take branching is not implemented; use separate workspaces for alternatives.
 
-The provider API follows the RAG pattern: `GET /api/scene-memory/health` uses the same health response
+Scene Memory has two HTTP APIs. `/api/scene-memory` is the dashboard API: workspaces, prompt preview
+and apply, queries, and test agents. `/api/scene-memory/v1` is the external Cynelo integration: studios,
+the shot timeline, and video prompts.
+
+The dashboard provider API follows the RAG pattern: `GET /api/scene-memory/health` uses the same health response
 shape, and `POST /api/scene-memory/query` accepts `workspaceId`, `query` or `entityId`, and optional
 `atSequence`. Query responses share `success`, `providerId` and `message` with RAG, plus a typed `result`
 containing scene facts, source changes and the requested sequence.
