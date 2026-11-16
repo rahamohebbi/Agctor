@@ -1,6 +1,6 @@
 /**
- * Live agent-run graph — scenario conversation-flow skeleton ∪ observed routes
- * from GET /api/agent-runs/{id}/graph. Flow is the only definition surface; activity overlays it.
+ * Live agent-run graph — conversation-flow skeleton from GET /api/agent-runs/{id}/graph.
+ * Flow is the only product picture; message/activity animation remaps onto those nodes.
  */
 (function (global) {
     'use strict';
@@ -25,6 +25,7 @@
     var NODE_W = 170;
     var NODE_H = 100;
     var FLIGHT_MS = 1500;
+    var LAYOUT_PAD = 96;
 
     function label(id) {
         if (LABELS[id]) return LABELS[id];
@@ -39,19 +40,51 @@
     function kindLabel(kind) {
         if (kind === 'llm') return 'LLM';
         if (kind === 'model') return 'MODEL EVIDENCE';
+        if (kind === 'human') return 'INPUT';
+        if (kind === 'tool') return 'OUTPUT';
         return String(kind || 'agent').toUpperCase();
+    }
+
+    /** Prefer flow-editor label in detail; fall back to short kind hints. */
+    function titleText(id, node) {
+        if (node && node.detail) return node.detail;
+        return label(id);
     }
 
     function detailText(id, node) {
         var kind = (node && node.kind) || 'agent';
         if (kind === 'llm') return (node && node.detail) || String(id).replace(/^Ollama · /, '');
         if (kind === 'model') return 'Reported by Cynelo';
-        if (kind === 'agent' || kind === 'human') return kind === 'human' ? 'human' : 'Actor mailbox';
+        if (kind === 'human') return 'Start of the flow';
+        if (kind === 'tool') return 'End of the flow';
+        if (kind === 'agent') return 'Actor mailbox';
         return (node && node.detail) || kind;
     }
 
     function edgeKey(from, to) {
         return [from, to].sort().join('\n');
+    }
+
+    function flowLocked(snapshot, nodes) {
+        if (!snapshot || !nodes || !Object.keys(nodes).length) return false;
+        if (snapshot.flow) return true;
+        if (snapshot.layouts && Object.keys(snapshot.layouts).length) return true;
+        return false;
+    }
+
+    /** Collapse observed specialists/tools onto the conversation-flow mailboxes. */
+    function mapOntoFlow(endpoint, flowIds) {
+        if (!endpoint) return endpoint;
+        if (flowIds[endpoint]) return endpoint;
+        if (flowIds.Output && (/Finished/i.test(endpoint) || endpoint === 'Output')) return 'Output';
+        if (flowIds.Human && (endpoint === 'Human' || endpoint === 'You')) return 'Human';
+        if (flowIds['Audio Engineer'] && /Audio|Speech|Narrat|Mix|RoFormer/i.test(endpoint)) return 'Audio Engineer';
+        if (flowIds.Director) return 'Director';
+        var keys = Object.keys(flowIds);
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i] !== 'Human' && keys[i] !== 'Output') return keys[i];
+        }
+        return keys[0] || endpoint;
     }
 
     function buildTopology(snapshot, events) {
@@ -64,6 +97,9 @@
             if (!e || !e.from || !e.to) return;
             edges[edgeKey(e.from, e.to)] = e;
         });
+        // When Agctor sent the conversation flow, never grow a second observed topology.
+        if (flowLocked(snapshot, nodes)) return { nodes: nodes, edges: edges, locked: true };
+
         (events || []).forEach(function (ev) {
             var route = ev && ev.route;
             if (!route || !route.from || !route.to || route.from === route.to) return;
@@ -79,7 +115,7 @@
             });
             edges[edgeKey(route.from, route.to)] = route;
         });
-        return { nodes: nodes, edges: edges };
+        return { nodes: nodes, edges: edges, locked: false };
     }
 
     function columnIndex(id, kind) {
@@ -110,37 +146,48 @@
         return { positions: positions, width: contentW, height: contentH };
     }
 
-    /** Prefer shared ui.nodeLayouts from the topology definition; fall back to columns. */
+    /**
+     * Prefer flow.ui.nodeLayouts. Offset so cards at (0,0) are fully visible,
+     * and never drop missing nodes onto the same center point (that caused overlap).
+     */
     function layout(topology, width, height, savedLayouts) {
         var ids = Object.keys(topology.nodes);
-        var usable = 0;
+        var usable = [];
         if (savedLayouts) {
             ids.forEach(function (id) {
                 var p = savedLayouts[id];
-                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) usable += 1;
+                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) usable.push(id);
             });
         }
-        if (!usable) return layoutColumns(topology, width, height);
+        if (!usable.length) return layoutColumns(topology, width, height);
 
-        var fallback = layoutColumns(topology, width, height);
-        var positions = {};
-        var maxX = 0;
-        var maxY = 0;
-        ids.forEach(function (id) {
+        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        usable.forEach(function (id) {
             var p = savedLayouts[id];
-            if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) {
-                positions[id] = { x: Number(p.x), y: Number(p.y) };
-            } else {
-                positions[id] = fallback.positions[id];
-            }
-            maxX = Math.max(maxX, positions[id].x);
-            maxY = Math.max(maxY, positions[id].y);
+            minX = Math.min(minX, Number(p.x));
+            minY = Math.min(minY, Number(p.y));
+            maxX = Math.max(maxX, Number(p.x));
+            maxY = Math.max(maxY, Number(p.y));
         });
-        return {
-            positions: positions,
-            width: Math.max(width, maxX + NODE_W / 2 + 36),
-            height: Math.max(height, maxY + NODE_H / 2 + 36)
-        };
+        var positions = {};
+        usable.forEach(function (id) {
+            var p = savedLayouts[id];
+            positions[id] = {
+                x: Number(p.x) - minX + LAYOUT_PAD,
+                y: Number(p.y) - minY + LAYOUT_PAD
+            };
+        });
+        // Place any flow node missing a layout in a free column beside the saved ones.
+        var missing = ids.filter(function (id) { return !positions[id]; });
+        missing.forEach(function (id, i) {
+            positions[id] = {
+                x: (maxX - minX) + LAYOUT_PAD + 220,
+                y: LAYOUT_PAD + i * 140
+            };
+        });
+        var contentW = Math.max(width, (maxX - minX) + LAYOUT_PAD * 2 + (missing.length ? 220 : 0));
+        var contentH = Math.max(height, (maxY - minY) + LAYOUT_PAD * 2, LAYOUT_PAD + missing.length * 140);
+        return { positions: positions, width: contentW, height: contentH };
     }
 
     function create(host, options) {
@@ -151,7 +198,7 @@
             '<div class="arg-toolbar">' +
             '  <label class="arg-focus-wrap"><span class="arg-sr">Focus</span>' +
             '    <select class="arg-focus" aria-label="Focus agent connections">' +
-            '      <option value="">All observed connections</option>' +
+            '      <option value="">Conversation flow</option>' +
             '    </select>' +
             '  </label>' +
             '  <div class="arg-zoom-controls">' +
@@ -235,14 +282,16 @@
             applyTransform();
         }
 
-        function pendingSet(now) {
+        function pendingSet(now, remap) {
             var set = {};
             (state.snapshot.activeCalls || []).forEach(function (c) {
                 if (!c) return;
                 var until = c.confirmedUntil ? Date.parse(c.confirmedUntil) : 0;
                 if (until && until < now) return;
-                set[c.from] = true;
-                set[c.to] = true;
+                var from = remap ? remap(c.from) : c.from;
+                var to = remap ? remap(c.to) : c.to;
+                if (from) set[from] = true;
+                if (to) set[to] = true;
             });
             return set;
         }
@@ -257,12 +306,12 @@
             focusEl.replaceChildren();
             var allOpt = document.createElement('option');
             allOpt.value = '';
-            allOpt.textContent = 'All observed connections';
+            allOpt.textContent = 'Conversation flow';
             focusEl.appendChild(allOpt);
             focusAgents.forEach(function (id) {
                 var opt = document.createElement('option');
                 opt.value = id;
-                opt.textContent = label(id);
+                opt.textContent = titleText(id, topology.nodes[id]);
                 focusEl.appendChild(opt);
             });
             if (selected && focusAgents.indexOf(selected) >= 0) focusEl.value = selected;
@@ -288,14 +337,22 @@
             canvas.width = laid.width;
             canvas.height = laid.height;
 
+            var flowIds = {};
+            Object.keys(filtered.nodes).forEach(function (id) { flowIds[id] = true; });
+            var remap = function (id) {
+                return topology.locked ? mapOntoFlow(id, flowIds) : id;
+            };
+
             var now = Date.now();
-            var pending = pendingSet(now);
+            var pending = pendingSet(now, remap);
             var active = {};
             Object.keys(pending).forEach(function (id) { active[id] = true; });
             state.flights = state.flights.filter(function (f) { return now - f.started < FLIGHT_MS; });
             state.flights.forEach(function (f) {
-                if (f.from) active[f.from] = true;
-                if (f.to) active[f.to] = true;
+                var from = remap(f.from);
+                var to = remap(f.to);
+                if (from) active[from] = true;
+                if (to) active[to] = true;
             });
 
             var nodeCount = Object.keys(laid.positions).length;
@@ -314,7 +371,7 @@
                 el.style.top = (pos.y - NODE_H / 2) + 'px';
                 el.style.borderColor = color(kind);
                 el.dataset.kind = kind;
-                var title = kind === 'llm' ? 'Ollama' : label(id);
+                var title = kind === 'llm' ? 'Ollama' : titleText(id, node);
                 el.innerHTML =
                     '<span class="arg-kind">' + kindLabel(kind) + '</span>' +
                     '<strong class="arg-title">' + title + '</strong>' +
@@ -347,10 +404,10 @@
             });
             ctx.setLineDash([]);
 
-            // Moving dots for recent flights (and soft pulse for pending edges).
+            // Moving dots for recent flights (remapped onto flow nodes when locked).
             state.flights.forEach(function (f) {
-                var a = laid.positions[f.from];
-                var b = laid.positions[f.to];
+                var a = laid.positions[remap(f.from)];
+                var b = laid.positions[remap(f.to)];
                 if (!a || !b) return;
                 var t = Math.min(1, (now - f.started) / FLIGHT_MS);
                 var midX = (a.x + b.x) / 2;
@@ -363,8 +420,8 @@
                 ctx.fill();
             });
             (state.snapshot.activeCalls || []).forEach(function (c) {
-                var a = laid.positions[c.from];
-                var b = laid.positions[c.to];
+                var a = laid.positions[remap(c.from)];
+                var b = laid.positions[remap(c.to)];
                 if (!a || !b) return;
                 var until = c.confirmedUntil ? Date.parse(c.confirmedUntil) : 0;
                 if (until && until < now) return;
@@ -485,7 +542,7 @@
         if (node.type === 'ChatInput') return 'Human';
         if (isAudioLoop(node)) return 'Audio Engineer';
         if (isDirectorLoop(node)) return 'Director';
-        if (node.type === 'Output') return (node.label && String(node.label).trim()) || 'Output';
+        if (node.type === 'Output') return 'Output';
         return (node.label && String(node.label).trim()) || node.id;
     }
     function kindForFlowNode(node) {
@@ -508,7 +565,7 @@
             nodes.push({
                 id: id,
                 kind: kindForFlowNode(n),
-                detail: n.type === 'AgentLoop' ? 'Actor mailbox' : (n.label || n.type)
+                detail: (n.label && String(n.label).trim()) || n.type
             });
         });
         (flow && flow.edges || []).forEach(function (e) {
@@ -595,7 +652,7 @@
                 if (reset) { lastRun = id; cursor = 0; }
                 var graph = await api('/api/agent-runs/' + encodeURIComponent(id) + '/graph');
                 var events = await api('/api/agent-runs/' + encodeURIComponent(id) + '/events?after=' + cursor);
-                // Server unions conversation-flow skeleton ∪ observed routes.
+                // Server returns flow-only skeleton; activity remaps onto those nodes.
                 viewer.setData(graph, events, { replaceEvents: reset || cursor === 0 });
                 events.forEach(function (e) { cursor = Math.max(cursor, e.sequence || 0); });
                 if (opts.onStatus) opts.onStatus(null);

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using AgctorSDK.Core.Workflows;
 using AgctorSDK.Host.Services.Scenarios;
 
@@ -6,7 +5,7 @@ namespace AgctorSDK.Host.Services.VideoWorkflow;
 
 /// <summary>
 /// Projects the scenario conversation-flow document into the live agent graph skeleton.
-/// Flow is the single definition surface; observed routes union on top.
+/// Flow is the only product picture; observed activity remaps onto flow nodes (never a second topology).
 /// </summary>
 public static class ScenarioFlowGraphProjector
 {
@@ -16,7 +15,7 @@ public static class ScenarioFlowGraphProjector
         ScenarioFlowDocument Flow,
         IReadOnlyDictionary<string, string> FlowIdToCanonical);
 
-    /// <summary>Map a flow node id to the mailbox / route id used in run activity.</summary>
+    /// <summary>Stable mailbox / route id used in run activity and live layouts.</summary>
     public static string CanonicalId(ScenarioFlowNode node)
     {
         if (node.Type.Equals("ChatInput", StringComparison.OrdinalIgnoreCase))
@@ -25,8 +24,9 @@ public static class ScenarioFlowGraphProjector
             return "Audio Engineer";
         if (SceneVideoScenario.IsLoop(node))
             return "Director";
+        // Keep Output id short so layouts and remapping stay stable across label edits.
         if (node.Type.Equals("Output", StringComparison.OrdinalIgnoreCase))
-            return string.IsNullOrWhiteSpace(node.Label) ? "Output" : node.Label.Trim();
+            return "Output";
         return string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label.Trim();
     }
 
@@ -37,6 +37,13 @@ public static class ScenarioFlowGraphProjector
         if (node.Type.Equals("LlmNode", StringComparison.OrdinalIgnoreCase)) return "llm";
         if (node.Type.Equals("AgentLoop", StringComparison.OrdinalIgnoreCase)) return "agent";
         return "agent";
+    }
+
+    /// <summary>Display title on the live graph — prefer the saved flow label.</summary>
+    public static string DisplayDetail(ScenarioFlowNode node)
+    {
+        if (!string.IsNullOrWhiteSpace(node.Label)) return node.Label.Trim();
+        return node.Type;
     }
 
     public static Projection? Project(ScenarioFlowDocument? flow)
@@ -50,10 +57,8 @@ public static class ScenarioFlowGraphProjector
             if (string.IsNullOrWhiteSpace(node.Id)) continue;
             var id = CanonicalId(node);
             flowToCanon[node.Id] = id;
-            var detail = node.Type.Equals("AgentLoop", StringComparison.OrdinalIgnoreCase)
-                ? "Actor mailbox"
-                : (string.IsNullOrWhiteSpace(node.Label) ? node.Type : node.Label);
-            nodes[id] = new AgentGraphNode(id, KindFor(node), detail);
+            // Detail carries the flow-editor label so clients can show "Your idea", not just "Human".
+            nodes[id] = new AgentGraphNode(id, KindFor(node), DisplayDetail(node));
         }
 
         var edges = new List<AgentGraphEdge>();
@@ -81,32 +86,89 @@ public static class ScenarioFlowGraphProjector
             flowToCanon);
     }
 
-    /// <summary>Union flow skeleton with observed activity (specialists/tools appear when recorded).</summary>
+    /// <summary>
+    /// Map an observed actor/tool/llm id onto the nearest conversation-flow node.
+    /// Specialists (Render, critics, ComfyUI, Ollama, …) collapse onto Director unless clearly audio.
+    /// </summary>
+    public static string MapOntoFlow(string endpoint, IReadOnlySet<string> flowIds)
+    {
+        if (string.IsNullOrWhiteSpace(endpoint)) return endpoint;
+        if (flowIds.Contains(endpoint)) return endpoint;
+
+        if (flowIds.Contains("Output") &&
+            (endpoint.Equals("Output", StringComparison.OrdinalIgnoreCase) ||
+             endpoint.Contains("Finished", StringComparison.OrdinalIgnoreCase)))
+            return "Output";
+
+        if (flowIds.Contains("Human") &&
+            (endpoint.Equals("Human", StringComparison.OrdinalIgnoreCase) ||
+             endpoint.Equals("You", StringComparison.OrdinalIgnoreCase)))
+            return "Human";
+
+        if (flowIds.Contains("Audio Engineer") && LooksLikeAudio(endpoint))
+            return "Audio Engineer";
+
+        if (flowIds.Contains("Director"))
+            return "Director";
+
+        return flowIds.FirstOrDefault(id =>
+                   !id.Equals("Human", StringComparison.Ordinal) &&
+                   !id.Equals("Output", StringComparison.Ordinal))
+               ?? flowIds.First();
+    }
+
+    static bool LooksLikeAudio(string endpoint) =>
+        endpoint.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Speech", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Narrat", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Mix", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Equals("RoFormer", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Flow-only compose: skeleton nodes/edges stay exactly as edited.
+    /// Observed routes never add a second topology; activity remaps onto flow endpoints.
+    /// </summary>
     public static AgentRunGraph Compose(Projection definition, AgentRunGraph observed)
     {
-        var nodes = new Dictionary<string, AgentGraphNode>(StringComparer.Ordinal);
-        foreach (var n in definition.Skeleton.Nodes)
-            nodes[n.Id] = n;
-
-        foreach (var n in observed.Nodes)
-        {
-            if (nodes.TryGetValue(n.Id, out var existing))
-                nodes[n.Id] = new AgentGraphNode(n.Id, existing.Kind, n.Detail ?? existing.Detail);
-            else
-                nodes[n.Id] = n;
-        }
+        var flowIds = definition.Skeleton.Nodes.Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        var nodes = definition.Skeleton.Nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
 
         var edges = new Dictionary<string, AgentGraphEdge>(StringComparer.Ordinal);
         foreach (var e in definition.Skeleton.Edges)
-            edges[e.From + "\0" + e.To] = e;
+            edges[Key(e.From, e.To)] = e;
+
+        // Fold observed traffic onto existing flow edges (counts / last activity) without inventing edges.
         foreach (var e in observed.Edges)
-            edges[e.From + "\0" + e.To] = e;
+        {
+            var from = MapOntoFlow(e.From, flowIds);
+            var to = MapOntoFlow(e.To, flowIds);
+            if (from == to) continue;
+            var key = Key(from, to);
+            if (!edges.TryGetValue(key, out var existing)) continue;
+            edges[key] = existing with
+            {
+                Count = existing.Count + Math.Max(1, e.Count),
+                Outcome = e.Outcome ?? existing.Outcome,
+                LastAt = e.LastAt > existing.LastAt ? e.LastAt : existing.LastAt,
+                Operation = string.IsNullOrWhiteSpace(e.Operation) ? existing.Operation : e.Operation
+            };
+        }
+
+        var active = (observed.ActiveCalls ?? Array.Empty<AgentActiveCall>())
+            .Select(c => c with
+            {
+                From = MapOntoFlow(c.From, flowIds),
+                To = MapOntoFlow(c.To, flowIds)
+            })
+            .ToArray();
 
         return new AgentRunGraph(
             nodes.Values.OrderBy(n => n.Id, StringComparer.Ordinal).ToArray(),
             edges.Values.ToArray(),
-            observed.ActiveCalls);
+            active);
     }
+
+    static string Key(string from, string to) => from + "\0" + to;
 
     /// <summary>Attach projected layouts onto a clone of the flow document for clients (canonical ids).</summary>
     public static ScenarioFlowDocument WithCanonicalLayouts(Projection projection)

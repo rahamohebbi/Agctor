@@ -16,8 +16,8 @@ public sealed class AgentRunsController(
     public sealed record ReplyRequest(long Revision, string QuestionId, string? Choice, string? Text);
 
     /// <summary>
-    /// Live graph: scenario conversation-flow skeleton ∪ observed activity.
-    /// <see cref="Flow"/> is the definition surface (edit canvas); topology catalog is not the product definition.
+    /// Live graph: conversation-flow skeleton only; observed activity remaps onto those nodes.
+    /// <see cref="Flow"/> is the sole definition surface (edit canvas) — never a second observed topology.
     /// </summary>
     /// <param name="Layouts">Canonical-id positions from flow.ui.nodeLayouts for Agctor/Cynelo live renderers.</param>
     public sealed record GraphResponse(
