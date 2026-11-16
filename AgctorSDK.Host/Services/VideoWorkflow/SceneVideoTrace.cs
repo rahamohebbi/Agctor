@@ -34,9 +34,11 @@ public static class SceneVideoTrace
     {
         var context = Current.Value;
         if (context == null) return await action();
-        // Phase B: Director must never appear as caller of Audio production / Speech inspection.
-        if (kind == "tool" && !SceneVideoRoles.MayInvoke(context.Role, target))
+        // Phase C: each mailbox may only invoke its exclusive capabilities (tool / llm / memory).
+        if ((kind is "tool" or "llm" or "memory") &&
+            !SceneVideoRoles.MayInvoke(context.Role, SceneVideoRoles.CanonicalCapability(target, kind)))
             throw new InvalidOperationException($"{context.Role} must not invoke '{target}'.");
+
         var exchange = Guid.NewGuid().ToString("N"); var watch = Stopwatch.StartNew();
         await Write(context, operation, new(context.Role, target, context.Phase, exchange,
             ToKind: kind, ToDetail: detail, Operation: operation, Outcome: "started"));
