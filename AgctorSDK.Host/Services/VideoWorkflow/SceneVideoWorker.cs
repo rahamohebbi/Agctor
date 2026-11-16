@@ -6,20 +6,56 @@ using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Services.VideoWorkflow;
 
-public sealed record SceneVideoTick(AgentRunLease Lease);
+/// <summary>One durable claim. SpecialistId is per-tick; Director/Audio ids are run-scoped.</summary>
+public sealed record SceneVideoTick(AgentRunLease Lease, string SpecialistId);
 public sealed record SceneVideoTickResult(string RunId);
 
-/// <summary>The director routes each durable step to a specialist mailbox; actors hold no authoritative run state.</summary>
-public sealed class SceneVideoDirectorActor(string id, string specialistId, IActorRuntimeAdapter runtime)
-    : BaseActor(id, "SceneVideoDirector")
+/// <summary>
+/// Run-scoped Director: routes to Audio Engineer or a legacy specialist; applies Human / audio decisions itself.
+/// Holds no authoritative run state — SQLite checkpoints remain the source of truth.
+/// </summary>
+public sealed class SceneVideoDirectorActor(string id, string audioId, IActorRuntimeAdapter runtime, SceneVideoLoop loop)
+    : BaseActor(id, SceneVideoRoles.Director)
 {
     public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
     {
-        var result = await runtime.SendMessageAsync<SceneVideoTickResult>(specialistId, envelope.Payload,
+        if (envelope.Payload is not SceneVideoTick tick) throw new ArgumentException("Expected a workflow tick.");
+        var run = tick.Lease.Run;
+        // Audio Engineer owns audio/speech/narration work and continuity speech observation.
+        if (SceneVideoRoles.NeedsAudioWaitingObserver(run) ||
+            (run.Reply == null && SceneVideoRoles.OwnsAudioWork(run.Phase)))
+        {
+            var audio = await runtime.SendMessageAsync<SceneVideoTickResult>(audioId, tick,
+                TimeSpan.FromMinutes(8), senderId: Id, cancellationToken: cancellationToken);
+            return new MessageEnvelope(audio);
+        }
+        // Director applies Human replies and asks for audio decisions; never runs specialist tool phases here.
+        if (run.Reply != null || SceneVideoRoles.OwnsDirectorAudioAsk(run.Phase) ||
+            SceneVideoLoop.Role(run) == SceneVideoRoles.Director)
+        {
+            await loop.StepAsync(tick.Lease, cancellationToken);
+            return new MessageEnvelope(new SceneVideoTickResult(run.Id));
+        }
+        // Remaining roles stay on a per-tick specialist mailbox until Phase C.
+        var result = await runtime.SendMessageAsync<SceneVideoTickResult>(tick.SpecialistId, tick,
             TimeSpan.FromMinutes(8), senderId: Id, cancellationToken: cancellationToken);
         return new MessageEnvelope(result);
     }
 }
+
+/// <summary>Run-scoped Audio Engineer: owns audio/speech/narration phases and audio tools only.</summary>
+public sealed class SceneVideoAudioEngineerActor(string id, SceneVideoLoop loop)
+    : BaseActor(id, SceneVideoRoles.AudioEngineer)
+{
+    public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
+    {
+        if (envelope.Payload is not SceneVideoTick tick) throw new ArgumentException("Expected a workflow tick.");
+        await loop.StepAsync(tick.Lease, cancellationToken);
+        return new MessageEnvelope(new SceneVideoTickResult(tick.Lease.Run.Id));
+    }
+}
+
+/// <summary>Per-tick specialist for non–Director / non–Audio Engineer roles until Phase C splits them.</summary>
 public sealed class SceneVideoSpecialistActor(string id, string role, SceneVideoLoop loop) : BaseActor(id, role)
 {
     public override async Task<IMessageEnvelope> ReceiveAsync(IMessageEnvelope envelope, CancellationToken cancellationToken = default)
@@ -54,6 +90,7 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
             }
         }
     }
+
     public async Task ExecuteLeaseAsync(AgentRunLease lease, CancellationToken ct)
     {
         using var step = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -61,20 +98,33 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
         using var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(step.Token);
         var claimedRevision = lease.Run.Revision;
         var renewal = RenewAsync();
-        var director = "scene-director-" + lease.Token; var specialist = "scene-specialist-" + lease.Token;
+        // Run-scoped ids: Director + Audio Engineer mailboxes last for the run lifetime (locked Phase B decision).
+        var director = DirectorId(lease.Run.Id);
+        var audio = AudioId(lease.Run.Id);
+        var specialist = "scene-specialist-" + lease.Token;
+        var registeredSpecialist = false;
         try
         {
+            await EnsureRunActorsAsync(director, audio, step.Token);
             await runtime.RegisterActorAsync(new SceneVideoSpecialistActor(specialist, SceneVideoLoop.Role(lease.Run), loop), step.Token);
-            await runtime.RegisterActorAsync(new SceneVideoDirectorActor(director, specialist, runtime), step.Token);
-            await runtime.SendMessageAsync<SceneVideoTickResult>(director, new SceneVideoTick(lease), TimeSpan.FromMinutes(9), cancellationToken: step.Token);
+            registeredSpecialist = true;
+            await runtime.SendMessageAsync<SceneVideoTickResult>(director, new SceneVideoTick(lease, specialist),
+                TimeSpan.FromMinutes(9), cancellationToken: step.Token);
         }
         finally
         {
             heartbeat.Cancel();
             try { await renewal; } catch (OperationCanceledException) { }
-            await runtime.StopActorAsync(director, CancellationToken.None);
-            await runtime.StopActorAsync(specialist, CancellationToken.None);
+            if (registeredSpecialist)
+                await runtime.StopActorAsync(specialist, CancellationToken.None);
+            // Stop run-scoped mailboxes only when the durable run is finished.
+            if (lease.Run.IsTerminal)
+            {
+                await runtime.StopActorAsync(director, CancellationToken.None);
+                await runtime.StopActorAsync(audio, CancellationToken.None);
+            }
         }
+
         async Task RenewAsync()
         {
             while (!heartbeat.IsCancellationRequested)
@@ -87,6 +137,29 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
                     if (lease.Run.Revision == claimedRevision) await step.CancelAsync();
                     return;
                 }
+            }
+        }
+    }
+
+    internal static string DirectorId(string runId) => "scene-director-" + runId;
+    internal static string AudioId(string runId) => "scene-audio-" + runId;
+
+    private async Task EnsureRunActorsAsync(string director, string audio, CancellationToken ct)
+    {
+        if (await runtime.GetActorAsync<SceneVideoAudioEngineerActor>(audio, ct) == null)
+        {
+            try { await runtime.RegisterActorAsync(new SceneVideoAudioEngineerActor(audio, loop), ct); }
+            catch (InvalidOperationException)
+            {
+                if (await runtime.GetActorAsync<SceneVideoAudioEngineerActor>(audio, ct) == null) throw;
+            }
+        }
+        if (await runtime.GetActorAsync<SceneVideoDirectorActor>(director, ct) == null)
+        {
+            try { await runtime.RegisterActorAsync(new SceneVideoDirectorActor(director, audio, runtime, loop), ct); }
+            catch (InvalidOperationException)
+            {
+                if (await runtime.GetActorAsync<SceneVideoDirectorActor>(director, ct) == null) throw;
             }
         }
     }

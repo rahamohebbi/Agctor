@@ -52,12 +52,13 @@ public sealed class SceneVideoTraceTests : IDisposable
     public async Task Concurrent_scopes_are_isolated_and_tool_failures_remain_failures()
     {
         var a=await Lease("a"); var b=await Lease("b");
-        async Task Work(AgentRunLease lease,string role) {
+        async Task Work(AgentRunLease lease,string role,string tool) {
             using var scope=SceneVideoTrace.Begin(Store,lease,role,NullLogger.Instance);
-            await Assert.ThrowsAsync<IOException>(()=>SceneVideoTrace.InvokeAsync<int>("Video rendering","tool","Cynelo API","Check render",async()=>{
+            await Assert.ThrowsAsync<IOException>(()=>SceneVideoTrace.InvokeAsync<int>(tool,"tool","Cynelo API","Check",async()=>{
                 await Task.Delay(10); throw new IOException("private exception"); }));
         }
-        await Task.WhenAll(Work(a,"Render agent"),Work(b,"Audio Engineer"));
+        // Each role uses a tool it owns (Phase B matrix).
+        await Task.WhenAll(Work(a,"Render agent","Video rendering"),Work(b,"Audio Engineer","Audio production"));
         foreach(var pair in new[]{(a,"Render agent"),(b,"Audio Engineer")}) {
             var routes=(await Store.EventsAsync(pair.Item1.Run.Id)).Where(e=>e.Route!=null).ToArray();
             Assert.Equal(2,routes.Length); Assert.Equal(pair.Item2,routes[0].Route!.From);
@@ -119,6 +120,27 @@ public sealed class SceneVideoTraceTests : IDisposable
             Assert.Equal(call.StartedAt,renewed.StartedAt); Assert.True(renewed.ConfirmedUntil>call.ConfirmedUntil);
         } finally { release.SetResult(1); await work; }
         Assert.Empty((await Store.GetAsync(lease.Run.Id))!.ActiveCalls!);
+    }
+    [Fact]
+    public async Task Director_cannot_invoke_audio_tools_but_audio_engineer_can()
+    {
+        var lease = await Lease("ban");
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.Director, NullLogger.Instance))
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                SceneVideoTrace.InvokeAsync("Audio production", "tool", "Cynelo API", "Prepare", () => Task.FromResult(1)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                SceneVideoTrace.InvokeAsync("Speech inspection", "tool", "Cynelo API", "Inspect", () => Task.FromResult(1)));
+        }
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.AudioEngineer, NullLogger.Instance))
+            Assert.Equal(7, await SceneVideoTrace.InvokeAsync("Audio production", "tool", "Cynelo API", "Prepare", () => Task.FromResult(7)));
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.Director, NullLogger.Instance))
+        {
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+                Assert.Equal(3, await SceneVideoTrace.InvokeAsync("Speech inspection", "tool", "Cynelo API", "Inspect", () => Task.FromResult(3)));
+        }
+        Assert.DoesNotContain(await Store.EventsAsync(lease.Run.Id),
+            e => e.Route is { From: "Director", To: "Audio production" or "Speech inspection" });
     }
     [Theory]
     [InlineData("save")]

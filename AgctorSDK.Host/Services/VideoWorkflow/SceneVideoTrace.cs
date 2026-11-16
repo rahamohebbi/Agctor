@@ -10,10 +10,22 @@ public static class SceneVideoTrace
     private sealed record Context(IAgentRunStore Store, AgentRunLease Lease, string Role, string Phase, ILogger Log);
     private static readonly AsyncLocal<Context?> Current = new();
     public static bool IsActive => Current.Value != null;
+    public static string? CurrentRole => Current.Value?.Role;
     public static IDisposable Begin(IAgentRunStore store, AgentRunLease lease, string role, ILogger log)
     {
         var previous = Current.Value;
         Current.Value = new(store, lease, role, lease.Run.Phase, log);
+        return new Scope(() => Current.Value = previous);
+    }
+    /// <summary>
+    /// Attribute a nested assist to another role (e.g. Director decision needs Audio Engineer tool lookup).
+    /// Prefer mailbox routing for full phase work; use this only for short tool assists.
+    /// </summary>
+    public static IDisposable SwitchRole(string role)
+    {
+        var previous = Current.Value;
+        if (previous == null) return new Scope(() => { });
+        Current.Value = previous with { Role = role };
         return new Scope(() => Current.Value = previous);
     }
     private sealed class Scope(Action close) : IDisposable { public void Dispose() => close(); }
@@ -22,6 +34,9 @@ public static class SceneVideoTrace
     {
         var context = Current.Value;
         if (context == null) return await action();
+        // Phase B: Director must never appear as caller of Audio production / Speech inspection.
+        if (kind == "tool" && !SceneVideoRoles.MayInvoke(context.Role, target))
+            throw new InvalidOperationException($"{context.Role} must not invoke '{target}'.");
         var exchange = Guid.NewGuid().ToString("N"); var watch = Stopwatch.StartNew();
         await Write(context, operation, new(context.Role, target, context.Phase, exchange,
             ToKind: kind, ToDetail: detail, Operation: operation, Outcome: "started"));
