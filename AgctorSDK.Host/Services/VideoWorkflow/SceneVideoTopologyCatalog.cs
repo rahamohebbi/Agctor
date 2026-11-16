@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgctorSDK.Core.Workflows;
+using AgctorSDK.Host.Services.Scenarios;
 using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Services.VideoWorkflow;
@@ -45,16 +46,20 @@ public sealed class SceneVideoTopologyCatalog : ISceneVideoTopologyCatalog
     private readonly SceneVideoTopologyDocument _baseline;
     private SceneVideoTopologyDocument _document;
     private readonly string _userPath;
+    private readonly IScenarioCatalog _scenarios;
     private readonly ILogger<SceneVideoTopologyCatalog> _log;
+    private bool _admissionMigrated;
 
     public SceneVideoTopologyCatalog(
         IWebHostEnvironment env,
         IOptions<SceneVideoTopologyOptions> options,
+        IScenarioCatalog scenarios,
         ILogger<SceneVideoTopologyCatalog> log)
     {
         _log = log;
-        var path = Path.Combine(env.ContentRootPath, options.Value.File);
-        _userPath = Path.Combine(env.ContentRootPath, options.Value.UserFile);
+        _scenarios = scenarios;
+        var path = ResolvePath(env.ContentRootPath, options.Value.File);
+        _userPath = ResolvePath(env.ContentRootPath, options.Value.UserFile);
         if (!File.Exists(path))
             throw new FileNotFoundException("Scene video topology file is missing.", path);
         var raw = File.ReadAllText(path);
@@ -74,7 +79,11 @@ public sealed class SceneVideoTopologyCatalog : ISceneVideoTopologyCatalog
 
     public SceneVideoTopologyDocument Get()
     {
-        lock (_gate) return Clone(_document);
+        lock (_gate)
+        {
+            EnsureAdmissionMigrated();
+            return Clone(_document);
+        }
     }
 
     public SceneVideoTopologyDocument? GetForScenario(string scenarioId) =>
@@ -105,17 +114,50 @@ public sealed class SceneVideoTopologyCatalog : ISceneVideoTopologyCatalog
             if (errors.Count > 0)
                 throw new ArgumentException(string.Join("\n", errors));
 
-            var overlay = new SceneVideoTopologyEditRequest
+            WriteOverlay(new SceneVideoTopologyEditRequest
             {
                 AudioEnabled = next.AudioEnabled,
                 NodeLayouts = next.Ui?.NodeLayouts
-            };
-            Directory.CreateDirectory(Path.GetDirectoryName(_userPath)!);
-            File.WriteAllText(_userPath, JsonSerializer.Serialize(overlay, Json));
+            });
             _document = next;
+            _admissionMigrated = true;
             _log.LogInformation("Saved scene-video topology edit (audioEnabled={Audio})", next.AudioEnabled);
             return Clone(_document);
         }
+    }
+
+    /// <summary>
+    /// One-shot: if the operator never saved a topology overlay, copy Audio Engineer enable from the
+    /// legacy admission flow so edit/live match pre-Phase-D customizations.
+    /// </summary>
+    private void EnsureAdmissionMigrated()
+    {
+        if (_admissionMigrated || File.Exists(_userPath))
+        {
+            _admissionMigrated = true;
+            return;
+        }
+
+        _admissionMigrated = true;
+        var flow = _scenarios.Get("scene-video-chain")?.Flow;
+        if (!SceneVideoTopologyMigration.TrySeedAudioFromAdmission(_document, flow, out var audio))
+            return;
+
+        WriteOverlay(new SceneVideoTopologyEditRequest
+        {
+            AudioEnabled = audio,
+            NodeLayouts = _document.Ui?.NodeLayouts
+        });
+        _log.LogInformation(
+            "Migrated scene-video topology.audioEnabled={Audio} from admission flow (no prior topology overlay)",
+            audio);
+    }
+
+    private void WriteOverlay(SceneVideoTopologyEditRequest overlay)
+    {
+        var dir = Path.GetDirectoryName(_userPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllText(_userPath, JsonSerializer.Serialize(overlay, Json));
     }
 
     private SceneVideoTopologyEditRequest? LoadUserOverlay()
@@ -144,6 +186,9 @@ public sealed class SceneVideoTopologyCatalog : ISceneVideoTopologyCatalog
         }
         return doc;
     }
+
+    private static string ResolvePath(string root, string configured) =>
+        Path.IsPathRooted(configured) ? configured : Path.GetFullPath(Path.Combine(root, configured ?? string.Empty));
 
     private static SceneVideoTopologyDocument Clone(SceneVideoTopologyDocument src) =>
         JsonSerializer.Deserialize<SceneVideoTopologyDocument>(JsonSerializer.Serialize(src, Json), Json)!;

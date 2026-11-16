@@ -10,6 +10,11 @@ are tagged.
 
 ### Added
 
+- Scene-video Phase E docs/hardening: `docs/scene-video-workflow.md` topology +
+  edit/live guidance, `docs/scene-video-topology-migration.md` for old 3/4-node
+  admission flows, Host endpoints/architecture diagrams for topology and agent-runs,
+  and one-shot `audioEnabled` seed from admission when no topology user overlay exists.
+  (Cynelo agentic docs unchanged — graph DTO not modified in Phase E.)
 - Scene-video Phase D topology editor: `PUT /api/scenarios/{id}/topology` saves
   audio enable + shared `ui.nodeLayouts` (fixed roster/ownership locked); Scenarios
   overview edits that document; live graph uses the same layouts; admission flow

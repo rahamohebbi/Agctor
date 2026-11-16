@@ -99,6 +99,19 @@ See [rag-providers.md](./rag-providers.md) for architecture and Project Memory `
 | POST | `/api/scenarios/reload` | Reload catalog from disk |
 | POST | `/api/scenarios/{id}/apply` | Apply scenario (spawn/configure per kind) |
 | POST | `/api/scenarios/{id}/flow/run` | Execute `flow` (sequential + parallel→Merge); `LlmNode` uses project-memory YAML + Ollama; optional `llmNodeTimeoutSeconds` (default 180) |
+| GET | `/api/scenarios/{id}/topology` | Shared scene-video agent/tool topology (`scene-video-chain`); 404 for other scenarios |
+| PUT | `/api/scenarios/{id}/topology` | Phase D v1: save `audioEnabled` + `nodeLayouts` (fixed roster); validates and writes user overlay |
+
+### Agent runs (`/api/agent-runs` and scenario start)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/scenarios/{scenarioId}/runs` | Start a durable scene-video run (`202`) |
+| GET | `/api/agent-runs` | List runs (optional `scenarioId`) |
+| GET | `/api/agent-runs/{id}` | Run status / question / clips |
+| GET | `/api/agent-runs/{id}/graph` | Definition skeleton ∪ observed activity (`definition` included for scene-video) |
+| GET | `/api/agent-runs/{id}/events` | Durable activity events (`after` cursor) |
+| POST | `/api/agent-runs/{id}/reply` | Answer the current question |
+| POST | `/api/agent-runs/{id}/cancel` | Stop scheduling further work |
 
 ### Test (`/api/test`)
 | Method | Path | Description |

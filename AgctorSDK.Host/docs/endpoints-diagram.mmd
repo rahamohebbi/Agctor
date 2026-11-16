@@ -64,6 +64,16 @@ graph LR
             ScReload["POST /api/scenarios/reload"]
             ScApply["POST /api/scenarios/id/apply<br/>PRD013 Phase4 apply default id"]
             ScFlowRun["POST /api/scenarios/id/flow/run<br/>PRD014 execute flow parallel+Merge LlmNode"]
+            ScTopo["GET/PUT /api/scenarios/id/topology<br/>Scene-video shared topology layout + audio"]
+        end
+
+        subgraph "Agent runs /api/agent-runs"
+            ArList["GET /api/agent-runs<br/>List runs by scenarioId"]
+            ArGet["GET /api/agent-runs/id"]
+            ArGraph["GET /api/agent-runs/id/graph<br/>Definition skeleton ∪ observed"]
+            ArEvents["GET /api/agent-runs/id/events"]
+            ArReply["POST /api/agent-runs/id/reply"]
+            ArCancel["POST /api/agent-runs/id/cancel"]
         end
 
         subgraph "Test /api/test"

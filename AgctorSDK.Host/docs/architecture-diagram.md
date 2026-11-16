@@ -22,7 +22,8 @@ AgctorSDK.Host is the HTTP and MCP gateway for the AGCTOR runtime.
 - **AgentsController** (`/api/agents`): Agent CRUD, messaging, streaming, health, type enablement
 - **AgentsDefinitionsController** (`/api/agents/definitions`): Unified catalog, project-memory YAML CRUD, and **`GET …/tool-usage`** for dashboard agent→tool insight
 - **GoalsController**, **ToolsController** (`/api/tools` including **`GET …/agent-associations`**), **RuntimeController**, **RagProvidersController** (PRD-025), **TerminalController**, **ConfigController**, **LlmController**
-- **ScenariosController** (`/api/scenarios`), **TestController** (`/api/test`)
+- **ScenariosController** (`/api/scenarios`, including scene-video topology GET/PUT), **AgentRunsController** (`/api/agent-runs`), **TestController** (`/api/test`)
+- **SceneVideoTopologyCatalog** + **SceneVideoScenario** / **SceneVideoWorker** for durable scene-video runs
 - **CodeGraphController**, **VisualizationController**
 - **ChatProjectsController**, **ChatSessionsController**
 - **ProjectMemoryController** (`/api/project-memory`), **ResolutionReviewController** (`/api/project-memory/resolution`)

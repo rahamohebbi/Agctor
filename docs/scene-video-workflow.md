@@ -2,13 +2,25 @@
 
 Agctor owns planning, Scene Memory, durable run state, human questions and progress. Cynelo owns video generation, design images, media storage and film assembly. The `scene-video-chain` Scenario is the first durable `AgentLoop` workflow.
 
+## One topology for edit and live
+
+After Phases A–D, **Agent topology** is the product graph for this scenario — not the old conversation-flow / loop-wiring canvas.
+
+| Surface | What it is |
+| --- | --- |
+| **Shared topology** (`Config/scene-video-topology.json` + optional `.user.json`) | Fixed roster of Human, Director, specialists, tools, LLM, and memory. v1 edits: **layout** (`ui.nodeLayouts`) and **Audio Engineer enable** (`audioEnabled`). Ownership and edges are locked. |
+| **Live agent graph** | Same definition **∪** observed routes / `activeCalls` / model evidence. Agctor Scenarios / ScenarioRun and Cynelo’s Agent activity view consume `GET /api/agent-runs/{id}/graph` (includes `definition`). |
+| **Admission overlay** | Thin `ChatInput → Director → Output` (optional Audio Engineer node in the flow). Secondary only — starts a sequence; does not describe specialist tools. |
+
+Model evidence stays **observed-only** (never editable catalog nodes). `Continuity critic` remains a legacy route alias for **Visual critic**.
+
 ## Start from the dashboard
 
-Open **Scenarios → Scene Memory — video sequence → Run workflow**. **New story** is selected by default: enter the complete action and durations, and the workflow creates fresh, empty Scene Memory automatically in the configured Cynelo studio. No existing story or library designs are copied. Choose **Continue an existing story** to reveal the story selector and explicitly reuse that story’s relevant continuity. The selector lists only stories available to the configured Cynelo integration owner. For example, 31 seconds with 15-second clips produces 15 + 15 + 1 seconds. This version supports 1–15 seconds per clip, 360 seconds total, and at most 24 clips.
+Open **Scenarios → Scene Memory — video sequence**. Edit layout/audio under **Agent topology**, watch activity under **Live agent graph**, then **Run workflow**. **New story** is selected by default: enter the complete action and durations, and the workflow creates fresh, empty Scene Memory automatically in the configured Cynelo studio. No existing story or library designs are copied. Choose **Continue an existing story** to reveal the story selector and explicitly reuse that story’s relevant continuity. The selector lists only stories available to the configured Cynelo integration owner. For example, 31 seconds with 15-second clips produces 15 + 15 + 1 seconds. This version supports 1–15 seconds per clip, 360 seconds total, and at most 24 clips.
 
 Every scene-video role is a **run-scoped actor mailbox** (Phase C): Director, Audio Engineer, Planner, Project, Scene Memory, Render, Visual critic, and Editor. The Director only dispatches and applies Human / audio decisions — it never runs another role’s StepAsync body and has no Cynelo tools. Each specialist owns exclusive tools (see topology / `SceneVideoRoles`). SQLite stores authoritative progress. The dashboard shows the plan, ordered clip links, status, activity history and any pending question. Questions support choices and free text. Plan edits and scene clarifications inform the next model call. Operational notes are recorded; an offered action is required before retrying a render or extending its wait.
 
-The Scenario designer exposes workflow guidance and retry limits. This initial `AgentLoop` supports the graph `ChatInput → AgentLoop → Output`; arbitrary compositions of durable loops with other node types are rejected. Use the runs API, not the synchronous conversation-flow API.
+Admission still uses a small AgentLoop graph (`ChatInput → Director → Output`, optional Audio Engineer). Arbitrary compositions of durable loops with other node types are rejected. Use the runs API, not the synchronous conversation-flow API. New runs honor `topology.audioEnabled` (with the admission Audio Engineer node as a fallback when no topology overlay exists).
 
 ## Configure the private connection
 
@@ -67,8 +79,9 @@ Optional `model` overrides the Scenario's planning model. Repeating the same `re
 | --- | --- |
 | `GET /api/agent-runs?scenarioId=scene-video-chain` | Latest 100 runs |
 | `GET /api/agent-runs/{id}` | Current status, question, plan and ordered clip outputs |
-| `GET /api/agent-runs/{id}/graph` | Observed nodes and relationships **unioned with** the scene-video topology skeleton (`definition`). Cynelo’s Agent activity graph and Agctor’s Scenarios / ScenarioRun live graph both render this payload. |
-| `GET /api/scenarios/scene-video-chain/topology` | Read-only shared agent/tool topology (Phase A). Model evidence is observed-only. |
+| `GET /api/agent-runs/{id}/graph` | Observed nodes and relationships **unioned with** the scene-video topology skeleton (`definition`, including `ui.nodeLayouts`). Cynelo’s Agent activity graph and Agctor’s Scenarios / ScenarioRun live graph both render this payload. |
+| `GET /api/scenarios/scene-video-chain/topology` | Shared agent/tool topology (edit + live). Model evidence is observed-only. |
+| `PUT /api/scenarios/scene-video-chain/topology` | Phase D v1 save: `{ audioEnabled, nodeLayouts }`. Validates fixed roster; rejects unknown layout ids / Director tool ownership. Persists `Config/scene-video-topology.user.json`. |
 | `GET /api/agent-runs/{id}/events?after=0` | Up to 200 durable activity events; resume with the last sequence number |
 | `POST /api/agent-runs/{id}/reply` | Answer the current question |
 | `POST /api/agent-runs/{id}/cancel` | Stop scheduling further work |
@@ -159,7 +172,7 @@ Plan review checkpoints each validated clip in the run's projected workspace. La
 
 ### Audio Engineer
 
-The scene-video conversation graph now includes **Director ↔ Audio Engineer**, mapped to the existing actor mailbox execution and persisted run transitions. The extra AgentLoop node declares `role: audio-engineer`; both request and report edges are required. Legacy three-node graphs remain valid. New runs opt into audio only when that specialist is present; previously persisted runs are unchanged.
+Audio enable is the topology flag `audioEnabled` (editable on Scenarios → Agent topology). The admission overlay may still include an AgentLoop node with `role: audio-engineer` (request + report edges required); legacy three-node graphs remain valid as admission only. New runs use `topology.audioEnabled`, falling back to “Audio Engineer present in admission flow” when no topology user overlay exists. Previously persisted runs are unchanged.
 
 After visual approval, `audio-plan` selects whether the prompt requests continuous music, `audio-process` requests an idempotent Cynelo draft, and `audio-review` inspects measured audio evidence and available local speech transcripts. `audio-decision` returns authority to the Director, which asks for an explicit original/improved choice and offers recheck. AI inspection is evidence-based; it does not claim direct listening, voice identification or lip-sync checking. Every transition checkpoints through the same leased actor mechanism. Speech notes without an explicit choice never approve a draft. Delivery cannot proceed without an audio choice for enabled runs.
 
@@ -199,7 +212,20 @@ Cynelo's sequence status card opens **Agent activity**, a read-only modal. AGCTO
 
 The modal displays the Director and specialist roles, animates newly received messages, and keeps the latest 100 events readable. It polls the existing authorized, cursor-paginated event API about once a second while open, reusing Cynelo's single serial refresh loop. Opening or reconnecting does not replay old history as live traffic. Pausing animation and reduced-motion settings preserve message updates. Closing the modal neither cancels the run nor changes approvals. Project changes clear the graph; connection failures and delayed updates are visible.
 
-The graph now uses a left-to-right layout with typed agent, tool, LLM, memory and reported-model nodes. Connections come exclusively from observed routes; selecting an agent filters its neighbors. The topology endpoint groups persisted routes across the full run, so early model calls remain visible after recent poll messages leave the UI buffer. Cynelo applies the same ownership checks to graph and event reads.
+The graph uses typed agent, tool, LLM, memory and reported-model nodes. Prefer shared `definition.ui.nodeLayouts` when present; otherwise a column heuristic. Connections come from the definition skeleton plus observed routes; selecting an agent filters its neighbors. Graph reads union the full-run topology with live activity so early model calls remain visible after recent poll messages leave the UI buffer. Cynelo applies the same ownership checks to graph and event reads.
+
+## Migrating old 4-node (or 3-node) admission flows
+
+Before Phase A–D, the only editable picture was the conversation-flow canvas: `Your idea → Director ↔ Audio Engineer → Finished video` (or a 3-node graph without Audio Engineer). That graph is now an **admission overlay**.
+
+| What you had | What happens now |
+| --- | --- |
+| Built-in or user `agctor-scenarios.user.json` flow for `scene-video-chain` | Still loads for admission / `SceneVideoScenario.Validate`. It does **not** replace the specialist topology. |
+| Audio Engineer present or absent in that flow | On first topology read with **no** `scene-video-topology.user.json`, Agctor seeds `audioEnabled` from the admission flow and writes the overlay once. Later topology saves own the flag. |
+| Historical agent-run SQLite rows | Unchanged. Live view still works from recorded routes alone; when a topology exists it is unioned on top. |
+| Expectation that “Edit flow” is the agent graph | Use **Agent topology** for layout/audio; use admission overlay only for Input → Director → Output. |
+
+No rewrite of completed run blobs is required. Cynelo continues to proxy the same graph DTO; Agctor did not change the Flutter contract in Phase E (spot-check agentic graph tests only if Cynelo DTO fields change).
 
 Invocation-scoped tracing surrounds actual named-client HTTP calls and Scene Memory reads/writes. Ollama nodes use the exact model in each outgoing request, including repair calls. HTTP responses, failures and elapsed call times are paired with the request. These observations do not replace actor state, leases, approvals or recovery. Trace-storage failure cannot turn a successful external operation into a workflow retry. Prompts, credentials, endpoint URLs and response content are not copied into these diagnostic events.
 

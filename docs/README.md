@@ -10,6 +10,8 @@ This directory contains the **solution-level** architecture documentation for th
 - **class-diagram**: Key classes and inheritance across all projects
 - **endpoints-diagram**: All external-facing interfaces (HTTP, MCP, CLI)
 - **dependencies-diagram**: Full project dependency graph with NuGet packages
+- **scene-video-workflow**: Durable scene-video AgentLoop, topology editor, Cynelo bridge
+- **scene-video-topology-migration**: Upgrading old 3/4-node admission flows onto shared topology
 
 ## Per-Project Documentation
 
