@@ -333,7 +333,16 @@
                 ? nodes.length + ' steps. Edit flow to change the live graph definition.'
                 : 'No flow yet. Create Input → Director → Output (optional Audio Engineer) to define the sequence.';
             document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
-            var roster = ['Director'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []);
+            var roleNames = {
+                director: 'Director', planner: 'Planner', project: 'Project', memory: 'Memory agent',
+                render: 'Render', 'visual-critic': 'Visual critic', editor: 'Editor',
+                'audio-engineer': 'Audio Engineer'
+            };
+            var roster = nodes.filter(function (n) { return n.type === 'AgentLoop'; }).map(function (n) {
+                var role = n.config && n.config.role;
+                return roleNames[role] || n.label || 'Agent';
+            });
+            if (!roster.length) roster = ['Director'];
             document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>How it runs</h3><p class="sc-muted">Define agents and connections in Conversation flow. Live flow graph (and Cynelo) draw that same picture with activity.</p>' + overviewRoster(roster, '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
         } else {
             if (flowCardTitle) flowCardTitle.textContent = 'Conversation flow';

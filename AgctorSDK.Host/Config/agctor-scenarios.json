@@ -48,7 +48,7 @@
     {
       "id": "scene-video-chain",
       "displayName": "Scene Memory \u2014 video sequence",
-      "description": "Plan a sequence from your prompt, maintain Scene Memory, and ask Cynelo to render consecutive clips. Pause for human decisions and follow live progress.",
+      "description": "Plan a sequence from your prompt with specialist agents (Director, Planner, Project, Memory, Render, Visual critic, Editor, Audio Engineer). Maintain Scene Memory and ask Cynelo to render consecutive clips.",
       "kind": "declarative",
       "agentTypes": [],
       "flow": {
@@ -65,20 +65,165 @@
           {
             "id": "director",
             "type": "AgentLoop",
-            "label": "Director \u00b7 Plan / Render / Review",
+            "label": "Director",
             "config": {
               "workflow": "scene-video",
               "maxAttempts": 3,
+              "role": "director",
               "instructions": "Keep identities, locations, props and actions consistent across clips. Ask the creator when essential story intent is unclear."
+            }
+          },
+          {
+            "id": "planner",
+            "type": "AgentLoop",
+            "label": "Planner",
+            "config": {
+              "workflow": "scene-video",
+              "role": "planner"
+            }
+          },
+          {
+            "id": "project",
+            "type": "AgentLoop",
+            "label": "Project",
+            "config": {
+              "workflow": "scene-video",
+              "role": "project"
+            }
+          },
+          {
+            "id": "memory",
+            "type": "AgentLoop",
+            "label": "Memory agent",
+            "config": {
+              "workflow": "scene-video",
+              "role": "memory"
+            }
+          },
+          {
+            "id": "render",
+            "type": "AgentLoop",
+            "label": "Render",
+            "config": {
+              "workflow": "scene-video",
+              "role": "render"
+            }
+          },
+          {
+            "id": "visual-critic",
+            "type": "AgentLoop",
+            "label": "Visual critic",
+            "config": {
+              "workflow": "scene-video",
+              "role": "visual-critic"
+            }
+          },
+          {
+            "id": "editor",
+            "type": "AgentLoop",
+            "label": "Editor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "editor"
             }
           },
           {
             "id": "audio-engineer",
             "type": "AgentLoop",
-            "label": "Audio Engineer \u00b7 Inspect / Narrate / Mix / Verify",
+            "label": "Audio Engineer",
             "config": {
               "workflow": "scene-video",
               "role": "audio-engineer"
+            }
+          },
+          {
+            "id": "ollama",
+            "type": "Capability",
+            "label": "Ollama",
+            "config": {
+              "kind": "llm",
+              "detail": "Planning / review model",
+              "ownerRole": "planner"
+            }
+          },
+          {
+            "id": "scene-memory",
+            "type": "Capability",
+            "label": "Scene Memory",
+            "config": {
+              "kind": "memory",
+              "detail": "Recorded facts",
+              "ownerRole": "memory"
+            }
+          },
+          {
+            "id": "audio-production",
+            "type": "Capability",
+            "label": "Audio production",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "audio-engineer"
+            }
+          },
+          {
+            "id": "speech-inspection",
+            "type": "Capability",
+            "label": "Speech inspection",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "audio-engineer"
+            }
+          },
+          {
+            "id": "frame-sampler",
+            "type": "Capability",
+            "label": "Frame sampler",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "render"
+            }
+          },
+          {
+            "id": "video-rendering",
+            "type": "Capability",
+            "label": "Video rendering",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "render"
+            }
+          },
+          {
+            "id": "project-storage",
+            "type": "Capability",
+            "label": "Project storage",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "project"
+            }
+          },
+          {
+            "id": "story-storage",
+            "type": "Capability",
+            "label": "Story storage",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "memory"
+            }
+          },
+          {
+            "id": "film-assembly",
+            "type": "Capability",
+            "label": "Film assembly",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "editor"
             }
           },
           {
@@ -101,6 +246,78 @@
             "mode": "sequential"
           },
           {
+            "id": "director-planner",
+            "fromNodeId": "director",
+            "toNodeId": "planner",
+            "mode": "sequential"
+          },
+          {
+            "id": "planner-director",
+            "fromNodeId": "planner",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-project",
+            "fromNodeId": "director",
+            "toNodeId": "project",
+            "mode": "sequential"
+          },
+          {
+            "id": "project-director",
+            "fromNodeId": "project",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-memory",
+            "fromNodeId": "director",
+            "toNodeId": "memory",
+            "mode": "sequential"
+          },
+          {
+            "id": "memory-director",
+            "fromNodeId": "memory",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-render",
+            "fromNodeId": "director",
+            "toNodeId": "render",
+            "mode": "sequential"
+          },
+          {
+            "id": "render-director",
+            "fromNodeId": "render",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-visual",
+            "fromNodeId": "director",
+            "toNodeId": "visual-critic",
+            "mode": "sequential"
+          },
+          {
+            "id": "visual-director",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-editor",
+            "fromNodeId": "director",
+            "toNodeId": "editor",
+            "mode": "sequential"
+          },
+          {
+            "id": "editor-director",
+            "fromNodeId": "editor",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
             "id": "audio-request",
             "fromNodeId": "director",
             "toNodeId": "audio-engineer",
@@ -111,25 +328,163 @@
             "fromNodeId": "audio-engineer",
             "toNodeId": "director",
             "mode": "sequential"
+          },
+          {
+            "id": "planner-ollama",
+            "fromNodeId": "planner",
+            "toNodeId": "ollama",
+            "mode": "sequential"
+          },
+          {
+            "id": "visual-ollama",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "ollama",
+            "mode": "sequential"
+          },
+          {
+            "id": "audio-ollama",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "ollama",
+            "mode": "sequential"
+          },
+          {
+            "id": "planner-memory-cap",
+            "fromNodeId": "planner",
+            "toNodeId": "scene-memory",
+            "mode": "sequential"
+          },
+          {
+            "id": "memory-store",
+            "fromNodeId": "memory",
+            "toNodeId": "scene-memory",
+            "mode": "sequential"
+          },
+          {
+            "id": "memory-story",
+            "fromNodeId": "memory",
+            "toNodeId": "story-storage",
+            "mode": "sequential"
+          },
+          {
+            "id": "project-storage-e",
+            "fromNodeId": "project",
+            "toNodeId": "project-storage",
+            "mode": "sequential"
+          },
+          {
+            "id": "render-video",
+            "fromNodeId": "render",
+            "toNodeId": "video-rendering",
+            "mode": "sequential"
+          },
+          {
+            "id": "render-frames",
+            "fromNodeId": "render",
+            "toNodeId": "frame-sampler",
+            "mode": "sequential"
+          },
+          {
+            "id": "visual-frames",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "frame-sampler",
+            "mode": "sequential"
+          },
+          {
+            "id": "audio-prod",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "audio-production",
+            "mode": "sequential"
+          },
+          {
+            "id": "audio-speech",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "speech-inspection",
+            "mode": "sequential"
+          },
+          {
+            "id": "editor-film",
+            "fromNodeId": "editor",
+            "toNodeId": "film-assembly",
+            "mode": "sequential"
           }
         ],
         "ui": {
           "nodeLayouts": {
             "input": {
               "x": 0,
-              "y": 0
+              "y": 320
             },
             "director": {
               "x": 0,
-              "y": 180
+              "y": 160
             },
             "audio-engineer": {
-              "x": 360,
-              "y": 180
+              "x": 280,
+              "y": 40
+            },
+            "visual-critic": {
+              "x": 280,
+              "y": 160
+            },
+            "planner": {
+              "x": 280,
+              "y": 280
+            },
+            "project": {
+              "x": 280,
+              "y": 400
+            },
+            "render": {
+              "x": 280,
+              "y": 520
+            },
+            "memory": {
+              "x": 280,
+              "y": 640
+            },
+            "editor": {
+              "x": 280,
+              "y": 760
             },
             "output": {
               "x": 0,
-              "y": 360
+              "y": 520
+            },
+            "audio-production": {
+              "x": 560,
+              "y": 40
+            },
+            "speech-inspection": {
+              "x": 560,
+              "y": 140
+            },
+            "ollama": {
+              "x": 560,
+              "y": 260
+            },
+            "frame-sampler": {
+              "x": 560,
+              "y": 380
+            },
+            "video-rendering": {
+              "x": 560,
+              "y": 500
+            },
+            "project-storage": {
+              "x": 560,
+              "y": 620
+            },
+            "story-storage": {
+              "x": 560,
+              "y": 720
+            },
+            "scene-memory": {
+              "x": 560,
+              "y": 820
+            },
+            "film-assembly": {
+              "x": 560,
+              "y": 920
             }
           }
         }

@@ -147,8 +147,8 @@
     }
 
     /**
-     * Prefer flow.ui.nodeLayouts. Offset so cards at (0,0) are fully visible,
-     * and never drop missing nodes onto the same center point (that caused overlap).
+     * Prefer flow.ui.nodeLayouts, then scale the whole graph to fill the viewport
+     * so fullscreen does not leave a tiny cluster in the corner.
      */
     function layout(topology, width, height, savedLayouts) {
         var ids = Object.keys(topology.nodes);
@@ -169,25 +169,34 @@
             maxX = Math.max(maxX, Number(p.x));
             maxY = Math.max(maxY, Number(p.y));
         });
+        var missing = ids.filter(function (id) { return usable.indexOf(id) < 0; });
+        missing.forEach(function (id, i) {
+            var x = maxX + 220;
+            var y = minY + i * 140;
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+            savedLayouts[id] = { x: x, y: y };
+            usable.push(id);
+        });
+        var spanX = Math.max(1, maxX - minX);
+        var spanY = Math.max(1, maxY - minY);
+        var margin = LAYOUT_PAD;
+        var usableW = Math.max(1, width - margin * 2 - NODE_W);
+        var usableH = Math.max(1, height - margin * 2 - NODE_H);
+        var scale = Math.min(usableW / spanX, usableH / spanY);
+        var usedW = spanX * scale + NODE_W;
+        var usedH = spanY * scale + NODE_H;
+        var originX = Math.max(margin, (width - usedW) / 2);
+        var originY = Math.max(margin, (height - usedH) / 2);
         var positions = {};
         usable.forEach(function (id) {
             var p = savedLayouts[id];
             positions[id] = {
-                x: Number(p.x) - minX + LAYOUT_PAD,
-                y: Number(p.y) - minY + LAYOUT_PAD
+                x: originX + NODE_W / 2 + (Number(p.x) - minX) * scale,
+                y: originY + NODE_H / 2 + (Number(p.y) - minY) * scale
             };
         });
-        // Place any flow node missing a layout in a free column beside the saved ones.
-        var missing = ids.filter(function (id) { return !positions[id]; });
-        missing.forEach(function (id, i) {
-            positions[id] = {
-                x: (maxX - minX) + LAYOUT_PAD + 220,
-                y: LAYOUT_PAD + i * 140
-            };
-        });
-        var contentW = Math.max(width, (maxX - minX) + LAYOUT_PAD * 2 + (missing.length ? 220 : 0));
-        var contentH = Math.max(height, (maxY - minY) + LAYOUT_PAD * 2, LAYOUT_PAD + missing.length * 140);
-        return { positions: positions, width: contentW, height: contentH };
+        return { positions: positions, width: width, height: height };
     }
 
     function create(host, options) {
@@ -531,24 +540,48 @@
         };
     }
 
+    var ROLE_MAILBOXES = {
+        director: 'Director',
+        planner: 'Planner',
+        project: 'Project agent',
+        memory: 'Scene Memory agent',
+        'scene-memory': 'Scene Memory agent',
+        render: 'Render agent',
+        'visual-critic': 'Visual critic',
+        critic: 'Visual critic',
+        editor: 'Editor agent',
+        'audio-engineer': 'Audio Engineer',
+        audio: 'Audio Engineer'
+    };
+    function roleSlug(node) {
+        return node && node.config && node.config.role ? String(node.config.role) : '';
+    }
     function isAudioLoop(node) {
-        return node && node.type === 'AgentLoop' && node.config && node.config.role === 'audio-engineer';
+        var role = roleSlug(node);
+        return node && node.type === 'AgentLoop' && (role === 'audio-engineer' || role === 'audio');
     }
     function isDirectorLoop(node) {
-        return node && node.type === 'AgentLoop' && !isAudioLoop(node);
+        if (!node || node.type !== 'AgentLoop') return false;
+        var role = roleSlug(node);
+        return !role || role === 'director';
     }
     function canonicalFlowId(node) {
         if (!node) return '';
         if (node.type === 'ChatInput') return 'Human';
-        if (isAudioLoop(node)) return 'Audio Engineer';
-        if (isDirectorLoop(node)) return 'Director';
         if (node.type === 'Output') return 'Output';
+        if (node.type === 'Capability') return (node.label && String(node.label).trim()) || node.id;
+        if (node.type === 'AgentLoop') {
+            var role = roleSlug(node);
+            if (ROLE_MAILBOXES[role]) return ROLE_MAILBOXES[role];
+            if (isDirectorLoop(node)) return 'Director';
+        }
         return (node.label && String(node.label).trim()) || node.id;
     }
     function kindForFlowNode(node) {
         if (node.type === 'ChatInput') return 'human';
         if (node.type === 'Output') return 'tool';
         if (node.type === 'LlmNode') return 'llm';
+        if (node.type === 'Capability' && node.config && node.config.kind) return node.config.kind;
         return 'agent';
     }
 
@@ -565,7 +598,9 @@
             nodes.push({
                 id: id,
                 kind: kindForFlowNode(n),
-                detail: (n.label && String(n.label).trim()) || n.type
+                detail: (n.type === 'Capability' && n.config && n.config.detail)
+                    ? n.config.detail
+                    : ((n.label && String(n.label).trim()) || n.type)
             });
         });
         (flow && flow.edges || []).forEach(function (e) {

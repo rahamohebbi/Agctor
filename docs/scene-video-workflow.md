@@ -8,8 +8,8 @@ Agctor owns planning, Scene Memory, durable run state, human questions and progr
 
 | Surface | What it is |
 | --- | --- |
-| **Conversation flow** (`scenario.flow`) | Edit Input → Director ↔ Audio Engineer → Output (and layouts) in Scenarios → Edit flow. This is the definition. |
-| **Live flow graph** | **That same flow only** — nodes/edges match the editor. Observed routes / `activeCalls` remap onto flow mailboxes for highlights and message dots (never a second observed topology). Agctor Scenarios / ScenarioRun and Cynelo Agent activity consume `GET /api/agent-runs/{id}/graph` (`flow` + `layouts` + nodes/edges). |
+| **Conversation flow** (`scenario.flow`) | Edit the full scene-video picture in Scenarios → Edit flow: Input → Director hub ↔ Planner / Project / Memory / Render / Visual critic / Editor / Audio Engineer, plus Capability leaves (tools/LLM/memory) and Output. This is the definition. |
+| **Live flow graph** | **That same flow only** — nodes/edges match the editor. Observed routes / `activeCalls` remap onto those mailboxes/capabilities for highlights and message dots. Agctor Scenarios / ScenarioRun and Cynelo Agent activity consume `GET /api/agent-runs/{id}/graph` (`flow` + `layouts` + nodes/edges). |
 | **Topology JSON** (optional legacy) | May still exist as an internal/derived catalog for validation helpers; it is **not** the UI definition surface. |
 
 Specialist actors still run at runtime; their traffic remaps onto Director / Audio Engineer / Output on the live picture. Model evidence stays in the message list, not as extra graph nodes.
