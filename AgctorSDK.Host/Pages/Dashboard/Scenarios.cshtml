@@ -31,6 +31,22 @@
                 </div>
                 <section id="sc-overview" role="tabpanel" aria-labelledby="sc-tab-overview" tabindex="0">
                     <div id="sc-overview-content"></div>
+                    <div id="sc-run-graph" class="sc-run-graph hidden" aria-label="Live agent graph">
+                        <div class="sc-run-graph-heading">
+                            <div>
+                                <h3>Live agent graph</h3>
+                                <p class="sc-muted">Same observed topology Cynelo shows: Director, specialists, tools, LLM, memory, and model evidence from this scenario’s runs.</p>
+                            </div>
+                            <div class="sc-run-graph-tools">
+                                <label class="sc-muted" for="sc-run-graph-pick">Sequence</label>
+                                <select id="sc-run-graph-pick" aria-label="Choose a sequence run"></select>
+                                <button type="button" id="sc-run-graph-refresh" class="sc-button sc-small">Refresh</button>
+                                <a id="sc-run-graph-open" class="sc-button sc-small" href="/Dashboard/ScenarioRun">Open run ↗</a>
+                            </div>
+                        </div>
+                        <div id="sc-run-graph-host" class="sc-run-graph-host"></div>
+                        <p id="sc-run-graph-status" class="sc-run-graph-status" role="status"></p>
+                    </div>
                     <div class="sc-flow-card"><div><h3>Conversation flow</h3><a id="sc-run-workflow" hidden class="sc-primary" href="/Dashboard/ScenarioRun">Run workflow ↗</a><p id="sc-flow-summary" class="sc-muted"></p></div><button type="button" id="sc-open-flow" class="sc-button">Edit flow ↗</button></div>
                     <div class="sc-apply-box"><h3>Use this scenario</h3><p id="sc-apply-help" class="sc-muted">Applies the saved configuration. This can reset agents from the previous scenario; it does not change the configured default.</p><div class="sc-actions"><button type="button" id="sc-apply" class="sc-button sc-primary" disabled>Apply to session</button><a href="/Dashboard/Agents" class="sc-button">View agents ↗</a></div><p id="sc-apply-status" class="sc-status" role="status"></p></div>
                 </section>
@@ -565,5 +581,7 @@
     <link rel="stylesheet" href="~/css/rag-migration.css" asp-append-version="true" />
     <script src="~/js/dashboard/rag-migration.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/model-selection.js" asp-append-version="true"></script>
+    <link rel="stylesheet" href="~/css/agent-run-graph.css" asp-append-version="true" />
+    <script src="~/js/dashboard/agent-run-graph.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenarios-page.js" asp-append-version="true"></script>
 }

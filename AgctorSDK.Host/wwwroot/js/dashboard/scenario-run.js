@@ -5,6 +5,10 @@
     const scenario = params.get('scenario') || 'scene-video-chain';
     let runId = params.get('run'), current, cursor = 0, questionId, polling = false, requestId, requestBody;
     let starting = false, loadingStories = false;
+    // Same observed topology Cynelo draws; fed from Agctor's /graph + /events.
+    const graphLive = window.AgctorAgentRunGraph
+        ? window.AgctorAgentRunGraph.mountLive(document.getElementById('vr-graph'), () => runId)
+        : null;
     function updateStoryMode() {
         const continuing = $('mode-continue').checked;
         $('existing-story').hidden = !continuing;
@@ -134,6 +138,7 @@
     function openRun(id) {
         runId = id; cursor = 0; questionId = null; $('events').replaceChildren();
         history.replaceState(null, '', '?scenario=' + encodeURIComponent(scenario) + '&run=' + encodeURIComponent(id));
+        if (graphLive) graphLive.refresh();
         poll();
     }
     async function recent() {
