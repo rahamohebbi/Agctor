@@ -179,12 +179,13 @@
 }
 
 .sc-run-graph {
-  margin: 26px 0;
+  margin: 0 0 26px;
   border: 1px solid var(--sc-border, #e2e8f0);
   border-radius: 12px;
   padding: 18px;
   background: var(--sc-soft, #f8fafc);
 }
+.sc-flow-card #sc-flow-hint:empty { display: none; }
 .sc-run-graph-heading {
   display: flex;
   align-items: flex-start;

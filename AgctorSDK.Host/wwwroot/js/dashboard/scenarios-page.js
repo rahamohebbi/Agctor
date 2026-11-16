@@ -222,23 +222,34 @@
     var runGraphLive = null;
     var runGraphScenarioId = null;
     var runGraphSelectedId = null;
-    function stopRunGraph() {
+    // Remounting the viewer must not drop the selected run — that left the picker showing a
+    // completed sequence while poll() fetched with a null id and drew an empty graph.
+    function stopRunGraph(opts) {
+        opts = opts || {};
         if (runGraphLive) { runGraphLive.destroy(); runGraphLive = null; }
         if (runGraphHost) runGraphHost.replaceChildren();
         runGraphScenarioId = null;
-        runGraphSelectedId = null;
+        if (!opts.keepSelection) runGraphSelectedId = null;
     }
     function ensureRunGraph(scenarioId) {
         if (!runGraphPanel || !runGraphHost || !window.AgctorAgentRunGraph) return;
         if (runGraphScenarioId === scenarioId && runGraphLive) return;
-        stopRunGraph();
+        var keepId = runGraphSelectedId;
+        stopRunGraph({ keepSelection: true });
         runGraphScenarioId = scenarioId;
+        runGraphSelectedId = keepId;
         runGraphLive = window.AgctorAgentRunGraph.mountLive(runGraphHost, function () { return runGraphSelectedId; }, {
             onStatus: function (err) {
                 if (!runGraphStatus) return;
                 runGraphStatus.textContent = err ? ('Graph updates paused: ' + err.message) : '';
             }
         });
+    }
+    function syncRunGraphOpenLink(scenarioId) {
+        if (!runGraphOpen) return;
+        runGraphOpen.href = runGraphSelectedId
+            ? '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId) + '&run=' + encodeURIComponent(runGraphSelectedId)
+            : '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId);
     }
     async function refreshRunGraphList(scenarioId) {
         if (!runGraphPick) return;
@@ -267,11 +278,8 @@
                 runGraphSelectedId = keep;
                 runGraphPick.value = keep;
             }
-            if (runGraphOpen) {
-                runGraphOpen.href = runGraphSelectedId
-                    ? '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId) + '&run=' + encodeURIComponent(runGraphSelectedId)
-                    : '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId);
-            }
+            syncRunGraphOpenLink(scenarioId);
+            // Mount after the selected id is set so the first poll hits /graph for that run.
             ensureRunGraph(scenarioId);
             if (runGraphLive) runGraphLive.refresh();
             if (runGraphStatus) runGraphStatus.textContent = '';
@@ -282,11 +290,7 @@
     if (runGraphPick) {
         runGraphPick.addEventListener('change', function () {
             runGraphSelectedId = runGraphPick.value || null;
-            if (runGraphOpen && runGraphScenarioId) {
-                runGraphOpen.href = runGraphSelectedId
-                    ? '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(runGraphScenarioId) + '&run=' + encodeURIComponent(runGraphSelectedId)
-                    : '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(runGraphScenarioId);
-            }
+            if (runGraphScenarioId) syncRunGraphOpenLink(runGraphScenarioId);
             if (runGraphLive) runGraphLive.refresh();
         });
     }
@@ -310,12 +314,30 @@
         document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Runtime agents <span class="sc-badge">' + (s.agentTypes || []).length + '</span></h3><p class="sc-muted">' + (isScriptedScenario(s) ? 'The built-in setup program creates and connects these agents.' : 'Apply starts an enabled coordinator; session memory is created when needed. Other types are saved as configuration.') + '</p>' + overviewRoster(s.agentTypes || [], 'No runtime agents configured.') + '</section><section><h3>AI profiles <span class="sc-badge">' + (s.personaAgentIds || []).length + '</span></h3><p class="sc-muted">Instructions and tools used by AI steps in the flow.</p>' + overviewRoster(s.personaAgentIds || [], 'No AI profiles attached.') + '</section></div>';
         var flow = getScenarioFlow(s);
         var nodes = flow && (flow.nodes || flow.Nodes) || [];
-        document.getElementById('sc-flow-summary').textContent = flow ? nodes.length + ' steps configured. Open the designer to explore routing, AI steps, and replies.' : 'No flow configured. Add a flow to define how messages move through this scenario.';
-        document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
         var runLink = document.getElementById('sc-run-workflow');
-        runLink.hidden = !nodes.some(function (n) { return n.type === 'AgentLoop'; });
-        if (!runLink.hidden) {
-            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run and routes the next task to them.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Continuity critic', 'Editor agent'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []), '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
+        var isAgentLoop = nodes.some(function (n) { return n.type === 'AgentLoop'; });
+        runLink.hidden = !isAgentLoop;
+        var flowCardTitle = document.getElementById('sc-flow-card-title');
+        var flowHint = document.getElementById('sc-flow-hint');
+        var flowModalTitle = document.getElementById('sc-flow-title');
+        var flowModalBlurb = document.getElementById('sc-flow-modal-blurb');
+        if (isAgentLoop) {
+            if (flowCardTitle) flowCardTitle.textContent = 'Loop wiring';
+            if (flowHint) flowHint.textContent = 'Admission graph only (Input → Director ↔ Audio Engineer → Output). Specialist agents, tools, LLM, memory, and model evidence appear in Live agent graph above — the same topology Cynelo shows.';
+            if (flowModalTitle) flowModalTitle.textContent = 'Loop wiring';
+            if (flowModalBlurb) flowModalBlurb.textContent = 'Configure how a sequence is admitted (Input → Director, optional Audio Engineer). The live Director/specialist/tool graph is on Overview — not this canvas.';
+            document.getElementById('sc-flow-summary').textContent = flow
+                ? nodes.length + ' loop steps. This is not the live agent topology.'
+                : 'No loop wiring yet. Add Input → Director (and optional Audio Engineer) for admissions.';
+            document.getElementById('sc-open-flow').textContent = flow ? 'Edit loop wiring ↗' : 'Create loop wiring ↗';
+            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run and routes the next task to them. Watch them in Live agent graph — not in loop wiring.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Continuity critic', 'Editor agent'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []), '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
+        } else {
+            if (flowCardTitle) flowCardTitle.textContent = 'Conversation flow';
+            if (flowHint) flowHint.textContent = '';
+            if (flowModalTitle) flowModalTitle.textContent = 'Conversation flow';
+            if (flowModalBlurb) flowModalBlurb.textContent = 'Design the journey from message to reply.';
+            document.getElementById('sc-flow-summary').textContent = flow ? nodes.length + ' steps configured. Open the designer to explore routing, AI steps, and replies.' : 'No flow configured. Add a flow to define how messages move through this scenario.';
+            document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
         }
 
         runLink.href = '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(s.id);
