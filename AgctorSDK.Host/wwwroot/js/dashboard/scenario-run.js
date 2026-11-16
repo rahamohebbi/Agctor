@@ -5,10 +5,10 @@
     const scenario = params.get('scenario') || 'scene-video-chain';
     let runId = params.get('run'), current, cursor = 0, questionId, polling = false, requestId, requestBody;
     let starting = false, loadingStories = false;
-    // Definition skeleton ∪ observed routes (same graph Cynelo proxies).
+    // Conversation-flow skeleton ∪ observed routes (same graph Cynelo proxies).
     const graphLive = window.AgctorAgentRunGraph
         ? window.AgctorAgentRunGraph.mountLive(document.getElementById('vr-graph'), () => runId, {
-            topologyUrl: '/api/scenarios/' + encodeURIComponent(scenario) + '/topology'
+            scenarioUrl: '/api/scenarios/' + encodeURIComponent(scenario)
         })
         : null;
     function updateStoryMode() {
