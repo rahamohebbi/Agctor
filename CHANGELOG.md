@@ -10,6 +10,9 @@ are tagged.
 
 ### Added
 
+- Scene-video Phase C actors: run-scoped Planner, Project, Memory, Render,
+  Visual critic, and Editor mailboxes with exclusive tools; Director only
+  dispatches (no Role() hat-switching); mailbox isolation enforced in Trace.
 - Scene-video Phase B actors: run-scoped Director and Audio Engineer mailboxes;
   Audio Engineer owns audio/speech/narration phases and audio tools; Director
   routes / asks Human / applies audio decisions only (tool matrix enforced).

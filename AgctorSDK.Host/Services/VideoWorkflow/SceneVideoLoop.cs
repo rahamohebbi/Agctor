@@ -12,16 +12,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
 {
     public static IReadOnlyList<AgentWaitMonitor> WaitMonitors { get; } =
         [new("scene-video", "plan-review", "retry"), new("scene-video", "submit", "retry"), new("scene-video", "poll", "timeout"), new("scene-video", "poll", "retry"), new("scene-video", "critic", "continuity"), new("scene-video", "speech-check", "continuity")];
-    public static string Role(AgentRun run) => run.Reply != null ? SceneVideoRoles.Director
-        : SceneVideoRoles.NeedsAudioWaitingObserver(run) ? SceneVideoRoles.AudioEngineer
-        : run.Phase switch
-    {
-        _ when SceneVideoRoles.OwnsAudioWork(run.Phase) => SceneVideoRoles.AudioEngineer,
-        _ when SceneVideoRoles.OwnsDirectorAudioAsk(run.Phase) => SceneVideoRoles.Director,
-        "plan" or "plan-review" => "Planner", "project" => "Project agent", "critic" => "Continuity critic",
-        "finish" => "Editor agent", "prepare" or "commit" => "Scene Memory agent",
-        "submit" or "poll" or "reset-render" => "Render agent", _ => SceneVideoRoles.Director
-    };
+    /// <summary>Mailbox owner for this run tick — same as <see cref="SceneVideoRoles.Owner"/> (Phase C).</summary>
+    public static string Role(AgentRun run) => SceneVideoRoles.Owner(run);
     private static string DescribeStep(string phase) => phase switch {
         "plan" => "Plan the sequence.", "plan-review" => "Check the shot plan.",
         "project" => "Prepare the story’s project.", "initialize" => "Create the story’s memory.",
@@ -341,7 +333,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                 if (evidence?.Ending?.Valid() == true && clip.Continuity.Ending is { } ending && ending.Valid()) {
                     clip.Boundary = new(clip.ShotId, RenderKey(run, state), DateTimeOffset.UtcNow,
                         clip.Continuity.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
-                    await memory.SaveBoundaryAsync(run.WorkspaceId, clip.Boundary, ct);
+                    await SaveBoundaryAsync(run.WorkspaceId, clip.Boundary, ct);
                 }
                 clip.VisualAccepted = clip.Continuity.Status == "passed";
                 if (state.SpeechReviewEnabled) {
@@ -702,7 +694,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             catch (Exception ex) { log.LogWarning(ex, "Boundary inspection unavailable for {RunId}", run.Id); }
             if (evidence?.Ending?.Valid() == true && report?.Ending is { } ending && ending.Valid()) {
                 prior.Boundary = new(prior.ShotId, key, DateTimeOffset.UtcNow, report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
-                await memory.SaveBoundaryAsync(run.WorkspaceId, prior.Boundary, ct);
+                await SaveBoundaryAsync(run.WorkspaceId, prior.Boundary, ct);
             }
         }
         if (prior.Boundary?.Ending is { Status: "observed" } observed && observed.Valid()) return true;
@@ -746,13 +738,36 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         run.Phase = "prepare";
         return $"{label} is ready. Continuing from its last frame into the next clip.";
     }
-    private Task<SceneWorkspace> ReadMemory(string workspace, CancellationToken ct) =>
-        SceneVideoTrace.InvokeAsync("Scene Memory", "memory", "Recorded facts", "Read story facts", () => memory.GetAsync(workspace, ct));
+    private async Task<SceneWorkspace> ReadMemory(string workspace, CancellationToken ct)
+    {
+        // Revision / fact reads may happen from Render or other mailboxes; attribute to Memory when needed.
+        if (SceneVideoTrace.CurrentRole != null &&
+            !SceneVideoRoles.MayInvoke(SceneVideoTrace.CurrentRole, "Scene Memory"))
+        {
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.Memory))
+                return await SceneVideoTrace.InvokeAsync("Scene Memory", "memory", "Recorded facts", "Read story facts",
+                    () => memory.GetAsync(workspace, ct));
+        }
+        return await SceneVideoTrace.InvokeAsync("Scene Memory", "memory", "Recorded facts", "Read story facts",
+            () => memory.GetAsync(workspace, ct));
+    }
     private async Task<SceneWorkspace?> UnchangedAsync(AgentRun run, SceneVideoState state, CancellationToken ct)
     {
         var workspace = await ReadMemory(run.WorkspaceId, ct);
         if (ScenePromptReducer.Revision(workspace) == state.WorkspaceRevision) return workspace;
         AskConflict(run); return null;
+    }
+    private async Task SaveBoundaryAsync(string workspaceId, SceneBoundaryObservation boundary, CancellationToken ct)
+    {
+        if (SceneVideoTrace.CurrentRole != null &&
+            !SceneVideoRoles.MayInvoke(SceneVideoTrace.CurrentRole, "Scene Memory"))
+        {
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.Memory))
+                await SceneVideoTrace.InvokeAsync("Scene Memory", "memory", "Recorded facts", "Save ending boundary",
+                    async () => { await memory.SaveBoundaryAsync(workspaceId, boundary, ct); return 0; });
+            return;
+        }
+        await memory.SaveBoundaryAsync(workspaceId, boundary, ct);
     }
     private static void AskConflict(AgentRun run) => Ask(run, "conflict",
         "Scene Memory changed outside this run. Cancel this run and start a new sequence from the updated scene to avoid mixing continuity versions.",
@@ -925,7 +940,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     if (evidence.Ending?.Valid() == true && report.Ending is { } ending && ending.Valid()) {
                         previous.Boundary = new(previous.ShotId, $"{run.Id}-{state.Current}-{previous.RenderAttempt}", DateTimeOffset.UtcNow,
                             report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
-                        await memory.SaveBoundaryAsync(run.WorkspaceId, previous.Boundary, ct);
+                        await SaveBoundaryAsync(run.WorkspaceId, previous.Boundary, ct);
                     }
                 } else throw new InvalidOperationException("Choose how to continue from the saved ending.");
                 run.Phase = "prepare"; break;

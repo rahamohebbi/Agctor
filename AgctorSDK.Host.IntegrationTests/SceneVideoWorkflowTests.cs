@@ -193,28 +193,30 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
         var saved = (await runs.GetAsync(run.Id))!;
         Assert.Equal("waiting", saved.Status);
-        // Run-scoped Director + Audio Engineer stay registered while the run is not terminal.
+        // Phase C: full run-scoped roster stays registered while the run is not terminal.
         var active = (await runtime.GetActiveActorIdsAsync()).ToList();
-        Assert.Contains(SceneVideoWorker.DirectorId(run.Id), active);
-        Assert.Contains(SceneVideoWorker.AudioId(run.Id), active);
-        Assert.DoesNotContain(active, id => id.StartsWith("scene-specialist-", StringComparison.Ordinal));
+        foreach (var role in SceneVideoRoles.Agents)
+            Assert.Contains(SceneVideoWorker.ActorId(run.Id, role), active);
+        Assert.DoesNotContain(active, id => id.Contains("scene-specialist-", StringComparison.Ordinal));
         await runtime.ShutdownAsync();
     }
 
     [Fact]
-    public async Task Run_scoped_director_and_audio_engineer_survive_across_ticks()
+    public async Task Run_scoped_specialists_survive_across_ticks()
     {
         var run = await Create(review: true);
         using var runtime = new InMemoryActorRuntime(); await runtime.InitializeAsync(new Dictionary<string, object>());
         var worker = new SceneVideoWorker(runs, Loop(), runtime, options, NullLogger<SceneVideoWorker>.Instance);
         await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
         Assert.NotNull(await runtime.GetActorAsync<SceneVideoDirectorActor>(SceneVideoWorker.DirectorId(run.Id)));
-        Assert.NotNull(await runtime.GetActorAsync<SceneVideoAudioEngineerActor>(SceneVideoWorker.AudioId(run.Id)));
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoRoleActor>(SceneVideoWorker.AudioId(run.Id)));
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoRoleActor>(SceneVideoWorker.ActorId(run.Id, SceneVideoRoles.Planner)));
         // Same runtime, second claim: Ensure must reuse the run-scoped mailboxes.
         run = (await runs.GetAsync(run.Id))!;
         await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "approve", null));
         await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
         Assert.NotNull(await runtime.GetActorAsync<SceneVideoDirectorActor>(SceneVideoWorker.DirectorId(run.Id)));
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoRoleActor>(SceneVideoWorker.ActorId(run.Id, SceneVideoRoles.VisualCritic)));
         await runtime.ShutdownAsync();
     }
     private async Task<AgentRun> WaitingRun(int clips = 2, string kind = "timeout", bool waiting = true)
@@ -408,11 +410,8 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         if (saved.IsTerminal)
             Assert.Empty(active);
         else
-        {
-            // Fresh runtime per tick still registers run-scoped mailboxes for that lease.
-            Assert.Contains(SceneVideoWorker.DirectorId(id), active);
-            Assert.Contains(SceneVideoWorker.AudioId(id), active);
-        }
+            foreach (var role in SceneVideoRoles.Agents)
+                Assert.Contains(SceneVideoWorker.ActorId(id, role), active);
         await runtime.ShutdownAsync();
         return saved;
     }
@@ -462,8 +461,13 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal(new[] { $"{run.Id}-1-1", $"{run.Id}-2-1" }, production.Deliveries[0]);
         var events = await runs.EventsAsync(run.Id);
         Assert.Contains(events, e => e.Agent == "Project agent");
-        Assert.Contains(events, e => e.Agent == "Continuity critic");
+        Assert.Contains(events, e => e.Agent == "Planner");
+        Assert.Contains(events, e => e.Agent == "Scene Memory agent");
+        Assert.Contains(events, e => e.Agent == "Render agent");
+        Assert.Contains(events, e => e.Agent == "Visual critic");
         Assert.Contains(events, e => e.Agent == "Editor agent" && e.Kind == "completed");
+        // No Director/Audio Engineer hat-switching onto other role labels as the executing agent for their phases.
+        Assert.DoesNotContain(events, e => e.Agent == "Director" && e.Route is { From: "Director", To: "Video rendering" or "Film assembly" or "Project storage" });
     }
     [Theory]
     [InlineData(false)]
