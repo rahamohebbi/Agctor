@@ -128,14 +128,11 @@ for mmd_file in "${mmd_files[@]}"; do
     fi
 
     echo "Rendering $mmd_file"
-    "${MMDC[@]}" \
-        -i "$mmd_file" \
-        -o "$png_file" \
-        -b white \
-        -s "$SCALE" \
-        "${size_args[@]}" \
-        "${theme_args[@]}" \
-        "${PUPPETEER_ARGS[@]}"
+    mmdc_cmd=("${MMDC[@]}" -i "$mmd_file" -o "$png_file" -b white -s "$SCALE")
+    if [[ ${#size_args[@]} -gt 0 ]]; then mmdc_cmd+=("${size_args[@]}"); fi
+    if [[ ${#theme_args[@]} -gt 0 ]]; then mmdc_cmd+=("${theme_args[@]}"); fi
+    if [[ ${#PUPPETEER_ARGS[@]} -gt 0 ]]; then mmdc_cmd+=("${PUPPETEER_ARGS[@]}"); fi
+    "${mmdc_cmd[@]}"
 
     echo "Writing $jpg_file"
     png_to_jpg "$png_file" "$jpg_file"

@@ -9,6 +9,7 @@ graph TB
             ConfigCtrl[ConfigController]
             LlmCtrl[LlmController]
             ScenariosCtrl[ScenariosController /api/scenarios]
+            AgentRunsCtrl[AgentRunsController /api/agent-runs]
             TestCtrl[TestController]
             CodeGraphCtrl[CodeGraphController]
             ChatProjCtrl[ChatProjectsController]
@@ -31,6 +32,8 @@ graph TB
             ToolInvoker[ToolInvoker]
             ToolAgentsInsight[ToolAgentsInsightService]
             ScenarioServices[Scenario catalog factory application]
+            SceneVideoTopo[SceneVideoTopologyCatalog]
+            SceneVideoRun[SceneVideoScenario Loop Worker]
             PmServices[Project memory file YAML Ollama helpers]
             PlaygroundTrace[Playground SSE plus trace timeline UX]
         end
@@ -38,6 +41,7 @@ graph TB
         subgraph Background [Background work]
             TaskScoper[TaskScoperHostedService]
             TaskFlow[TaskFlowHostedService]
+            SceneVideoWorker[SceneVideoWorker]
         end
 
         ProgramCS[Program.cs DI and pipeline]
@@ -59,6 +63,12 @@ graph TB
     Browser --> HTTP_API
     McpClient --> MCP
     AgentsCtrl --> MessageDispatcher
+    ScenariosCtrl --> ScenarioServices
+    ScenariosCtrl --> SceneVideoTopo
+    AgentRunsCtrl --> SceneVideoRun
+    AgentRunsCtrl --> SceneVideoTopo
+    SceneVideoRun --> SceneVideoTopo
+    SceneVideoWorker --> SceneVideoRun
     PmCtrl --> PmServices
     PmCtrl --> PlaygroundTrace
     ResCtrl --> Core

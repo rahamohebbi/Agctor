@@ -57,7 +57,6 @@ public static class HostWebServiceExtensions
 
         services.Configure<Services.VideoWorkflow.SceneVideoOptions>(configuration.GetSection("Agctor:SceneVideo"));
         services.Configure<Services.VideoWorkflow.SceneVideoTopologyOptions>(configuration.GetSection("Agctor:SceneVideo:Topology"));
-        services.AddSingleton<Services.VideoWorkflow.ISceneVideoTopologyCatalog, Services.VideoWorkflow.SceneVideoTopologyCatalog>();
         services.AddSingleton<AgctorSDK.Core.Workflows.IAgentRunStore>(_ => new AgctorSDK.Core.Workflows.SqliteAgentRunStore(
             configuration["Agctor:SceneVideo:StorePath"] ?? Path.Combine(AppContext.BaseDirectory, "data", "agent-runs.db")));
         services.AddHttpClient("SceneVideoPlanner", client => client.Timeout = Timeout.InfiniteTimeSpan).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("ollama"));
@@ -69,7 +68,7 @@ public static class HostWebServiceExtensions
         services.AddSingleton<Services.VideoWorkflow.ISceneVideoProduction, Services.VideoWorkflow.HttpSceneVideoProduction>();
         services.AddSingleton<Services.VideoWorkflow.ISceneVideoCritic, Services.VideoWorkflow.OllamaSceneVideoCritic>();
         services.AddSingleton<Services.VideoWorkflow.ISceneAudioEngineer, Services.VideoWorkflow.OllamaSceneAudioEngineer>();
-        services.AddSingleton<Services.VideoWorkflow.SceneVideoScenario>();
+        // Topology catalog resolves after IScenarioCatalog (registered below) so admission→audio migration can read the flow.
         services.AddSingleton<Services.VideoWorkflow.SceneVideoLoop>();
         services.AddHostedService<Services.VideoWorkflow.SceneVideoWorker>();
 
@@ -104,6 +103,9 @@ public static class HostWebServiceExtensions
 
         services.Configure<ScenarioCatalogOptions>(configuration.GetSection("Agctor:Scenarios"));
         services.AddSingleton<IScenarioCatalog, JsonScenarioCatalog>();
+        // After catalog: topology can seed audioEnabled from the legacy admission flow on first read.
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoTopologyCatalog, Services.VideoWorkflow.SceneVideoTopologyCatalog>();
+        services.AddSingleton<Services.VideoWorkflow.SceneVideoScenario>();
         services.AddSingleton<IScenarioFactory, ScenarioFactory>();
         services.AddSingleton<ICurrentScenarioStore, CurrentScenarioStore>();
         services.AddSingleton<IScenarioApplicationService, ScenarioApplicationService>();
