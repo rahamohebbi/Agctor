@@ -1,6 +1,6 @@
 /**
- * Live agent-run topology — definition skeleton ∪ observed routes from GET /api/agent-runs/{id}/graph.
- * Pending work comes from activeCalls; model evidence appears only when observed.
+ * Live agent-run graph — scenario conversation-flow skeleton ∪ observed routes
+ * from GET /api/agent-runs/{id}/graph. Flow is the only definition surface; activity overlays it.
  */
 (function (global) {
     'use strict';
@@ -276,9 +276,10 @@
                 if (keep[e.from] && keep[e.to]) filtered.edges[key] = e;
             });
 
-            var savedLayouts = state.snapshot && state.snapshot.definition && state.snapshot.definition.ui
-                ? state.snapshot.definition.ui.nodeLayouts
-                : null;
+            // Prefer canonical layouts from the graph API (projected from flow.ui.nodeLayouts).
+            var savedLayouts = (state.snapshot && state.snapshot.layouts)
+                || (state.snapshot && state.snapshot.flow && state.snapshot.flow.ui && state.snapshot.flow.ui.nodeLayouts)
+                || null;
             var laid = layout(filtered, viewport.clientWidth || 640, viewport.clientHeight || 420, savedLayouts);
             state.contentW = laid.width;
             state.contentH = laid.height;
@@ -300,7 +301,7 @@
             var nodeCount = Object.keys(laid.positions).length;
             emptyEl.hidden = nodeCount > 0;
             if (!nodeCount) {
-                emptyEl.textContent = 'No agent topology yet. Open Scene Memory — video sequence to load the shared definition.';
+                emptyEl.textContent = 'No flow graph yet. Edit the conversation flow, then start a sequence to watch live activity.';
             }
             nodesEl.replaceChildren();
             Object.keys(laid.positions).forEach(function (id) {
@@ -473,8 +474,67 @@
         };
     }
 
-    /** Convert catalog topology JSON into a graph snapshot (skeleton only). */
+    function isAudioLoop(node) {
+        return node && node.type === 'AgentLoop' && node.config && node.config.role === 'audio-engineer';
+    }
+    function isDirectorLoop(node) {
+        return node && node.type === 'AgentLoop' && !isAudioLoop(node);
+    }
+    function canonicalFlowId(node) {
+        if (!node) return '';
+        if (node.type === 'ChatInput') return 'Human';
+        if (isAudioLoop(node)) return 'Audio Engineer';
+        if (isDirectorLoop(node)) return 'Director';
+        if (node.type === 'Output') return (node.label && String(node.label).trim()) || 'Output';
+        return (node.label && String(node.label).trim()) || node.id;
+    }
+    function kindForFlowNode(node) {
+        if (node.type === 'ChatInput') return 'human';
+        if (node.type === 'Output') return 'tool';
+        if (node.type === 'LlmNode') return 'llm';
+        return 'agent';
+    }
+
+    /** Convert scenario conversation-flow JSON into a live-graph snapshot (skeleton only). */
+    function flowToSnapshot(flow) {
+        var nodes = [];
+        var edges = [];
+        var layouts = {};
+        var map = {};
+        (flow && flow.nodes || []).forEach(function (n) {
+            if (!n || !n.id) return;
+            var id = canonicalFlowId(n);
+            map[n.id] = id;
+            nodes.push({
+                id: id,
+                kind: kindForFlowNode(n),
+                detail: n.type === 'AgentLoop' ? 'Actor mailbox' : (n.label || n.type)
+            });
+        });
+        (flow && flow.edges || []).forEach(function (e) {
+            if (!e || !map[e.fromNodeId] || !map[e.toNodeId]) return;
+            edges.push({
+                from: map[e.fromNodeId],
+                to: map[e.toNodeId],
+                operation: e.mode || 'sequential',
+                outcome: 'defined',
+                count: 0
+            });
+        });
+        var rawLayouts = flow && flow.ui && flow.ui.nodeLayouts;
+        if (rawLayouts) {
+            Object.keys(rawLayouts).forEach(function (flowId) {
+                if (!map[flowId]) return;
+                layouts[map[flowId]] = rawLayouts[flowId];
+            });
+        }
+        return { nodes: nodes, edges: edges, activeCalls: [], flow: flow || null, layouts: layouts };
+    }
+
+    /** @deprecated Use flowToSnapshot — kept for older callers that still pass topology docs. */
     function definitionToSnapshot(definition) {
+        if (definition && definition.nodes && definition.nodes[0] && definition.nodes[0].type)
+            return flowToSnapshot(definition);
         var nodes = (definition && definition.nodes || []).filter(function (n) { return n && n.id && n.kind !== 'model'; })
             .map(function (n) { return { id: n.id, kind: n.kind || 'agent', detail: n.detail }; });
         var edges = (definition && definition.edges || []).filter(function (e) { return e && e.from && e.to; })
@@ -484,7 +544,8 @@
 
     /**
      * Polls graph + events for one scenario run and keeps a viewer updated.
-     * opts.topologyUrl — when set, empty/new runs show the definition skeleton.
+     * opts.scenarioUrl — when set, empty/new runs show the conversation-flow skeleton.
+     * opts.topologyUrl — legacy alias ignored when scenarioUrl is set.
      */
     function mountLive(host, getRunId, opts) {
         opts = opts || {};
@@ -494,6 +555,7 @@
         var timer = 0;
         var lastRun = null;
         var skeleton = null;
+        var scenarioUrl = opts.scenarioUrl || null;
 
         async function api(url) {
             var response = await fetch(url);
@@ -503,9 +565,17 @@
         }
 
         async function ensureSkeleton() {
-            if (skeleton || !opts.topologyUrl) return skeleton;
-            skeleton = definitionToSnapshot(await api(opts.topologyUrl));
-            return skeleton;
+            if (skeleton) return skeleton;
+            if (scenarioUrl) {
+                var scenario = await api(scenarioUrl);
+                skeleton = flowToSnapshot(scenario.flow || scenario.Flow || null);
+                return skeleton;
+            }
+            if (opts.topologyUrl) {
+                skeleton = definitionToSnapshot(await api(opts.topologyUrl));
+                return skeleton;
+            }
+            return null;
         }
 
         async function poll() {
@@ -525,7 +595,7 @@
                 if (reset) { lastRun = id; cursor = 0; }
                 var graph = await api('/api/agent-runs/' + encodeURIComponent(id) + '/graph');
                 var events = await api('/api/agent-runs/' + encodeURIComponent(id) + '/events?after=' + cursor);
-                // Server already unions definition ∪ observed for scene-video-chain.
+                // Server unions conversation-flow skeleton ∪ observed routes.
                 viewer.setData(graph, events, { replaceEvents: reset || cursor === 0 });
                 events.forEach(function (e) { cursor = Math.max(cursor, e.sequence || 0); });
                 if (opts.onStatus) opts.onStatus(null);
@@ -542,7 +612,7 @@
         document.addEventListener('visibilitychange', onVis);
 
         return {
-            // Drop cached skeleton so topology edits (layout/audio) show up immediately.
+            // Drop cached skeleton so flow edits show up after save/refresh.
             refresh: function () { skeleton = null; return poll(); },
             destroy: function () {
                 clearInterval(timer);
@@ -557,6 +627,7 @@
         mountLive: mountLive,
         label: label,
         buildTopology: buildTopology,
+        flowToSnapshot: flowToSnapshot,
         definitionToSnapshot: definitionToSnapshot
     };
 })(window);

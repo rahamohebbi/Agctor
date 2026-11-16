@@ -14,11 +14,8 @@ are tagged.
   edit/live guidance, `docs/scene-video-topology-migration.md` for old 3/4-node
   admission flows, Host endpoints/architecture diagrams for topology and agent-runs,
   and one-shot `audioEnabled` seed from admission when no topology user overlay exists.
-  (Cynelo agentic docs unchanged — graph DTO not modified in Phase E.)
 - Scene-video Phase D topology editor: `PUT /api/scenarios/{id}/topology` saves
-  audio enable + shared `ui.nodeLayouts` (fixed roster/ownership locked); Scenarios
-  overview edits that document; live graph uses the same layouts; admission flow
-  demoted to a secondary overlay for scene-video-chain.
+  audio enable + shared `ui.nodeLayouts` (fixed roster/ownership locked).
 - Scene-video Phase C actors: run-scoped Planner, Project, Memory, Render,
   Visual critic, and Editor mailboxes with exclusive tools; Director only
   dispatches (no Role() hat-switching); mailbox isolation enforced in Trace.
@@ -45,6 +42,10 @@ are tagged.
 
 ### Changed
 
+- Single flow graph: Scenarios live view uses the conversation-flow document as the
+  definition skeleton (not the topology editor). Topology editor UI removed from
+  Scenarios; `GET /api/agent-runs/{id}/graph` returns `flow` + `layouts` projected
+  from that canvas so Agctor and Cynelo share one picture.
 - Moved IronPython and Roslyn package references from Core to Tools, where the
   language executors live.
 - Removed unused compile-excluded leftovers (placeholder tests, `.bak`, duplicate

@@ -2,17 +2,17 @@
 
 Agctor owns planning, Scene Memory, durable run state, human questions and progress. Cynelo owns video generation, design images, media storage and film assembly. The `scene-video-chain` Scenario is the first durable `AgentLoop` workflow.
 
-## One topology for edit and live
+## One conversation flow for edit and live
 
-After Phases A–D, **Agent topology** is the product graph for this scenario — not the old conversation-flow / loop-wiring canvas.
+**Conversation flow** (the classic Agctor flow editor) is the only place to define who exists and how they talk for `scene-video-chain`. There is no second topology editor as a product definition surface.
 
 | Surface | What it is |
 | --- | --- |
-| **Shared topology** (`Config/scene-video-topology.json` + optional `.user.json`) | Fixed roster of Human, Director, specialists, tools, LLM, and memory. v1 edits: **layout** (`ui.nodeLayouts`) and **Audio Engineer enable** (`audioEnabled`). Ownership and edges are locked. |
-| **Live agent graph** | Same definition **∪** observed routes / `activeCalls` / model evidence. Agctor Scenarios / ScenarioRun and Cynelo’s Agent activity view consume `GET /api/agent-runs/{id}/graph` (includes `definition`). |
-| **Admission overlay** | Thin `ChatInput → Director → Output` (optional Audio Engineer node in the flow). Secondary only — starts a sequence; does not describe specialist tools. |
+| **Conversation flow** (`scenario.flow`) | Edit Input → Director ↔ Audio Engineer → Output (and layouts) in Scenarios → Edit flow. This is the definition. |
+| **Live flow graph** | That same flow skeleton **∪** observed routes / `activeCalls`. Agctor Scenarios / ScenarioRun and Cynelo Agent activity consume `GET /api/agent-runs/{id}/graph` (`flow` + `layouts` + nodes/edges). |
+| **Topology JSON** (optional legacy) | May still exist as an internal/derived catalog for validation helpers; it is **not** the UI definition surface. |
 
-Model evidence stays **observed-only** (never editable catalog nodes). `Continuity critic` remains a legacy route alias for **Visual critic**.
+Specialist actors still run at runtime; they appear on the live graph when routes are recorded. Model evidence stays observed-only.
 
 ## Start from the dashboard
 
@@ -79,9 +79,9 @@ Optional `model` overrides the Scenario's planning model. Repeating the same `re
 | --- | --- |
 | `GET /api/agent-runs?scenarioId=scene-video-chain` | Latest 100 runs |
 | `GET /api/agent-runs/{id}` | Current status, question, plan and ordered clip outputs |
-| `GET /api/agent-runs/{id}/graph` | Observed nodes and relationships **unioned with** the scene-video topology skeleton (`definition`, including `ui.nodeLayouts`). Cynelo’s Agent activity graph and Agctor’s Scenarios / ScenarioRun live graph both render this payload. |
-| `GET /api/scenarios/scene-video-chain/topology` | Shared agent/tool topology (edit + live). Model evidence is observed-only. |
-| `PUT /api/scenarios/scene-video-chain/topology` | Phase D v1 save: `{ audioEnabled, nodeLayouts }`. Validates fixed roster; rejects unknown layout ids / Director tool ownership. Persists `Config/scene-video-topology.user.json`. |
+| `GET /api/agent-runs/{id}/graph` | Conversation-flow skeleton **∪** observed activity. Payload includes `flow`, canonical `layouts`, `nodes`, `edges`, `activeCalls`. Agctor and Cynelo both render this. |
+| `GET /api/scenarios/{id}` | Includes `flow` — the definition document the live skeleton is projected from. |
+| `GET/PUT /api/scenarios/scene-video-chain/topology` | Legacy/internal topology catalog (not the Scenarios edit UI). Prefer Edit flow for definition. |
 | `GET /api/agent-runs/{id}/events?after=0` | Up to 200 durable activity events; resume with the last sequence number |
 | `POST /api/agent-runs/{id}/reply` | Answer the current question |
 | `POST /api/agent-runs/{id}/cancel` | Stop scheduling further work |

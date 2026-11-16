@@ -77,7 +77,7 @@ public sealed class SceneVideoTopologyApiTests
     }
 
     [Fact]
-    public async Task Graph_endpoint_unions_skeleton_with_activity_and_aliases_visual_critic()
+    public async Task Graph_endpoint_unions_conversation_flow_skeleton_with_observed_activity()
     {
         await using var factory = new Factory();
         using var http = factory.CreateClient();
@@ -87,31 +87,34 @@ public sealed class SceneVideoTopologyApiTests
             ScenarioId = "scene-video-chain",
             Workflow = "scene-video",
             RequestId = Guid.NewGuid().ToString("N"),
-            Summary = "Topology graph fixture",
+            Summary = "Flow graph fixture",
             Status = "running",
             Phase = "critic",
             State = JsonSerializer.SerializeToElement(new { })
         });
         var lease = (await store.ClaimAsync(TimeSpan.FromMinutes(1)))!;
         await store.ActivityAsync(lease, "Director", "Routing to Visual critic",
-            route: new("Director", "Continuity critic", "critic", Guid.NewGuid().ToString("N")));
-        await store.ActivityAsync(lease, "Continuity critic", "Reviewed frames",
-            route: new("Continuity critic", "Director", "critic", Guid.NewGuid().ToString("N")));
+            route: new("Director", "Visual critic", "critic", Guid.NewGuid().ToString("N")));
+        await store.ActivityAsync(lease, "Visual critic", "Reviewed frames",
+            route: new("Visual critic", "Director", "critic", Guid.NewGuid().ToString("N")));
 
         using var response = await http.GetAsync($"/api/agent-runs/{run.Id}/graph");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var root = doc.RootElement;
-        Assert.True(root.TryGetProperty("definition", out var definition));
-        Assert.Equal("scene-video-chain", definition.GetProperty("graphId").GetString());
+        // Single definition surface: conversation flow (not topology catalog).
+        Assert.True(root.TryGetProperty("flow", out var flow));
+        Assert.Equal("scene-video-chain", flow.GetProperty("graphId").GetString());
+        Assert.True(root.TryGetProperty("layouts", out var layouts));
+        Assert.True(layouts.TryGetProperty("Director", out _));
         var nodes = root.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("id").GetString()!).ToHashSet();
+        Assert.Contains("Human", nodes);
         Assert.Contains("Director", nodes);
         Assert.Contains("Audio Engineer", nodes);
+        // Observed specialists appear when recorded; they are not a second editable catalog.
         Assert.Contains("Visual critic", nodes);
-        Assert.DoesNotContain("Continuity critic", nodes);
-        Assert.Contains("Video rendering", nodes);
-        Assert.Contains("Scene Memory", nodes);
         var edges = root.GetProperty("edges").EnumerateArray().ToArray();
+        Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Audio Engineer");
         Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Visual critic");
     }
 

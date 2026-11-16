@@ -1,4 +1,5 @@
 using AgctorSDK.Core.Workflows;
+using AgctorSDK.Host.Services.Scenarios;
 using AgctorSDK.Host.Services.VideoWorkflow;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,15 +11,22 @@ public sealed class AgentRunsController(
     IAgentRunStore runs,
     ISceneVideoRenderer renderer,
     ISceneVideoStoryGateway stories,
-    ISceneVideoTopologyCatalog topology) : ControllerBase
+    IScenarioCatalog catalog) : ControllerBase
 {
     public sealed record ReplyRequest(long Revision, string QuestionId, string? Choice, string? Text);
-    /// <summary>Observed activity unioned with the scenario topology skeleton (Phase A).</summary>
+
+    /// <summary>
+    /// Live graph: scenario conversation-flow skeleton ∪ observed activity.
+    /// <see cref="Flow"/> is the definition surface (edit canvas); topology catalog is not the product definition.
+    /// </summary>
+    /// <param name="Layouts">Canonical-id positions from flow.ui.nodeLayouts for Agctor/Cynelo live renderers.</param>
     public sealed record GraphResponse(
         IReadOnlyList<AgentGraphNode> Nodes,
         IReadOnlyList<AgentGraphEdge> Edges,
         IReadOnlyList<AgentActiveCall>? ActiveCalls,
-        SceneVideoTopologyDocument? Definition);
+        ScenarioFlowDocument? Flow,
+        Dictionary<string, ScenarioFlowNodeLayout>? Layouts);
+
     [HttpPost("api/scenarios/{scenarioId}/runs")]
     public Task<IActionResult> Start(string scenarioId, StartSceneVideoRun request, CancellationToken ct) => Guard(async () =>
     {
@@ -42,10 +50,17 @@ public sealed class AgentRunsController(
         var run = await runs.GetAsync(id, ct);
         if (run == null) return NotFound();
         var observed = await runs.GraphAsync(id, ct);
-        var definition = topology.GetForScenario(run.ScenarioId);
-        if (definition == null) return Ok(new GraphResponse(observed.Nodes, observed.Edges, observed.ActiveCalls, null));
-        var composed = SceneVideoGraphComposer.Compose(definition, observed);
-        return Ok(new GraphResponse(composed.Nodes, composed.Edges, composed.ActiveCalls, definition));
+        var flow = catalog.Get(run.ScenarioId)?.Flow;
+        var projection = ScenarioFlowGraphProjector.Project(flow);
+        if (projection == null)
+            return Ok(new GraphResponse(observed.Nodes, observed.Edges, observed.ActiveCalls, flow, null));
+
+        var composed = ScenarioFlowGraphProjector.Compose(projection, observed);
+        var layouts = projection.Layouts.ToDictionary(
+            kv => kv.Key,
+            kv => new ScenarioFlowNodeLayout { X = kv.Value.X, Y = kv.Value.Y },
+            StringComparer.Ordinal);
+        return Ok(new GraphResponse(composed.Nodes, composed.Edges, composed.ActiveCalls, projection.Flow, layouts));
     }
     [HttpPost("api/agent-runs/{id}/reply")]
     public Task<IActionResult> Reply(string id, ReplyRequest request, CancellationToken ct) => Guard(async () =>

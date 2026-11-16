@@ -239,37 +239,11 @@
         runGraphScenarioId = scenarioId;
         runGraphSelectedId = keepId;
         runGraphLive = window.AgctorAgentRunGraph.mountLive(runGraphHost, function () { return runGraphSelectedId; }, {
-            topologyUrl: '/api/scenarios/' + encodeURIComponent(scenarioId) + '/topology',
+            // Live skeleton = conversation flow (single definition surface).
+            scenarioUrl: '/api/scenarios/' + encodeURIComponent(scenarioId),
             onStatus: function (err) {
                 if (!runGraphStatus) return;
                 runGraphStatus.textContent = err ? ('Graph updates paused: ' + err.message) : '';
-            }
-        });
-    }
-    var topologyEditor = null;
-    var topologyEditorScenarioId = null;
-    function stopTopologyEditor() {
-        if (topologyEditor && topologyEditor.destroy) topologyEditor.destroy();
-        topologyEditor = null;
-        topologyEditorScenarioId = null;
-        var host = document.getElementById('sc-topology-editor-host');
-        if (host) host.replaceChildren();
-    }
-    function renderTopologyEditor(scenarioId) {
-        var panel = document.getElementById('sc-topology-editor');
-        var host = document.getElementById('sc-topology-editor-host');
-        if (!panel || !host || !window.AgctorSceneVideoTopologyEditor) return;
-        panel.classList.remove('hidden');
-        if (topologyEditorScenarioId === scenarioId && topologyEditor) {
-            if (topologyEditor.reload) topologyEditor.reload();
-            return;
-        }
-        stopTopologyEditor();
-        topologyEditorScenarioId = scenarioId;
-        topologyEditor = window.AgctorSceneVideoTopologyEditor.mount(host, scenarioId, {
-            onSaved: function () {
-                // Live viewer reloads skeleton from the same topology document.
-                if (runGraphLive && runGraphLive.refresh) runGraphLive.refresh();
             }
         });
     }
@@ -334,9 +308,6 @@
         if (!s) {
             if (runGraphPanel) runGraphPanel.classList.add('hidden');
             stopRunGraph();
-            stopTopologyEditor();
-            var emptyTopo = document.getElementById('sc-topology-editor');
-            if (emptyTopo) emptyTopo.classList.add('hidden');
             return;
         }
         document.getElementById('sc-selected-title').textContent = s.displayName || s.id;
@@ -353,16 +324,17 @@
         var flowModalTitle = document.getElementById('sc-flow-title');
         var flowModalBlurb = document.getElementById('sc-flow-modal-blurb');
         if (isAgentLoop) {
-            // Phase D: topology editor is the product graph; admission flow is secondary.
-            if (flowCardTitle) flowCardTitle.textContent = 'Admission overlay';
-            if (flowHint) flowHint.textContent = 'Secondary only: Input → Director → Output. Edit agents, tools, layout, and audio in Agent topology above. Live view uses that same definition.';
-            if (flowModalTitle) flowModalTitle.textContent = 'Admission overlay';
-            if (flowModalBlurb) flowModalBlurb.textContent = 'Thin admission path for starting a sequence. Prefer Agent topology for the real agent/tool graph.';
+            // Single definition surface: conversation flow editor only (no competing topology editor).
+            if (flowCardTitle) flowCardTitle.textContent = 'Conversation flow';
+            if (flowHint) flowHint.textContent = 'This canvas defines who exists and how they talk (Director, Audio Engineer, …). Live flow graph and Cynelo Agent activity draw this same picture with animation.';
+            if (flowModalTitle) flowModalTitle.textContent = 'Conversation flow';
+            if (flowModalBlurb) flowModalBlurb.textContent = 'Edit agents, connections, and loop settings here. Live views use this flow as their skeleton.';
             document.getElementById('sc-flow-summary').textContent = flow
-                ? nodes.length + ' admission steps (secondary). Use Agent topology for the shared live graph.'
-                : 'No admission overlay yet. Topology above is the product edit surface.';
-            document.getElementById('sc-open-flow').textContent = flow ? 'Edit admission overlay ↗' : 'Create admission overlay ↗';
-            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run. Edit layout and audio in Agent topology; watch live activity in Live agent graph.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Visual critic', 'Editor agent', 'Audio Engineer'], '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
+                ? nodes.length + ' steps. Edit flow to change the live graph definition.'
+                : 'No flow yet. Create Input → Director → Output (optional Audio Engineer) to define the sequence.';
+            document.getElementById('sc-open-flow').textContent = flow ? 'Edit flow ↗' : 'Create flow ↗';
+            var roster = ['Director'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []);
+            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>How it runs</h3><p class="sc-muted">Define agents and connections in Conversation flow. Live flow graph (and Cynelo) draw that same picture with activity.</p>' + overviewRoster(roster, '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
         } else {
             if (flowCardTitle) flowCardTitle.textContent = 'Conversation flow';
             if (flowHint) flowHint.textContent = '';
@@ -377,13 +349,9 @@
             if (!runLink.hidden) {
                 runGraphPanel.classList.remove('hidden');
                 refreshRunGraphList(s.id);
-                renderTopologyEditor(s.id);
             } else {
                 runGraphPanel.classList.add('hidden');
                 stopRunGraph();
-                stopTopologyEditor();
-                var topoPanel = document.getElementById('sc-topology-editor');
-                if (topoPanel) topoPanel.classList.add('hidden');
             }
         }
 
