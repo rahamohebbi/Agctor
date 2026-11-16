@@ -10,6 +10,8 @@ are tagged.
 
 ### Added
 
+- Live agent-run graph on Scenarios and ScenarioRun, rendering the same
+  `GET /api/agent-runs/{id}/graph` topology Cynelo’s Agent activity view shows.
 - High-level architecture page (`docs/architecture-diagram.md`) with a generated JPEG.
 - MCP connection page (`docs/mcp-diagram.md`) with a generated JPEG.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can

@@ -213,10 +213,97 @@
     function overviewRoster(items, none) {
         return items.length ? '<ul class="sc-roster">' + items.map(function (x) { return '<li>' + esc(friendlyType(x)) + '</li>'; }).join('') + '</ul>' : '<p class="sc-muted">' + none + '</p>';
     }
+    // Live topology for AgentLoop scenarios — consumes Agctor's run graph API (same source Cynelo proxies).
+    var runGraphPanel = document.getElementById('sc-run-graph');
+    var runGraphHost = document.getElementById('sc-run-graph-host');
+    var runGraphPick = document.getElementById('sc-run-graph-pick');
+    var runGraphStatus = document.getElementById('sc-run-graph-status');
+    var runGraphOpen = document.getElementById('sc-run-graph-open');
+    var runGraphLive = null;
+    var runGraphScenarioId = null;
+    var runGraphSelectedId = null;
+    function stopRunGraph() {
+        if (runGraphLive) { runGraphLive.destroy(); runGraphLive = null; }
+        if (runGraphHost) runGraphHost.replaceChildren();
+        runGraphScenarioId = null;
+        runGraphSelectedId = null;
+    }
+    function ensureRunGraph(scenarioId) {
+        if (!runGraphPanel || !runGraphHost || !window.AgctorAgentRunGraph) return;
+        if (runGraphScenarioId === scenarioId && runGraphLive) return;
+        stopRunGraph();
+        runGraphScenarioId = scenarioId;
+        runGraphLive = window.AgctorAgentRunGraph.mountLive(runGraphHost, function () { return runGraphSelectedId; }, {
+            onStatus: function (err) {
+                if (!runGraphStatus) return;
+                runGraphStatus.textContent = err ? ('Graph updates paused: ' + err.message) : '';
+            }
+        });
+    }
+    async function refreshRunGraphList(scenarioId) {
+        if (!runGraphPick) return;
+        try {
+            var response = await fetch('/api/agent-runs?scenarioId=' + encodeURIComponent(scenarioId));
+            var runs = await response.json().catch(function () { return []; });
+            if (!response.ok) throw new Error((runs && runs.error) || 'Could not list sequence runs.');
+            if (!Array.isArray(runs)) runs = [];
+            var keep = runGraphSelectedId;
+            runGraphPick.replaceChildren();
+            if (!runs.length) {
+                var emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = 'No sequences yet — start one from Run workflow';
+                runGraphPick.appendChild(emptyOpt);
+                runGraphSelectedId = null;
+            } else {
+                runs.slice(0, 24).forEach(function (run, index) {
+                    var opt = document.createElement('option');
+                    opt.value = run.id;
+                    opt.textContent = new Date(run.createdAt).toLocaleString() + ' · ' + run.status;
+                    runGraphPick.appendChild(opt);
+                    if (index === 0 && (!keep || !runs.some(function (r) { return r.id === keep; }))) keep = run.id;
+                });
+                if (!runs.some(function (r) { return r.id === keep; })) keep = runs[0].id;
+                runGraphSelectedId = keep;
+                runGraphPick.value = keep;
+            }
+            if (runGraphOpen) {
+                runGraphOpen.href = runGraphSelectedId
+                    ? '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId) + '&run=' + encodeURIComponent(runGraphSelectedId)
+                    : '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(scenarioId);
+            }
+            ensureRunGraph(scenarioId);
+            if (runGraphLive) runGraphLive.refresh();
+            if (runGraphStatus) runGraphStatus.textContent = '';
+        } catch (err) {
+            if (runGraphStatus) runGraphStatus.textContent = err.message || 'Could not load sequence runs.';
+        }
+    }
+    if (runGraphPick) {
+        runGraphPick.addEventListener('change', function () {
+            runGraphSelectedId = runGraphPick.value || null;
+            if (runGraphOpen && runGraphScenarioId) {
+                runGraphOpen.href = runGraphSelectedId
+                    ? '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(runGraphScenarioId) + '&run=' + encodeURIComponent(runGraphSelectedId)
+                    : '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(runGraphScenarioId);
+            }
+            if (runGraphLive) runGraphLive.refresh();
+        });
+    }
+    var runGraphRefreshBtn = document.getElementById('sc-run-graph-refresh');
+    if (runGraphRefreshBtn) {
+        runGraphRefreshBtn.addEventListener('click', function () {
+            if (runGraphScenarioId) refreshRunGraphList(runGraphScenarioId);
+        });
+    }
     function renderOverview() {
         var s = currentScenario();
         document.getElementById('sc-selected').classList.toggle('hidden', !s);
-        if (!s) return;
+        if (!s) {
+            if (runGraphPanel) runGraphPanel.classList.add('hidden');
+            stopRunGraph();
+            return;
+        }
         document.getElementById('sc-selected-title').textContent = s.displayName || s.id;
         document.getElementById('sc-selected-description').textContent = s.description || 'Add a description in Configuration to explain when to use this scenario.';
         document.getElementById('sc-selected-badges').innerHTML = '<span class="sc-badge">' + esc(KIND_LABELS[s.kind] || s.kind) + '</span>' + (s.id === currentAppliedId ? '<span class="sc-badge sc-applied">Applied to session</span>' : '') + (s.id === dashboardDefaultScenario ? '<span class="sc-badge">Configured default</span>' : '');
@@ -232,6 +319,15 @@
         }
 
         runLink.href = '/Dashboard/ScenarioRun?scenario=' + encodeURIComponent(s.id);
+        if (runGraphPanel) {
+            if (!runLink.hidden) {
+                runGraphPanel.classList.remove('hidden');
+                refreshRunGraphList(s.id);
+            } else {
+                runGraphPanel.classList.add('hidden');
+                stopRunGraph();
+            }
+        }
 
     }
     function selectSection(name, focus) {

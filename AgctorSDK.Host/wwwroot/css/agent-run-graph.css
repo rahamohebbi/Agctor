@@ -1,0 +1,222 @@
+/* Live agent-run graph (same topology Cynelo shows from Agctor's graph API). */
+.arg-root {
+  --arg-bg0: #151E25;
+  --arg-bg1: #0E1119;
+  --arg-border: #303642;
+  --arg-text: #E8EEF7;
+  --arg-mute: #AFBBCF;
+  --arg-panel: #1B202A;
+  --arg-agent: #1A3033;
+  display: flex;
+  flex-direction: column;
+  min-height: 420px;
+  border-radius: 18px;
+  border: 1px solid var(--arg-border);
+  background: linear-gradient(135deg, var(--arg-bg0), var(--arg-bg1));
+  color: var(--arg-text);
+  overflow: hidden;
+}
+.arg-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 6px;
+}
+.arg-focus-wrap { flex: 1; min-width: 0; }
+.arg-focus {
+  width: 100%;
+  border: 1px solid #3a4452;
+  background: #19212B;
+  color: var(--arg-text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.arg-zoom-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.arg-zoom-controls button,
+.arg-fit {
+  border: 1px solid #3a4452;
+  background: #19212B;
+  color: var(--arg-text);
+  border-radius: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.arg-zoom-controls button:hover,
+.arg-fit:hover { border-color: #64E7D2; }
+.arg-zoom-label {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--arg-mute);
+}
+.arg-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+}
+.arg-viewport:active { cursor: grabbing; }
+.arg-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.arg-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.arg-nodes { position: absolute; inset: 0; }
+.arg-node {
+  position: absolute;
+  width: 170px;
+  height: 100px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 16px;
+  border: 1px solid #64E7D2;
+  background: var(--arg-panel);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  box-shadow: none;
+}
+.arg-node[data-kind="agent"],
+.arg-node[data-kind="human"] { background: var(--arg-agent); }
+.arg-node-hot {
+  border-width: 2px;
+  box-shadow: 0 0 20px color-mix(in srgb, currentColor 12%, transparent);
+}
+.arg-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 8px;
+  letter-spacing: 1.6px;
+  color: inherit;
+  border-color: inherit;
+}
+.arg-node .arg-kind { color: inherit; }
+.arg-node[data-kind="agent"] .arg-kind,
+.arg-node[data-kind="human"] .arg-kind { color: #64E7D2; }
+.arg-node[data-kind="tool"] .arg-kind { color: #9CB7D3; }
+.arg-node[data-kind="llm"] .arg-kind,
+.arg-node[data-kind="model"] .arg-kind { color: #B6A3FF; }
+.arg-node[data-kind="memory"] .arg-kind { color: #FFBE79; }
+.arg-title {
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.arg-detail {
+  font-size: 10px;
+  color: var(--arg-mute);
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.arg-spin {
+  width: 8px;
+  height: 8px;
+  border: 1.3px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: arg-spin 0.8s linear infinite;
+}
+@keyframes arg-spin { to { transform: rotate(360deg); } }
+.arg-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  color: var(--arg-mute);
+  font-size: 13px;
+  pointer-events: none;
+}
+.arg-empty[hidden] { display: none !important; }
+.arg-legend {
+  margin: 0;
+  padding: 10px 14px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--arg-mute);
+}
+.arg-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.sc-run-graph {
+  margin: 26px 0;
+  border: 1px solid var(--sc-border, #e2e8f0);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--sc-soft, #f8fafc);
+}
+.sc-run-graph-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.sc-run-graph-heading h3 { margin: 0 0 4px; }
+.sc-run-graph-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.sc-run-graph-tools select {
+  min-width: 220px;
+  max-width: 100%;
+  border: 1px solid var(--sc-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--sc-surface, #fff);
+  color: var(--sc-text, #172033);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.sc-run-graph-status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--sc-muted, #64748b);
+}
+.sc-run-graph-status:empty { display: none; }
+.sc-run-graph-host { min-height: 420px; }
+
+.vr-graph-block { margin: 18px 0 8px; }
+.vr-graph-block h3 { margin-bottom: 10px; }
+.vr-graph-host { min-height: 420px; }

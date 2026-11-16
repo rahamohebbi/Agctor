@@ -3,6 +3,7 @@
     ViewData["Title"] = "Video sequence";
 }
 <link rel="stylesheet" href="~/css/scenario-run.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/css/agent-run-graph.css" asp-append-version="true" />
 <main class="vr-page">
     <a href="/Dashboard/Scenarios">← Scenarios</a>
     <header><p class="vr-eyebrow">SCENE MEMORY WORKFLOW</p><h1>One idea. A continuous sequence.</h1>
@@ -43,8 +44,14 @@
             </form>
             <ol id="vr-clips" class="vr-clips"></ol>
             <button id="vr-cancel" class="vr-secondary" hidden>Cancel sequence</button>
+            <div class="vr-graph-block" aria-label="Live agent graph">
+                <h3>Live agent graph</h3>
+                <p class="vr-muted">Observed connections for this run — the same graph Cynelo’s Agent activity view shows.</p>
+                <div id="vr-graph" class="vr-graph-host"></div>
+            </div>
             <h3>Activity history</h3><ol id="vr-events" class="vr-events"></ol>
         </section>
     </div>
 </main>
+<script src="~/js/dashboard/agent-run-graph.js" asp-append-version="true"></script>
 <script src="~/js/dashboard/scenario-run.js" asp-append-version="true"></script>
