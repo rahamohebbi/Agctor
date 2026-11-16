@@ -12,6 +12,9 @@ are tagged.
 
 - Live agent-run graph on Scenarios and ScenarioRun, rendering the same
   `GET /api/agent-runs/{id}/graph` topology Cynelo’s Agent activity view shows.
+- Scenarios overview keeps the selected run id when remounting the live graph,
+  and labels AgentLoop “Edit flow” as loop wiring so it is not mistaken for the
+  live Director/specialist topology.
 - High-level architecture page (`docs/architecture-diagram.md`) with a generated JPEG.
 - MCP connection page (`docs/mcp-diagram.md`) with a generated JPEG.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can

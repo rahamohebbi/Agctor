@@ -30,12 +30,11 @@
                     <button type="button" id="sc-tab-configure" role="tab" aria-selected="false" aria-controls="sc-configure" tabindex="-1">Configuration</button>
                 </div>
                 <section id="sc-overview" role="tabpanel" aria-labelledby="sc-tab-overview" tabindex="0">
-                    <div id="sc-overview-content"></div>
                     <div id="sc-run-graph" class="sc-run-graph hidden" aria-label="Live agent graph">
                         <div class="sc-run-graph-heading">
                             <div>
                                 <h3>Live agent graph</h3>
-                                <p class="sc-muted">Same observed topology Cynelo shows: Director, specialists, tools, LLM, memory, and model evidence from this scenario’s runs.</p>
+                                <p class="sc-muted">Observed actor topology for a sequence run — Director, specialists, tools, LLM, memory, and model evidence. Same data Cynelo’s Agent activity graph shows.</p>
                             </div>
                             <div class="sc-run-graph-tools">
                                 <label class="sc-muted" for="sc-run-graph-pick">Sequence</label>
@@ -47,7 +46,16 @@
                         <div id="sc-run-graph-host" class="sc-run-graph-host"></div>
                         <p id="sc-run-graph-status" class="sc-run-graph-status" role="status"></p>
                     </div>
-                    <div class="sc-flow-card"><div><h3>Conversation flow</h3><a id="sc-run-workflow" hidden class="sc-primary" href="/Dashboard/ScenarioRun">Run workflow ↗</a><p id="sc-flow-summary" class="sc-muted"></p></div><button type="button" id="sc-open-flow" class="sc-button">Edit flow ↗</button></div>
+                    <div id="sc-overview-content"></div>
+                    <div class="sc-flow-card">
+                        <div>
+                            <h3 id="sc-flow-card-title">Conversation flow</h3>
+                            <a id="sc-run-workflow" hidden class="sc-primary" href="/Dashboard/ScenarioRun">Run workflow ↗</a>
+                            <p id="sc-flow-hint" class="sc-muted"></p>
+                            <p id="sc-flow-summary" class="sc-muted"></p>
+                        </div>
+                        <button type="button" id="sc-open-flow" class="sc-button">Edit flow ↗</button>
+                    </div>
                     <div class="sc-apply-box"><h3>Use this scenario</h3><p id="sc-apply-help" class="sc-muted">Applies the saved configuration. This can reset agents from the previous scenario; it does not change the configured default.</p><div class="sc-actions"><button type="button" id="sc-apply" class="sc-button sc-primary" disabled>Apply to session</button><a href="/Dashboard/Agents" class="sc-button">View agents ↗</a></div><p id="sc-apply-status" class="sc-status" role="status"></p></div>
                 </section>
                 <section id="sc-configure" class="hidden" role="tabpanel" aria-labelledby="sc-tab-configure" tabindex="0">
@@ -200,7 +208,7 @@
                 <div>
                     <p id="sc-flow-scenario-name" class="flow-eyebrow"></p>
                     <h2 id="sc-flow-title" class="text-base font-semibold text-gray-900 dark:text-white">Conversation flow</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">Design the journey from message to reply.</p>
+                    <p id="sc-flow-modal-blurb" class="text-xs text-gray-500 dark:text-gray-400">Design the journey from message to reply.</p>
                     <p id="sc-flow-schema-badge" class="mt-1 hidden text-[10px] font-medium text-teal-700 dark:text-teal-300"></p>
                 </div>
                 <button type="button" class="rounded-lg px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" data-sc-flow-close aria-label="Close">✕</button>
