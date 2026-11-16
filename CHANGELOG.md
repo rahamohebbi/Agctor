@@ -10,6 +10,9 @@ are tagged.
 
 ### Added
 
+- Scene-video Phase A topology: shared `Config/scene-video-topology.json`,
+  `GET /api/scenarios/scene-video-chain/topology`, and graph responses that
+  union the definition skeleton with observed routes (Visual critic alias).
 - Live agent-run graph on Scenarios and ScenarioRun, rendering the same
   `GET /api/agent-runs/{id}/graph` topology Cynelo’s Agent activity view shows.
 - Scenarios overview keeps the selected run id when remounting the live graph,

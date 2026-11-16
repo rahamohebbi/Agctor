@@ -1,6 +1,8 @@
+using AgctorSDK.Core.Workflows;
 using AgctorSDK.Host.Models;
 using AgctorSDK.Host.Services;
 using AgctorSDK.Host.Services.Scenarios;
+using AgctorSDK.Host.Services.VideoWorkflow;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgctorSDK.Host.Controllers;
@@ -13,17 +15,20 @@ public sealed class ScenariosController : ControllerBase
     private readonly IScenarioCatalog _catalog;
     private readonly IScenarioApplicationService _scenarioApplication;
     private readonly IScenarioFlowExecutionService _flowExecution;
+    private readonly ISceneVideoTopologyCatalog _topology;
     private readonly ILogger<ScenariosController> _logger;
 
     public ScenariosController(
         IScenarioCatalog catalog,
         IScenarioApplicationService scenarioApplication,
         IScenarioFlowExecutionService flowExecution,
+        ISceneVideoTopologyCatalog topology,
         ILogger<ScenariosController> logger)
     {
         _catalog = catalog;
         _scenarioApplication = scenarioApplication;
         _flowExecution = flowExecution;
+        _topology = topology;
         _logger = logger;
     }
 
@@ -211,6 +216,22 @@ public sealed class ScenariosController : ControllerBase
         }
 
         return Ok(ToDto(def));
+    }
+
+    /// <summary>Phase A: read-only agent/tool topology for scenarios that publish one (scene-video-chain).</summary>
+    [HttpGet("{id}/topology")]
+    [ProducesResponseType(typeof(SceneVideoTopologyDocument), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public ActionResult<SceneVideoTopologyDocument> GetTopology([FromRoute] string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return BadRequest(new ErrorResponse { Code = "INVALID_SCENARIO_ID", Message = "Scenario id is required." });
+        if (_catalog.Get(id) == null)
+            return NotFound(new ErrorResponse { Code = "SCENARIO_NOT_FOUND", Message = $"Scenario '{id}' not found." });
+        var topology = _topology.GetForScenario(id.Trim());
+        if (topology == null)
+            return NotFound(new ErrorResponse { Code = "TOPOLOGY_NOT_FOUND", Message = $"Scenario '{id}' has no agent topology document yet." });
+        return Ok(topology);
     }
 
     /// <summary>

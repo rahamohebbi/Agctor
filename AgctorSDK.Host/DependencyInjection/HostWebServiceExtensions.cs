@@ -56,6 +56,8 @@ public static class HostWebServiceExtensions
         services.AddSingleton<SceneMemoryEvaluationService>();
 
         services.Configure<Services.VideoWorkflow.SceneVideoOptions>(configuration.GetSection("Agctor:SceneVideo"));
+        services.Configure<Services.VideoWorkflow.SceneVideoTopologyOptions>(configuration.GetSection("Agctor:SceneVideo:Topology"));
+        services.AddSingleton<Services.VideoWorkflow.ISceneVideoTopologyCatalog, Services.VideoWorkflow.SceneVideoTopologyCatalog>();
         services.AddSingleton<AgctorSDK.Core.Workflows.IAgentRunStore>(_ => new AgctorSDK.Core.Workflows.SqliteAgentRunStore(
             configuration["Agctor:SceneVideo:StorePath"] ?? Path.Combine(AppContext.BaseDirectory, "data", "agent-runs.db")));
         services.AddHttpClient("SceneVideoPlanner", client => client.Timeout = Timeout.InfiniteTimeSpan).AddHttpMessageHandler(() => new Services.VideoWorkflow.SceneVideoTraceHandler("ollama"));
