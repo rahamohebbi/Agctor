@@ -13,6 +13,9 @@ public sealed class SceneMemoryProvider : ISceneMemoryProvider
     /// <summary>Creates a provider over any registered store implementation.</summary>
     public SceneMemoryProvider(ISceneMemoryStore store) => _store = store ?? throw new ArgumentNullException(nameof(store));
 
+    public async Task<SceneTimedEventResult> SearchEventsAsync(string workspaceId, SceneTimedEventQuery query, CancellationToken cancellationToken = default) =>
+        SceneTimedEvents.Query(await _store.GetAsync(workspaceId, cancellationToken).ConfigureAwait(false), query);
+
     /// <inheritdoc />
     public string ProviderId => RagProviderIds.SceneMemory;
 

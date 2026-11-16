@@ -366,11 +366,16 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         lease.Run.Phase = "project"; lease.Run.State = JsonSerializer.SerializeToElement(state);
         await runs.SaveAsync(lease, "test", "ready", "Ready"); return (await runs.GetAsync(run.Id))!;
     }
-    private async Task<AgentRun> ActorTick(string id)
+    private async Task<AgentRun> ActorTick(string id, bool delaySavedReply = false)
     {
         using var runtime = new InMemoryActorRuntime(); await runtime.InitializeAsync(new Dictionary<string, object>());
         // Reopen the durable store each step to exercise restart boundaries.
-        var reopened = new SqliteAgentRunStore(Path.Combine(dir, "runs.db"));
+        IAgentRunStore reopened = new SqliteAgentRunStore(Path.Combine(dir, "runs.db"));
+        if (delaySavedReply) {
+            var proxy = System.Reflection.DispatchProxy.Create<IAgentRunStore, DelayedSaveStore>();
+            ((DelayedSaveStore)(object)proxy).Inner = reopened;
+            reopened = proxy;
+        }
         var loop = new SceneVideoLoop(reopened, memory, planner, interpreter, renderer, options, NullLogger<SceneVideoLoop>.Instance, production: production, critic: critic, audio: audio);
         var worker = new SceneVideoWorker(reopened, loop, runtime, options, NullLogger<SceneVideoWorker>.Instance);
         var lease = await reopened.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors);
@@ -378,6 +383,34 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         await worker.ExecuteLeaseAsync(lease, default);
         Assert.Empty(await runtime.GetActiveActorIdsAsync()); await runtime.ShutdownAsync();
         return (await reopened.GetAsync(id))!;
+    }
+    [Fact]
+    public async Task Saved_checkpoint_does_not_cancel_its_pending_actor_reply()
+    {
+        var run = await Create(review: true);
+        var saved = await ActorTick(run.Id, delaySavedReply: true);
+        Assert.Equal("waiting", saved.Status);
+        Assert.Equal("review", saved.Question!.Kind);
+        Assert.True(saved.Revision > run.Revision);
+    }
+    public class DelayedSaveStore : System.Reflection.DispatchProxy
+    {
+        public IAgentRunStore Inner = null!;
+        private readonly TaskCompletionSource renewed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        protected override object? Invoke(System.Reflection.MethodInfo? method, object?[]? args)
+        {
+            var result = method!.Invoke(Inner, args);
+            if (method.Name == nameof(IAgentRunStore.RenewAsync)) renewed.TrySetResult();
+            if (method.Name == nameof(IAgentRunStore.SaveAsync)) return DelayReply((Task)result!, (CancellationToken)args![4]!);
+            return result;
+        }
+        private async Task DelayReply(Task save, CancellationToken ct)
+        {
+            await save;
+            await renewed.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            await Task.Yield();
+            ct.ThrowIfCancellationRequested();
+        }
     }
     [Fact]
     public async Task Production_actors_dry_run_plan_preserve_identity_and_deliver_only_after_review()
@@ -399,6 +432,215 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Contains(events, e => e.Agent == "Project agent");
         Assert.Contains(events, e => e.Agent == "Continuity critic");
         Assert.Contains(events, e => e.Agent == "Editor agent" && e.Kind == "completed");
+    }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Planned_relationship_values_rebase_after_first_clip_and_saved_retry(bool savedRetry)
+    {
+        interpreter.RelationshipInValue = true;
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && !(run.Phase == "prepare" && SceneVideoLoop.State(run).Current == 1); i++)
+            run = await ActorTick(run.Id);
+        Assert.Equal("prepare", run.Phase);
+        var state = SceneVideoLoop.State(run);
+        Assert.Equal(1, state.Current);
+        var plannedId = state.PlannedEntities.Single(e => e.Name == "Traveller").Id;
+        var actualId = (await memory.GetAsync(run.WorkspaceId)).Entities.Single().Id;
+        Assert.NotEqual(plannedId, actualId);
+        var completedClip = JsonSerializer.Serialize(state.Clips[0]);
+        var originalPreview = state.Clips[1].Preview!;
+        Assert.Equal(plannedId, originalPreview.Extraction.Changes.Single(c => c.Property == "held_by").Value);
+        if (savedRetry)
+        {
+            var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+            lease.Run.Status = "waiting"; lease.Run.Failures = 3;
+            lease.Run.Question = new("saved-question", "retry", "Retry this step", [new("retry", "Retry this step")]);
+            await runs.SaveAsync(lease, "test", "waiting", "Saved failed preparation");
+            run = (await runs.GetAsync(run.Id))!;
+            await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "retry", null));
+            run = await ActorTick(run.Id);
+        }
+        run = await ActorTick(run.Id);
+        Assert.Equal("commit", run.Phase);
+        state = SceneVideoLoop.State(run);
+        Assert.Equal(completedClip, JsonSerializer.Serialize(state.Clips[0]));
+        Assert.Equal(actualId, state.Clips[1].Preview!.Extraction.Changes.Single(c => c.Property == "held_by").Value);
+        Assert.Equal(plannedId, state.Clips[1].Preview!.Extraction.Changes.Single(c => c.Property == "note").Value);
+        Assert.Single(renderer.Requests);
+        for (var i = 0; i < 12 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(2, renderer.Requests.Count);
+        var workspace = await memory.GetAsync(run.WorkspaceId);
+        var can = workspace.Entities.Single(e => e.Name == "Watering can");
+        Assert.Contains(workspace.History, f => f.EntityId == can.Id && f.Property == "held_by" && f.RelatedEntityId == actualId);
+        Assert.Equal(2, workspace.Prompts!.Count);
+    }
+    [Fact]
+    public async Task Observed_ending_is_durable_and_guides_next_render_without_changing_story_facts()
+    {
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && !(run.Phase == "prepare" && SceneVideoLoop.State(run).Current == 1); i++) run = await ActorTick(run.Id);
+        var state = SceneVideoLoop.State(run);
+        Assert.Equal(1, state.Current);
+        var workspace = await memory.GetAsync(run.WorkspaceId);
+        Assert.Equal(state.WorkspaceRevision, ScenePromptReducer.Revision(workspace));
+        var observation = Assert.Single(await memory.ReadBoundariesAsync(run.WorkspaceId, state.Clips[0].ShotId));
+        Assert.Equal("Entered greenhouse", observation.Ending.CompletedActions);
+        Assert.Equal($"{run.Id}-1-1", observation.RenderKey);
+        for (var i = 0; i < 12 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        Assert.Null(renderer.Requests[0].BoundaryInstruction);
+        Assert.Contains("Entered greenhouse", renderer.Requests[1].BoundaryInstruction);
+        Assert.Contains("Do not replay completed", renderer.Requests[1].BoundaryInstruction);
+        Assert.DoesNotContain("OBSERVED MOVEMENT", renderer.Requests[1].Prompt);
+    }
+    [Theory]
+    [InlineData("recheck")]
+    [InlineData("continue")]
+    public async Task Uncertain_ending_waits_for_explicit_choice_without_rendering_next_clip(string choice)
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("boundary", run.Question!.Kind); Assert.Single(renderer.Requests);
+        Assert.False(SceneVideoLoop.State(run).Clips[1].BoundaryBypass);
+        critic.EndingStatus = "observed";
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, choice, null));
+        for (var i = 0; i < 16 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status); Assert.Equal(2, renderer.Requests.Count);
+        Assert.Equal(choice == "continue", SceneVideoLoop.State(run).Clips[1].BoundaryBypass);
+        Assert.Contains(choice == "continue" ? "unverified" : "OBSERVED MOVEMENT", renderer.Requests[1].BoundaryInstruction);
+    }
+    [Fact]
+    public async Task Transition_concerns_require_review_and_only_replace_current_take_on_request()
+    {
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && !(run.Phase == "prepare" && SceneVideoLoop.State(run).Current == 1); i++) run = await ActorTick(run.Id);
+        var original = JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]);
+        critic.Status = "concerns";
+        for (var i = 0; i < 8 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("continuity", run.Question!.Kind); Assert.Equal(2, renderer.Requests.Count);
+        Assert.Contains(run.Question.Choices, c => c.Id == "regenerate");
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "recheck", null));
+        run = await ActorTick(run.Id); run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status); Assert.Equal(2, renderer.Requests.Count);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "regenerate", null));
+        run = await ActorTick(run.Id);
+        Assert.Null(SceneVideoLoop.State(run).Clips[1].Boundary);
+        critic.Status = "passed";
+        for (var i = 0; i < 12 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status); Assert.Equal(3, renderer.Requests.Count);
+        Assert.Equal($"{run.Id}-2-1", renderer.Requests[2].ReplacesJobKey);
+        Assert.Equal($"{run.Id}-1-1", renderer.Requests[2].PreviousJobKey);
+        Assert.Equal(original, JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]));
+        Assert.Equal(2, (await memory.ReadBoundariesAsync(run.WorkspaceId, $"{run.Id}-2")).Count);
+    }
+    [Fact]
+    public async Task Visual_replacement_preserves_earlier_approved_audio_and_requires_new_audio_review()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run); state.AudioEnabled = true;
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Audio enabled");
+        for (var i = 0; i < 25 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("clip-audio-review", run.Question!.Kind);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "approve", null));
+        run = await ActorTick(run.Id);
+        var approved = JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]);
+        critic.Status = "concerns";
+        for (var i = 0; i < 12 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("continuity", run.Question!.Kind);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "regenerate", null));
+        run = await ActorTick(run.Id); critic.Status = "passed";
+        for (var i = 0; i < 12 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("clip-audio-review", run.Question!.Kind);
+        state = SceneVideoLoop.State(run);
+        Assert.Equal(approved, JsonSerializer.Serialize(state.Clips[0]));
+        Assert.Equal("version-1", state.Clips[0].ApprovedAudioVersion);
+        Assert.Null(state.Clips[1].ApprovedAudioVersion);
+        Assert.Equal(3, renderer.Requests.Count); Assert.Empty(production.Deliveries);
+        Assert.Single(production.AudioPlan!.Approved!);
+    }
+    [Fact]
+    public async Task Planning_progress_is_persisted_once_without_publishing_model_text()
+    {
+        var run = await ProductionRun();
+        for (var i = 0; i < 3; i++) run = await ActorTick(run.Id);
+        var events = await runs.EventsAsync(run.Id);
+        Assert.Contains(events, e => e.Agent == "Planner" && e.Message.Contains("1/2 sections checked"));
+        Assert.Single(events.Where(e => e.Message.Contains("Checking the final scene relationships")));
+        Assert.DoesNotContain(events, e => e.Message.Contains("private model text"));
+        Assert.Empty(renderer.Requests);
+    }
+    [Fact]
+    public async Task Legacy_waiting_planner_gets_recovery_choices_without_starting_model_work()
+    {
+        var run = await ProductionRun();
+        for (var i = 0; i < 3; i++) run = await ActorTick(run.Id);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        lease.Run.Status = "waiting";
+        lease.Run.Question = new("old", "retry", "Retry this step", [new("retry", "Retry this step")]);
+        await runs.SaveAsync(lease, "test", "waiting", "Old question");
+        var calls = interpreter.HistorySizes.Count;
+        run = await ActorTick(run.Id);
+        Assert.Equal("planning-retry", run.Question!.Kind);
+        Assert.Contains(run.Question.Choices, c => c.Id == "reset-plan");
+        Assert.Equal(calls, interpreter.HistorySizes.Count); Assert.Equal(0, interpreter.Resets);
+        Assert.Null(await runs.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors));
+    }
+    [Fact]
+    public async Task Explicit_planning_reset_restarts_only_failed_shot()
+    {
+        var run = await ProductionRun();
+        for (var i = 0; i < 3; i++) run = await ActorTick(run.Id);
+        var first = JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]);
+        interpreter.NextError = new ScenePromptInterpretationException("invalid", "fake", "prompt",
+            [new(3, [ScenePromptDiagnostics.Issue("prompt", "invalid_plan", "$", "invalid")])]);
+        run = await ActorTick(run.Id);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "reset-plan", null));
+        run = await ActorTick(run.Id); run = await ActorTick(run.Id);
+        Assert.Equal("review", run.Question!.Kind); Assert.Equal(1, interpreter.Resets);
+        Assert.Equal(first, JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]));
+        Assert.Empty(renderer.Requests);
+    }
+    [Fact]
+    public async Task Planning_deadline_saves_actionable_wait_before_actor_timeout()
+    {
+        var run = await ProductionRun();
+        for (var i = 0; i < 3; i++) run = await ActorTick(run.Id);
+        options.CurrentValue.PlanCheckTimeoutSeconds = .05;
+        interpreter.WaitForCancellation = true;
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status); Assert.Equal("plan-review", run.Phase);
+        Assert.Contains("time limit", run.Question!.Prompt);
+        Assert.Equal(1, SceneVideoLoop.State(run).ReviewIndex); Assert.Empty(renderer.Requests);
+    }
+    [Fact]
+    public async Task Exhausted_semantic_repairs_pause_once_and_allow_revising_only_failed_shot()
+    {
+        var run = await ProductionRun();
+        for (var i = 0; i < 3; i++) run = await ActorTick(run.Id);
+        var first = JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]);
+        interpreter.NextError = new ScenePromptInterpretationException("secret provider body", "fake", "prompt",
+            [new(3, [ScenePromptDiagnostics.Issue("prompt", "invalid_change", "continuity.changes[0]", "secret")])]);
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status); Assert.Equal(1, run.Failures);
+        var problem = SceneVideoLoop.State(run).PlanProblem!;
+        Assert.Equal(2, problem.ClipNumber); Assert.Equal("Final continuity check", problem.Stage);
+        Assert.DoesNotContain("secret", JsonSerializer.Serialize(problem));
+        Assert.Contains(run.Question!.Choices, c => c.Id == "revise-shot");
+        Assert.Null(await runs.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors));
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "revise-shot", null));
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status); Assert.Equal(0, interpreter.Resets);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "revise-shot", "The traveller places the parcel on the counter."));
+        run = await ActorTick(run.Id); run = await ActorTick(run.Id);
+        Assert.Equal("review", run.Question!.Kind); Assert.Equal(1, interpreter.Resets);
+        Assert.Equal(first, JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]));
+        Assert.Equal("The traveller places the parcel on the counter.", SceneVideoLoop.State(run).Clips[1].Prompt);
+        Assert.Null(SceneVideoLoop.State(run).PlanProblem); Assert.Empty(renderer.Requests);
     }
     [Theory]
     [InlineData("invalid_participants", "valid participant")]
@@ -428,6 +670,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         run = await ActorTick(run.Id); // reply
         run = await ActorTick(run.Id); // only second clip is interpreted
         Assert.Equal("review", run.Question!.Kind);
+        Assert.Equal(0, interpreter.Resets);
         Assert.Equal(2, interpreter.HistorySizes.Count);
         Assert.Equal(checkedClip, JsonSerializer.Serialize(SceneVideoLoop.State(run).Clips[0]));
         Assert.Empty((await memory.GetAsync(run.WorkspaceId)).Entities);
@@ -514,6 +757,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         for(var i=0;i<25 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
         Assert.Equal("speech-review",run.Question!.Kind);
         Assert.Contains("do not match",run.Question.Prompt);
+        var speech = SceneVideoLoop.State(run).Clips[0].Speech!;
+        Assert.Equal("Do cross the bridge.", speech.Transcript);
+        Assert.Contains(speech.Issues!, issue => issue.Length == 0 && issue.Reason.Contains("not"));
         var request=Assert.Single(renderer.Requests);
         Assert.Contains("<d>[English] Do not cross the bridge.</d>",request.Prompt);
         Assert.Contains("verbatim and in order",request.SpeechInstruction);
@@ -745,9 +991,15 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         run=await ActorTick(run.Id); run=await ActorTick(run.Id);
         Assert.Equal("completed",run.Status); Assert.Equal(2,renderer.Requests.Count);
     }
-    [Fact]
-    public async Task Existing_clip_can_switch_to_narration_without_resubmitting_video()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Existing_clip_can_switch_to_narration_without_resubmitting_video(bool hasOriginalScript, bool cloud)
     {
+        const string original = "Every evening, she climbs these stairs. Beyond the shore, someone is still finding their way home.";
+        if (hasOriginalScript) planner.Spoken = "EXT. LIGHTHOUSE. (NARRATION: " + original + ")";
+        production.CloudNarration = cloud;
         var run=await SpeechRun();
         var lease=(await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
         var state=SceneVideoLoop.State(lease.Run); state.AudioEnabled=true;
@@ -758,13 +1010,54 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"narration",null));
         run=await ActorTick(run.Id); run=await ActorTick(run.Id);
         Assert.Equal("narration-review",run.Question!.Kind); Assert.Single(renderer.Requests);
-        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"approve",null));
+        Assert.Equal(hasOriginalScript ? original : "A journey begins.", SceneVideoLoop.State(run).Clips[0].NarrationText);
+        if (hasOriginalScript) Assert.Equal("", SceneVideoLoop.State(run).Clips[1].NarrationText);
+        Assert.Equal(cloud, run.Question.Choices.Any(c => c.Id == "approve-cloud"));
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,cloud ? "approve-cloud" : "approve",null));
+        run=await ActorTick(run.Id);
+        Assert.Equal("narration-background",run.Question!.Kind);
+        Assert.Equal(cloud,run.Question.Choices.Any(c=>c.Id=="matching" && c.Disabled != true));
+        if (!cloud) await Assert.ThrowsAsync<ArgumentException>(()=>runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"matching",null)));
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,cloud ? "matching" : "preserve",null));
         run=await ActorTick(run.Id);
         Assert.Equal(0,SceneVideoLoop.State(run).Current); Assert.Single(renderer.Requests);
         Assert.Equal("clip-audio-plan",run.Phase);
         for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
         Assert.Equal("clip-audio-review",run.Question!.Kind);
+        Assert.Equal(cloud ? "eleven_multilingual_v2" : "kokoro", production.AudioPlan!.Narration!.Model);
+        Assert.Equal(cloud ? "configured" : "af_heart", production.AudioPlan.Narration.Voice);
+        Assert.Equal(cloud ? "matching" : null, production.AudioPlan.BackgroundMusic);
         Assert.Equal(1,SceneVideoLoop.State(run).Clips[0].RenderAttempt);
+        Assert.Contains(run.Question.Choices,c=>c.Id=="balance");
+        await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"balance","{\"speechDb\":-3,\"musicDb\":-6,\"continuousMusic\":true}"));
+        run=await ActorTick(run.Id);
+        for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+        Assert.Equal("clip-audio-review",run.Question!.Kind);
+        Assert.Equal(new SceneAudioMix(-3,-6),production.AudioPlan!.Mix);
+        Assert.True(production.AudioPlan.ContinuousMusic);
+        Assert.Single(renderer.Requests);
+        Assert.Equal(hasOriginalScript ? original : "A journey begins.", production.AudioPlan.Narration!.Scripts[0]);
+        if (cloud) {
+            Assert.Contains(run.Question.Choices,c=>c.Id=="music");
+            await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"music",null));
+            run=await ActorTick(run.Id);
+            Assert.Equal("narration-background",run.Question!.Kind);
+            await runs.ReplyAsync(run.Id,run.Revision,new(run.Question.Id,"matching-clean",null));
+            run=await ActorTick(run.Id);
+            for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+            Assert.Equal("clean",production.AudioPlan!.MusicProfile);
+            Assert.Single(renderer.Requests);
+            await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"music",null));
+            run=await ActorTick(run.Id);
+            await runs.ReplyAsync(run.Id,run.Revision,new(run.Question!.Id,"preserve",null));
+            run=await ActorTick(run.Id);
+            for(var i=0;i<10 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
+            Assert.Equal("clip-audio-review",run.Question!.Kind);
+            Assert.Null(production.AudioPlan!.BackgroundMusic);
+            Assert.Equal(original,SceneVideoLoop.State(run).Clips[0].NarrationText);
+            Assert.Single(renderer.Requests);
+        }
+
     }
     [Fact]
     public async Task Dedicated_narration_does_not_silently_translate_another_requested_language()
@@ -827,6 +1120,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
     }
     private sealed class Production : ISceneVideoProduction
     {
+        public bool CloudNarration;
+        public Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(CloudNarration);
+        public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
         public string? RequestedProject; public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");
         public Task<SceneSpeechReport> InspectSpeechAsync(string key,CancellationToken ct) { SpeechCalls++; return Task.FromResult(Speech); }
@@ -843,16 +1139,16 @@ public sealed class SceneVideoWorkflowTests : IDisposable
             RequestedProject = projectId;
             return Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         }
-        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"]));
+        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95])));
         public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct) {
             Deliveries.Add(keys); return Task.FromResult(new SceneVideoDelivery("https://cynelo.test/finished.mp4"));
         }
     }
     private sealed class Critic : ISceneVideoCritic
     {
-        public string Status = "passed"; public int Calls; public bool Throw;
+        public string Status = "passed"; public string EndingStatus = "observed"; public int Calls; public bool Throw;
         public Task<SceneContinuityReport> CheckAsync(string prompt, SceneVideoEvidence current, SceneVideoEvidence? previous, CancellationToken ct) {
-            Calls++; if(Throw) throw new HttpRequestException("Offline"); return Task.FromResult(new SceneContinuityReport(Status, "Sampled-frame review", Status == "passed" ? [] : ["Check the outfit"]));
+            Calls++; if(Throw) throw new HttpRequestException("Offline"); return Task.FromResult(new SceneContinuityReport(Status, "Sampled-frame review", Status == "passed" ? [] : ["Check the outfit"], new(EndingStatus, "Inside greenhouse", "Moving toward bench", "Pot in both arms", "Entered greenhouse", "Camera follows from behind"), previous == null ? "not_applicable" : Status, "fake-vision"));
         }
     }
     private sealed class Planner : ISceneVideoPlanner
@@ -866,14 +1162,32 @@ public sealed class SceneVideoWorkflowTests : IDisposable
     private sealed class Interpreter : IScenePromptInterpreter
     {
         public Exception? NextError;
+        public int Resets;
+        public bool WaitForCancellation;
+        public Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace w, string prompt, string model,
+            IProgress<ScenePromptProgress>? progress, CancellationToken ct)
+        {
+            progress?.Report(new("section_complete", 1, 2, 1, "private model text"));
+            progress?.Report(new("continuity", 0, 0, 2, "private model text"));
+            progress?.Report(new("continuity", 0, 0, 2, "private model text"));
+            return InterpretAsync(w, prompt, model, ct);
+        }
+        public Task ResetAsync(SceneWorkspace w, string p, string m, CancellationToken ct) { Resets++; return Task.CompletedTask; }
+        private static async Task<ScenePromptExtraction> WaitAsync(CancellationToken ct) { await Task.Delay(Timeout.Infinite, ct); return new([], [], []); }
+        public bool RelationshipInValue;
         public List<int> HistorySizes = [];
         public List<string[]> ContextNames = [];
         public Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace w, string prompt, string model, CancellationToken ct)
         {
+            if (WaitForCancellation) return WaitAsync(ct);
             if (NextError is { } error) { NextError = null; throw error; }
             ContextNames.Add(w.Entities.Select(e => e.Name).ToArray());
             HistorySizes.Add(w.Prompts?.Count ?? 0);
             var entity = w.Entities.FirstOrDefault();
+            if (RelationshipInValue && entity != null)
+                return Task.FromResult(new ScenePromptExtraction([new("can", "Watering can", "Object")],
+                    [new("can", "held_by", entity.Id, "", false, prompt),
+                     new("can", "note", entity.Id, "", false, prompt)], []));
             return Task.FromResult(new ScenePromptExtraction(entity == null ? [new("traveller", "Traveller", "Character")] : [],
                 [new(entity?.Id ?? "traveller", "status", "stage " + HistorySizes.Count, "", false, prompt)], []));
         }
@@ -899,7 +1213,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         renderer.Intervention=new("ComfyUI is not responding. Start ComfyUI, then check again.","comfyui_unavailable");
         run=await Tick(run.Id);
         Assert.Equal(renderer.Intervention.Message,run.Question!.Prompt);
-        Assert.Equal("Check connection and existing render",run.Question.Choices.Single().Label);
+        Assert.Equal(new[] { "retry", "restart" }, run.Question.Choices.Select(c => c.Id));
         var questionId=run.Question.Id;
         MakeDue(run.Id); run=await Tick(run.Id);
         Assert.Equal(questionId,run.Question!.Id); Assert.Empty(renderer.Requests);
@@ -909,8 +1223,58 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("existing-job",SceneVideoLoop.State(run).Clips[0].ProviderJobId);
         Assert.Empty(renderer.Requests);
     }
+    [Fact]
+    public async Task Reset_current_clip_preserves_completed_clip_and_retries_one_durable_reset_after_lost_response()
+    {
+        var run = await WaitingRun(kind: "retry");
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors))!;
+        var state = SceneVideoLoop.State(lease.Run); state.Current = 1;
+        state.Clips[0].Status = "completed"; state.Clips[0].VideoUrl = "https://cynelo.test/keep.mp4";
+        state.Clips[0].LastFrameUrl = "https://cynelo.test/keep.jpg";
+        var completed = JsonSerializer.Serialize(state.Clips[0]);
+        state.Clips[1].ProviderJobId = "existing-job"; state.Clips[1].Status = "rendering";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "setup", "Current clip interrupted");
+        renderer.Intervention = new("Cannot match saved provider job", "recovery_uncertain");
+        MakeDue(run.Id); run = await Tick(run.Id);
+        Assert.Contains(run.Question!.Choices, c => c.Id == "restart");
+        run = await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "restart", null));
+        run = await Tick(run.Id); Assert.Equal("reset-render", run.Phase); Assert.Empty(renderer.ResetKeys);
+        renderer.LoseResetResponse = true;
+        run = await Tick(run.Id); Assert.Equal("reset-render", run.Phase);
+        Assert.Equal(1, SceneVideoLoop.State(run).Clips[1].RenderAttempt);
+        renderer.LoseResetResponse = false; MakeDue(run.Id); run = await Tick(run.Id);
+        state = SceneVideoLoop.State(run);
+        Assert.Equal("submit", run.Phase); Assert.Equal(2, state.Clips[1].RenderAttempt);
+        Assert.Equal(completed, JsonSerializer.Serialize(state.Clips[0]));
+        Assert.Equal(2, renderer.ResetKeys.Count); Assert.Single(renderer.ResetKeys.Distinct());
+        Assert.Empty(renderer.Requests);
+        Assert.Equal("ready", state.Clips[1].Status);
+        Assert.Null(state.Clips[1].ProviderJobId);
+    }
+    [Fact]
+    public async Task Missing_provider_id_reattaches_via_stable_request_key_without_new_render()
+    {
+        var run = await WaitingRun(kind: "retry");
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors))!;
+        var state = SceneVideoLoop.State(lease.Run); state.Clips[0].ProviderJobId = null;
+        lease.Run.State = JsonSerializer.SerializeToElement(state); lease.Run.Phase = "submit";
+        await runs.SaveAsync(lease, "test", "setup", "Lost submit response");
+        MakeDue(run.Id); run = await Tick(run.Id);
+        Assert.Equal("running", run.Status); Assert.Null(run.Question);
+        Assert.Equal("existing-job", SceneVideoLoop.State(run).Clips[0].ProviderJobId);
+        Assert.Empty(renderer.Requests);
+    }
     private sealed class Renderer : ISceneVideoRenderer
     {
+        public List<string> ResetKeys = [];
+        public bool LoseResetResponse;
+        public Task<SceneRenderJob> ResetAsync(string key, CancellationToken ct) {
+            ResetKeys.Add(key);
+            if (LoseResetResponse) throw new HttpRequestException("Reset accepted but response lost");
+            return Task.FromResult(new SceneRenderJob("existing-job", "reset"));
+        }
+
         public bool IsConfigured { get; set; } = true;
         public bool LoseResponse;
         public bool ReportQueued;

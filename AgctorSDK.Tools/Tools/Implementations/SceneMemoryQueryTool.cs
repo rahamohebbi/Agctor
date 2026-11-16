@@ -13,7 +13,7 @@ namespace AgctorSDK.Core.Tools.Implementations;
 
 /// <summary>Read-only actor adapter for the independent Scene Memory store.</summary>
 [AgctorHostTool("scene-memory-query", "Scene Memory query",
-    "Retrieves manually entered scene facts. Query requires workspaceId and entityId or query (question is an alias); optional atSequence. No model required.", DefaultOperation = "Query")]
+    "Retrieves manually entered scene facts. Query requires workspaceId and entityId or query (question is an alias); optional atSequence. SearchEvents accepts workspaceId, text, shotId, entityId, kind, status, takeId, startMs/endMs, offset and expectedRevision. No model required.", DefaultOperation = "Query")]
 public sealed class SceneMemoryQueryTool : ToolActorBase
 {
     private readonly ISceneMemoryProvider _provider;
@@ -42,14 +42,27 @@ public sealed class SceneMemoryQueryTool : ToolActorBase
 
     private async Task<ToolResult> QueryAsync(ToolRequest request, CancellationToken ct)
     {
-        if (!string.Equals(request.Operation, "Query", StringComparison.OrdinalIgnoreCase))
-            return new ToolResult { Error = "Scene Memory query is read-only; only Query is supported." };
+        if (!string.Equals(request.Operation, "Query", StringComparison.OrdinalIgnoreCase) && !string.Equals(request.Operation, "SearchEvents", StringComparison.OrdinalIgnoreCase))
+            return new ToolResult { Error = "Scene Memory query is read-only; use Query or SearchEvents." };
         string? Get(string key) => request.Parameters != null && request.Parameters.TryGetValue(key, out var value)
             ? Convert.ToString(value, CultureInfo.InvariantCulture) : null;
         try
         {
             var workspaceId = Get("workspaceId");
             if (string.IsNullOrWhiteSpace(workspaceId)) throw new ArgumentException("workspaceId is required.");
+            if (string.Equals(request.Operation, "SearchEvents", StringComparison.OrdinalIgnoreCase)) {
+                SceneTimeRange? overlap = null;
+                if (Get("startMs") != null || Get("endMs") != null) {
+                    if (!long.TryParse(Get("startMs"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var start)
+                        || !long.TryParse(Get("endMs"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var end))
+                        throw new ArgumentException("Supply both startMs and endMs as integers.");
+                    overlap = new(start, end);
+                }
+                var offset = 0;
+                if (Get("offset") is { } rawOffset && !int.TryParse(rawOffset, out offset)) throw new ArgumentException("offset must be an integer.");
+                return new ToolResult { IsSuccess = true, Output = await _provider.SearchEventsAsync(workspaceId,
+                    new(Get("text"), Get("shotId"), Get("entityId"), Get("kind"), Get("status"), Get("takeId"), overlap, offset, 50, Get("expectedRevision")), ct).ConfigureAwait(false) };
+            }
             long? sequence = null;
             if (Get("atSequence") is { Length: > 0 } raw)
             {
@@ -60,7 +73,7 @@ public sealed class SceneMemoryQueryTool : ToolActorBase
             return new ToolResult { IsSuccess = true, Output = await _provider.QueryAsync(
                 new SceneMemoryQueryRequest(workspaceId, Get("query") ?? Get("question"), Get("entityId"), sequence), ct).ConfigureAwait(false) };
         }
-        catch (Exception ex) when (ex is ArgumentException or System.Collections.Generic.KeyNotFoundException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Collections.Generic.KeyNotFoundException)
         {
             return new ToolResult { Error = ex.Message };
         }

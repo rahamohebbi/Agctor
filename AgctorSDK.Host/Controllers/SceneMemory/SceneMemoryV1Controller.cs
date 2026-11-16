@@ -20,7 +20,7 @@ public sealed class SceneMemoryV1Controller(ISceneMemoryStore store, ScenePrompt
     [ProducesResponseType(typeof(SceneMemoryCapabilitiesResponse), StatusCodes.Status200OK)]
     public ActionResult<SceneMemoryCapabilitiesResponse> Capabilities() => new SceneMemoryCapabilitiesResponse("1",
         ["Character", "Object", "Location"], false, 20,
-        ["studio-instances", "explicit-entity-linking", "studio-version-checks", "studio-link-management", "prompt-preview", "preview-edit", "idempotent-apply", "shot-timeline", "continuity-context", "approved-shot-video-prompt", "shot-design-snapshots", "video-prompt-rewrite", "latest-linked-designs", "shot-deletion"]);
+        ["studio-instances", "explicit-entity-linking", "studio-version-checks", "studio-link-management", "prompt-preview", "preview-edit", "idempotent-apply", "shot-timeline", "continuity-context", "approved-shot-video-prompt", "shot-design-snapshots", "video-prompt-rewrite", "latest-linked-designs", "shot-deletion", "timed-events", "timed-event-search", "sampled-boundary-observations"]);
 
     /// <summary>List connected stories in one external application/project namespace. The caller must authorize that namespace.</summary>
     [HttpGet("workspaces")]
@@ -38,6 +38,10 @@ public sealed class SceneMemoryV1Controller(ISceneMemoryStore store, ScenePrompt
     [ProducesResponseType(typeof(SceneMemoryWorkspaceResponse), StatusCodes.Status200OK)]
     public Task<ActionResult<SceneMemoryWorkspaceResponse>> Connect(ConnectStoryRequest body, CancellationToken ct) => Run(async () =>
         SceneMemoryApiProjection.Workspace(await store.ConnectAsync(body.Name, new(body.Application, body.ProjectId, body.StoryId), body.WorkspaceId, ct)));
+
+    [HttpGet("workspaces/{workspaceId}/boundaries")]
+    public Task<ActionResult<IReadOnlyList<SceneBoundaryObservation>>> Boundaries(string workspaceId, [FromQuery] string? shotId, [FromQuery] string? renderKey, CancellationToken ct) =>
+        Run(async () => await store.ReadBoundariesAsync(workspaceId, shotId, renderKey, ct));
 
     /// <summary>Read identities, Studio bindings and the revision used to detect stale previews.</summary>
     [HttpGet("workspaces/{workspaceId}")]
@@ -140,6 +144,21 @@ public sealed class SceneMemoryV1Controller(ISceneMemoryStore store, ScenePrompt
     [HttpPut("workspaces/{workspaceId}/shots/{shotId}/designs")]
     public Task<ActionResult<SceneTimelineResponse>> PinDesigns(string workspaceId, string shotId, PrepareSceneVideoRequest body, CancellationToken ct) => Run(async () =>
         SceneMemoryApiProjection.Timeline(await store.PinShotDesignsAsync(workspaceId, shotId, body.ExpectedRevision, ct)));
+
+    /// <summary>Search shot-local events by text, entity, kind, take and overlapping time range.</summary>
+    [HttpPost("workspaces/{workspaceId}/events/search")]
+    public Task<ActionResult<SceneTimedEventResult>> SearchEvents(string workspaceId, SceneTimedEventQuery body, CancellationToken ct) => Run(async () =>
+        SceneTimedEvents.Query(await store.GetAsync(workspaceId, ct), body));
+
+    [HttpPut("workspaces/{workspaceId}/shots/{shotId}/events/{eventId}")]
+    public Task<ActionResult<SceneTimelineResponse>> SaveEvent(string workspaceId, string shotId, string eventId, SaveSceneTimedEventRequest body, CancellationToken ct) => Run(async () => {
+        if (body.Event == null || body.Event.Id != eventId) throw new ArgumentException("Event ID must match the selected event.");
+        return SceneMemoryApiProjection.Timeline(await store.SaveTimedEventAsync(workspaceId, shotId, body.ExpectedRevision, body.Event, ct));
+    });
+
+    [HttpDelete("workspaces/{workspaceId}/shots/{shotId}/events/{eventId}")]
+    public Task<ActionResult<SceneTimelineResponse>> DeleteEvent(string workspaceId, string shotId, string eventId, PrepareSceneVideoRequest body, CancellationToken ct) => Run(async () =>
+        SceneMemoryApiProjection.Timeline(await store.DeleteTimedEventAsync(workspaceId, shotId, eventId, body.ExpectedRevision, ct)));
 
     /// <summary>Read current or historical facts for an entity, including reverse possession relationships.</summary>
     [HttpPost("workspaces/{workspaceId}/query")]

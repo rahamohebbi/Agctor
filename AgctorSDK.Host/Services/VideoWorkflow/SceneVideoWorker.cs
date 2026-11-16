@@ -59,6 +59,7 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
         using var step = CancellationTokenSource.CreateLinkedTokenSource(ct);
         step.CancelAfter(TimeSpan.FromMinutes(9));
         using var heartbeat = CancellationTokenSource.CreateLinkedTokenSource(step.Token);
+        var claimedRevision = lease.Run.Revision;
         var renewal = RenewAsync();
         var director = "scene-director-" + lease.Token; var specialist = "scene-specialist-" + lease.Token;
         try
@@ -80,7 +81,12 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
             {
                 await Task.Delay(TimeSpan.FromSeconds(2), heartbeat.Token);
                 if (!await store.RenewAsync(lease, TimeSpan.FromSeconds(60), heartbeat.Token))
-                { await step.CancelAsync(); return; }
+                {
+                    // SaveAsync advances this lease's revision and releases it before
+                    // the actor reply arrives. That completed checkpoint is not lost work.
+                    if (lease.Run.Revision == claimedRevision) await step.CancelAsync();
+                    return;
+                }
             }
         }
     }

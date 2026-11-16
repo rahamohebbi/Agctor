@@ -53,6 +53,34 @@ public sealed class ScenePromptPipelineTests
     }
 
     [Fact]
+    public void Continuity_cannot_retarget_possession_to_counter_but_can_record_placement()
+    {
+        const string prompt = "The courier places the parcel on the counter.";
+        var workspace = Empty() with {
+            Entities = [new("courier", "Courier", "Character"), new("parcel", "Parcel", "Object"),
+                        new("counter", "Counter", "Object"), new("baker", "Baker", "Character")],
+            History = [new(1, "parcel", "held_by", "Courier", "initial", DateTimeOffset.UtcNow, "courier")]
+        };
+        var check = new ScenePromptContinuity(workspace);
+        var schema = OllamaScenePromptInterpreter.BuildSchema(["source_1"]);
+        check.AddSchema(schema, ["source_1"], new ScenePromptContext(workspace).AliasFor);
+        var choices = schema["properties"]!["factReviews"]!["properties"]!["fact_1"]!["oneOf"]!.AsArray();
+        Assert.DoesNotContain(choices, c => c!["properties"]!["decision"]!["const"]!.GetValue<string>() == "value");
+        var transfer = Assert.Single(choices.Where(c => c!["properties"]!["decision"]!["const"]!.GetValue<string>() == "target"));
+        Assert.Equal(new[] { "e1", "e4" }, transfer!["properties"]!["target"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>()));
+        var invalid = check.Attach("""
+            {"factReviews":{"fact_1":{"reason":"Parcel goes on counter.","decision":"target","target":"counter","evidence":"The courier places the parcel on the counter."}}}
+            """, Nothing());
+        Assert.Throws<ScenePromptValidationException>(() => ScenePromptReducer.Apply(workspace, Preview(workspace, prompt, invalid)));
+        var placed = check.Attach("""
+            {"factReviews":{"fact_1":{"reason":"Courier releases parcel.","decision":"remove","evidence":"The courier places the parcel on the counter."}}}
+            """, new([], [new("parcel", "on", "", "counter", false, prompt)], []));
+        var result = ScenePromptReducer.Apply(workspace, Preview(workspace, prompt, placed));
+        Assert.True(result.History.Last(f => f.EntityId == "parcel" && f.Property == "held_by").Removed);
+        Assert.Equal("counter", result.History.Last(f => f.EntityId == "parcel" && f.Property == "on").RelatedEntityId);
+    }
+
+    [Fact]
     public void Transport_schema_excludes_empty_changes_and_requires_a_known_source()
     {
         var schema = OllamaScenePromptInterpreter.BuildSchema(["source_1"]);
@@ -262,6 +290,34 @@ public sealed class ScenePromptPipelineTests
             ScenePromptPipeline.RunAsync(original, prompt, "another-model", new(), null, Interpret, default, checkpoint));
     }
 
+    [Fact]
+    public async Task Explicit_reset_discards_only_the_requested_preview_checkpoint()
+    {
+        var handler = new ResetHandler();
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(f => f.CreateClient(OllamaScenePromptInterpreter.ClientName)).Returns(() => new HttpClient(handler, false));
+        using var interpreter = new OllamaScenePromptInterpreter(factory.Object);
+        var workspace = Empty(); var prompt = new string('a', 300) + ". " + new string('b', 300) + ".";
+        await interpreter.InterpretAsync(workspace, prompt, "test", default);
+        var firstCalls = handler.Calls; Assert.True(firstCalls >= 5);
+        await interpreter.InterpretAsync(workspace, prompt, "test", default);
+        Assert.Equal(firstCalls, handler.Calls);
+        await interpreter.ResetAsync(workspace, prompt, "another-model", default);
+        await interpreter.InterpretAsync(workspace, prompt, "test", default);
+        Assert.Equal(firstCalls, handler.Calls);
+        await interpreter.ResetAsync(workspace, prompt, "test", default);
+        await interpreter.InterpretAsync(workspace, prompt, "test", default);
+        Assert.Equal(firstCalls * 2, handler.Calls); Assert.Empty(workspace.History);
+    }
+    private sealed class ResetHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { message = new {
+                content = "{\"entities\":[],\"changes\":[],\"events\":[],\"questions\":[],\"factReviews\":{}}" } }) });
+        }
+    }
     [Fact]
     public async Task Cancellation_stops_work_without_returning_a_partial_preview()
     {

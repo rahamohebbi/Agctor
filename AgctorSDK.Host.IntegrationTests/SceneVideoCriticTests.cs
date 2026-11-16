@@ -8,8 +8,8 @@ namespace AgctorSDK.Host.IntegrationTests;
 public sealed class SceneVideoCriticTests
 {
     [Theory]
-    [InlineData("passed", "[]", "passed")]
-    [InlineData("passed", "[\"Unexpected sword\"]", "concerns")]
+    [InlineData("passed", "[]", "uncertain")]
+    [InlineData("passed", "[\"Unexpected sword\"]", "uncertain")]
     [InlineData("uncertain", "[]", "uncertain")]
     [InlineData("invented", "[]", "unavailable")]
     [InlineData("passed", "null", "unavailable")]
@@ -49,6 +49,41 @@ public sealed class SceneVideoCriticTests
         var critic = new OllamaSceneVideoCritic(new Factory(new Handler(_ => throw new OperationCanceledException(cts.Token))));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => critic.CheckAsync("Story", new(["a", "b", "c"]), null, cts.Token));
     }
+    [Theory]
+    [InlineData("passed", "[]", "passed")]
+    [InlineData("concerns", "[\"Repeated entrance\"]", "concerns")]
+    [InlineData("concerns", "[\"Unexplained reversal\"]", "concerns")]
+    [InlineData("uncertain", "[]", "uncertain")]
+    [InlineData("not_applicable", "[]", "uncertain")]
+    public async Task Ordered_boundaries_check_action_progression_even_when_appearance_matches(string transition, string concerns, string expected)
+    {
+        var handler = new Handler(async request => {
+            var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync()).RootElement;
+            var messages = body.GetProperty("messages");
+            Assert.Contains("repeated entrances", messages[0].GetProperty("content").GetString());
+            Assert.Contains("Distinguish camera changes", messages[0].GetProperty("content").GetString());
+            Assert.Equal(new[] { "p1", "p2", "p3", "o1", "o2", "o3", "middle", "e1", "e2", "e3" },
+                messages[1].GetProperty("images").EnumerateArray().Select(x => x.GetString()));
+            var ending = new { status = "observed", position = "Inside", motion = "Toward bench", heldObjects = "Pot", completedActions = "Entrance complete", camera = "Behind" };
+            return new(HttpStatusCode.OK) { Content = JsonContent(new { status = "passed", summary = "Sampled movement reviewed", concerns = JsonSerializer.Deserialize<string[]>(concerns), transitionStatus = transition, ending }) };
+        });
+        var current = new SceneVideoEvidence(["start", "middle", "end"], PreviousExpected: true,
+            Opening: new(["o1", "o2", "o3"], [0, .75, 1.5]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]),
+            PreviousEnding: new(["p1", "p2", "p3"], [13.5, 14.25, 14.95]));
+        var result = await new OllamaSceneVideoCritic(new Factory(handler)).CheckAsync("Continue watering", current, null, default);
+        Assert.Equal(expected, result.Status); Assert.Equal("Entrance complete", result.Ending!.CompletedActions);
+        Assert.False(string.IsNullOrWhiteSpace(result.Model));
+    }
+    [Fact]
+    public async Task Invalid_sample_timing_cannot_claim_a_verified_transition()
+    {
+        var handler = new Handler(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+            Content = JsonContent(new { status = "passed", summary = "Looks consistent", concerns = Array.Empty<string>(), transitionStatus = "passed" }) }));
+        var result = await new OllamaSceneVideoCritic(new Factory(handler)).CheckAsync("Continue", new(["a", "b", "c"], "prior", true,
+            Opening: new(["a", "b", "c"], [0, 0, 1]), Ending: new(["a", "b", "c"], [2, 3, 4])), null, default);
+        Assert.Equal("uncertain", result.Status); Assert.Null(result.Ending);
+    }
+    private static StringContent JsonContent(object report) => new(JsonSerializer.Serialize(new { message = new { content = JsonSerializer.Serialize(report) } }));
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory { public HttpClient CreateClient(string name) => new(handler, false); }
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => send(request);

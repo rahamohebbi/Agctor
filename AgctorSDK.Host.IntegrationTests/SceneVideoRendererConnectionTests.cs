@@ -48,6 +48,7 @@ public sealed class SceneVideoRendererConnectionTests
         var renderer = new HttpSceneVideoRenderer(new Clients(new RecoveryConflict(code)), new Settings());
         var error = await Assert.ThrowsAsync<SceneRenderInterventionException>(() => renderer.GetAsync("run-1-1", default));
         Assert.Contains(expected, error.Message);
+        Assert.Equal(code, error.Code);
         Assert.DoesNotContain("private upstream detail", error.Message);
     }
     private sealed class RecoveryConflict(string code) : HttpMessageHandler
@@ -67,6 +68,19 @@ public sealed class SceneVideoRendererConnectionTests
     private sealed class Unavailable : HttpMessageHandler {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken ct)=>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) {Content=JsonContent.Create(new {code="comfyui_unavailable",error="private upstream details"})});
+    }
+    [Fact]
+    public async Task Explicit_reset_uses_same_key_and_dedicated_post_route() {
+        var renderer = new HttpSceneVideoRenderer(new Clients(new ResetRecorder()), new Settings());
+        Assert.Equal("reset", (await renderer.ResetAsync("run-1-1", default)).Status);
+    }
+    private sealed class ResetRecorder : HttpMessageHandler {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.EndsWith("/jobs/run-1-1/reset", request.RequestUri!.AbsoluteUri);
+            Assert.Equal("run-1-1", Assert.Single(request.Headers.GetValues("Idempotency-Key")));
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new SceneRenderJob("job", "reset")) });
+        }
     }
     private sealed class Recorder : HttpMessageHandler
     {

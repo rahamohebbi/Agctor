@@ -5,6 +5,8 @@ namespace AgctorSDK.Core.SceneMemory;
 /// <summary>Read-only scene retrieval. Entity updates remain on ISceneMemoryStore.</summary>
 public interface ISceneMemoryProvider : IRetrievalProvider<SceneMemoryQueryRequest, SceneQueryResult>
 {
+    System.Threading.Tasks.Task<SceneTimedEventResult> SearchEventsAsync(string workspaceId, SceneTimedEventQuery query,
+        System.Threading.CancellationToken cancellationToken = default);
 }
 
 /// <summary>

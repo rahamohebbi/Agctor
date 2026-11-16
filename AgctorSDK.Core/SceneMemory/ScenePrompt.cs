@@ -10,7 +10,7 @@ namespace AgctorSDK.Core.SceneMemory;
 /// <summary>Model output uses existing entity IDs or local references for newly discovered entities.</summary>
 public sealed record ScenePromptEntity(string Ref, string Name, string Kind);
 public sealed record ScenePromptChange(string Subject, string Property, string Value, string Target, bool Remove, string Evidence);
-public sealed record ScenePromptEvent(string Description, IReadOnlyList<string> Participants, string Evidence, string Mode = "occurred");
+public sealed record ScenePromptEvent(string Description, IReadOnlyList<string> Participants, string Evidence, string Mode = "occurred", SceneTimeRange? Timing = null, string Kind = "action", string? Dialogue = null);
 public sealed record ScenePromptExtraction(IReadOnlyList<ScenePromptEntity> Entities,
     IReadOnlyList<ScenePromptChange> Changes, IReadOnlyList<string> Questions, IReadOnlyList<ScenePromptEvent>? Events = null);
 public sealed record ScenePromptPreview(string Id, string Revision, string Prompt, string Label, string Model,
@@ -18,7 +18,7 @@ public sealed record ScenePromptPreview(string Id, string Revision, string Promp
 public sealed record ScenePromptRecord(string Id, string Prompt, string Label, string Model,
     long FirstSequence, long LastSequence, DateTimeOffset RecordedAt, string SceneLabel = "", double? DurationSeconds = null,
     IReadOnlyList<string>? IntroducedEntityIds = null, IReadOnlyList<SceneEntity>? DesignSnapshots = null,
-    IReadOnlyList<string>? KnownEntityIds = null);
+    IReadOnlyList<string>? KnownEntityIds = null, IReadOnlyList<SceneTimedEvent>? TimedEvents = null);
 
 /// <summary>Shared validation and state reduction for preview and commit. No model output writes directly to storage.</summary>
 public static class ScenePromptReducer
@@ -250,6 +250,7 @@ public static class ScenePromptReducer
                     sourceChange.Property, sourceChange.Value, sourceChange.Target, sourceChange.Evidence) });
             }
         }
+        var timedEvents = new List<SceneTimedEvent>();
         foreach (var sceneEvent in plan.Events ?? Array.Empty<ScenePromptEvent>())
         {
             if (sceneEvent == null || string.IsNullOrWhiteSpace(sceneEvent.Description) || sceneEvent.Description.Length > 1000 ||
@@ -262,6 +263,15 @@ public static class ScenePromptReducer
                     "and mode occurred, ongoing, intended, hypothetical or negated. Fix this event without dropping its meaning or inventing evidence.");
             var participants = sceneEvent.Participants.Select(reference => reference != null && references.TryGetValue(reference, out var entity)
                 ? entity.Id : throw new ArgumentException($"Event '{sceneEvent.Description}' refers to unknown participant '{reference}'. Use a declared entity reference or existing entity ID.")).Distinct().ToArray();
+            if (sceneEvent.Timing != null) {
+                if (!SceneTimingEvidence.Supports(sceneEvent.Evidence, sceneEvent.Timing))
+                    throw new ArgumentException("Event timing needs an explicit matching range in its evidence (for example 00:04–00:07 or 4–7 seconds). Leave unscheduled events untimed.");
+                // Model interpretation remains a proposed plan, never a confirmed media observation.
+                if (sceneEvent.Mode is "hypothetical" or "negated")
+                    throw new ArgumentException("Hypothetical or negated events cannot become scheduled actions.");
+                timedEvents.Add(new(preview.Id + "-event-" + timedEvents.Count, sceneEvent.Kind, sceneEvent.Description,
+                    sceneEvent.Timing, participants, Dialogue: sceneEvent.Dialogue));
+            }
             history.Add(new SceneFact(history.Count + 1L, participants[0], "event", sceneEvent.Description, sceneEvent.Evidence,
                 DateTimeOffset.UtcNow, PromptId: preview.Id, IsEvent: true, ParticipantIds: participants, EventMode: sceneEvent.Mode));
         }
@@ -276,7 +286,8 @@ public static class ScenePromptReducer
         var record = new ScenePromptRecord(preview.Id, preview.Prompt, preview.Label, preview.Model,
             workspace.History.Count + 1L, history.Count, DateTimeOffset.UtcNow, preview.SceneLabel,
             preview.DurationSeconds, entities.Where(e => !originalEntityIds.Contains(e.Id)).Select(e => e.Id).ToArray(),
-            SceneShotDesigns.Capture(entities));
+            SceneShotDesigns.Capture(entities), TimedEvents: timedEvents.ToArray());
+        foreach (var item in timedEvents) SceneTimedEvents.Validate(workspace with { Entities = entities.ToArray() }, record, item);
         return workspace with { Entities = entities.ToArray(), History = history.ToArray(),
             Prompts = (workspace.Prompts ?? Array.Empty<ScenePromptRecord>()).Append(record).ToArray() };
     }

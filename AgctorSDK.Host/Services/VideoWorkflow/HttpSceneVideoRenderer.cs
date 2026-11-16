@@ -11,11 +11,12 @@ public sealed class HttpSceneVideoRenderer(IHttpClientFactory clients, IOptionsM
     public Task<SceneRenderJob> EnsureAsync(string key, SceneRenderRequest request, CancellationToken ct) =>
         SendAsync(HttpMethod.Put, key, request, ct);
     public Task<SceneRenderJob> GetAsync(string key, CancellationToken ct) => SendAsync(HttpMethod.Get, key, null, ct);
+    public Task<SceneRenderJob> ResetAsync(string key, CancellationToken ct) => SendAsync(HttpMethod.Post, key, null, ct);
     private async Task<SceneRenderJob> SendAsync(HttpMethod method, string key, SceneRenderRequest? body, CancellationToken ct)
     {
         if (!IsConfigured) throw new InvalidOperationException("No video renderer is connected. Configure Agctor:SceneVideo:RendererBaseUrl.");
         var settings = options.CurrentValue;
-        using var request = new HttpRequestMessage(method, settings.RendererBaseUrl!.TrimEnd('/') + "/jobs/" + Uri.EscapeDataString(key));
+        using var request = new HttpRequestMessage(method, settings.RendererBaseUrl!.TrimEnd('/') + "/jobs/" + Uri.EscapeDataString(key) + (method == HttpMethod.Post ? "/reset" : ""));
         if (body != null) request.Content = JsonContent.Create(body);
         request.Headers.Add("Idempotency-Key", key);
         using var http = clients.CreateClient("SceneVideoRenderer");
@@ -61,11 +62,12 @@ public sealed class HttpSceneVideoRenderer(IHttpClientFactory clients, IOptionsM
                 "recovery_not_found" => "The saved render is not available in the configured Cynelo studio. Check the studio connection before recovery.",
                 "too_many_references" => "This shot has more than eight designs with reference images. Cynelo keeps at least one image per design. Reduce the linked designs, then start a new sequence.",
                 _ => "Cynelo needs attention before this render can continue. Inspect the shot and rendering job in Cynelo, then retry." };
-            throw new SceneRenderInterventionException(message);
+            throw new SceneRenderInterventionException(message, code);
         }
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<SceneRenderJob>(cancellationToken: ct)
             ?? throw new ArgumentException("The video renderer returned an empty job.");
+        if (method == HttpMethod.Post && result.Status == "reset" && !string.IsNullOrWhiteSpace(result.Id)) return result;
         if (string.IsNullOrWhiteSpace(result.Id) || result.Status is not ("queued" or "running" or "completed" or "failed"))
             throw new ArgumentException("The renderer returned an unsupported job status.");
         if (result.Status == "completed" && !ValidArtifactUrl(result.VideoUrl))

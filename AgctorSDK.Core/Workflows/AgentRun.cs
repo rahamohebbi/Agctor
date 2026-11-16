@@ -32,7 +32,8 @@ public sealed class AgentRun
     public bool IsTerminal => Status is "completed" or "cancelled" or "failed";
 }
 
-public sealed record AgentChoice(string Id, string Label);
+public sealed record AgentChoice(string Id, string Label,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] bool? Disabled = null);
 public sealed record AgentQuestion(string Id, string Kind, string Prompt, IReadOnlyList<AgentChoice> Choices,
     bool AllowFreeText = true);
 public sealed record AgentReply(string QuestionId, string? Choice, string? Text);

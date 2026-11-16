@@ -25,6 +25,8 @@ public sealed partial class SqliteSceneMemoryStore : ISceneMemoryStore
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
         using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TABLE IF NOT EXISTS scene_boundaries (workspace_id TEXT NOT NULL, shot_id TEXT NOT NULL, render_key TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(workspace_id, shot_id, render_key))";
+        command.ExecuteNonQuery();
         command.CommandText = "CREATE TABLE IF NOT EXISTS scene_workspaces (id TEXT PRIMARY KEY, document TEXT NOT NULL)";
         command.ExecuteNonQuery();
         command.CommandText = """
@@ -172,6 +174,9 @@ public sealed partial class SqliteSceneMemoryStore : ISceneMemoryStore
             var prompts = (workspace.Prompts ?? Array.Empty<ScenePromptRecord>()).ToArray();
             var index = Array.FindIndex(prompts, p => p.Id == promptId);
             if (index < 0) throw new KeyNotFoundException("Shot not found in this workspace.");
+            var resolvedDuration = SceneShotDuration.Resolve(durationSeconds, prompts[index].Prompt);
+            if (resolvedDuration.HasValue && prompts[index].TimedEvents?.Any(e => e.Status == "planned" && e.Timing.EndSeconds > (decimal)resolvedDuration.Value) == true)
+                throw new ArgumentException("This duration would cut off a planned timed event. Adjust its timing first.");
             prompts[index] = prompts[index] with { SceneLabel = sceneLabel, Label = shotLabel, DurationSeconds = durationSeconds };
             return workspace with { Prompts = prompts };
         }, cancellationToken);
@@ -220,7 +225,10 @@ public sealed partial class SqliteSceneMemoryStore : ISceneMemoryStore
         if (events.Length > 0)
             answer = (facts.Length == 0 ? $"{matches[0].Name}: no current properties recorded." : answer) +
                 "\nEvents: " + string.Join("; ", events.Select(e => $"[{e.EventMode}] {e.Value}"));
-        return new(workspaceId, sequence, facts.Length == 0 && events.Length == 0 ? "no_facts" : "found", answer, matches, facts, events);
+        var timed = SceneTimedEvents.Query(workspace, new(EntityId: matches[0].Id, Limit: 200)).Matches
+            .Where(m => workspace.Prompts!.Single(p => p.Id == m.ShotId).LastSequence <= sequence).ToArray();
+        if (timed.Length > 0) answer += $"\nTimed events: {timed.Length} returned. Use SearchEvents for time filters and paging.";
+        return new(workspaceId, sequence, facts.Length == 0 && events.Length == 0 && timed.Length == 0 ? "no_facts" : "found", answer, matches, facts, events, timed);
     }
 
     private async Task<SceneWorkspace> ChangeAsync(string id, Func<SceneWorkspace, SceneWorkspace> change, CancellationToken ct)

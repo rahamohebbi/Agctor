@@ -27,6 +27,7 @@ public sealed class SceneVideoState
     public string? FinalVideoUrl { get; set; }
     public SceneWorkspace? ReviewWorkspace { get; set; }
     public int ReviewIndex { get; set; }
+    public ScenePlanProblem? PlanProblem { get; set; }
     public IReadOnlyList<SceneEntity> PlannedEntities { get; set; } = [];
     public bool AudioEnabled { get; set; }
     public bool? PreviousContinuousMusic { get; set; }
@@ -36,6 +37,13 @@ public sealed class SceneVideoState
     public string? AudioChoice { get; set; }
     public bool SpeechReviewEnabled { get; set; }
     public string? NarrationReturnPhase { get; set; }
+    public bool RestoreOriginalNarration { get; set; }
+    public string BackgroundMusic { get; set; } = "preserve";
+    public string MusicProfile { get; set; } = "close";
+    public SceneAudioMix? Mix { get; set; }
+    public bool? MusicContinuity { get; set; }
+    public string? BackgroundReturnPhase { get; set; }
+    public string NarrationModel { get; set; } = "kokoro";
     public string ExpectedSpeechLanguage { get; set; } = "auto";
 }
 public sealed class SceneVideoClip
@@ -60,6 +68,10 @@ public sealed class SceneVideoClip
     public SceneRenderProgress? Progress { get; set; }
     public ScenePlanDetails? PlanDetails { get; set; }
     public SceneContinuityReport? Continuity { get; set; }
+    public SceneBoundaryObservation? Boundary { get; set; }
+    public bool BoundaryBypass { get; set; }
+    public string? TransitionCorrection { get; set; }
+    public int VisualRetries { get; set; }
     public bool Accepted { get; set; }
     public SceneSpeechReport? Speech { get; set; }
     public string? SpeechInstruction { get; set; }
@@ -92,6 +104,8 @@ public interface ISceneVideoRenderer
     bool IsConfigured { get; }
     Task<SceneRenderJob> EnsureAsync(string key, SceneRenderRequest request, CancellationToken ct);
     Task<SceneRenderJob> GetAsync(string key, CancellationToken ct);
+    Task<SceneRenderJob> ResetAsync(string key, CancellationToken ct) =>
+        throw new SceneRenderInterventionException("The renderer needs an update before this clip can be restarted.", "reset_unsupported");
 }
 public sealed record SceneRenderRequest(string RunId, string WorkspaceId, string ShotId, int ClipNumber,
     int ClipCount, int DurationSeconds, string Prompt, string? FirstFrameUrl,
@@ -99,7 +113,8 @@ public sealed record SceneRenderRequest(string RunId, string WorkspaceId, string
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? StoryMode = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ProjectId = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ReplacesJobKey = null,
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SpeechInstruction = null);
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SpeechInstruction = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? BoundaryInstruction = null);
 public sealed record SceneRenderJob(string Id, string Status, string? VideoUrl = null, string? LastFrameUrl = null,
     string? Error = null, SceneRenderReferences? References = null, SceneRenderProgress? Progress = null);
 public sealed record SceneRenderReferences(int Selected, int Available, int Designs);
@@ -113,6 +128,8 @@ public sealed class SceneVideoOptions
     public int PollSeconds { get; set; } = 5;
     public int WaitingPollSeconds { get; set; } = 30;
     public int RenderTimeoutMinutes { get; set; } = 45;
+    /// <summary>Must finish and checkpoint before the specialist's eight-minute mailbox timeout.</summary>
+    public double PlanCheckTimeoutSeconds { get; set; } = 360;
 }
 
 /// <summary>Idempotent story provisioning in the configured rendering studio; no media generation.</summary>
@@ -126,8 +143,16 @@ public sealed record SceneVideoStory(string WorkspaceId, string StoryId, string 
 public sealed record ScenePlanDetails(IReadOnlyList<ScenePlanEntity> Participants, IReadOnlyList<ScenePlanReference> References);
 public sealed record ScenePlanEntity(string Name, string Kind);
 public sealed record ScenePlanReference(string Name, string DesignId, IReadOnlyList<string> ImageIds, string? PortraitId);
-public sealed record SceneContinuityReport(string Status, string Summary, IReadOnlyList<string> Concerns);
-public sealed record SceneVideoEvidence(IReadOnlyList<string> Frames, string? PreviousFrame = null, bool PreviousExpected = false);
+public sealed record SceneContinuityReport(string Status, string Summary, IReadOnlyList<string> Concerns,
+    SceneBoundaryState? Ending = null, string? TransitionStatus = null, string? Model = null);
+public sealed record SceneBoundaryFrames(IReadOnlyList<string> Frames, IReadOnlyList<double> Seconds)
+{
+    public bool Valid() => Frames is { Count: 3 } && Seconds is { Count: 3 } &&
+        Frames.All(f => !string.IsNullOrWhiteSpace(f) && f.Length <= 8_000_000) &&
+        Seconds.All(t => double.IsFinite(t) && t >= 0) && Seconds[0] < Seconds[1] && Seconds[1] < Seconds[2];
+}
+public sealed record SceneVideoEvidence(IReadOnlyList<string> Frames, string? PreviousFrame = null, bool PreviousExpected = false,
+    SceneBoundaryFrames? Opening = null, SceneBoundaryFrames? Ending = null, SceneBoundaryFrames? PreviousEnding = null, double? DurationSeconds = null);
 public sealed record SceneVideoProject(string ProjectId, bool? ContinuousMusic = null);
 public sealed record SceneVideoDelivery(string VideoUrl);
 /// <summary>Idempotent studio operations, invoked only by leased specialist actors.</summary>
@@ -139,12 +164,22 @@ public interface ISceneVideoProduction
     Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
     Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Clip audio production is not configured.");
     Task<SceneVideoDelivery> FinishAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, string choice, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
+    Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(false);
+    Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(["kokoro"]);
     Task<SceneSpeechReport> InspectSpeechAsync(string key, CancellationToken ct) => throw new NotSupportedException("Speech inspection is not configured.");
 }
-public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string? Separator = null, SceneNarrationPlan? Narration = null, IReadOnlyList<SceneAudioApproval>? Approved = null);
+public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string? Separator = null, SceneNarrationPlan? Narration = null, IReadOnlyList<SceneAudioApproval>? Approved = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? BackgroundMusic = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] SceneAudioMix? Mix = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? MusicProfile = null);
+public sealed record SceneAudioMix(double SpeechDb = 0, double MusicDb = 0);
 public sealed record SceneAudioApproval(int ClipNumber, string Version);
 public sealed record SceneNarrationPlan(string Model, string Voice, string Language, IReadOnlyList<string> Scripts);
-public sealed record SceneSpeechReport(string Status, string? Language, double Confidence, string Transcript, string Summary);
+public sealed record SceneSpeechReport(string Status, string? Language, double Confidence, string Transcript, string Summary,
+    IReadOnlyList<SceneSpeechIssue>? Issues = null);
+// UTF-16 offsets into the original transcript. Zero length denotes missing expected words.
+public sealed record SceneSpeechIssue(int Start, int Length, string Reason);
+public sealed record SceneSpeechUnderstanding(bool Understood, IReadOnlyList<SceneSpeechIssue> Issues, bool Available = true);
 public sealed record SceneAudioDraft(bool ImprovedAvailable, string Summary, System.Text.Json.JsonElement Evidence, string? PreviewVersion = null);
 public interface ISceneAudioEngineer
 {
@@ -152,6 +187,8 @@ public interface ISceneAudioEngineer
     Task<SceneAudioPlan> PlanAsync(string prompt, string model, CancellationToken ct);
     Task<SceneContinuityReport> ReviewAsync(string prompt, string model, SceneAudioDraft draft, CancellationToken ct);
     Task<bool> SpeechUnderstoodAsync(string prompt, string model, SceneSpeechReport speech, CancellationToken ct) => Task.FromResult(false);
+    async Task<SceneSpeechUnderstanding> ReviewSpeechAsync(string prompt, string model, SceneSpeechReport speech, CancellationToken ct) =>
+        new(await SpeechUnderstoodAsync(prompt, model, speech, ct), []);
     Task<string> SpeechLanguageAsync(string prompt, string model, CancellationToken ct) => Task.FromResult("unknown");
 }
 public interface ISceneVideoCritic

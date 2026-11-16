@@ -12,13 +12,23 @@ public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOption
     public Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct) =>
         Send<SceneVideoDelivery>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/finish", new { projectId, keys }, ct);
     public Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) =>
-        Send<SceneAudioDraft>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/audio", new { projectId, keys, continuousMusic = plan.ContinuousMusic, separator = plan.Separator, narration = plan.Narration, approved = plan.Approved }, ct);
+        Send<SceneAudioDraft>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/audio", new { projectId, keys, continuousMusic = plan.ContinuousMusic, separator = plan.Separator, narration = plan.Narration, approved = plan.Approved, backgroundMusic = plan.BackgroundMusic, mix = plan.Mix, musicProfile = plan.MusicProfile }, ct);
     public Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) =>
-        Send<SceneAudioDraft>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/audio", new { projectId, keys, continuousMusic = plan.ContinuousMusic, separator = plan.Separator, narration = plan.Narration, approved = plan.Approved, preview = true }, ct);
+        Send<SceneAudioDraft>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/audio", new { projectId, keys, continuousMusic = plan.ContinuousMusic, separator = plan.Separator, narration = plan.Narration, approved = plan.Approved, backgroundMusic = plan.BackgroundMusic, mix = plan.Mix, musicProfile = plan.MusicProfile, preview = true }, ct);
     public Task<SceneSpeechReport> InspectSpeechAsync(string key, CancellationToken ct) =>
         Send<SceneSpeechReport>(HttpMethod.Get, $"jobs/{Uri.EscapeDataString(key)}/speech", null, ct);
     public Task<SceneVideoDelivery> FinishAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, string choice, CancellationToken ct) =>
         Send<SceneVideoDelivery>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/finish", new { projectId, keys, audioChoice = choice }, ct);
+    public async Task<bool> MatchingMusicAvailableAsync(CancellationToken ct)
+    {
+        try { return await Send<bool>(HttpMethod.Get, "matching-music-available", null, ct); }
+        catch (HttpRequestException) { return false; }
+    }
+    public async Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct)
+    {
+        try { return await Send<string[]>(HttpMethod.Get, "narration-models", null, ct); }
+        catch (HttpRequestException) { return ["kokoro"]; } // Older studios still offer the local voice.
+    }
     private async Task<T> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         using var http = clients.CreateClient("SceneVideoProduction");

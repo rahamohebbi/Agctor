@@ -48,7 +48,7 @@ public sealed record SceneTimelineResponse(string WorkspaceId, string Revision,
 public sealed record SceneTimelineShot(string Id, int Order, string SceneName, string ShotName, string Prompt,
     double? DurationSeconds, long FirstSequence, long LastSequence, IReadOnlyList<string> IntroducedEntityIds,
     IReadOnlyList<SceneTimelineDelta> Changes, IReadOnlyList<SceneFact> Events, IReadOnlyList<SceneFact> StateAfter, SceneShotDesignReview Designs,
-    IReadOnlyList<SceneEntity>? Participants = null);
+    IReadOnlyList<SceneEntity>? Participants = null, IReadOnlyList<SceneTimedEvent>? TimedEvents = null);
 
 public sealed record SceneTimelineDelta(string EntityId, string Property, SceneFact? Before, SceneFact? After);
 
@@ -72,3 +72,5 @@ public sealed record SimulateSceneVideoRequest(
 public sealed record SceneVideoPromptSimulationResponse(SceneVideoPromptResponse Handoff,
     string Formatter, int ExistingClips, int ClipSlot, int TargetSeconds, int ModelSeconds,
     string Workflow, string[] ReferenceLabels, string ContinuationPrompt, string ModelPrompt, string[] Warnings);
+
+public sealed record SaveSceneTimedEventRequest([Required, StringLength(128)] string ExpectedRevision, [Required] SceneTimedEvent Event);

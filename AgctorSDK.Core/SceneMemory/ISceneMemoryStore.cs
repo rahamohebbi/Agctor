@@ -36,6 +36,10 @@ public interface ISceneMemoryStore
     Task<SceneWorkspace> PinShotDesignsAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default);
     /// <summary>Deletes one applied shot and its facts atomically, preserving entities and other shots.</summary>
     Task<SceneWorkspace> DeleteShotAsync(string workspaceId, string shotId, string expectedRevision, CancellationToken cancellationToken = default);
+    Task<SceneWorkspace> SaveTimedEventAsync(string workspaceId, string shotId, string expectedRevision, SceneTimedEvent item, CancellationToken cancellationToken = default);
+    Task<SceneWorkspace> DeleteTimedEventAsync(string workspaceId, string shotId, string eventId, string expectedRevision, CancellationToken cancellationToken = default);
+    Task SaveBoundaryAsync(string workspaceId, SceneBoundaryObservation observation, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<SceneBoundaryObservation>> ReadBoundariesAsync(string workspaceId, string? shotId = null, string? renderKey = null, CancellationToken cancellationToken = default);
     /// <summary>Retrieves current or historical facts by entity ID or exact name mentioned in a question.</summary>
     Task<SceneQueryResult> QueryAsync(string workspaceId, SceneQuery query, CancellationToken cancellationToken = default);
 }
@@ -54,7 +58,7 @@ public sealed record SceneFact(long Sequence, string EntityId, string Property, 
 public sealed record SceneQuery(string? EntityId = null, string? Question = null, long? AtSequence = null);
 /// <summary>Grounded retrieval result, including the source changes for each returned property.</summary>
 public sealed record SceneQueryResult(string WorkspaceId, long AtSequence, string Status, string Answer,
-    IReadOnlyList<SceneEntity> Matches, IReadOnlyList<SceneFact> Facts, IReadOnlyList<SceneFact>? Events = null);
+    IReadOnlyList<SceneEntity> Matches, IReadOnlyList<SceneFact> Facts, IReadOnlyList<SceneFact>? Events = null, IReadOnlyList<SceneTimedEventMatch>? TimedEvents = null);
 
 /// <summary>Shared tool identity, so agents need not reference the tool implementation assembly.</summary>
 public static class SceneMemoryTool

@@ -167,7 +167,7 @@ public sealed class SqliteAgentRunStore : IAgentRunStore
         var run = Read(db, tx, id) ?? throw new KeyNotFoundException("Run not found.");
         if (run.Revision != revision || run.Status != "waiting" || run.Question?.Id != reply.QuestionId)
             throw new InvalidOperationException("This question has changed or was already answered. Refresh the run.");
-        if ((!string.IsNullOrEmpty(reply.Choice) && !run.Question.Choices.Any(c => c.Id == reply.Choice)) ||
+        if ((!string.IsNullOrEmpty(reply.Choice) && !run.Question.Choices.Any(c => c.Id == reply.Choice && c.Disabled != true)) ||
             (string.IsNullOrWhiteSpace(reply.Choice) && string.IsNullOrWhiteSpace(reply.Text)) || reply.Text?.Length > 4000 ||
             (!run.Question.AllowFreeText && !string.IsNullOrWhiteSpace(reply.Text)))
             throw new ArgumentException("Choose an offered answer or enter up to 4,000 characters.");

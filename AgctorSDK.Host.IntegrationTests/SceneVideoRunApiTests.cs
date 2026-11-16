@@ -47,6 +47,9 @@ public sealed class SceneVideoRunApiTests
         run = (await http.GetFromJsonAsync<AgentRun>($"/api/agent-runs/{run.Id}"))!;
         Assert.Equal("completed", run.Status);
         Assert.Equal(2, SceneVideoLoop.State(run).Clips.Count(c => c.VideoUrl != null));
+        var observations = await http.GetFromJsonAsync<SceneBoundaryObservation[]>($"/api/scene-memory/v1/workspaces/{run.WorkspaceId}/boundaries");
+        Assert.Equal(2, observations!.Length);
+        Assert.Single((await http.GetFromJsonAsync<SceneBoundaryObservation[]>($"/api/scene-memory/v1/workspaces/{run.WorkspaceId}/boundaries?shotId={run.Id}-1&renderKey={run.Id}-1-1"))!);
         var events = (await http.GetFromJsonAsync<AgentRunEvent[]>($"/api/agent-runs/{run.Id}/events"))!;
         Assert.Contains(events, e => e.Kind == "completed");
         Assert.Empty((await http.GetFromJsonAsync<AgentRunEvent[]>($"/api/agent-runs/{run.Id}/events?after={events.Last().Sequence}"))!);
@@ -168,7 +171,7 @@ public sealed class SceneVideoRunApiTests
 
     private sealed class Production : ISceneVideoProduction {
         public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct, string? projectId = null) => Task.FromResult(new SceneVideoProject(projectId ?? "project"));
-        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["a", "b", "c"]));
+        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["a", "b", "c"], Opening: new(["a", "b", "c"], [0, .5, 1]), Ending: new(["a", "b", "c"], [8.5, 9.25, 9.95])));
         public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Clip audio ready", JsonSerializer.SerializeToElement(new { }), "version-" + keys.Count));
         public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Audio ready", JsonSerializer.SerializeToElement(new { })));
         public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) => FinishAsync(run, project, keys, ct);
@@ -179,6 +182,6 @@ public sealed class SceneVideoRunApiTests
         public Task<SceneContinuityReport> ReviewAsync(string prompt, string model, SceneAudioDraft draft, CancellationToken ct) => Task.FromResult(new SceneContinuityReport("passed", "Measured levels checked", []));
     }
     private sealed class Critic : ISceneVideoCritic {
-        public Task<SceneContinuityReport> CheckAsync(string prompt, SceneVideoEvidence current, SceneVideoEvidence? previous, CancellationToken ct) => Task.FromResult(new SceneContinuityReport("passed", "Sampled frames match", []));
+        public Task<SceneContinuityReport> CheckAsync(string prompt, SceneVideoEvidence current, SceneVideoEvidence? previous, CancellationToken ct) => Task.FromResult(new SceneContinuityReport("passed", "Sampled frames match", [], new("observed", "In clearing", "Forward", "None", "Entered clearing", "Wide"), previous == null ? "not_applicable" : "passed", "fake-vision"));
     }
 }

@@ -20,16 +20,23 @@ internal sealed class ScenePromptContinuity(SceneWorkspace workspace)
         }))!;
     }
 
-    internal void AddSchema(JsonNode schema, IEnumerable<string> sourceIds)
+    internal void AddSchema(JsonNode schema, IEnumerable<string> sourceIds, Func<string, string>? reference = null)
     {
         schema["properties"]!["entities"]!["maxItems"] = 0;
         schema["properties"]!["events"]!["maxItems"] = 0;
         var fields = new JsonObject();
-        foreach (var key in _facts.Keys)
+        foreach (var (key, fact) in _facts)
         {
+            // A review changes the value of the SAME property. A table cannot become a
+            // holder; changing held_by to on requires removing the old fact and adding on.
+            var possession = fact.Property == "held_by";
+            var subject = workspace.Entities.First(e => e.Id == fact.EntityId);
+            var targets = workspace.Entities.Where(e => !possession || subject.Kind == "Object" && e.Kind == "Character")
+                .Select(e => reference?.Invoke(e.Id) ?? e.Id).ToArray();
             var alternatives = new JsonArray();
             foreach (var decision in new[] { "keep", "remove", "value", "target" })
             {
+                if (possession && decision == "value" || decision == "target" && targets.Length == 0) continue;
                 // Reason first: the model must consider the evidence before choosing an operation.
                 var properties = new JsonObject {
                     ["reason"] = new JsonObject { ["type"] = "string", ["minLength"] = 1, ["maxLength"] = 240 },
@@ -44,6 +51,7 @@ internal sealed class ScenePromptContinuity(SceneWorkspace workspace)
                 if (decision is "value" or "target")
                 {
                     properties[decision] = new JsonObject { ["type"] = "string", ["minLength"] = 1 };
+                    if (decision == "target") properties[decision]!["enum"] = JsonSerializer.SerializeToNode(targets);
                     required.Add(decision);
                 }
                 alternatives.Add(new JsonObject { ["type"] = "object", ["additionalProperties"] = false,

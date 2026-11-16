@@ -11,6 +11,7 @@ namespace AgctorSDK.Host.Services;
 public interface IScenePromptInterpreter
 {
     Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace workspace, string prompt, string model, CancellationToken ct);
+    Task ResetAsync(SceneWorkspace workspace, string prompt, string model, CancellationToken ct) => Task.CompletedTask;
     Task<ScenePromptExtraction> InterpretAsync(SceneWorkspace workspace, string prompt, string model,
         IProgress<ScenePromptProgress>? progress, CancellationToken ct) => InterpretAsync(workspace, prompt, model, ct);
 }
@@ -48,7 +49,12 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             "subject":{"type":"string"},"property":{"type":"string"},"value":{"type":"string"},"target":{"type":"string"},"remove":{"type":"boolean"},"evidence":{"type":"string"}}}},
           "events":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["description","participants","evidence","mode"],"properties":{
             "description":{"type":"string"},"participants":{"type":"array","items":{"type":"string"}},"evidence":{"type":"string"},
-            "mode":{"type":"string","enum":["occurred","ongoing","intended","hypothetical","negated"]}}}},
+            "mode":{"type":"string","enum":["occurred","ongoing","intended","hypothetical","negated"]},
+            "kind":{"type":"string","enum":["action","dialogue","sound","music","camera"]},
+            "dialogue":{"type":"string"},
+            "timing":{"type":"object","additionalProperties":false,"required":["start","end","rateNumerator","rateDenominator"],"properties":{
+              "start":{"type":"integer","minimum":0},"end":{"type":"integer","minimum":1},
+              "rateNumerator":{"type":"integer","const":1000},"rateDenominator":{"type":"integer","const":1}}}}}},
           "questions":{"type":"array","items":{"type":"string"}}
         }}
         """).RootElement.Clone();
@@ -99,8 +105,23 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             entry.Gate.Release();
             // Refresh expiry after a long attempt. This is scratch work, never a write to the scene store.
             lock (_checkpointLock)
-                _checkpoints.Set(key, entry, new MemoryCacheEntryOptions { Size = 1, SlidingExpiration = TimeSpan.FromMinutes(20) });
+                if (_checkpoints.TryGetValue(key, out CheckpointEntry? current) && ReferenceEquals(current, entry))
+                    _checkpoints.Set(key, entry, new MemoryCacheEntryOptions { Size = 1, SlidingExpiration = TimeSpan.FromMinutes(20) });
         }
+    }
+
+    public async Task ResetAsync(SceneWorkspace workspace, string prompt, string model, CancellationToken ct)
+    {
+        var key = ScenePromptCheckpoint.Key(workspace, prompt, model);
+        CheckpointEntry? entry;
+        lock (_checkpointLock) _checkpoints.TryGetValue(key, out entry);
+        if (entry == null) return;
+        await entry.Gate.WaitAsync(ct);
+        try {
+            lock (_checkpointLock)
+                if (_checkpoints.TryGetValue(key, out CheckpointEntry? current) && ReferenceEquals(current, entry))
+                    _checkpoints.Remove(key);
+        } finally { entry.Gate.Release(); }
     }
 
     public void Dispose() => _checkpoints.Dispose();
@@ -175,6 +196,12 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             appearance, object condition/power/quantity, location weather/accessibility/lighting, audio playback etc.
             Do not invent consequences for other people/occupants. Only clear states whose ending is supported.
 
+            For an explicitly scheduled event (for example 00:04–00:07), add timing with start=4000,
+            end=7000, rateNumerator=1000, rateDenominator=1, measured from the shot start.
+            Omit timing when the prompt does not explicitly give BOTH event boundaries. Never infer or invent timing
+            from ordering, a total clip duration, or how long an action usually takes. Timing evidence must include
+            the explicit time range. Add kind action/dialogue/sound/music/camera; dialogue preserves exact spoken words.
+            All extracted timing is planned, never verified against generated footage.
             Events describe verbs with all participant refs, exact evidence, mode:
             occurred/ongoing/intended/hypothetical/negated. Speech/attempts/struggles can be events.
             Completed one-off actions belong in events, not a persistent activity, unless continuing activity is stated.
@@ -212,6 +239,10 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
             sticks_feet_to relation contradicts an explicit escape; remove the actual recorded fact by its factId.
             Keep unaffected facts; absence from the new prompt alone is NOT a reason to remove a fact.
             Return JSON with entities, changes, events, questions, factReviews. Questions only for genuine ambiguity.
+            A target/value decision changes ONLY the existing property's payload; it never renames that property.
+            If a carried parcel is put on a counter, review its held_by fact as REMOVE, then add parcel on counter
+            in changes if that placement is missing. NEVER change held_by's target to a counter or other prop.
+            A transfer to another character may change held_by's target to that character.
             Use changes ONLY for missing new properties, never to bypass reviewing an existing fact.
             Each change uses subject=known entity ID, property=exact snake_case key, and evidence=an evidenceSources ID.
             Choose exactly ONE payload: value=nonempty text, target=known entity ID, or remove=true.
@@ -229,7 +260,7 @@ public sealed class OllamaScenePromptInterpreter(IHttpClientFactory clients, ILo
         var continuityReview = continuity ? new ScenePromptContinuity(workspace) : null;
         if (continuity)
         {
-            continuityReview!.AddSchema(schema, sources.Entries.Keys);
+            continuityReview!.AddSchema(schema, sources.Entries.Keys, compactContext.AliasFor);
             var document = JsonNode.Parse(context)!;
             document["currentFacts"] = continuityReview.DescribeFacts();
             context = document.ToJsonString(Json);

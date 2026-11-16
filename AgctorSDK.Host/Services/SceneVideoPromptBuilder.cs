@@ -41,6 +41,7 @@ public static class SceneVideoPromptBuilder
         var relevant = changes.Select(f => f.EntityId).Concat(shot.IntroducedEntityIds ?? [])
             .Concat(changes.SelectMany(f => f.ParticipantIds ?? []))
             .Concat(changes.Where(f => f.RelatedEntityId != null).Select(f => f.RelatedEntityId!)).ToHashSet(StringComparer.Ordinal);
+        relevant.UnionWith((shot.TimedEvents ?? []).Where(e => e.Status == "planned").SelectMany(e => e.EntityIds));
         foreach (var entity in shotEntities)
             if (Mentioned(entity)) relevant.Add(entity.Id);
         // An explicit continuation with no new participants can reuse the previous
@@ -131,6 +132,18 @@ public static class SceneVideoPromptBuilder
         string Fact(SceneFact f) => $"{Name(f.EntityId)} — {f.Property.Replace('_', ' ')}: {(f.RelatedEntityId is null ? f.Value : Name(f.RelatedEntityId))}";
         var text = new StringBuilder();
         text.AppendLine("SHOT ACTION").AppendLine(shot.Prompt.Trim()).AppendLine();
+        var plannedEvents = (shot.TimedEvents ?? []).Where(e => e.Status == "planned").OrderBy(e => e.Timing.StartSeconds).ToArray();
+        if (plannedEvents.Length > 0) {
+            text.AppendLine("PLANNED SHOT TIMING (seconds from shot start; not verified video observations)");
+            foreach (var e in plannedEvents) {
+                text.AppendLine(FormattableString.Invariant($"- {e.Timing.StartSeconds:0.######}–{e.Timing.EndSeconds:0.######}s [{e.Kind}]: {e.Description}"));
+                if (!string.IsNullOrWhiteSpace(e.Dialogue)) text.AppendLine("  Dialogue: " + e.Dialogue);
+                if (!string.IsNullOrWhiteSpace(e.Before)) text.AppendLine("  Before: " + e.Before);
+                if (!string.IsNullOrWhiteSpace(e.After)) text.AppendLine("  After: " + e.After);
+                if (e.Protected) text.AppendLine("  Preserve this approved event during revisions.");
+            }
+            text.AppendLine();
+        }
         text.AppendLine("CONTINUITY GUIDANCE")
             .AppendLine("Follow the shot action in order. Starting conditions apply before the action; ending conditions apply after it. Do not depict both states simultaneously. Saved story facts take precedence over design references. Unrecorded details are unspecified.")
             .AppendLine("These are story intentions, not observations of generated video. Text descriptions do not supply reference images.").AppendLine();

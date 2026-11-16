@@ -39,6 +39,20 @@ public static class SceneVideoTrace
             throw;
         }
     }
+    public static async Task PlanningProgressAsync(ScenePromptProgress progress)
+    {
+        var context = Current.Value; if (context == null) return;
+        var message = progress.Stage switch {
+            "section_complete" => $"Shot planning: {progress.CompletedParts}/{progress.TotalParts} sections checked. No video submitted.",
+            "resuming" => $"Resuming shot planning with {progress.CompletedParts} checked sections.",
+            "splitting" => "Checking a smaller section to resolve the model’s interpretation; completed sections are kept.",
+            "continuity" => "Checking the final scene relationships against the complete shot.",
+            _ => null
+        };
+        if (message == null) return;
+        try { await context.Store.ActivityAsync(context.Lease, context.Role, message, default); }
+        catch (Exception) { context.Log.LogWarning("Planning progress could not be recorded for {RunId}", context.Lease.Run.Id); }
+    }
     public static async Task ReportModelAsync(string tool, string model, string detail)
     {
         var context = Current.Value;

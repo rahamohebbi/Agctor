@@ -229,6 +229,7 @@ internal static class ScenePromptPipeline
 internal sealed class ScenePromptContext(SceneWorkspace workspace)
 {
     private readonly Dictionary<string, string> _aliases = workspace.Entities.Select((e, i) => (Alias: $"e{i + 1}", e.Id)).ToDictionary(e => e.Alias, e => e.Id);
+    internal string AliasFor(string id) => _aliases.FirstOrDefault(p => p.Value == id).Key ?? id;
     internal string Serialize(string prompt, string precedingSection, IReadOnlyDictionary<string, string>? evidenceSources = null)
     {
         var ids = _aliases.ToDictionary(e => e.Value, e => e.Key);
