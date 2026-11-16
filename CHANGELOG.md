@@ -10,6 +10,9 @@ are tagged.
 
 ### Added
 
+- Scene-video Phase B actors: run-scoped Director and Audio Engineer mailboxes;
+  Audio Engineer owns audio/speech/narration phases and audio tools; Director
+  routes / asks Human / applies audio decisions only (tool matrix enforced).
 - Scene-video Phase A topology: shared `Config/scene-video-topology.json`,
   `GET /api/scenarios/scene-video-chain/topology`, and graph responses that
   union the definition skeleton with observed routes (Visual critic alias).

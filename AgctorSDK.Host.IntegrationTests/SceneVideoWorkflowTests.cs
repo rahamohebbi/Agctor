@@ -191,8 +191,30 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         using var runtime = new InMemoryActorRuntime(); await runtime.InitializeAsync(new Dictionary<string, object>());
         var worker = new SceneVideoWorker(runs, Loop(), runtime, options, NullLogger<SceneVideoWorker>.Instance);
         await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
-        Assert.Equal("waiting", (await runs.GetAsync(run.Id))!.Status);
-        Assert.Empty(await runtime.GetActiveActorIdsAsync());
+        var saved = (await runs.GetAsync(run.Id))!;
+        Assert.Equal("waiting", saved.Status);
+        // Run-scoped Director + Audio Engineer stay registered while the run is not terminal.
+        var active = (await runtime.GetActiveActorIdsAsync()).ToList();
+        Assert.Contains(SceneVideoWorker.DirectorId(run.Id), active);
+        Assert.Contains(SceneVideoWorker.AudioId(run.Id), active);
+        Assert.DoesNotContain(active, id => id.StartsWith("scene-specialist-", StringComparison.Ordinal));
+        await runtime.ShutdownAsync();
+    }
+
+    [Fact]
+    public async Task Run_scoped_director_and_audio_engineer_survive_across_ticks()
+    {
+        var run = await Create(review: true);
+        using var runtime = new InMemoryActorRuntime(); await runtime.InitializeAsync(new Dictionary<string, object>());
+        var worker = new SceneVideoWorker(runs, Loop(), runtime, options, NullLogger<SceneVideoWorker>.Instance);
+        await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoDirectorActor>(SceneVideoWorker.DirectorId(run.Id)));
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoAudioEngineerActor>(SceneVideoWorker.AudioId(run.Id)));
+        // Same runtime, second claim: Ensure must reuse the run-scoped mailboxes.
+        run = (await runs.GetAsync(run.Id))!;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "approve", null));
+        await worker.ExecuteLeaseAsync((await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!, default);
+        Assert.NotNull(await runtime.GetActorAsync<SceneVideoDirectorActor>(SceneVideoWorker.DirectorId(run.Id)));
         await runtime.ShutdownAsync();
     }
     private async Task<AgentRun> WaitingRun(int clips = 2, string kind = "timeout", bool waiting = true)
@@ -381,8 +403,18 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         var lease = await reopened.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors);
         Assert.NotNull(lease);
         await worker.ExecuteLeaseAsync(lease, default);
-        Assert.Empty(await runtime.GetActiveActorIdsAsync()); await runtime.ShutdownAsync();
-        return (await reopened.GetAsync(id))!;
+        var saved = (await reopened.GetAsync(id))!;
+        var active = (await runtime.GetActiveActorIdsAsync()).ToList();
+        if (saved.IsTerminal)
+            Assert.Empty(active);
+        else
+        {
+            // Fresh runtime per tick still registers run-scoped mailboxes for that lease.
+            Assert.Contains(SceneVideoWorker.DirectorId(id), active);
+            Assert.Contains(SceneVideoWorker.AudioId(id), active);
+        }
+        await runtime.ShutdownAsync();
+        return saved;
     }
     [Fact]
     public async Task Saved_checkpoint_does_not_cancel_its_pending_actor_reply()
@@ -737,6 +769,18 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         var events = await runs.EventsAsync(run.Id);
         Assert.Contains(events, e=>e.Agent == "Audio Engineer");
         Assert.Contains(events, e=>e.Agent == "Director" && e.Kind == "waiting");
+        // Audio phases: Director ↔ Audio Engineer only; Director never calls audio tools.
+        var audioRoutes = events.Where(e => e.Route != null && e.Route.Phase is "audio-plan" or "audio-process" or "audio-review").Select(e => e.Route!).ToList();
+        Assert.NotEmpty(audioRoutes);
+        Assert.All(audioRoutes, r => Assert.True(
+            (r.From == "Director" && r.To == "Audio Engineer") ||
+            (r.From == "Audio Engineer" && r.To == "Director") ||
+            (r.FromKind == "tool" && r.From is "Audio production" or "Speech inspection") ||
+            (r.ToKind == "tool" && r.To is "Audio production" or "Speech inspection") ||
+            (r.From == "Audio Engineer" && r.ToKind is "llm" or "tool") ||
+            (r.To == "Audio Engineer" && r.FromKind is "llm" or "tool"),
+            r.From + " → " + r.To));
+        Assert.DoesNotContain(events, e => e.Route is { From: "Director", To: "Audio production" or "Speech inspection" });
     }
     private async Task<AgentRun> SpeechRun(string expected = "en")
     {

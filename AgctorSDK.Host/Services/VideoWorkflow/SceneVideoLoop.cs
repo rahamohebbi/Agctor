@@ -12,8 +12,16 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
 {
     public static IReadOnlyList<AgentWaitMonitor> WaitMonitors { get; } =
         [new("scene-video", "plan-review", "retry"), new("scene-video", "submit", "retry"), new("scene-video", "poll", "timeout"), new("scene-video", "poll", "retry"), new("scene-video", "critic", "continuity"), new("scene-video", "speech-check", "continuity")];
-    public static string Role(AgentRun run) => run.Reply != null ? "Director" : run.Phase switch
-    { "narration-plan" or "speech-intent" or "speech-check" or "audio-plan" or "audio-process" or "audio-review" or "clip-audio-plan" or "clip-audio-process" or "clip-audio-check" => "Audio Engineer", "audio-decision" or "clip-audio-decision" => "Director", "plan" or "plan-review" => "Planner", "project" => "Project agent", "critic" => "Continuity critic", "finish" => "Editor agent", "prepare" or "commit" => "Scene Memory agent", "submit" or "poll" or "reset-render" => "Render agent", _ => "Director" };
+    public static string Role(AgentRun run) => run.Reply != null ? SceneVideoRoles.Director
+        : SceneVideoRoles.NeedsAudioWaitingObserver(run) ? SceneVideoRoles.AudioEngineer
+        : run.Phase switch
+    {
+        _ when SceneVideoRoles.OwnsAudioWork(run.Phase) => SceneVideoRoles.AudioEngineer,
+        _ when SceneVideoRoles.OwnsDirectorAudioAsk(run.Phase) => SceneVideoRoles.Director,
+        "plan" or "plan-review" => "Planner", "project" => "Project agent", "critic" => "Continuity critic",
+        "finish" => "Editor agent", "prepare" or "commit" => "Scene Memory agent",
+        "submit" or "poll" or "reset-render" => "Render agent", _ => SceneVideoRoles.Director
+    };
     private static string DescribeStep(string phase) => phase switch {
         "plan" => "Plan the sequence.", "plan-review" => "Check the shot plan.",
         "project" => "Prepare the story’s project.", "initialize" => "Create the story’s memory.",
@@ -35,7 +43,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     public async Task StepAsync(AgentRunLease lease, CancellationToken ct)
     {
         var run = lease.Run; var state = State(run); var role = Role(run);
-        using var trace = SceneVideoTrace.Begin(runs, lease, run.Status == "waiting" && run.Reply == null ? run.Question?.Kind == "continuity" ? "Audio Engineer" : "Render agent" : role, log);
+        // Trace role matches the mailbox owner (Director never owns audio tools).
+        using var trace = SceneVideoTrace.Begin(runs, lease, role, log);
         if (state.Current < state.Clips.Count && state.Clips[state.Current] is { ChecksVersion: 0 } legacy &&
             (run.Phase == "speech-check" || run.Question?.Kind == "speech-review")) {
             // Before independent checks, reaching speech review proved visual approval.
@@ -580,14 +589,22 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     }
     private async Task<string> IdentifySpeechLanguage(string prompt, string model, CancellationToken ct)
     {
-        try { return await audio!.SpeechLanguageAsync(prompt, model, ct); }
+        // Speech-language assist belongs to the Audio Engineer (LLM), not the Director mailbox.
+        try
+        {
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+                return await audio!.SpeechLanguageAsync(prompt, model, ct);
+        }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or OperationCanceledException or KeyNotFoundException) { return "unknown"; }
     }
     private async Task AskBackground(AgentRun run, SceneVideoState state, string returnPhase, CancellationToken ct)
     {
         state.BackgroundReturnPhase = returnPhase;
-        var available = await production!.MatchingMusicAvailableAsync(ct);
+        // Availability is an Audio Engineer tool assist — never attribute it to the Director.
+        bool available;
+        using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+            available = await production!.MatchingMusicAvailableAsync(ct);
         var choices = new List<AgentChoice> { new("preserve", "Preserve original background music") };
         choices.Add(new("matching", available ? "Recreate a closely matching instrumental" : "Recreate matching instrumental · setup needed", available ? null : true));
         choices.Add(new("matching-clean", "Cleaner recreation · allow more variation", available ? null : true));
@@ -794,7 +811,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                 break;
             case "narration-background":
                 if (reply.Choice is not ("preserve" or "matching" or "matching-clean")) throw new InvalidOperationException("Choose a background music option.");
-                if ((reply.Choice is "matching" or "matching-clean") && !await production!.MatchingMusicAvailableAsync(ct)) {
+                bool matchingReady;
+                using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+                    matchingReady = await production!.MatchingMusicAvailableAsync(ct);
+                if ((reply.Choice is "matching" or "matching-clean") && !matchingReady) {
                     await AskBackground(run, state, state.BackgroundReturnPhase!, ct); break;
                 }
                 if (state.Clips.Any(c => c.ApprovedAudioVersion != null) && state.AudioPlan?.ContinuousMusic == true &&
