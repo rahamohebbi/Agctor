@@ -11,7 +11,7 @@ using Xunit;
 
 namespace AgctorSDK.Host.IntegrationTests;
 
-/// <summary>Phase A: topology catalog + graph skeleton ∪ observed.</summary>
+/// <summary>Topology catalog + graph skeleton ∪ observed + Phase D edit API.</summary>
 public sealed class SceneVideoTopologyApiTests
 {
     [Fact]
@@ -32,6 +32,48 @@ public sealed class SceneVideoTopologyApiTests
         Assert.DoesNotContain(topo.Nodes, n => n.Kind == "model");
         Assert.DoesNotContain(topo.Edges, e => e.From == "Director" && topo.Nodes.Any(n => n.Id == e.To && n.Kind is "tool" or "llm" or "memory"));
         Assert.Equal(HttpStatusCode.NotFound, (await http.GetAsync("/api/scenarios/people/topology")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Topology_put_saves_audio_and_layouts_and_rejects_unknown_layout_nodes()
+    {
+        await using var factory = new Factory();
+        using var http = factory.CreateClient();
+
+        using var bad = await http.PutAsJsonAsync("/api/scenarios/scene-video-chain/topology", new SceneVideoTopologyEditRequest
+        {
+            AudioEnabled = true,
+            NodeLayouts = new Dictionary<string, SceneVideoTopologyLayout>
+            {
+                ["Director"] = new() { X = 40, Y = 50 },
+                ["NotANode"] = new() { X = 1, Y = 2 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        using var ok = await http.PutAsJsonAsync("/api/scenarios/scene-video-chain/topology", new SceneVideoTopologyEditRequest
+        {
+            AudioEnabled = false,
+            NodeLayouts = new Dictionary<string, SceneVideoTopologyLayout>
+            {
+                ["Director"] = new() { X = 120, Y = 90 },
+                ["Planner"] = new() { X = 280, Y = 140 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var saved = (await ok.Content.ReadFromJsonAsync<SceneVideoTopologyDocument>())!;
+        Assert.False(saved.AudioEnabled);
+        Assert.NotNull(saved.Ui?.NodeLayouts);
+        Assert.Equal(120, saved.Ui!.NodeLayouts!["Director"].X);
+        Assert.Equal(90, saved.Ui.NodeLayouts["Director"].Y);
+
+        using var get = await http.GetAsync("/api/scenarios/scene-video-chain/topology");
+        var again = (await get.Content.ReadFromJsonAsync<SceneVideoTopologyDocument>())!;
+        Assert.False(again.AudioEnabled);
+        Assert.Equal(280, again.Ui!.NodeLayouts!["Planner"].X);
+
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await http.PutAsJsonAsync("/api/scenarios/people/topology", new SceneVideoTopologyEditRequest { AudioEnabled = true })).StatusCode);
     }
 
     [Fact]
@@ -84,7 +126,9 @@ public sealed class SceneVideoTopologyApiTests
             {
                 ["Agctor:SceneVideo:WorkerEnabled"] = "false",
                 ["Agctor:SceneVideo:StorePath"] = Path.Combine(dir, "runs.db"),
-                ["Agctor:SceneMemory:StorePath"] = Path.Combine(dir, "scene.db")
+                ["Agctor:SceneMemory:StorePath"] = Path.Combine(dir, "scene.db"),
+                // Keep Phase D overlay out of the repo Config folder during tests.
+                ["Agctor:SceneVideo:Topology:UserFile"] = Path.Combine(dir, "scene-video-topology.user.json")
             }));
             builder.ConfigureServices(services =>
             {

@@ -8,7 +8,11 @@ using AgctorSDK.Host.Services.Scenarios;
 
 namespace AgctorSDK.Host.Services.VideoWorkflow;
 
-public sealed class SceneVideoScenario(IScenarioCatalog catalog, ISceneMemoryStore memory, IAgentRunStore runs)
+public sealed class SceneVideoScenario(
+    IScenarioCatalog catalog,
+    ISceneMemoryStore memory,
+    IAgentRunStore runs,
+    ISceneVideoTopologyCatalog topology)
 {
     public static bool IsLoop(ScenarioFlowNode node) => node.Type.Equals("AgentLoop", StringComparison.OrdinalIgnoreCase) && !IsAudio(node);
     public static bool IsAudio(ScenarioFlowNode node) => node.Type == "AgentLoop" && node.Config is { ValueKind: JsonValueKind.Object } c && c.TryGetProperty("role", out var r) && r.ValueKind == JsonValueKind.String && r.GetString() == "audio-engineer";
@@ -61,9 +65,12 @@ public sealed class SceneVideoScenario(IScenarioCatalog catalog, ISceneMemorySto
         if (errors.Count > 0) throw new ArgumentException(string.Join(" ", errors));
         var workspace = mode == "continue" ? await memory.GetAsync(input.WorkspaceId!, ct) : null;
         var config = scenario.Flow.Nodes.Single(IsLoop).Config!.Value;
-        if (input.NarrationMode == "dedicated" && !scenario.Flow.Nodes.Any(IsAudio)) throw new ArgumentException("Dedicated narration requires an Audio Engineer.");
-        var state = new SceneVideoState { SpeechReviewEnabled = scenario.Flow.Nodes.Any(IsAudio) && (input.SpeechLanguage != null || input.NarrationMode == "dedicated"),
-            ExpectedSpeechLanguage = input.SpeechLanguage ?? "auto", ProductionEnabled = true, AudioEnabled = scenario.Flow.Nodes.Any(IsAudio), Input = input with { StoryMode = mode }, Model = string.IsNullOrWhiteSpace(input.Model)
+        // Phase D: topology.audioEnabled is the product flag; flow Audio Engineer is only a fallback.
+        var topo = topology.GetForScenario(scenarioId);
+        var audioEnabled = topo?.AudioEnabled ?? scenario.Flow.Nodes.Any(IsAudio);
+        if (input.NarrationMode == "dedicated" && !audioEnabled) throw new ArgumentException("Dedicated narration requires an Audio Engineer.");
+        var state = new SceneVideoState { SpeechReviewEnabled = audioEnabled && (input.SpeechLanguage != null || input.NarrationMode == "dedicated"),
+            ExpectedSpeechLanguage = input.SpeechLanguage ?? "auto", ProductionEnabled = true, AudioEnabled = audioEnabled, Input = input with { StoryMode = mode }, Model = string.IsNullOrWhiteSpace(input.Model)
             ? scenario.ModelDefaults.Generation ?? OllamaRuntimeConfiguration.GetDefaultModel() : input.Model.Trim(),
             WorkspaceRevision = workspace == null ? "" : ScenePromptReducer.Revision(workspace), StoryId = workspace?.Connection?.StoryId,
             StoryName = workspace?.Name ?? System.Text.RegularExpressions.Regex.Replace(input.Prompt.Trim(), @"\s+", " ").Truncate(80),

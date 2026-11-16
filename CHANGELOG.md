@@ -10,6 +10,10 @@ are tagged.
 
 ### Added
 
+- Scene-video Phase D topology editor: `PUT /api/scenarios/{id}/topology` saves
+  audio enable + shared `ui.nodeLayouts` (fixed roster/ownership locked); Scenarios
+  overview edits that document; live graph uses the same layouts; admission flow
+  demoted to a secondary overlay for scene-video-chain.
 - Scene-video Phase C actors: run-scoped Planner, Project, Memory, Render,
   Visual critic, and Editor mailboxes with exclusive tools; Director only
   dispatches (no Role() hat-switching); mailbox isolation enforced in Trace.
@@ -21,9 +25,8 @@ are tagged.
   union the definition skeleton with observed routes (Visual critic alias).
 - Live agent-run graph on Scenarios and ScenarioRun, rendering the same
   `GET /api/agent-runs/{id}/graph` topology Cynelo’s Agent activity view shows.
-- Scenarios overview keeps the selected run id when remounting the live graph,
-  and labels AgentLoop “Edit flow” as loop wiring so it is not mistaken for the
-  live Director/specialist topology.
+- Scenarios overview keeps the selected run id when remounting the live graph
+  (empty-picker fix).
 - High-level architecture page (`docs/architecture-diagram.md`) with a generated JPEG.
 - MCP connection page (`docs/mcp-diagram.md`) with a generated JPEG.
 - Apache License 2.0, NOTICE, and CITATION.cff so redistributors and users can

@@ -218,7 +218,7 @@ public sealed class ScenariosController : ControllerBase
         return Ok(ToDto(def));
     }
 
-    /// <summary>Phase A: read-only agent/tool topology for scenarios that publish one (scene-video-chain).</summary>
+    /// <summary>Shared agent/tool topology for scenarios that publish one (scene-video-chain).</summary>
     [HttpGet("{id}/topology")]
     [ProducesResponseType(typeof(SceneVideoTopologyDocument), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
@@ -232,6 +232,49 @@ public sealed class ScenariosController : ControllerBase
         if (topology == null)
             return NotFound(new ErrorResponse { Code = "TOPOLOGY_NOT_FOUND", Message = $"Scenario '{id}' has no agent topology document yet." });
         return Ok(topology);
+    }
+
+    /// <summary>
+    /// Phase D v1: persist audio enable + shared node layouts for scene-video-chain (roster/edges locked).
+    /// </summary>
+    [HttpPut("{id}/topology")]
+    [ProducesResponseType(typeof(SceneVideoTopologyDocument), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
+    public ActionResult<SceneVideoTopologyDocument> PutTopology(
+        [FromRoute] string id,
+        [FromBody] SceneVideoTopologyEditRequest? edit)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return BadRequest(new ErrorResponse { Code = "INVALID_SCENARIO_ID", Message = "Scenario id is required." });
+        if (_catalog.Get(id) == null)
+            return NotFound(new ErrorResponse { Code = "SCENARIO_NOT_FOUND", Message = $"Scenario '{id}' not found." });
+        if (edit == null)
+            return BadRequest(new ErrorResponse { Code = "TOPOLOGY_EDIT_REQUIRED", Message = "Topology edit body is required." });
+
+        try
+        {
+            var saved = _topology.SaveEdit(id.Trim(), edit);
+            _logger.LogInformation("Scenario {ScenarioId}: topology edit saved (audioEnabled={Audio})", id.Trim(), saved.AudioEnabled);
+            return Ok(saved);
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new ErrorResponse
+            {
+                Code = "TOPOLOGY_NOT_FOUND",
+                Message = $"Scenario '{id}' has no agent topology document yet."
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                Code = "TOPOLOGY_VALIDATION_FAILED",
+                Message = "Topology save validation failed.",
+                Details = ex.Message.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            });
+        }
     }
 
     /// <summary>

@@ -246,32 +246,32 @@
             }
         });
     }
-    async function renderTopologyReadonly(scenarioId) {
-        var panel = document.getElementById('sc-topology-readonly');
-        var body = document.getElementById('sc-topology-readonly-body');
-        if (!panel || !body) return;
-        try {
-            var response = await fetch('/api/scenarios/' + encodeURIComponent(scenarioId) + '/topology');
-            var topo = await response.json().catch(function () { return null; });
-            if (!response.ok || !topo) {
-                panel.classList.add('hidden');
-                return;
-            }
-            panel.classList.remove('hidden');
-            var agents = (topo.nodes || []).filter(function (n) { return n.kind === 'agent'; });
-            var caps = (topo.nodes || []).filter(function (n) { return n.kind === 'tool' || n.kind === 'llm' || n.kind === 'memory'; });
-            body.innerHTML =
-                '<p class="sc-muted">Read-only shared definition (Phase A). Roster is fixed; layout/audio toggles come later. Model evidence appears only when observed.</p>' +
-                '<p class="sc-muted"><strong>Policy:</strong> ' + esc(topo.modelEvidencePolicy || 'observed-only') +
-                ' · <strong>Audio engineer:</strong> ' + (topo.audioEnabled === false ? 'off' : 'on') + '</p>' +
-                '<div class="sc-overview-grid"><section><h4>Agents</h4><ul class="sc-roster">' +
-                agents.map(function (n) { return '<li>' + esc(n.label || n.id) + '</li>'; }).join('') +
-                '</ul></section><section><h4>Tools / LLM / memory</h4><ul class="sc-roster">' +
-                caps.map(function (n) { return '<li>' + esc(n.id) + (n.ownerAgentId ? ' · ' + esc(n.ownerAgentId) : '') + '</li>'; }).join('') +
-                '</ul></section></div>';
-        } catch (e) {
-            panel.classList.add('hidden');
+    var topologyEditor = null;
+    var topologyEditorScenarioId = null;
+    function stopTopologyEditor() {
+        if (topologyEditor && topologyEditor.destroy) topologyEditor.destroy();
+        topologyEditor = null;
+        topologyEditorScenarioId = null;
+        var host = document.getElementById('sc-topology-editor-host');
+        if (host) host.replaceChildren();
+    }
+    function renderTopologyEditor(scenarioId) {
+        var panel = document.getElementById('sc-topology-editor');
+        var host = document.getElementById('sc-topology-editor-host');
+        if (!panel || !host || !window.AgctorSceneVideoTopologyEditor) return;
+        panel.classList.remove('hidden');
+        if (topologyEditorScenarioId === scenarioId && topologyEditor) {
+            if (topologyEditor.reload) topologyEditor.reload();
+            return;
         }
+        stopTopologyEditor();
+        topologyEditorScenarioId = scenarioId;
+        topologyEditor = window.AgctorSceneVideoTopologyEditor.mount(host, scenarioId, {
+            onSaved: function () {
+                // Live viewer reloads skeleton from the same topology document.
+                if (runGraphLive && runGraphLive.refresh) runGraphLive.refresh();
+            }
+        });
     }
     function syncRunGraphOpenLink(scenarioId) {
         if (!runGraphOpen) return;
@@ -334,6 +334,9 @@
         if (!s) {
             if (runGraphPanel) runGraphPanel.classList.add('hidden');
             stopRunGraph();
+            stopTopologyEditor();
+            var emptyTopo = document.getElementById('sc-topology-editor');
+            if (emptyTopo) emptyTopo.classList.add('hidden');
             return;
         }
         document.getElementById('sc-selected-title').textContent = s.displayName || s.id;
@@ -350,15 +353,16 @@
         var flowModalTitle = document.getElementById('sc-flow-title');
         var flowModalBlurb = document.getElementById('sc-flow-modal-blurb');
         if (isAgentLoop) {
-            if (flowCardTitle) flowCardTitle.textContent = 'Loop wiring';
-            if (flowHint) flowHint.textContent = 'Admission graph only (Input → Director ↔ Audio Engineer → Output). Specialist agents, tools, LLM, memory, and model evidence appear in Live agent graph above — the same topology Cynelo shows.';
-            if (flowModalTitle) flowModalTitle.textContent = 'Loop wiring';
-            if (flowModalBlurb) flowModalBlurb.textContent = 'Configure how a sequence is admitted (Input → Director, optional Audio Engineer). The live Director/specialist/tool graph is on Overview — not this canvas.';
+            // Phase D: topology editor is the product graph; admission flow is secondary.
+            if (flowCardTitle) flowCardTitle.textContent = 'Admission overlay';
+            if (flowHint) flowHint.textContent = 'Secondary only: Input → Director → Output. Edit agents, tools, layout, and audio in Agent topology above. Live view uses that same definition.';
+            if (flowModalTitle) flowModalTitle.textContent = 'Admission overlay';
+            if (flowModalBlurb) flowModalBlurb.textContent = 'Thin admission path for starting a sequence. Prefer Agent topology for the real agent/tool graph.';
             document.getElementById('sc-flow-summary').textContent = flow
-                ? nodes.length + ' loop steps. This is not the live agent topology.'
-                : 'No loop wiring yet. Add Input → Director (and optional Audio Engineer) for admissions.';
-            document.getElementById('sc-open-flow').textContent = flow ? 'Edit loop wiring ↗' : 'Create loop wiring ↗';
-            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run and routes the next task to them. Watch them in Live agent graph — not in loop wiring.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Continuity critic', 'Editor agent'].concat(nodes.some(function (n) { return n.config && n.config.role === 'audio-engineer'; }) ? ['Audio Engineer'] : []), '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
+                ? nodes.length + ' admission steps (secondary). Use Agent topology for the shared live graph.'
+                : 'No admission overlay yet. Topology above is the product edit surface.';
+            document.getElementById('sc-open-flow').textContent = flow ? 'Edit admission overlay ↗' : 'Create admission overlay ↗';
+            document.getElementById('sc-overview-content').innerHTML = '<div class="sc-overview-grid"><section><h3>Specialist agents</h3><p class="sc-muted">The director starts lightweight actors for each run. Edit layout and audio in Agent topology; watch live activity in Live agent graph.</p>' + overviewRoster(['Project agent', 'Planner', 'Scene Memory agent', 'Render agent', 'Visual critic', 'Editor agent', 'Audio Engineer'], '') + '</section><section><h3>Persistent agent loop</h3><p class="sc-muted">Scene Memory grounds each shot. The loop saves progress, retries failed steps, and asks you for decisions when needed. Open Run workflow to start or follow a sequence.</p></section></div>';
         } else {
             if (flowCardTitle) flowCardTitle.textContent = 'Conversation flow';
             if (flowHint) flowHint.textContent = '';
@@ -373,11 +377,12 @@
             if (!runLink.hidden) {
                 runGraphPanel.classList.remove('hidden');
                 refreshRunGraphList(s.id);
-                renderTopologyReadonly(s.id);
+                renderTopologyEditor(s.id);
             } else {
                 runGraphPanel.classList.add('hidden');
                 stopRunGraph();
-                var topoPanel = document.getElementById('sc-topology-readonly');
+                stopTopologyEditor();
+                var topoPanel = document.getElementById('sc-topology-editor');
                 if (topoPanel) topoPanel.classList.add('hidden');
             }
         }
