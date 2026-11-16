@@ -92,3 +92,4 @@ BenchmarkDotNet.Artifacts/
 # Local tool and user secrets
 *.userprefs
 *.DotSettings.user
+AgctorSDK.Host/Config/scene-video-topology.user.json

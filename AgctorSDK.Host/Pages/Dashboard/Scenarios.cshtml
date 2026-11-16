@@ -46,9 +46,14 @@
                         <div id="sc-run-graph-host" class="sc-run-graph-host"></div>
                         <p id="sc-run-graph-status" class="sc-run-graph-status" role="status"></p>
                     </div>
-                    <div id="sc-topology-readonly" class="sc-run-graph hidden" aria-label="Agent topology definition">
-                        <h3>Agent topology (read-only)</h3>
-                        <div id="sc-topology-readonly-body"></div>
+                    <div id="sc-topology-editor" class="sc-run-graph hidden" aria-label="Agent topology editor">
+                        <div class="sc-run-graph-heading">
+                            <div>
+                                <h3>Agent topology</h3>
+                                <p class="sc-muted">Shared definition for edit and live views. v1 edits: layout positions and Audio Engineer enable. Roster and ownership stay locked.</p>
+                            </div>
+                        </div>
+                        <div id="sc-topology-editor-host"></div>
                     </div>
                     <div id="sc-overview-content"></div>
                     <div class="sc-flow-card">
@@ -595,5 +600,6 @@
     <script src="~/js/dashboard/model-selection.js" asp-append-version="true"></script>
     <link rel="stylesheet" href="~/css/agent-run-graph.css" asp-append-version="true" />
     <script src="~/js/dashboard/agent-run-graph.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard/scene-video-topology-editor.js" asp-append-version="true"></script>
     <script src="~/js/dashboard/scenarios-page.js" asp-append-version="true"></script>
 }

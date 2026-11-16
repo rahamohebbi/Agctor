@@ -218,6 +218,44 @@
 .sc-run-graph-status:empty { display: none; }
 .sc-run-graph-host { min-height: 420px; }
 
+/* Phase D: shared topology editor (layout + audio). */
+.svt-editor { display: flex; flex-direction: column; gap: 0.75rem; }
+.svt-toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.65rem 0.85rem;
+}
+.svt-audio { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.svt-hint { flex: 1 1 12rem; font-size: 0.78rem; color: #64748b; }
+.svt-canvas {
+    position: relative; overflow: auto; min-height: 320px;
+    border: 1px solid rgba(100, 116, 139, 0.35); border-radius: 0.65rem;
+    background:
+        radial-gradient(circle at 20% 10%, rgba(100, 231, 210, 0.08), transparent 45%),
+        radial-gradient(circle at 80% 90%, rgba(156, 183, 211, 0.12), transparent 40%),
+        #0f172a0d;
+}
+.svt-edges { position: absolute; inset: 0; pointer-events: none; }
+.svt-nodes { position: relative; min-height: 320px; }
+.svt-node {
+    position: absolute; width: 140px; min-height: 56px; padding: 0.4rem 0.5rem;
+    border: 1px solid rgba(100, 116, 139, 0.55); border-radius: 0.5rem;
+    background: #fff; text-align: left; cursor: grab; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+.svt-node:active { cursor: grabbing; }
+.svt-node strong { display: block; font-size: 0.78rem; line-height: 1.2; }
+.svt-kind {
+    display: block; font-size: 0.62rem; letter-spacing: 0.04em; color: #64748b; margin-bottom: 0.15rem;
+}
+.svt-kind-human { border-color: #2dd4bf; }
+.svt-kind-agent { border-color: #2dd4bf; }
+.svt-kind-tool { border-color: #9cb7d3; }
+.svt-kind-llm { border-color: #b6a3ff; }
+.svt-kind-memory { border-color: #ffbe79; }
+.svt-status { min-height: 1.1rem; font-size: 0.8rem; color: #475569; margin: 0; }
+.svt-status.svt-error { color: #b91c1c; }
+.dark .svt-canvas { background: rgba(15, 23, 42, 0.55); }
+.dark .svt-node { background: #0f172a; color: #e2e8f0; }
+.dark .svt-hint, .dark .svt-status { color: #94a3b8; }
+
 .vr-graph-block { margin: 18px 0 8px; }
 .vr-graph-block h3 { margin-bottom: 10px; }
 .vr-graph-host { min-height: 420px; }

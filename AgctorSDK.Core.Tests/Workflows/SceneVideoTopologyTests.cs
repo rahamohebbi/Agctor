@@ -28,6 +28,45 @@ public sealed class SceneVideoTopologyTests
     }
 
     [Fact]
+    public void Validator_rejects_layout_for_unknown_nodes()
+    {
+        var doc = Sample();
+        doc.Ui = new SceneVideoTopologyUi
+        {
+            NodeLayouts = new Dictionary<string, SceneVideoTopologyLayout>
+            {
+                ["Director"] = new() { X = 10, Y = 20 },
+                ["Ghost"] = new() { X = 1, Y = 2 }
+            }
+        };
+        Assert.Contains(SceneVideoTopologyValidator.Validate(doc), e => e.Contains("Ghost"));
+    }
+
+    [Fact]
+    public void Fixed_roster_edit_allows_audio_and_layout_only()
+    {
+        var baseline = Sample();
+        var edited = Sample();
+        edited.AudioEnabled = false;
+        edited.Ui = new SceneVideoTopologyUi
+        {
+            NodeLayouts = new Dictionary<string, SceneVideoTopologyLayout>
+            {
+                ["Director"] = new() { X = 120, Y = 80 }
+            }
+        };
+        Assert.Empty(SceneVideoTopologyValidator.ValidateFixedRosterEdit(baseline, edited));
+
+        edited.Nodes.Add(new SceneVideoTopologyNode { Id = "Extra", Kind = "agent", Detail = "nope" });
+        Assert.Contains(SceneVideoTopologyValidator.ValidateFixedRosterEdit(baseline, edited), e => e.Contains("cannot add or remove"));
+
+        edited = Sample();
+        edited.Edges.Add(new SceneVideoTopologyEdge { Id = "hack", From = "Director", To = "Video rendering", Intent = "hack" });
+        Assert.Contains(SceneVideoTopologyValidator.ValidateFixedRosterEdit(baseline, edited), e =>
+            e.Contains("Director must not own") || e.Contains("cannot change agent/tool edges"));
+    }
+
+    [Fact]
     public void Composer_unions_skeleton_with_observed_and_aliases_visual_critic()
     {
         var definition = Sample();

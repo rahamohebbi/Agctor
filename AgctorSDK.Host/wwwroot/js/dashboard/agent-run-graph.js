@@ -89,7 +89,7 @@
         return 2;
     }
 
-    function layout(topology, width, height) {
+    function layoutColumns(topology, width, height) {
         var columns = [[], [], [], []];
         Object.keys(topology.nodes).forEach(function (id) {
             columns[columnIndex(id, topology.nodes[id].kind)].push(id);
@@ -108,6 +108,39 @@
             });
         });
         return { positions: positions, width: contentW, height: contentH };
+    }
+
+    /** Prefer shared ui.nodeLayouts from the topology definition; fall back to columns. */
+    function layout(topology, width, height, savedLayouts) {
+        var ids = Object.keys(topology.nodes);
+        var usable = 0;
+        if (savedLayouts) {
+            ids.forEach(function (id) {
+                var p = savedLayouts[id];
+                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) usable += 1;
+            });
+        }
+        if (!usable) return layoutColumns(topology, width, height);
+
+        var fallback = layoutColumns(topology, width, height);
+        var positions = {};
+        var maxX = 0;
+        var maxY = 0;
+        ids.forEach(function (id) {
+            var p = savedLayouts[id];
+            if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) {
+                positions[id] = { x: Number(p.x), y: Number(p.y) };
+            } else {
+                positions[id] = fallback.positions[id];
+            }
+            maxX = Math.max(maxX, positions[id].x);
+            maxY = Math.max(maxY, positions[id].y);
+        });
+        return {
+            positions: positions,
+            width: Math.max(width, maxX + NODE_W / 2 + 36),
+            height: Math.max(height, maxY + NODE_H / 2 + 36)
+        };
     }
 
     function create(host, options) {
@@ -243,7 +276,10 @@
                 if (keep[e.from] && keep[e.to]) filtered.edges[key] = e;
             });
 
-            var laid = layout(filtered, viewport.clientWidth || 640, viewport.clientHeight || 420);
+            var savedLayouts = state.snapshot && state.snapshot.definition && state.snapshot.definition.ui
+                ? state.snapshot.definition.ui.nodeLayouts
+                : null;
+            var laid = layout(filtered, viewport.clientWidth || 640, viewport.clientHeight || 420, savedLayouts);
             state.contentW = laid.width;
             state.contentH = laid.height;
             world.style.width = laid.width + 'px';
@@ -506,7 +542,8 @@
         document.addEventListener('visibilitychange', onVis);
 
         return {
-            refresh: poll,
+            // Drop cached skeleton so topology edits (layout/audio) show up immediately.
+            refresh: function () { skeleton = null; return poll(); },
             destroy: function () {
                 clearInterval(timer);
                 document.removeEventListener('visibilitychange', onVis);

@@ -123,6 +123,52 @@ public static class SceneVideoTopologyValidator
         if (doc.Nodes.Any(n => n.Kind == "model"))
             errors.Add("modelEvidencePolicy observed-only forbids model nodes in the definition.");
 
+        if (doc.Ui?.NodeLayouts != null)
+        {
+            foreach (var key in doc.Ui.NodeLayouts.Keys)
+            {
+                if (!byId.ContainsKey(key))
+                    errors.Add($"Layout refers to unknown node '{key}'.");
+            }
+        }
+
+        return errors;
+    }
+
+    /// <summary>
+    /// Phase D v1: edits may only change audioEnabled + layouts — roster/edges/ownership stay fixed.
+    /// </summary>
+    public static IReadOnlyList<string> ValidateFixedRosterEdit(
+        SceneVideoTopologyDocument baseline, SceneVideoTopologyDocument edited)
+    {
+        var errors = new List<string>(Validate(edited));
+        if (baseline == null || edited == null) return errors;
+
+        var baseIds = baseline.Nodes.Select(n => n.Id).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var editIds = edited.Nodes.Select(n => n.Id).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        if (!baseIds.SequenceEqual(editIds, StringComparer.Ordinal))
+            errors.Add("v1 topology edit cannot add or remove roster nodes.");
+
+        foreach (var node in baseline.Nodes)
+        {
+            var match = edited.Nodes.FirstOrDefault(n => n.Id == node.Id);
+            if (match == null) continue;
+            if (!string.Equals(match.Kind, node.Kind, StringComparison.Ordinal))
+                errors.Add($"Node '{node.Id}' kind is fixed.");
+            if (!string.Equals(match.OwnerAgentId ?? "", node.OwnerAgentId ?? "", StringComparison.Ordinal))
+                errors.Add($"Node '{node.Id}' ownership is fixed in v1.");
+        }
+
+        var baseEdges = baseline.Edges.Select(e => e.From + "\0" + e.To).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var editEdges = edited.Edges.Select(e => e.From + "\0" + e.To).OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        if (!baseEdges.SequenceEqual(editEdges, StringComparer.Ordinal))
+            errors.Add("v1 topology edit cannot change agent/tool edges.");
+
+        if (!string.Equals(edited.ModelEvidencePolicy, baseline.ModelEvidencePolicy, StringComparison.OrdinalIgnoreCase))
+            errors.Add("modelEvidencePolicy is fixed in v1.");
+        if (!string.Equals(edited.GraphId, baseline.GraphId, StringComparison.Ordinal))
+            errors.Add("graphId is fixed.");
+
         return errors;
     }
 }
