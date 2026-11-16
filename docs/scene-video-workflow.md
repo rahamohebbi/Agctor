@@ -9,10 +9,10 @@ Agctor owns planning, Scene Memory, durable run state, human questions and progr
 | Surface | What it is |
 | --- | --- |
 | **Conversation flow** (`scenario.flow`) | Edit Input → Director ↔ Audio Engineer → Output (and layouts) in Scenarios → Edit flow. This is the definition. |
-| **Live flow graph** | That same flow skeleton **∪** observed routes / `activeCalls`. Agctor Scenarios / ScenarioRun and Cynelo Agent activity consume `GET /api/agent-runs/{id}/graph` (`flow` + `layouts` + nodes/edges). |
+| **Live flow graph** | **That same flow only** — nodes/edges match the editor. Observed routes / `activeCalls` remap onto flow mailboxes for highlights and message dots (never a second observed topology). Agctor Scenarios / ScenarioRun and Cynelo Agent activity consume `GET /api/agent-runs/{id}/graph` (`flow` + `layouts` + nodes/edges). |
 | **Topology JSON** (optional legacy) | May still exist as an internal/derived catalog for validation helpers; it is **not** the UI definition surface. |
 
-Specialist actors still run at runtime; they appear on the live graph when routes are recorded. Model evidence stays observed-only.
+Specialist actors still run at runtime; their traffic remaps onto Director / Audio Engineer / Output on the live picture. Model evidence stays in the message list, not as extra graph nodes.
 
 ## Start from the dashboard
 
@@ -79,7 +79,7 @@ Optional `model` overrides the Scenario's planning model. Repeating the same `re
 | --- | --- |
 | `GET /api/agent-runs?scenarioId=scene-video-chain` | Latest 100 runs |
 | `GET /api/agent-runs/{id}` | Current status, question, plan and ordered clip outputs |
-| `GET /api/agent-runs/{id}/graph` | Conversation-flow skeleton **∪** observed activity. Payload includes `flow`, canonical `layouts`, `nodes`, `edges`, `activeCalls`. Agctor and Cynelo both render this. |
+| `GET /api/agent-runs/{id}/graph` | Conversation-flow skeleton only; `activeCalls` remapped onto those nodes. Payload includes `flow`, canonical `layouts`, `nodes`, `edges`, `activeCalls`. Agctor and Cynelo both render this. |
 | `GET /api/scenarios/{id}` | Includes `flow` — the definition document the live skeleton is projected from. |
 | `GET/PUT /api/scenarios/scene-video-chain/topology` | Legacy/internal topology catalog (not the Scenarios edit UI). Prefer Edit flow for definition. |
 | `GET /api/agent-runs/{id}/events?after=0` | Up to 200 durable activity events; resume with the last sequence number |
@@ -210,22 +210,22 @@ Narration verification (2026-11-08): 69 AGCTOR workflow/API/audio-engineer tests
 
 Cynelo's sequence status card opens **Agent activity**, a read-only modal. AGCTOR records explicit sender, recipient, phase and exchange IDs on workflow request/report events. Human questions and answers also have directions. Routes are stored transactionally in an additive SQLite table; older events remain readable with no guessed arrows. Exchange IDs are independent of work-lease credentials. All poll requests/reports are recorded, while the ordinary status view suppresses repetitive observations.
 
-The modal displays the Director and specialist roles, animates newly received messages, and keeps the latest 100 events readable. It polls the existing authorized, cursor-paginated event API about once a second while open, reusing Cynelo's single serial refresh loop. Opening or reconnecting does not replay old history as live traffic. Pausing animation and reduced-motion settings preserve message updates. Closing the modal neither cancels the run nor changes approvals. Project changes clear the graph; connection failures and delayed updates are visible.
+The modal draws the **same conversation flow** as Agctor Edit flow (Your idea → Director ↔ Audio Engineer → Finished video), animates newly received messages on those nodes/edges, and keeps the latest 100 events readable. It polls the existing authorized, cursor-paginated event API about once a second while open, reusing Cynelo's single serial refresh loop. Opening or reconnecting does not replay old history as live traffic. Pausing animation and reduced-motion settings preserve message updates. Closing the modal neither cancels the run nor changes approvals. Project changes clear the graph; connection failures and delayed updates are visible.
 
-The graph uses typed agent, tool, LLM, memory and reported-model nodes. Prefer shared `definition.ui.nodeLayouts` when present; otherwise a column heuristic. Connections come from the definition skeleton plus observed routes; selecting an agent filters its neighbors. Graph reads union the full-run topology with live activity so early model calls remain visible after recent poll messages leave the UI buffer. Cynelo applies the same ownership checks to graph and event reads.
+Prefer shared flow `layouts` (padded so cards at origin stay visible); otherwise a column heuristic. Selecting an agent filters its neighbors. Specialist/tool traffic remaps onto flow mailboxes — Cynelo must not inject Render / Video rendering / ComfyUI as a second product graph. Cynelo applies the same ownership checks to graph and event reads.
 
 ## Migrating old 4-node (or 3-node) admission flows
 
-Before Phase A–D, the only editable picture was the conversation-flow canvas: `Your idea → Director ↔ Audio Engineer → Finished video` (or a 3-node graph without Audio Engineer). That graph is now an **admission overlay**.
+The editable picture remains the conversation-flow canvas: `Your idea → Director ↔ Audio Engineer → Finished video` (or a 3-node graph without Audio Engineer). Live views use **that same flow** as the only product graph.
 
 | What you had | What happens now |
 | --- | --- |
-| Built-in or user `agctor-scenarios.user.json` flow for `scene-video-chain` | Still loads for admission / `SceneVideoScenario.Validate`. It does **not** replace the specialist topology. |
-| Audio Engineer present or absent in that flow | On first topology read with **no** `scene-video-topology.user.json`, Agctor seeds `audioEnabled` from the admission flow and writes the overlay once. Later topology saves own the flag. |
-| Historical agent-run SQLite rows | Unchanged. Live view still works from recorded routes alone; when a topology exists it is unioned on top. |
-| Expectation that “Edit flow” is the agent graph | Use **Agent topology** for layout/audio; use admission overlay only for Input → Director → Output. |
+| Built-in or user `agctor-scenarios.user.json` flow for `scene-video-chain` | Still loads for admission / `SceneVideoScenario.Validate` **and** is the live graph skeleton. |
+| Audio Engineer present or absent in that flow | Controls whether the live graph includes the Audio Engineer loop. |
+| Historical agent-run SQLite rows | Unchanged. Live view draws the current flow; recorded specialist routes remap onto flow nodes for animation. |
+| Expectation that “Edit flow” is the agent graph | Correct — Edit flow is the single definition; live Agctor/Cynelo graphs follow it. |
 
-No rewrite of completed run blobs is required. Cynelo continues to proxy the same graph DTO; Agctor did not change the Flutter contract in Phase E (spot-check agentic graph tests only if Cynelo DTO fields change).
+No rewrite of completed run blobs is required. Cynelo locks to Agctor `flow`/`layouts` when present and remaps activity onto those nodes.
 
 Invocation-scoped tracing surrounds actual named-client HTTP calls and Scene Memory reads/writes. Ollama nodes use the exact model in each outgoing request, including repair calls. HTTP responses, failures and elapsed call times are paired with the request. These observations do not replace actor state, leases, approvals or recovery. Trace-storage failure cannot turn a successful external operation into a workflow retry. Prompts, credentials, endpoint URLs and response content are not copied into these diagnostic events.
 

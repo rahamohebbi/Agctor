@@ -77,7 +77,7 @@ public sealed class SceneVideoTopologyApiTests
     }
 
     [Fact]
-    public async Task Graph_endpoint_unions_conversation_flow_skeleton_with_observed_activity()
+    public async Task Graph_endpoint_returns_flow_only_skeleton_without_observed_specialists()
     {
         await using var factory = new Factory();
         using var http = factory.CreateClient();
@@ -107,15 +107,17 @@ public sealed class SceneVideoTopologyApiTests
         Assert.Equal("scene-video-chain", flow.GetProperty("graphId").GetString());
         Assert.True(root.TryGetProperty("layouts", out var layouts));
         Assert.True(layouts.TryGetProperty("Director", out _));
+        Assert.True(layouts.TryGetProperty("Output", out _));
         var nodes = root.GetProperty("nodes").EnumerateArray().Select(n => n.GetProperty("id").GetString()!).ToHashSet();
         Assert.Contains("Human", nodes);
         Assert.Contains("Director", nodes);
         Assert.Contains("Audio Engineer", nodes);
-        // Observed specialists appear when recorded; they are not a second editable catalog.
-        Assert.Contains("Visual critic", nodes);
+        Assert.Contains("Output", nodes);
+        // Observed specialists must not appear — activity remaps onto the flow.
+        Assert.DoesNotContain("Visual critic", nodes);
         var edges = root.GetProperty("edges").EnumerateArray().ToArray();
         Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Audio Engineer");
-        Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Visual critic");
+        Assert.DoesNotContain(edges, e => e.GetProperty("to").GetString() == "Visual critic");
     }
 
     private sealed class Factory : AgctorWebApplicationFactory
