@@ -9,6 +9,8 @@ public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOption
         Send<SceneVideoProject>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/project", new { storyId, mode, name, projectId }, ct);
     public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) =>
         Send<SceneVideoEvidence>(HttpMethod.Get, $"jobs/{Uri.EscapeDataString(key)}/evidence", null, ct);
+    public Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) =>
+        Send<SceneVideoEvidence>(HttpMethod.Get, $"jobs/{Uri.EscapeDataString(key)}/evidence" + (recheck ? "?shift=true" : ""), null, ct);
     public Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct) =>
         Send<SceneVideoDelivery>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/finish", new { projectId, keys }, ct);
     public Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) =>

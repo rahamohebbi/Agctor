@@ -44,6 +44,12 @@ public sealed class SceneVideoState
     public bool? MusicContinuity { get; set; }
     public string? BackgroundReturnPhase { get; set; }
     public string NarrationModel { get; set; } = "kokoro";
+    /// <summary>ElevenLabs stability. Kokoro stores it and does not apply it.</summary>
+    public double? NarrationSoftness { get; set; }
+    /// <summary>Configured cloud voice id or a label. Kokoro stays af_heart.</summary>
+    public string? NarrationAccent { get; set; }
+    /// <summary>When set, replaces the measured pace for narration. Empty means match the original window.</summary>
+    public double? NarrationPaceOverride { get; set; }
     public string ExpectedSpeechLanguage { get; set; } = "auto";
 }
 public sealed class SceneVideoClip
@@ -71,6 +77,8 @@ public sealed class SceneVideoClip
     public SceneBoundaryObservation? Boundary { get; set; }
     public bool BoundaryBypass { get; set; }
     public string? TransitionCorrection { get; set; }
+    /// <summary>Creator words attached to “continue unverified”. They do not mark the ending observed.</summary>
+    public string? BoundaryNote { get; set; }
     public int VisualRetries { get; set; }
     public bool Accepted { get; set; }
     public SceneSpeechReport? Speech { get; set; }
@@ -152,7 +160,10 @@ public sealed record SceneBoundaryFrames(IReadOnlyList<string> Frames, IReadOnly
         Seconds.All(t => double.IsFinite(t) && t >= 0) && Seconds[0] < Seconds[1] && Seconds[1] < Seconds[2];
 }
 public sealed record SceneVideoEvidence(IReadOnlyList<string> Frames, string? PreviousFrame = null, bool PreviousExpected = false,
-    SceneBoundaryFrames? Opening = null, SceneBoundaryFrames? Ending = null, SceneBoundaryFrames? PreviousEnding = null, double? DurationSeconds = null);
+    SceneBoundaryFrames? Opening = null, SceneBoundaryFrames? Ending = null, SceneBoundaryFrames? PreviousEnding = null, double? DurationSeconds = null,
+    SceneMotionSummary? EndingMotion = null);
+/// <summary>Frame-difference of the three ending stills. Not optical flow.</summary>
+public sealed record SceneMotionSummary(double Change, string Direction, bool Consistent);
 public sealed record SceneVideoProject(string ProjectId, bool? ContinuousMusic = null);
 public sealed record SceneVideoDelivery(string VideoUrl);
 /// <summary>Idempotent studio operations, invoked only by leased specialist actors.</summary>
@@ -160,6 +171,8 @@ public interface ISceneVideoProduction
 {
     Task<SceneVideoProject> EnsureProjectAsync(string runId, string storyId, string mode, string name, CancellationToken ct, string? projectId = null);
     Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct);
+    /// <summary>Recheck shifts the ending samples inside the same window. The default repeats the unshifted read.</summary>
+    Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) => EvidenceAsync(key, ct);
     Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct);
     Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
     Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Clip audio production is not configured.");
@@ -174,9 +187,14 @@ public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? MusicProfile = null);
 public sealed record SceneAudioMix(double SpeechDb = 0, double MusicDb = 0);
 public sealed record SceneAudioApproval(int ClipNumber, string Version);
-public sealed record SceneNarrationPlan(string Model, string Voice, string Language, IReadOnlyList<string> Scripts);
+public sealed record SceneNarrationPlan(string Model, string Voice, string Language, IReadOnlyList<string> Scripts,
+    IReadOnlyList<SceneNarrationWindow>? Windows = null, double? Softness = null, string? Accent = null);
+/// <summary>Where and how long this clip’s narration should sit. Speed is applied by the narrator from the target, unless PaceOverride is set.</summary>
+public sealed record SceneNarrationWindow(double? TargetSeconds = null, double StartSeconds = 0.2, double? PaceOverride = null);
+public sealed record SceneSpeechWord(string Text, double StartSeconds, double EndSeconds);
 public sealed record SceneSpeechReport(string Status, string? Language, double Confidence, string Transcript, string Summary,
-    IReadOnlyList<SceneSpeechIssue>? Issues = null);
+    IReadOnlyList<SceneSpeechIssue>? Issues = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SceneSpeechWord>? Words = null);
 // UTF-16 offsets into the original transcript. Zero length denotes missing expected words.
 public sealed record SceneSpeechIssue(int Start, int Length, string Reason);
 public sealed record SceneSpeechUnderstanding(bool Understood, IReadOnlyList<SceneSpeechIssue> Issues, bool Available = true);

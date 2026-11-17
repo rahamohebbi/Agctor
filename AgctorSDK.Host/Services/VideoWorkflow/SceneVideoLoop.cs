@@ -118,7 +118,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             var approved = state.Clips.Select((c,i) => new { Clip = c, Number = i + 1 }).Where(c => c.Clip.ApprovedAudioVersion != null).Select(c => new SceneAudioApproval(c.Number, c.Clip.ApprovedAudioVersion!)).ToArray();
             state.AudioPlan = state.AudioPlan with { Mix = state.Mix, MusicProfile = state.MusicProfile == "close" ? null : state.MusicProfile, ContinuousMusic = state.MusicContinuity ?? state.AudioPlan.ContinuousMusic, Separator = state.Input.AudioModel ?? "roformer",
                 BackgroundMusic = state.BackgroundMusic == "matching" ? "matching" : null,
-                Narration = Dedicated(state) ? new(state.NarrationModel, state.NarrationModel == "kokoro" ? "af_heart" : "configured", "en", state.Clips.Take(run.Phase == "clip-audio-plan" ? state.Current + 1 : state.Clips.Count).Select(c => c.NarrationText ?? "").ToArray()) : null,
+                Narration = Dedicated(state) ? await NarrationPlanAsync(run, state, ct) : null,
                 Approved = approved.Length == 0 ? null : approved };
             run.Phase = run.Phase == "clip-audio-plan" ? "clip-audio-process" : "audio-process";
             return "The audio plan is ready. Preparing a shared soundtrack; original clips are preserved.";
@@ -331,6 +331,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     clip.Continuity = new("uncertain", "Automatic visual review was unavailable.", []);
                 }
                 if (evidence?.Ending?.Valid() == true && clip.Continuity.Ending is { } ending && ending.Valid()) {
+                    // A contradictory frame-difference summary cannot stay "observed". The model is not upgraded the other way.
+                    if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                     clip.Boundary = new(clip.ShotId, RenderKey(run, state), DateTimeOffset.UtcNow,
                         clip.Continuity.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
                     await SaveBoundaryAsync(run.WorkspaceId, clip.Boundary, ct);
@@ -615,6 +617,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (clip.Speech != null) return; // Persisted evidence is reused after actor restarts and human decisions.
         try {
             clip.Speech = await production!.InspectSpeechAsync(RenderKey(run, state), ct);
+            await SaveSpeechMomentAsync(run, state, clip, ct);
             var heard = clip.Speech;
             var matches = heard.Status == "detected" && heard.Confidence >= .85 && heard.Language == state.ExpectedSpeechLanguage;
             var expectedWords = Dedicated(state) ? "" : SceneSpeechTextReview.Expected(clip);
@@ -693,11 +696,12 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { log.LogWarning(ex, "Boundary inspection unavailable for {RunId}", run.Id); }
             if (evidence?.Ending?.Valid() == true && report?.Ending is { } ending && ending.Valid()) {
+                if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                 prior.Boundary = new(prior.ShotId, key, DateTimeOffset.UtcNow, report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
                 await SaveBoundaryAsync(run.WorkspaceId, prior.Boundary, ct);
             }
         }
-        if (prior.Boundary?.Ending is { Status: "observed" } observed && observed.Valid()) return true;
+        if (prior.Boundary?.Ending is { Status: "observed" } observed && observed.Valid() && prior.Boundary is not null) return true;
         Ask(run, "boundary", "The previous clip’s ending movement could not be established from the sampled frames. Review it before starting the next clip. Continuing without a verified ending can repeat or reverse an action.",
             [new("recheck", "Check the ending again"), new("continue", "Continue using the plan · ending unverified"), new("cancel", "Stop here")]);
         return false;
@@ -769,13 +773,60 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         }
         await memory.SaveBoundaryAsync(workspaceId, boundary, ct);
     }
+    /// <summary>Writes one confirmed dialogue moment from measured word times. Planned events and story facts stay as they are.</summary>
+    private async Task SaveSpeechMomentAsync(AgentRun run, SceneVideoState state, SceneVideoClip clip, CancellationToken ct)
+    {
+        var words = clip.Speech?.Words;
+        if (words is not { Count: > 0 } || string.IsNullOrWhiteSpace(clip.ShotId) || string.IsNullOrWhiteSpace(clip.Speech?.Transcript)) return;
+        var start = words.Min(w => w.StartSeconds); var end = words.Max(w => w.EndSeconds);
+        if (end <= start || !double.IsFinite(start) || !double.IsFinite(end)) return;
+        var workspace = await ReadMemory(run.WorkspaceId, ct);
+        if (workspace == null || ScenePromptReducer.Revision(workspace) != state.WorkspaceRevision) return;
+        var id = $"{clip.ShotId}-spoken-{RenderKey(run, state)}";
+        if (workspace.Prompts?.FirstOrDefault(p => p.Id == clip.ShotId)?.TimedEvents?.Any(e => e.Id == id) == true) return;
+        var timing = new SceneTimeRange((long)Math.Round(start * 1000), (long)Math.Round(end * 1000));
+        if (timing.End <= timing.Start) return;
+        var dialogue = clip.Speech!.Transcript.Trim();
+        if (dialogue.Length > 4000) dialogue = dialogue[..4000];
+        var item = new SceneTimedEvent(id, "dialogue", "Measured spoken line", timing, [], "confirmed", RenderKey(run, state), dialogue);
+        async Task<int> Save() { await memory.SaveTimedEventAsync(run.WorkspaceId, clip.ShotId, state.WorkspaceRevision, item, ct); return 0; }
+        if (SceneVideoTrace.CurrentRole != null && !SceneVideoRoles.MayInvoke(SceneVideoTrace.CurrentRole, "Scene Memory"))
+        {
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.Memory))
+                await SceneVideoTrace.InvokeAsync("Scene Memory", "memory", "Recorded facts", "Save spoken moment", Save);
+        }
+        else await memory.SaveTimedEventAsync(run.WorkspaceId, clip.ShotId, state.WorkspaceRevision, item, ct);
+        state.WorkspaceRevision = ScenePromptReducer.Revision(await ReadMemory(run.WorkspaceId, ct));
+    }
+    private async Task<SceneNarrationPlan> NarrationPlanAsync(AgentRun run, SceneVideoState state, CancellationToken ct)
+    {
+        var count = run.Phase == "clip-audio-plan" ? state.Current + 1 : state.Clips.Count;
+        var clips = state.Clips.Take(count).ToArray();
+        var workspace = await ReadMemory(run.WorkspaceId, ct);
+        var windows = clips.Select(c =>
+        {
+            var planned = SceneNarrationPace.PlannedDialogue(workspace, c.ShotId);
+            var confirmed = SceneNarrationPace.ConfirmedDialogue(workspace, c.ShotId, $"{c.ShotId}-{c.RenderAttempt}");
+            return SceneNarrationPace.Window(c.Speech?.Words, planned ?? (c.Speech?.Words is { Count: > 0 } ? null : confirmed), state.NarrationPaceOverride);
+        }).ToArray();
+        return new(state.NarrationModel, state.NarrationModel == "kokoro" ? "af_heart" : "configured", "en",
+            clips.Select(c => c.NarrationText ?? "").ToArray(), windows, state.NarrationSoftness, state.NarrationAccent);
+    }
     private static void AskConflict(AgentRun run) => Ask(run, "conflict",
         "Scene Memory changed outside this run. Cancel this run and start a new sequence from the updated scene to avoid mixing continuity versions.",
         [new("cancel", "Cancel this run")]);
     private async Task<string> ResumeAsync(AgentRun run, SceneVideoState state, CancellationToken ct)
     {
         var reply = run.Reply!; var question = run.Question!;
-        if (reply.Choice == "cancel") { run.Status = "cancelled"; run.Question = null; run.Reply = null; return "Cancelled at your request."; }
+        if (reply.Choice == "cancel") {
+            if (!string.IsNullOrWhiteSpace(reply.Text)) state.HumanNotes.Add(reply.Text.Trim());
+            run.Status = "cancelled"; run.Question = null; run.Reply = null;
+            return string.IsNullOrWhiteSpace(reply.Text) ? "Cancelled at your request." : "Cancelled at your request. " + reply.Text.Trim().Truncate(500);
+        }
+        if (question.Kind == "boundary" && string.IsNullOrWhiteSpace(reply.Choice)) {
+            run.Status = "waiting"; run.Reply = null;
+            return "Choose an ending action. Words alone were not applied.";
+        }
         if (question.Kind == "conflict")
         { run.Status = "waiting"; run.Reply = null; return question.Prompt; }
         if (run.Phase == "plan-review" && question.Kind is "retry" or "planning-retry") {
@@ -800,7 +851,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (!string.IsNullOrWhiteSpace(reply.Text)) answer += "\n" + reply.Text;
         state.HumanNotes.Add(answer);
         if (state.HumanNotes.Count > 100) state.HumanNotes.RemoveAt(0);
-        if (question.Kind is "retry" or "planning-retry" or "timeout" or "render-failed" or "continue" or "continuity" or "boundary" or "audio-review" or "clip-audio-review" or "speech-review" or "speech-intent" or "narration-language" or "narration-review" or "narration-background" && string.IsNullOrWhiteSpace(reply.Choice))
+        if (question.Kind is "retry" or "planning-retry" or "timeout" or "render-failed" or "continue" or "continuity" or "audio-review" or "clip-audio-review" or "speech-review" or "speech-intent" or "narration-language" or "narration-review" or "narration-background" && string.IsNullOrWhiteSpace(reply.Choice))
         {
             run.Status = "waiting"; run.Reply = null;
             const string note = " Your note was recorded. Choose the offered action to resume, or cancel to change the sequence.";
@@ -816,8 +867,11 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         switch (question.Kind)
         {
             case "narration-review":
-                if (reply.Choice is "approve" or "approve-cloud" && string.IsNullOrWhiteSpace(reply.Text)) {
+                if (reply.Choice is "approve" or "approve-cloud" && SceneNarrationPace.TryVoiceSettings(reply.Text, out var softness, out var accent, out var paceOverride)) {
                     state.NarrationModel = reply.Choice == "approve-cloud" ? "eleven_multilingual_v2" : "kokoro";
+                    state.NarrationSoftness = softness;
+                    state.NarrationAccent = string.IsNullOrWhiteSpace(accent) ? null : accent.Trim();
+                    state.NarrationPaceOverride = paceOverride;
                     await AskBackground(run, state, "narration-approved", ct);
                 } else {
                     state.Clarifications = (state.Clarifications + "\nNarration correction: " + answer).TakeLastText(12000);
@@ -931,13 +985,18 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                 else { state.Clarifications = (state.Clarifications + "\n" + answer).TakeLastText(12000); run.Phase = "plan"; }
                 break;
             case "boundary":
-                if (reply.Choice == "continue") state.Clips[state.Current].BoundaryBypass = true;
+                if (reply.Choice == "continue") {
+                    state.Clips[state.Current].BoundaryBypass = true;
+                    state.Clips[state.Current].BoundaryNote = string.IsNullOrWhiteSpace(reply.Text) ? null : reply.Text.Trim().Truncate(2000);
+                }
                 else if (reply.Choice == "recheck") {
-                    // Explicitly request fresh evidence instead of repeating a cached uncertain observation.
+                    // Shift the samples and include the creator's note. Still no new render.
                     var previous = state.Clips[state.Current - 1];
-                    var evidence = await production!.EvidenceAsync($"{run.Id}-{state.Current}-{previous.RenderAttempt}", ct);
-                    var report = await critic!.CheckAsync(previous.VideoPrompt ?? previous.Prompt, evidence, null, ct);
+                    var evidence = await production!.EvidenceAsync($"{run.Id}-{state.Current}-{previous.RenderAttempt}", true, ct);
+                    var note = string.IsNullOrWhiteSpace(reply.Text) ? "" : "\nCreator note about this ending (evidence, not a new story fact): " + reply.Text.Trim();
+                    var report = await critic!.CheckAsync((previous.VideoPrompt ?? previous.Prompt) + note, evidence, null, ct);
                     if (evidence.Ending?.Valid() == true && report.Ending is { } ending && ending.Valid()) {
+                        if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                         previous.Boundary = new(previous.ShotId, $"{run.Id}-{state.Current}-{previous.RenderAttempt}", DateTimeOffset.UtcNow,
                             report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
                         await SaveBoundaryAsync(run.WorkspaceId, previous.Boundary, ct);

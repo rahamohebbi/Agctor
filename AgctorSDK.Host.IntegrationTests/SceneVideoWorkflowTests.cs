@@ -549,6 +549,81 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Contains(choice == "continue" ? "unverified" : "OBSERVED MOVEMENT", renderer.Requests[1].BoundaryInstruction);
     }
     [Fact]
+    public async Task Inconsistent_motion_still_asks_and_does_not_submit_the_next_clip()
+    {
+        production.EndingMotion = new(0.4, "mixed", false);
+        critic.EndingStatus = "observed";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("boundary", run.Question!.Kind);
+        Assert.Single(renderer.Requests);
+        Assert.Equal("uncertain", SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status);
+    }
+    [Fact]
+    public async Task Recheck_sends_the_note_to_the_critic_without_a_new_render()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("boundary", run.Question!.Kind);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "recheck", "use the last frame"));
+        run = await ActorTick(run.Id);
+        Assert.Contains("use the last frame", critic.LastPrompt);
+        Assert.Single(renderer.Requests);
+        Assert.NotEqual("observed", SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status);
+    }
+    [Fact]
+    public async Task Continue_keeps_the_note_without_marking_the_ending_observed()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        var ending = SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "continue", "smoothly use the last frame"));
+        run = await ActorTick(run.Id);
+        for (var i = 0; i < 12 && renderer.Requests.Count < 2 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        var state = SceneVideoLoop.State(run);
+        Assert.True(state.Clips[1].BoundaryBypass);
+        Assert.Equal("smoothly use the last frame", state.Clips[1].BoundaryNote);
+        Assert.Contains("unverified", renderer.Requests[1].BoundaryInstruction);
+        Assert.Contains("smoothly use the last frame", renderer.Requests[1].BoundaryInstruction);
+        Assert.DoesNotContain("OBSERVED MOVEMENT", renderer.Requests[1].BoundaryInstruction);
+        Assert.Equal(ending, state.Clips[0].Boundary!.Ending.Status);
+    }
+    [Fact]
+    public async Task Boundary_words_without_a_choice_are_not_applied()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "", "use the last frame"));
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("boundary", run.Question!.Kind);
+        Assert.False(SceneVideoLoop.State(run).Clips[1].BoundaryBypass);
+        Assert.Null(SceneVideoLoop.State(run).Clips[1].BoundaryNote);
+        Assert.DoesNotContain(SceneVideoLoop.State(run).HumanNotes, n => n.Contains("last frame"));
+        Assert.Single(renderer.Requests);
+    }
+    [Fact]
+    public async Task Measured_speech_saves_confirmed_dialogue_and_leaves_planned_events_planned()
+    {
+        production.Speech = new("detected", "en", .98, "Hello my friend", "English speech", Words:
+            [new SceneSpeechWord("Hello", 4, 5), new SceneSpeechWord("friend", 8, 9)]);
+        var run = await SpeechRun();
+        for (var i = 0; i < 40 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        var state = SceneVideoLoop.State(run);
+        var shot = (await memory.GetAsync(run.WorkspaceId)).Prompts!.Single(p => p.Id == state.Clips[0].ShotId);
+        var spoken = Assert.Single(shot.TimedEvents ?? [], e => e.Kind == "dialogue" && e.Status == "confirmed");
+        Assert.Equal($"{run.Id}-1-1", spoken.TakeId);
+        Assert.Equal("Hello my friend", spoken.Dialogue);
+        Assert.Equal(4000, spoken.Timing.Start);
+        Assert.Equal(9000, spoken.Timing.End);
+        Assert.All(shot.TimedEvents!.Where(e => e.Id != spoken.Id), e => Assert.Equal("planned", e.Status));
+        Assert.Equal(ScenePromptReducer.Revision(await memory.GetAsync(run.WorkspaceId)), state.WorkspaceRevision);
+    }
+    [Fact]
     public async Task Transition_concerns_require_review_and_only_replace_current_take_on_request()
     {
         var run = await ProductionRun(false);
@@ -1074,6 +1149,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("clip-audio-review",run.Question!.Kind);
         Assert.Equal(cloud ? "eleven_multilingual_v2" : "kokoro", production.AudioPlan!.Narration!.Model);
         Assert.Equal(cloud ? "configured" : "af_heart", production.AudioPlan.Narration.Voice);
+        Assert.Equal(0.2, production.AudioPlan.Narration.Windows![0].StartSeconds);
+        Assert.Null(production.AudioPlan.Narration.Windows[0].TargetSeconds);
+        Assert.Null(production.AudioPlan.Narration.Windows[0].PaceOverride);
         Assert.Equal(cloud ? "matching" : null, production.AudioPlan.BackgroundMusic);
         Assert.Equal(1,SceneVideoLoop.State(run).Clips[0].RenderAttempt);
         Assert.Contains(run.Question.Choices,c=>c.Id=="balance");
@@ -1173,6 +1251,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
         public string? RequestedProject; public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");
+        public SceneMotionSummary? EndingMotion;
+        public bool Shifted;
+        public Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) { Shifted = recheck; return EvidenceAsync(key, ct); }
         public Task<SceneSpeechReport> InspectSpeechAsync(string key,CancellationToken ct) { SpeechCalls++; return Task.FromResult(Speech); }
         public int PreviewCalls; public bool PreviewAvailable = true;
         public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) {
@@ -1187,16 +1268,16 @@ public sealed class SceneVideoWorkflowTests : IDisposable
             RequestedProject = projectId;
             return Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         }
-        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95])));
+        public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]), EndingMotion: EndingMotion));
         public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct) {
             Deliveries.Add(keys); return Task.FromResult(new SceneVideoDelivery("https://cynelo.test/finished.mp4"));
         }
     }
     private sealed class Critic : ISceneVideoCritic
     {
-        public string Status = "passed"; public string EndingStatus = "observed"; public int Calls; public bool Throw;
+        public string Status = "passed"; public string EndingStatus = "observed"; public int Calls; public bool Throw; public string? LastPrompt;
         public Task<SceneContinuityReport> CheckAsync(string prompt, SceneVideoEvidence current, SceneVideoEvidence? previous, CancellationToken ct) {
-            Calls++; if(Throw) throw new HttpRequestException("Offline"); return Task.FromResult(new SceneContinuityReport(Status, "Sampled-frame review", Status == "passed" ? [] : ["Check the outfit"], new(EndingStatus, "Inside greenhouse", "Moving toward bench", "Pot in both arms", "Entered greenhouse", "Camera follows from behind"), previous == null ? "not_applicable" : Status, "fake-vision"));
+            Calls++; LastPrompt = prompt; if(Throw) throw new HttpRequestException("Offline"); return Task.FromResult(new SceneContinuityReport(Status, "Sampled-frame review", Status == "passed" ? [] : ["Check the outfit"], new(EndingStatus, "Inside greenhouse", "Moving toward bench", "Pot in both arms", "Entered greenhouse", "Camera follows from behind"), previous == null ? "not_applicable" : Status, "fake-vision"));
         }
     }
     private sealed class Planner : ISceneVideoPlanner
