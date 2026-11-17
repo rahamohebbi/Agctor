@@ -64,10 +64,8 @@ namespace AgctorSDK.Core.IntegrationTests
             Assert.Contains("hello", payloadStr);
         }
 
-        [Fact(Timeout=15000)]
-        public async Task ClusterIdentity_ResolvesAcrossNodes()
-        {
-            // ... existing code ...
-        }
+        // Stub left from an incomplete cluster sample; skip so it cannot confuse runners.
+        [Fact(Skip = "Cluster identity sample not implemented yet")]
+        public Task ClusterIdentity_ResolvesAcrossNodes() => Task.CompletedTask;
     }
 } 

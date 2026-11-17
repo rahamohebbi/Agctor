@@ -62,6 +62,49 @@ public sealed class AgentRunsController(
             StringComparer.Ordinal);
         return Ok(new GraphResponse(composed.Nodes, composed.Edges, composed.ActiveCalls, projection.Flow, layouts));
     }
+
+    public sealed record GraphLayoutsRequest(Dictionary<string, ScenarioFlowNodeLayout>? Layouts);
+
+    /// <summary>
+    /// Persist live-graph card positions into the scenario's flow.ui.nodeLayouts (Edit-flow source of truth).
+    /// Body keys are canonical live ids (Director, Video rendering, …); stored under flow node ids.
+    /// </summary>
+    [HttpPut("api/agent-runs/{id}/graph/layouts")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> PutGraphLayouts(string id, [FromBody] GraphLayoutsRequest? body, CancellationToken ct)
+    {
+        var run = await runs.GetAsync(id, ct);
+        if (run == null) return NotFound();
+        if (body?.Layouts == null || body.Layouts.Count == 0)
+            return BadRequest(new { error = "layouts are required." });
+
+        var scenario = catalog.Get(run.ScenarioId);
+        if (scenario?.Flow == null)
+            return BadRequest(new { error = "This run has no conversation-flow document to update." });
+
+        ScenarioFlowDocument updated;
+        try
+        {
+            updated = ScenarioFlowGraphProjector.ApplyCanonicalLayouts(scenario.Flow, body.Layouts);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        var save = await catalog.SaveScenarioFlowAsync(run.ScenarioId, updated, ct);
+        if (!save.Ok)
+            return BadRequest(new { error = "Could not save layout.", details = save.Errors });
+
+        var projection = ScenarioFlowGraphProjector.Project(updated)!;
+        var layouts = projection.Layouts.ToDictionary(
+            kv => kv.Key,
+            kv => new ScenarioFlowNodeLayout { X = kv.Value.X, Y = kv.Value.Y },
+            StringComparer.Ordinal);
+        return Ok(new { layouts, scenarioId = run.ScenarioId });
+    }
     [HttpPost("api/agent-runs/{id}/reply")]
     public Task<IActionResult> Reply(string id, ReplyRequest request, CancellationToken ct) => Guard(async () =>
         Ok(await runs.ReplyAsync(id, request.Revision, new(request.QuestionId, request.Choice, request.Text), ct)));

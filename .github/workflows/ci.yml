@@ -17,6 +17,9 @@ jobs:
       DOTNET_NOLOGO: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # Host ITs spawn many WebApplicationFactory hosts; avoid FileSystemWatcher/inotify burn.
+      DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE: "false"
+      DOTNET_USE_POLLING_FILE_WATCHER: "1"
 
     steps:
       - name: Checkout
@@ -30,6 +33,12 @@ jobs:
             8.0.x
             10.0.x
 
+      # Parallel Host factories exceed Ubuntu's default 128 inotify instances.
+      - name: Raise inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=1024
+          sudo sysctl -w fs.inotify.max_user_watches=524288
+
       - name: Restore
         run: dotnet restore Agctor.sln
 
@@ -39,11 +48,16 @@ jobs:
       - name: Unit tests
         run: dotnet test AgctorSDK.Core.Tests --no-build --configuration Release --verbosity normal
 
+      # net10 only: dual TFM left Proto.Actor threads that never exited after a green run (6h cancel).
       - name: Core integration tests (no Ollama)
+        timeout-minutes: 10
         run: >
           dotnet test AgctorSDK.Core.IntegrationTests
+          -f net10.0
           --no-build --configuration Release --verbosity normal
           --filter "TestCategory!=RequiresOllama"
+          --blame-hang-timeout 5m
 
+      # Skip Host after Core abort: hang dumps exhaust inotify and poison WebApplicationFactory.
       - name: Host integration tests
         run: dotnet test AgctorSDK.Host.IntegrationTests --no-build --configuration Release --verbosity normal

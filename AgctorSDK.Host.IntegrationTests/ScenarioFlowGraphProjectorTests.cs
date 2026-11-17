@@ -39,6 +39,26 @@ public sealed class ScenarioFlowGraphProjectorTests
     }
 
     [Fact]
+    public void ApplyCanonicalLayouts_writes_back_onto_flow_node_ids()
+    {
+        var flow = SampleExpandedFlow();
+        var updated = ScenarioFlowGraphProjector.ApplyCanonicalLayouts(
+            flow,
+            new Dictionary<string, ScenarioFlowNodeLayout>
+            {
+                ["Director"] = new() { X = 12, Y = 34 },
+                ["Video rendering"] = new() { X = 560, Y = 200 },
+                ["Output"] = new() { X = 900, Y = 400 }
+            });
+        Assert.Equal(12, updated.Ui!.NodeLayouts!["director"].X);
+        Assert.Equal(34, updated.Ui.NodeLayouts["director"].Y);
+        Assert.Equal(560, updated.Ui.NodeLayouts["video-rendering"].X);
+        Assert.Equal(900, updated.Ui.NodeLayouts["output"].X);
+        // Unmentioned flow ids keep their previous editor positions.
+        Assert.True(updated.Ui.NodeLayouts.ContainsKey("input"));
+    }
+
+    [Fact]
     public void DisplayDetail_prefers_label_over_shared_capability_blurbs()
     {
         var node = new ScenarioFlowNode

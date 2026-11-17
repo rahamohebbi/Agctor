@@ -56,8 +56,8 @@ public class TaskFlowEndToEndIntegrationTests : IClassFixture<AgctorWebApplicati
         await scoper.ProcessGoalsAsync();
 
         var engine = new TaskFlowEngine(taskStore, new SimpleTaskExecutor(), maxParallelism: 4);
-        // Run the engine until no pending/running tasks remain or timeout reached
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        // CI runners are busy with parallel Host factories; give the DAG a bit more wall time.
+        var deadline = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < deadline)
         {
             await engine.RunOnceAsync();

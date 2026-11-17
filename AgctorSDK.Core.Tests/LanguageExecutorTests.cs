@@ -1,4 +1,5 @@
 using AgctorSDK.Core.Tools.LanguageExecutors;
+using System.Linq;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -6,6 +7,20 @@ namespace AgctorSDK.Core.Tests
 {
     public class LanguageExecutorTests
     {
+        // Parallel CreateEngine used to hang CI; gate in PythonExecutor must keep this green.
+        [Fact]
+        public async Task PythonExecutor_ParallelExecutes_DoNotHang()
+        {
+            var executor = new PythonExecutor();
+            var tasks = Enumerable.Range(0, 16)
+                .Select(i => executor.ExecuteCodeAsync($"print('parallel-{i}')"))
+                .ToArray();
+
+            var results = await Task.WhenAll(tasks);
+
+            Assert.All(results, r => Assert.True(r.Success, r.Error));
+        }
+
         [Fact]
         public void LanguageExecutorFactory_ShouldRegisterAndRetrieveExecutors()
         {
