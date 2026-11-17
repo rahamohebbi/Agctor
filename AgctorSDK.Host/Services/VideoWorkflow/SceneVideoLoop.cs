@@ -703,7 +703,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         }
         if (prior.Boundary?.Ending is { Status: "observed" } observed && observed.Valid() && prior.Boundary is not null) return true;
         Ask(run, "boundary", "The previous clip’s ending movement could not be established from the sampled frames. Review it before starting the next clip. Continuing without a verified ending can repeat or reverse an action.",
-            [new("recheck", "Check the ending again"), new("continue", "Continue using the plan · ending unverified"), new("cancel", "Stop here")]);
+            [new("recheck", "Check the ending again"), new("continue", "Continue using the plan · ending unverified"), new("cancel", "Stop here"), new("prompt", "Write a transition prompt")]);
         return false;
     }
     private static string ApproveVisual(AgentRun run, SceneVideoState state, string label)
@@ -819,13 +819,19 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     {
         var reply = run.Reply!; var question = run.Question!;
         if (reply.Choice == "cancel") {
-            if (!string.IsNullOrWhiteSpace(reply.Text)) state.HumanNotes.Add(reply.Text.Trim());
+            // A boundary stop is only a stop. Typed words belong to the prompt choice.
+            var keepWords = question.Kind != "boundary" && !string.IsNullOrWhiteSpace(reply.Text);
+            if (keepWords) state.HumanNotes.Add(reply.Text!.Trim());
             run.Status = "cancelled"; run.Question = null; run.Reply = null;
-            return string.IsNullOrWhiteSpace(reply.Text) ? "Cancelled at your request." : "Cancelled at your request. " + reply.Text.Trim().Truncate(500);
+            return keepWords ? "Cancelled at your request. " + reply.Text!.Trim().Truncate(500) : "Cancelled at your request.";
         }
         if (question.Kind == "boundary" && string.IsNullOrWhiteSpace(reply.Choice)) {
             run.Status = "waiting"; run.Reply = null;
             return "Choose an ending action. Words alone were not applied.";
+        }
+        if (question.Kind == "boundary" && reply.Choice == "prompt" && string.IsNullOrWhiteSpace(reply.Text)) {
+            run.Status = "waiting"; run.Reply = null;
+            return "Enter a transition prompt. An empty prompt was not applied.";
         }
         if (question.Kind == "conflict")
         { run.Status = "waiting"; run.Reply = null; return question.Prompt; }
@@ -848,7 +854,9 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             }
         }
         var answer = question.Choices.FirstOrDefault(c => c.Id == reply.Choice)?.Label ?? "";
-        if (!string.IsNullOrWhiteSpace(reply.Text)) answer += "\n" + reply.Text;
+        // Boundary words ride only with the prompt choice. The other ending actions stay plain.
+        if ((question.Kind != "boundary" || reply.Choice == "prompt") && !string.IsNullOrWhiteSpace(reply.Text))
+            answer += "\n" + reply.Text;
         state.HumanNotes.Add(answer);
         if (state.HumanNotes.Count > 100) state.HumanNotes.RemoveAt(0);
         if (question.Kind is "retry" or "planning-retry" or "timeout" or "render-failed" or "continue" or "continuity" or "audio-review" or "clip-audio-review" or "speech-review" or "speech-intent" or "narration-language" or "narration-review" or "narration-background" && string.IsNullOrWhiteSpace(reply.Choice))
@@ -985,16 +993,16 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                 else { state.Clarifications = (state.Clarifications + "\n" + answer).TakeLastText(12000); run.Phase = "plan"; }
                 break;
             case "boundary":
-                if (reply.Choice == "continue") {
+                if (reply.Choice is "continue" or "prompt") {
                     state.Clips[state.Current].BoundaryBypass = true;
-                    state.Clips[state.Current].BoundaryNote = string.IsNullOrWhiteSpace(reply.Text) ? null : reply.Text.Trim().Truncate(2000);
+                    // Only the prompt choice instructs the next clip. The other actions do not carry typed words.
+                    state.Clips[state.Current].BoundaryNote = reply.Choice == "prompt" ? reply.Text!.Trim().Truncate(2000) : null;
                 }
                 else if (reply.Choice == "recheck") {
-                    // Shift the samples and include the creator's note. Still no new render.
+                    // Shift the samples and look again. Typed words belong to the prompt choice, not this look.
                     var previous = state.Clips[state.Current - 1];
                     var evidence = await production!.EvidenceAsync($"{run.Id}-{state.Current}-{previous.RenderAttempt}", true, ct);
-                    var note = string.IsNullOrWhiteSpace(reply.Text) ? "" : "\nCreator note about this ending (evidence, not a new story fact): " + reply.Text.Trim();
-                    var report = await critic!.CheckAsync((previous.VideoPrompt ?? previous.Prompt) + note, evidence, null, ct);
+                    var report = await critic!.CheckAsync(previous.VideoPrompt ?? previous.Prompt, evidence, null, ct);
                     if (evidence.Ending?.Valid() == true && report.Ending is { } ending && ending.Valid()) {
                         if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                         previous.Boundary = new(previous.ShotId, $"{run.Id}-{state.Current}-{previous.RenderAttempt}", DateTimeOffset.UtcNow,

@@ -23,7 +23,8 @@ public static class SceneBoundaryGuidance
             else {
                 prompt += "\n\nThe previous ending is unverified. Use the supplied continuation frame, avoid repeating the prior action, and preserve spatial direction. Do not assume the planned ending actually occurred.";
                 if (!string.IsNullOrWhiteSpace(clip.BoundaryNote))
-                    prompt += "\nCreator transition guidance (does not verify the ending): " + clip.BoundaryNote.Trim();
+                    prompt += "\nCreator transition prompt: " + clip.BoundaryNote.Trim() +
+                        " Use the last frame and scene memory to move into the next clip. This prompt does not verify the ending.";
             }
         }
         if (!string.IsNullOrWhiteSpace(clip.TransitionCorrection))
