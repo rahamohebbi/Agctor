@@ -16,6 +16,11 @@ public class AgctorWebApplicationFactory : WebApplicationFactory<Program>
 
     public AgctorWebApplicationFactory()
     {
+        // Parallel Host ITs create many WebApplicationFactory hosts; default JSON
+        // reload watchers hit Linux's 128 inotify-instance cap on GitHub runners.
+        Environment.SetEnvironmentVariable("DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE", "false");
+        Environment.SetEnvironmentVariable("DOTNET_USE_POLLING_FILE_WATCHER", "1");
+
         _tempDir = Path.Combine(Path.GetTempPath(), "agctor-host-itest-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_tempDir);
         _userCatalogPath = Path.Combine(_tempDir, "agctor-scenarios.user.json");
