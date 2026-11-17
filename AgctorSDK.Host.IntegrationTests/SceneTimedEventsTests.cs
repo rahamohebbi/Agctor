@@ -111,6 +111,32 @@ public sealed class SceneTimedEventsTests
         var saved = Assert.Single(applied.Prompts![0].TimedEvents!);
         Assert.Equal("planned", saved.Status); Assert.Null(saved.TakeId); Assert.Equal("hello", saved.Dialogue);
     }
+
+    [Fact]
+    public void Prompt_without_an_explicit_range_does_not_grow_a_planned_event() {
+        var w = new SceneWorkspace("w", "Story", DateTimeOffset.UtcNow, [new("ryan", "Ryan", "Character")], []);
+        const string prompt = "Ryan says hello.";
+        var preview = new ScenePromptPreview("shot", ScenePromptReducer.Revision(w), prompt, "Hello", "test",
+            new([], [], [], [new("Ryan speaks", ["ryan"], prompt)]), DurationSeconds: 10);
+        var applied = ScenePromptReducer.Apply(w, preview);
+        Assert.Empty(applied.Prompts![0].TimedEvents ?? []);
+    }
+
+    [Fact]
+    public void Confirmed_dialogue_keeps_the_planned_event_and_story_facts() {
+        var planned = Event("plan") with { Kind = "dialogue", Dialogue = "hello" };
+        var w = Save(Story(), planned);
+        var history = w.History;
+        var confirmed = new SceneTimedEvent("spoken", "dialogue", "Measured spoken line", new(4000, 9000), [], "confirmed", "render-key", "Hello my friend");
+        w = Save(w, confirmed);
+        Assert.Equal(history, w.History);
+        Assert.Equal(w.Entities, Story().Entities);
+        Assert.Equal("planned", w.Prompts![0].TimedEvents!.Single(e => e.Id == "plan").Status);
+        var spoken = w.Prompts[0].TimedEvents!.Single(e => e.Id == "spoken");
+        Assert.Equal("confirmed", spoken.Status);
+        Assert.Equal("render-key", spoken.TakeId);
+        Assert.Equal("Hello my friend", spoken.Dialogue);
+    }
 }
 
 [Collection("LlmStatic")]
