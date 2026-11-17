@@ -49,7 +49,6 @@ jobs:
           --filter "TestCategory!=RequiresOllama"
           --blame-hang-timeout 5m
 
-      # Still run Host if Core times out, so API/projector coverage is not blocked by that hang.
+      # Skip Host after Core abort: hang dumps exhaust inotify and poison WebApplicationFactory.
       - name: Host integration tests
-        if: success() || failure()
         run: dotnet test AgctorSDK.Host.IntegrationTests --no-build --configuration Release --verbosity normal

@@ -3,15 +3,20 @@ using Microsoft.Scripting.Hosting;
 using System;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace AgctorSDK.Core.Tools.LanguageExecutors
 {
     /// <summary>
-    /// Executor for Python code using IronPython
+    /// Executor for Python code using IronPython.
     /// </summary>
     public class PythonExecutor : ILanguageExecutor
     {
+        // IronPython engine create/execute is not safe across parallel xUnit workers;
+        // concurrent CreateEngine calls can hang the testhost indefinitely.
+        private static readonly SemaphoreSlim Gate = new(1, 1);
+
         /// <summary>
         /// Gets the language identifier
         /// </summary>
@@ -29,54 +34,62 @@ namespace AgctorSDK.Core.Tools.LanguageExecutors
 
             try
             {
-                await Task.Run(() =>
+                await Gate.WaitAsync().ConfigureAwait(false);
+                try
                 {
-                    // Create the Python engine
-                    var engine = Python.CreateEngine();
-                    var scope = engine.CreateScope();
-
-                    // Redirect stdout and stderr
-                    var outputStream = new MemoryStream();
-                    var errorStream = new MemoryStream();
-                    var outputWriter = new StreamWriter(outputStream);
-                    var errorWriter = new StreamWriter(errorStream);
-
-                    engine.Runtime.IO.SetOutput(outputStream, outputWriter);
-                    engine.Runtime.IO.SetErrorOutput(errorStream, errorWriter);
-
-                    try
+                    await Task.Run(() =>
                     {
-                        // Execute the code
-                        var source = engine.CreateScriptSourceFromString(code, Microsoft.Scripting.SourceCodeKind.Statements);
-                        source.Execute(scope);
+                        // Create the Python engine
+                        var engine = Python.CreateEngine();
+                        var scope = engine.CreateScope();
 
-                        // Flush the writers to ensure all output is captured
-                        outputWriter.Flush();
-                        errorWriter.Flush();
+                        // Redirect stdout and stderr
+                        var outputStream = new MemoryStream();
+                        var errorStream = new MemoryStream();
+                        var outputWriter = new StreamWriter(outputStream);
+                        var errorWriter = new StreamWriter(errorStream);
 
-                        // Get the output and error
-                        outputStream.Position = 0;
-                        errorStream.Position = 0;
+                        engine.Runtime.IO.SetOutput(outputStream, outputWriter);
+                        engine.Runtime.IO.SetErrorOutput(errorStream, errorWriter);
 
-                        using var outputReader = new StreamReader(outputStream, leaveOpen: true);
-                        using var errorReader = new StreamReader(errorStream, leaveOpen: true);
+                        try
+                        {
+                            // Execute the code
+                            var source = engine.CreateScriptSourceFromString(code, Microsoft.Scripting.SourceCodeKind.Statements);
+                            source.Execute(scope);
 
-                        outputBuilder.Append(outputReader.ReadToEnd());
-                        errorBuilder.Append(errorReader.ReadToEnd());
-                    }
-                    catch (Exception ex)
-                    {
-                        errorBuilder.Append($"Execution error: {ex.Message}");
-                    }
-                    finally
-                    {
-                        // Clean up
-                        outputWriter.Dispose();
-                        errorWriter.Dispose();
-                        outputStream.Dispose();
-                        errorStream.Dispose();
-                    }
-                });
+                            // Flush the writers to ensure all output is captured
+                            outputWriter.Flush();
+                            errorWriter.Flush();
+
+                            // Get the output and error
+                            outputStream.Position = 0;
+                            errorStream.Position = 0;
+
+                            using var outputReader = new StreamReader(outputStream, leaveOpen: true);
+                            using var errorReader = new StreamReader(errorStream, leaveOpen: true);
+
+                            outputBuilder.Append(outputReader.ReadToEnd());
+                            errorBuilder.Append(errorReader.ReadToEnd());
+                        }
+                        catch (Exception ex)
+                        {
+                            errorBuilder.Append($"Execution error: {ex.Message}");
+                        }
+                        finally
+                        {
+                            // Clean up
+                            outputWriter.Dispose();
+                            errorWriter.Dispose();
+                            outputStream.Dispose();
+                            errorStream.Dispose();
+                        }
+                    }).ConfigureAwait(false);
+                }
+                finally
+                {
+                    Gate.Release();
+                }
 
                 // If there's an error, return failure
                 if (errorBuilder.Length > 0)
@@ -92,4 +105,4 @@ namespace AgctorSDK.Core.Tools.LanguageExecutors
             }
         }
     }
-} 
+}
