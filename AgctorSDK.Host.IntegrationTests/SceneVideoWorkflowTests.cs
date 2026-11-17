@@ -560,7 +560,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("uncertain", SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status);
     }
     [Fact]
-    public async Task Recheck_sends_the_note_to_the_critic_without_a_new_render()
+    public async Task Recheck_ignores_typed_words_and_does_not_render()
     {
         critic.EndingStatus = "uncertain";
         var run = await ProductionRun(false);
@@ -568,27 +568,63 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("boundary", run.Question!.Kind);
         await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "recheck", "use the last frame"));
         run = await ActorTick(run.Id);
-        Assert.Contains("use the last frame", critic.LastPrompt);
+        Assert.DoesNotContain("use the last frame", critic.LastPrompt);
+        Assert.DoesNotContain(SceneVideoLoop.State(run).HumanNotes, n => n.Contains("last frame"));
         Assert.Single(renderer.Requests);
         Assert.NotEqual("observed", SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status);
     }
     [Fact]
-    public async Task Continue_keeps_the_note_without_marking_the_ending_observed()
+    public async Task Continue_ignores_typed_words_and_leaves_the_ending_unverified()
     {
         critic.EndingStatus = "uncertain";
         var run = await ProductionRun(false);
         for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
         var ending = SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status;
-        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "continue", "smoothly use the last frame"));
+        Assert.Contains(run.Question!.Choices, c => c.Id == "prompt");
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "continue", "smoothly use the last frame"));
+        run = await ActorTick(run.Id);
+        for (var i = 0; i < 12 && renderer.Requests.Count < 2 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        var state = SceneVideoLoop.State(run);
+        Assert.True(state.Clips[1].BoundaryBypass);
+        Assert.Null(state.Clips[1].BoundaryNote);
+        Assert.DoesNotContain(state.HumanNotes, n => n.Contains("last frame"));
+        Assert.Contains("unverified", renderer.Requests[1].BoundaryInstruction);
+        Assert.DoesNotContain("smoothly use the last frame", renderer.Requests[1].BoundaryInstruction);
+        Assert.DoesNotContain("OBSERVED MOVEMENT", renderer.Requests[1].BoundaryInstruction);
+        Assert.Equal(ending, state.Clips[0].Boundary!.Ending.Status);
+    }
+    [Fact]
+    public async Task Transition_prompt_guides_the_next_clip_without_verifying_the_ending()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        var ending = SceneVideoLoop.State(run).Clips[0].Boundary!.Ending.Status;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "prompt", "  smoothly use the last frame  "));
         run = await ActorTick(run.Id);
         for (var i = 0; i < 12 && renderer.Requests.Count < 2 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
         var state = SceneVideoLoop.State(run);
         Assert.True(state.Clips[1].BoundaryBypass);
         Assert.Equal("smoothly use the last frame", state.Clips[1].BoundaryNote);
         Assert.Contains("unverified", renderer.Requests[1].BoundaryInstruction);
-        Assert.Contains("smoothly use the last frame", renderer.Requests[1].BoundaryInstruction);
+        Assert.Contains("Creator transition prompt: smoothly use the last frame", renderer.Requests[1].BoundaryInstruction);
+        Assert.Contains("last frame and scene memory", renderer.Requests[1].BoundaryInstruction);
         Assert.DoesNotContain("OBSERVED MOVEMENT", renderer.Requests[1].BoundaryInstruction);
         Assert.Equal(ending, state.Clips[0].Boundary!.Ending.Status);
+    }
+    [Fact]
+    public async Task Empty_transition_prompt_stays_waiting()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "prompt", "   "));
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("boundary", run.Question!.Kind);
+        Assert.False(SceneVideoLoop.State(run).Clips[1].BoundaryBypass);
+        Assert.Null(SceneVideoLoop.State(run).Clips[1].BoundaryNote);
+        Assert.Single(renderer.Requests);
     }
     [Fact]
     public async Task Boundary_words_without_a_choice_are_not_applied()
@@ -602,6 +638,19 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("boundary", run.Question!.Kind);
         Assert.False(SceneVideoLoop.State(run).Clips[1].BoundaryBypass);
         Assert.Null(SceneVideoLoop.State(run).Clips[1].BoundaryNote);
+        Assert.DoesNotContain(SceneVideoLoop.State(run).HumanNotes, n => n.Contains("last frame"));
+        Assert.Single(renderer.Requests);
+    }
+    [Fact]
+    public async Task Stop_ignores_typed_words()
+    {
+        critic.EndingStatus = "uncertain";
+        var run = await ProductionRun(false);
+        for (var i = 0; i < 20 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question!.Id, "cancel", "use the last frame"));
+        run = await ActorTick(run.Id);
+        Assert.Equal("cancelled", run.Status);
+        Assert.DoesNotContain("last frame", run.Summary);
         Assert.DoesNotContain(SceneVideoLoop.State(run).HumanNotes, n => n.Contains("last frame"));
         Assert.Single(renderer.Requests);
     }
