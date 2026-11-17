@@ -173,11 +173,11 @@ public sealed class ScenarioFlowGraphProjectorTests
             {
                 NodeLayouts = new Dictionary<string, ScenarioFlowNodeLayout>
                 {
-                    ["input"] = new() { X = 0, Y = 320 },
-                    ["director"] = new() { X = 0, Y = 160 },
-                    ["render"] = new() { X = 280, Y = 520 },
-                    ["video-rendering"] = new() { X = 560, Y = 500 },
-                    ["output"] = new() { X = 0, Y = 520 }
+                    ["input"] = new() { X = 0, Y = 280 },
+                    ["director"] = new() { X = 0, Y = 420 },
+                    ["render"] = new() { X = 280, Y = 560 },
+                    ["video-rendering"] = new() { X = 560, Y = 560 },
+                    ["output"] = new() { X = 840, Y = 560 }
                 }
             }
         };
