@@ -33,7 +33,8 @@ public static class ScenarioFlowGraphProjector
     public static string KindFor(ScenarioFlowNode node)
     {
         if (node.Type.Equals("ChatInput", StringComparison.OrdinalIgnoreCase)) return "human";
-        if (node.Type.Equals("Output", StringComparison.OrdinalIgnoreCase)) return "tool";
+        // Distinct from Capability tools so live UIs do not treat Output as "Cynelo API".
+        if (node.Type.Equals("Output", StringComparison.OrdinalIgnoreCase)) return "output";
         if (node.Type.Equals("LlmNode", StringComparison.OrdinalIgnoreCase)) return "llm";
         if (SceneVideoScenario.IsCapability(node) &&
             node.Config is { ValueKind: JsonValueKind.Object } cfg &&
@@ -43,15 +44,15 @@ public static class ScenarioFlowGraphProjector
         return "agent";
     }
 
-    /// <summary>Display title on the live graph — prefer the saved flow label.</summary>
+    /// <summary>Card title on the live graph — flow-editor label (not shared tool blurbs).</summary>
     public static string DisplayDetail(ScenarioFlowNode node)
     {
+        if (!string.IsNullOrWhiteSpace(node.Label)) return node.Label.Trim();
         if (SceneVideoScenario.IsCapability(node) &&
             node.Config is { ValueKind: JsonValueKind.Object } cfg &&
             cfg.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String &&
             !string.IsNullOrWhiteSpace(detail.GetString()))
             return detail.GetString()!;
-        if (!string.IsNullOrWhiteSpace(node.Label)) return node.Label.Trim();
         return node.Type;
     }
 

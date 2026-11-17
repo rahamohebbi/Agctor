@@ -19,13 +19,16 @@
         model: '#B6A3FF',
         memory: '#FFBE79',
         tool: '#9CB7D3',
+        output: '#9CB7D3',
         human: '#64E7D2',
         agent: '#64E7D2'
     };
     var NODE_W = 170;
     var NODE_H = 100;
     var FLIGHT_MS = 1500;
-    var LAYOUT_PAD = 96;
+    var LAYOUT_PAD = 48;
+    var MIN_GAP_X = 28;
+    var MIN_GAP_Y = 28;
 
     function label(id) {
         if (LABELS[id]) return LABELS[id];
@@ -41,7 +44,8 @@
         if (kind === 'llm') return 'LLM';
         if (kind === 'model') return 'MODEL EVIDENCE';
         if (kind === 'human') return 'INPUT';
-        if (kind === 'tool') return 'OUTPUT';
+        if (kind === 'output') return 'OUTPUT';
+        if (kind === 'tool') return 'TOOL';
         return String(kind || 'agent').toUpperCase();
     }
 
@@ -56,7 +60,9 @@
         if (kind === 'llm') return (node && node.detail) || String(id).replace(/^Ollama · /, '');
         if (kind === 'model') return 'Reported by Cynelo';
         if (kind === 'human') return 'Start of the flow';
-        if (kind === 'tool') return 'End of the flow';
+        if (kind === 'output') return 'End of the flow';
+        if (kind === 'tool') return 'Cynelo API';
+        if (kind === 'memory') return 'Recorded facts';
         if (kind === 'agent') return 'Actor mailbox';
         return (node && node.detail) || kind;
     }
@@ -147,56 +153,101 @@
     }
 
     /**
-     * Prefer flow.ui.nodeLayouts, then scale the whole graph to fill the viewport
-     * so fullscreen does not leave a tiny cluster in the corner.
+     * Map editor coords onto a collision-free ordinal grid, then stretch steps to fill
+     * the canvas. Fixed-size cards never overlap — duplicate (x,y) slots bump down.
+     */
+    function layoutOrdinal(points, viewportW, viewportH) {
+        var xs = [];
+        var ys = [];
+        points.forEach(function (p) {
+            if (xs.indexOf(p.x) < 0) xs.push(p.x);
+            if (ys.indexOf(p.y) < 0) ys.push(p.y);
+        });
+        xs.sort(function (a, b) { return a - b; });
+        ys.sort(function (a, b) { return a - b; });
+        var colOf = {};
+        var rowOf = {};
+        xs.forEach(function (x, i) { colOf[x] = i; });
+        ys.forEach(function (y, i) { rowOf[y] = i; });
+
+        points.sort(function (a, b) {
+            return a.y - b.y || a.x - b.x || String(a.id).localeCompare(String(b.id));
+        });
+        var occupied = {};
+        var place = {};
+        var maxC = 0;
+        var maxR = 0;
+        points.forEach(function (p) {
+            var c = colOf[p.x];
+            var r = rowOf[p.y];
+            var key = c + ',' + r;
+            while (occupied[key]) {
+                r += 1;
+                key = c + ',' + r;
+            }
+            occupied[key] = true;
+            place[p.id] = { c: c, r: r };
+            maxC = Math.max(maxC, c);
+            maxR = Math.max(maxR, r);
+        });
+
+        var cols = maxC + 1;
+        var rows = maxR + 1;
+        var minStepX = NODE_W + MIN_GAP_X;
+        var minStepY = NODE_H + MIN_GAP_Y;
+        var needW = (cols - 1) * minStepX + NODE_W + LAYOUT_PAD * 2;
+        var needH = (rows - 1) * minStepY + NODE_H + LAYOUT_PAD * 2;
+        var contentW = Math.max(viewportW, needW);
+        var contentH = Math.max(viewportH, needH);
+        var usableW = Math.max(0, contentW - LAYOUT_PAD * 2 - NODE_W);
+        var usableH = Math.max(0, contentH - LAYOUT_PAD * 2 - NODE_H);
+        var stepX = cols <= 1 ? 0 : Math.max(minStepX, usableW / (cols - 1));
+        var stepY = rows <= 1 ? 0 : Math.max(minStepY, usableH / (rows - 1));
+        var usedW = (cols - 1) * stepX + NODE_W;
+        var usedH = (rows - 1) * stepY + NODE_H;
+        var originX = (contentW - usedW) / 2;
+        var originY = (contentH - usedH) / 2;
+        var positions = {};
+        Object.keys(place).forEach(function (id) {
+            var slot = place[id];
+            positions[id] = {
+                x: originX + NODE_W / 2 + slot.c * stepX,
+                y: originY + NODE_H / 2 + slot.r * stepY
+            };
+        });
+        return { positions: positions, width: contentW, height: contentH };
+    }
+
+    /**
+     * Prefer flow.ui.nodeLayouts as column/row order; fall back to kind columns.
+     * Never shrink centers under card size — Fit may zoom the whole world later.
      */
     function layout(topology, width, height, savedLayouts) {
         var ids = Object.keys(topology.nodes);
-        var usable = [];
+        var points = [];
         if (savedLayouts) {
             ids.forEach(function (id) {
                 var p = savedLayouts[id];
-                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) usable.push(id);
+                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) {
+                    points.push({ id: id, x: Number(p.x), y: Number(p.y) });
+                }
             });
         }
-        if (!usable.length) return layoutColumns(topology, width, height);
+        if (!points.length) return layoutColumns(topology, width, height);
 
-        var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        usable.forEach(function (id) {
-            var p = savedLayouts[id];
-            minX = Math.min(minX, Number(p.x));
-            minY = Math.min(minY, Number(p.y));
-            maxX = Math.max(maxX, Number(p.x));
-            maxY = Math.max(maxY, Number(p.y));
+        var placed = {};
+        points.forEach(function (p) { placed[p.id] = true; });
+        var maxX = -Infinity;
+        var minY = Infinity;
+        points.forEach(function (p) {
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
         });
-        var missing = ids.filter(function (id) { return usable.indexOf(id) < 0; });
+        var missing = ids.filter(function (id) { return !placed[id]; });
         missing.forEach(function (id, i) {
-            var x = maxX + 220;
-            var y = minY + i * 140;
-            maxX = Math.max(maxX, x);
-            maxY = Math.max(maxY, y);
-            savedLayouts[id] = { x: x, y: y };
-            usable.push(id);
+            points.push({ id: id, x: maxX + 220, y: minY + i * 160 });
         });
-        var spanX = Math.max(1, maxX - minX);
-        var spanY = Math.max(1, maxY - minY);
-        var margin = LAYOUT_PAD;
-        var usableW = Math.max(1, width - margin * 2 - NODE_W);
-        var usableH = Math.max(1, height - margin * 2 - NODE_H);
-        var scale = Math.min(usableW / spanX, usableH / spanY);
-        var usedW = spanX * scale + NODE_W;
-        var usedH = spanY * scale + NODE_H;
-        var originX = Math.max(margin, (width - usedW) / 2);
-        var originY = Math.max(margin, (height - usedH) / 2);
-        var positions = {};
-        usable.forEach(function (id) {
-            var p = savedLayouts[id];
-            positions[id] = {
-                x: originX + NODE_W / 2 + (Number(p.x) - minX) * scale,
-                y: originY + NODE_H / 2 + (Number(p.y) - minY) * scale
-            };
-        });
-        return { positions: positions, width: width, height: height };
+        return layoutOrdinal(points, width, height);
     }
 
     function create(host, options) {
@@ -579,7 +630,7 @@
     }
     function kindForFlowNode(node) {
         if (node.type === 'ChatInput') return 'human';
-        if (node.type === 'Output') return 'tool';
+        if (node.type === 'Output') return 'output';
         if (node.type === 'LlmNode') return 'llm';
         if (node.type === 'Capability' && node.config && node.config.kind) return node.config.kind;
         return 'agent';

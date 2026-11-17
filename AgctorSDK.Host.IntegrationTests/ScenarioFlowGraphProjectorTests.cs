@@ -30,6 +30,32 @@ public sealed class ScenarioFlowGraphProjectorTests
         Assert.Contains(projection.Skeleton.Edges, e => e.From == "Render agent" && e.To == "Video rendering");
         Assert.True(projection.Layouts.ContainsKey("Render agent"));
         Assert.Equal("Your idea", projection.Skeleton.Nodes.Single(n => n.Id == "Human").Detail);
+        // Titles use flow labels — shared tool blurbs must not pile identical card names.
+        Assert.Equal("Video rendering", projection.Skeleton.Nodes.Single(n => n.Id == "Video rendering").Detail);
+        Assert.Equal("Audio production", projection.Skeleton.Nodes.Single(n => n.Id == "Audio production").Detail);
+        Assert.Equal("output", projection.Skeleton.Nodes.Single(n => n.Id == "Output").Kind);
+        Assert.Equal("Finished video with reviewed audio",
+            projection.Skeleton.Nodes.Single(n => n.Id == "Output").Detail);
+    }
+
+    [Fact]
+    public void DisplayDetail_prefers_label_over_shared_capability_blurbs()
+    {
+        var node = new ScenarioFlowNode
+        {
+            Id = "video-rendering",
+            Type = "Capability",
+            Label = "Video rendering",
+            Config = JsonSerializer.SerializeToElement(new { kind = "tool", detail = "Cynelo API" })
+        };
+        Assert.Equal("Video rendering", ScenarioFlowGraphProjector.DisplayDetail(node));
+        Assert.Equal("tool", ScenarioFlowGraphProjector.KindFor(node));
+        Assert.Equal("output", ScenarioFlowGraphProjector.KindFor(new ScenarioFlowNode
+        {
+            Id = "output",
+            Type = "Output",
+            Label = "Finished video with reviewed audio"
+        }));
     }
 
     [Fact]
