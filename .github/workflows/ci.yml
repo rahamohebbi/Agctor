@@ -39,11 +39,17 @@ jobs:
       - name: Unit tests
         run: dotnet test AgctorSDK.Core.Tests --no-build --configuration Release --verbosity normal
 
+      # net10 only: dual TFM left Proto.Actor threads that never exited after a green run (6h cancel).
       - name: Core integration tests (no Ollama)
+        timeout-minutes: 10
         run: >
           dotnet test AgctorSDK.Core.IntegrationTests
+          -f net10.0
           --no-build --configuration Release --verbosity normal
           --filter "TestCategory!=RequiresOllama"
+          --blame-hang-timeout 5m
 
+      # Still run Host if Core times out, so API/projector coverage is not blocked by that hang.
       - name: Host integration tests
+        if: success() || failure()
         run: dotnet test AgctorSDK.Host.IntegrationTests --no-build --configuration Release --verbosity normal
