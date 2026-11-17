@@ -113,11 +113,14 @@ public sealed class SceneVideoTopologyApiTests
         Assert.Contains("Director", nodes);
         Assert.Contains("Audio Engineer", nodes);
         Assert.Contains("Output", nodes);
-        // Observed specialists must not appear — activity remaps onto the flow.
-        Assert.DoesNotContain("Visual critic", nodes);
+        // Expanded default flow includes specialists + capabilities as the single picture.
+        Assert.Contains("Render agent", nodes);
+        Assert.Contains("Visual critic", nodes);
+        Assert.Contains("Video rendering", nodes);
         var edges = root.GetProperty("edges").EnumerateArray().ToArray();
         Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Audio Engineer");
-        Assert.DoesNotContain(edges, e => e.GetProperty("to").GetString() == "Visual critic");
+        Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Director" && e.GetProperty("to").GetString() == "Visual critic");
+        Assert.Contains(edges, e => e.GetProperty("from").GetString() == "Render agent" && e.GetProperty("to").GetString() == "Video rendering");
     }
 
     private sealed class Factory : AgctorWebApplicationFactory

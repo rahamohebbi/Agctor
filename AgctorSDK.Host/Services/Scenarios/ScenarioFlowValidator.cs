@@ -11,7 +11,9 @@ public static class ScenarioFlowValidator
     private static readonly HashSet<string> NodeTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "ChatInput", "Router", "LlmNode", "Merge", "Output", "AgentLoop",
-        "Gate", "WaitForInput", "AwaitEvent", "Notify"
+        "Gate", "WaitForInput", "AwaitEvent", "Notify",
+        // Scene-video tool/llm/memory leaves shown in Edit flow + live graphs (not executed by the sync interpreter).
+        "Capability"
     };
 
     private static readonly HashSet<string> EdgeModes = new(StringComparer.OrdinalIgnoreCase)

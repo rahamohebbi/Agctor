@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AgctorSDK.Core.Workflows;
 using AgctorSDK.Host.Services.Scenarios;
 
@@ -15,18 +16,17 @@ public static class ScenarioFlowGraphProjector
         ScenarioFlowDocument Flow,
         IReadOnlyDictionary<string, string> FlowIdToCanonical);
 
-    /// <summary>Stable mailbox / route id used in run activity and live layouts.</summary>
+    /// <summary>Stable mailbox / capability id used in run activity and live layouts.</summary>
     public static string CanonicalId(ScenarioFlowNode node)
     {
         if (node.Type.Equals("ChatInput", StringComparison.OrdinalIgnoreCase))
             return "Human";
-        if (SceneVideoScenario.IsAudio(node))
-            return "Audio Engineer";
-        if (SceneVideoScenario.IsLoop(node))
-            return "Director";
-        // Keep Output id short so layouts and remapping stay stable across label edits.
         if (node.Type.Equals("Output", StringComparison.OrdinalIgnoreCase))
             return "Output";
+        if (SceneVideoScenario.IsCapability(node))
+            return string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label.Trim();
+        var mailbox = SceneVideoScenario.MailboxFor(node);
+        if (mailbox != null) return mailbox;
         return string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label.Trim();
     }
 
@@ -35,6 +35,10 @@ public static class ScenarioFlowGraphProjector
         if (node.Type.Equals("ChatInput", StringComparison.OrdinalIgnoreCase)) return "human";
         if (node.Type.Equals("Output", StringComparison.OrdinalIgnoreCase)) return "tool";
         if (node.Type.Equals("LlmNode", StringComparison.OrdinalIgnoreCase)) return "llm";
+        if (SceneVideoScenario.IsCapability(node) &&
+            node.Config is { ValueKind: JsonValueKind.Object } cfg &&
+            cfg.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.String)
+            return kind.GetString() ?? "tool";
         if (node.Type.Equals("AgentLoop", StringComparison.OrdinalIgnoreCase)) return "agent";
         return "agent";
     }
@@ -42,6 +46,11 @@ public static class ScenarioFlowGraphProjector
     /// <summary>Display title on the live graph — prefer the saved flow label.</summary>
     public static string DisplayDetail(ScenarioFlowNode node)
     {
+        if (SceneVideoScenario.IsCapability(node) &&
+            node.Config is { ValueKind: JsonValueKind.Object } cfg &&
+            cfg.TryGetProperty("detail", out var detail) && detail.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(detail.GetString()))
+            return detail.GetString()!;
         if (!string.IsNullOrWhiteSpace(node.Label)) return node.Label.Trim();
         return node.Type;
     }
@@ -57,7 +66,7 @@ public static class ScenarioFlowGraphProjector
             if (string.IsNullOrWhiteSpace(node.Id)) continue;
             var id = CanonicalId(node);
             flowToCanon[node.Id] = id;
-            // Detail carries the flow-editor label so clients can show "Your idea", not just "Human".
+            // Detail carries the flow-editor label / capability detail for readable titles.
             nodes[id] = new AgentGraphNode(id, KindFor(node), DisplayDetail(node));
         }
 
@@ -88,12 +97,24 @@ public static class ScenarioFlowGraphProjector
 
     /// <summary>
     /// Map an observed actor/tool/llm id onto the nearest conversation-flow node.
-    /// Specialists (Render, critics, ComfyUI, Ollama, …) collapse onto Director unless clearly audio.
+    /// Prefer exact / alias matches on the expanded roster before collapsing to Director.
     /// </summary>
     public static string MapOntoFlow(string endpoint, IReadOnlySet<string> flowIds)
     {
         if (string.IsNullOrWhiteSpace(endpoint)) return endpoint;
         if (flowIds.Contains(endpoint)) return endpoint;
+
+        foreach (var (alias, canon) in Aliases)
+        {
+            if (!endpoint.Equals(alias, StringComparison.OrdinalIgnoreCase) &&
+                !endpoint.StartsWith(alias + " · ", StringComparison.OrdinalIgnoreCase) &&
+                !endpoint.StartsWith(alias + " ·", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (flowIds.Contains(canon)) return canon;
+        }
+
+        if (endpoint.StartsWith("Ollama", StringComparison.OrdinalIgnoreCase) && flowIds.Contains("Ollama"))
+            return "Ollama";
 
         if (flowIds.Contains("Output") &&
             (endpoint.Equals("Output", StringComparison.OrdinalIgnoreCase) ||
@@ -108,6 +129,15 @@ public static class ScenarioFlowGraphProjector
         if (flowIds.Contains("Audio Engineer") && LooksLikeAudio(endpoint))
             return "Audio Engineer";
 
+        if (flowIds.Contains("Video rendering") &&
+            (endpoint.Contains("Video rendering", StringComparison.OrdinalIgnoreCase) ||
+             endpoint.Contains("ComfyUI", StringComparison.OrdinalIgnoreCase)))
+            return "Video rendering";
+
+        if (flowIds.Contains("Render agent") &&
+            endpoint.Contains("Render", StringComparison.OrdinalIgnoreCase))
+            return "Render agent";
+
         if (flowIds.Contains("Director"))
             return "Director";
 
@@ -116,6 +146,32 @@ public static class ScenarioFlowGraphProjector
                    !id.Equals("Output", StringComparison.Ordinal))
                ?? flowIds.First();
     }
+
+    static readonly (string Alias, string Canon)[] Aliases =
+    [
+        ("Continuity critic", SceneVideoRoles.VisualCritic),
+        ("Visual critic", SceneVideoRoles.VisualCritic),
+        ("Memory agent", SceneVideoRoles.Memory),
+        ("Scene Memory agent", SceneVideoRoles.Memory),
+        ("Render agent", SceneVideoRoles.Render),
+        ("Render", SceneVideoRoles.Render),
+        ("Project agent", SceneVideoRoles.Project),
+        ("Project", SceneVideoRoles.Project),
+        ("Editor agent", SceneVideoRoles.Editor),
+        ("Editor", SceneVideoRoles.Editor),
+        ("Planner", SceneVideoRoles.Planner),
+        ("Audio Engineer", SceneVideoRoles.AudioEngineer),
+        ("Director", SceneVideoRoles.Director),
+        ("Video rendering", "Video rendering"),
+        ("Frame sampler", "Frame sampler"),
+        ("Audio production", "Audio production"),
+        ("Speech inspection", "Speech inspection"),
+        ("Project storage", "Project storage"),
+        ("Story storage", "Story storage"),
+        ("Film assembly", "Film assembly"),
+        ("Scene Memory", "Scene Memory"),
+        ("ComfyUI", "Video rendering")
+    ];
 
     static bool LooksLikeAudio(string endpoint) =>
         endpoint.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||
@@ -137,7 +193,6 @@ public static class ScenarioFlowGraphProjector
         foreach (var e in definition.Skeleton.Edges)
             edges[Key(e.From, e.To)] = e;
 
-        // Fold observed traffic onto existing flow edges (counts / last activity) without inventing edges.
         foreach (var e in observed.Edges)
         {
             var from = MapOntoFlow(e.From, flowIds);

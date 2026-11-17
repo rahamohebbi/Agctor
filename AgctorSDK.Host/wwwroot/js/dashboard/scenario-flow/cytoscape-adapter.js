@@ -90,7 +90,7 @@
                     selector: 'node',
                     style: {
                         label: function (node) {
-                            var labels = { AgentLoop: 'AGENT', ChatInput: 'INPUT', Output: 'OUTPUT', Router: 'ROUTER', LlmNode: 'AI STEP', Merge: 'MERGE', Gate: 'GATE', WaitForInput: 'ASK USER', AwaitEvent: 'WAIT FOR EVENT', Notify: 'NOTIFY' };
+                            var labels = { AgentLoop: 'AGENT', Capability: 'CAPABILITY', ChatInput: 'INPUT', Output: 'OUTPUT', Router: 'ROUTER', LlmNode: 'AI STEP', Merge: 'MERGE', Gate: 'GATE', WaitForInput: 'ASK USER', AwaitEvent: 'WAIT FOR EVENT', Notify: 'NOTIFY' };
                             return (labels[node.data('agctorType')] || 'STEP') + '\n' + node.data('label');
                         },
                         shape: 'round-rectangle',
@@ -146,6 +146,10 @@
                 {
                     selector: 'node[agctorType = "Notify"]',
                     style: { 'background-color': '#f8fafc', 'border-color': '#cbd5e1', color: '#334155', shape: 'round-rectangle' }
+                },
+                {
+                    selector: 'node[agctorType = "Capability"]',
+                    style: { 'background-color': '#f1f5f9', 'border-color': '#94a3b8', color: '#334155', shape: 'round-rectangle' }
                 },
                 {
                     selector: 'edge',
