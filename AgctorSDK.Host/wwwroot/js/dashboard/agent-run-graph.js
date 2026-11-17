@@ -26,9 +26,9 @@
     var NODE_W = 170;
     var NODE_H = 100;
     var FLIGHT_MS = 1500;
-    var LAYOUT_PAD = 48;
-    var MIN_GAP_X = 28;
-    var MIN_GAP_Y = 28;
+    var LAYOUT_PAD = 40;
+    var MIN_GAP_X = 36;
+    var MIN_GAP_Y = 20;
 
     function label(id) {
         if (LABELS[id]) return LABELS[id];
@@ -152,102 +152,83 @@
         return { positions: positions, width: contentW, height: contentH };
     }
 
+    /** LTR columns: Human/Director | agents | tools/LLM/memory | output. */
+    function flowLayoutColumn(id, kind) {
+        if (kind === 'human' || id === 'Human' || id === 'Director') return 0;
+        if (kind === 'output' || id === 'Output') return 3;
+        if (kind === 'agent') return 1;
+        return 2;
+    }
+
     /**
-     * Map editor coords onto a collision-free ordinal grid, then stretch steps to fill
-     * the canvas. Fixed-size cards never overlap — duplicate (x,y) slots bump down.
+     * Compact LTR columns from Edit-flow Y order. Do not stretch gaps to the viewport —
+     * Fit zooms the whole scene so cards stay readable without huge gutters.
      */
-    function layoutOrdinal(points, viewportW, viewportH) {
-        var xs = [];
-        var ys = [];
-        points.forEach(function (p) {
-            if (xs.indexOf(p.x) < 0) xs.push(p.x);
-            if (ys.indexOf(p.y) < 0) ys.push(p.y);
-        });
-        xs.sort(function (a, b) { return a - b; });
-        ys.sort(function (a, b) { return a - b; });
-        var colOf = {};
-        var rowOf = {};
-        xs.forEach(function (x, i) { colOf[x] = i; });
-        ys.forEach(function (y, i) { rowOf[y] = i; });
+    function layoutFlowColumns(topology, width, height, savedLayouts) {
+        var ids = Object.keys(topology.nodes);
+        var maxX = -Infinity;
+        var minY = Infinity;
+        var hasSaved = false;
+        if (savedLayouts) {
+            ids.forEach(function (id) {
+                var p = savedLayouts[id];
+                if (!p || !isFinite(Number(p.x)) || !isFinite(Number(p.y))) return;
+                hasSaved = true;
+                maxX = Math.max(maxX, Number(p.x));
+                minY = Math.min(minY, Number(p.y));
+            });
+        }
+        if (!hasSaved) return layoutColumns(topology, width, height);
 
-        points.sort(function (a, b) {
-            return a.y - b.y || a.x - b.x || String(a.id).localeCompare(String(b.id));
-        });
-        var occupied = {};
-        var place = {};
-        var maxC = 0;
-        var maxR = 0;
-        points.forEach(function (p) {
-            var c = colOf[p.x];
-            var r = rowOf[p.y];
-            var key = c + ',' + r;
-            while (occupied[key]) {
-                r += 1;
-                key = c + ',' + r;
+        var byCol = { 0: [], 1: [], 2: [], 3: [] };
+        var missingI = 0;
+        ids.forEach(function (id) {
+            var kind = topology.nodes[id] && topology.nodes[id].kind;
+            var col = flowLayoutColumn(id, kind);
+            var p = savedLayouts && savedLayouts[id];
+            var y;
+            if (p && isFinite(Number(p.y))) y = Number(p.y);
+            else {
+                y = (isFinite(minY) ? minY : 0) + missingI * 140;
+                missingI += 1;
             }
-            occupied[key] = true;
-            place[p.id] = { c: c, r: r };
-            maxC = Math.max(maxC, c);
-            maxR = Math.max(maxR, r);
+            byCol[col].push({ id: id, y: y });
         });
-
-        var cols = maxC + 1;
-        var rows = maxR + 1;
+        Object.keys(byCol).forEach(function (c) {
+            byCol[c].sort(function (a, b) {
+                return a.y - b.y || String(a.id).localeCompare(String(b.id));
+            });
+        });
+        var usedCols = [0, 1, 2, 3].filter(function (c) { return byCol[c].length; });
+        var cols = usedCols.length;
+        var rows = usedCols.reduce(function (m, c) { return Math.max(m, byCol[c].length); }, 1);
         var minStepX = NODE_W + MIN_GAP_X;
         var minStepY = NODE_H + MIN_GAP_Y;
-        var needW = (cols - 1) * minStepX + NODE_W + LAYOUT_PAD * 2;
-        var needH = (rows - 1) * minStepY + NODE_H + LAYOUT_PAD * 2;
-        var contentW = Math.max(viewportW, needW);
-        var contentH = Math.max(viewportH, needH);
-        var usableW = Math.max(0, contentW - LAYOUT_PAD * 2 - NODE_W);
-        var usableH = Math.max(0, contentH - LAYOUT_PAD * 2 - NODE_H);
-        var stepX = cols <= 1 ? 0 : Math.max(minStepX, usableW / (cols - 1));
-        var stepY = rows <= 1 ? 0 : Math.max(minStepY, usableH / (rows - 1));
-        var usedW = (cols - 1) * stepX + NODE_W;
-        var usedH = (rows - 1) * stepY + NODE_H;
+        var usedW = (cols - 1) * minStepX + NODE_W;
+        var usedH = (rows - 1) * minStepY + NODE_H;
+        var compactW = usedW + LAYOUT_PAD * 2;
+        var compactH = usedH + LAYOUT_PAD * 2;
+        var contentW = Math.max(compactW, Math.min(width, compactW * 1.08));
+        var contentH = Math.max(compactH, Math.min(height, compactH * 1.08));
         var originX = (contentW - usedW) / 2;
         var originY = (contentH - usedH) / 2;
         var positions = {};
-        Object.keys(place).forEach(function (id) {
-            var slot = place[id];
-            positions[id] = {
-                x: originX + NODE_W / 2 + slot.c * stepX,
-                y: originY + NODE_H / 2 + slot.r * stepY
-            };
+        usedCols.forEach(function (colKey, c) {
+            var list = byCol[colKey];
+            var top = (rows - list.length) / 2;
+            list.forEach(function (item, r) {
+                positions[item.id] = {
+                    x: originX + NODE_W / 2 + c * minStepX,
+                    y: originY + NODE_H / 2 + (top + r) * minStepY
+                };
+            });
         });
         return { positions: positions, width: contentW, height: contentH };
     }
 
-    /**
-     * Prefer flow.ui.nodeLayouts as column/row order; fall back to kind columns.
-     * Never shrink centers under card size — Fit may zoom the whole world later.
-     */
+    /** Prefer Edit-flow layouts as column order; fall back to kind columns. */
     function layout(topology, width, height, savedLayouts) {
-        var ids = Object.keys(topology.nodes);
-        var points = [];
-        if (savedLayouts) {
-            ids.forEach(function (id) {
-                var p = savedLayouts[id];
-                if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) {
-                    points.push({ id: id, x: Number(p.x), y: Number(p.y) });
-                }
-            });
-        }
-        if (!points.length) return layoutColumns(topology, width, height);
-
-        var placed = {};
-        points.forEach(function (p) { placed[p.id] = true; });
-        var maxX = -Infinity;
-        var minY = Infinity;
-        points.forEach(function (p) {
-            maxX = Math.max(maxX, p.x);
-            minY = Math.min(minY, p.y);
-        });
-        var missing = ids.filter(function (id) { return !placed[id]; });
-        missing.forEach(function (id, i) {
-            points.push({ id: id, x: maxX + 220, y: minY + i * 160 });
-        });
-        return layoutOrdinal(points, width, height);
+        return layoutFlowColumns(topology, width, height, savedLayouts);
     }
 
     function create(host, options) {
@@ -335,7 +316,8 @@
             var pad = 24;
             var sx = (vw - pad * 2) / Math.max(state.contentW, 1);
             var sy = (vh - pad * 2) / Math.max(state.contentH, 1);
-            state.scale = Math.max(0.35, Math.min(1.4, Math.min(sx, sy)));
+            // Allow modest zoom-in when the compact graph is smaller than the pane.
+            state.scale = Math.max(0.45, Math.min(1.75, Math.min(sx, sy)));
             state.panX = (vw - state.contentW * state.scale) / 2;
             state.panY = (vh - state.contentH * state.scale) / 2;
             state.fitted = true;
