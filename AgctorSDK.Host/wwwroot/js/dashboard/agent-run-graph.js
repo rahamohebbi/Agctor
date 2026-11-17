@@ -160,46 +160,73 @@
         return 2;
     }
 
+    /** Place cards at saved centers (Edit-flow / drag-save). Same picture as Cynelo. */
+    function layoutAbsolute(points, width, height) {
+        var minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity;
+        points.forEach(function (p) {
+            minL = Math.min(minL, p.x - NODE_W / 2);
+            minT = Math.min(minT, p.y - NODE_H / 2);
+            maxR = Math.max(maxR, p.x + NODE_W / 2);
+            maxB = Math.max(maxB, p.y + NODE_H / 2);
+        });
+        var ox = minL < LAYOUT_PAD ? LAYOUT_PAD - minL : 0;
+        var oy = minT < LAYOUT_PAD ? LAYOUT_PAD - minT : 0;
+        var positions = {};
+        points.forEach(function (p) {
+            positions[p.id] = { x: p.x + ox, y: p.y + oy };
+        });
+        return {
+            positions: positions,
+            width: Math.max(NODE_W + LAYOUT_PAD * 2, maxR + ox + LAYOUT_PAD),
+            height: Math.max(NODE_H + LAYOUT_PAD * 2, maxB + oy + LAYOUT_PAD)
+        };
+    }
+
     /**
-     * Compact LTR columns from Edit-flow Y order. Do not stretch gaps to the viewport —
-     * Fit zooms the whole scene so cards stay readable without huge gutters.
+     * Prefer saved Edit-flow positions (absolute). Without layouts, pack LTR columns.
      */
     function layoutFlowColumns(topology, width, height, savedLayouts) {
         var ids = Object.keys(topology.nodes);
         var maxX = -Infinity;
         var minY = Infinity;
-        var hasSaved = false;
+        var points = [];
         if (savedLayouts) {
             ids.forEach(function (id) {
                 var p = savedLayouts[id];
                 if (!p || !isFinite(Number(p.x)) || !isFinite(Number(p.y))) return;
-                hasSaved = true;
                 maxX = Math.max(maxX, Number(p.x));
                 minY = Math.min(minY, Number(p.y));
+                points.push({ id: id, x: Number(p.x), y: Number(p.y) });
             });
         }
-        if (!hasSaved) return layoutColumns(topology, width, height);
+        if (points.length) {
+            var placed = {};
+            points.forEach(function (p) { placed[p.id] = true; });
+            var missingI = 0;
+            ids.forEach(function (id) {
+                if (placed[id]) return;
+                points.push({
+                    id: id,
+                    x: (isFinite(maxX) ? maxX : 0) + 220,
+                    y: (isFinite(minY) ? minY : 0) + missingI * 140
+                });
+                missingI += 1;
+            });
+            return layoutAbsolute(points, width, height);
+        }
 
         var byCol = { 0: [], 1: [], 2: [], 3: [] };
-        var missingI = 0;
         ids.forEach(function (id) {
             var kind = topology.nodes[id] && topology.nodes[id].kind;
-            var col = flowLayoutColumn(id, kind);
-            var p = savedLayouts && savedLayouts[id];
-            var y;
-            if (p && isFinite(Number(p.y))) y = Number(p.y);
-            else {
-                y = (isFinite(minY) ? minY : 0) + missingI * 140;
-                missingI += 1;
-            }
-            byCol[col].push({ id: id, y: y });
+            byCol[flowLayoutColumn(id, kind)].push({ id: id, y: 0 });
         });
         Object.keys(byCol).forEach(function (c) {
             byCol[c].sort(function (a, b) {
-                return a.y - b.y || String(a.id).localeCompare(String(b.id));
+                return String(a.id).localeCompare(String(b.id));
             });
         });
         var usedCols = [0, 1, 2, 3].filter(function (c) { return byCol[c].length; });
+        if (!usedCols.length) return layoutColumns(topology, width, height);
         var cols = usedCols.length;
         var rows = usedCols.reduce(function (m, c) { return Math.max(m, byCol[c].length); }, 1);
         var minStepX = NODE_W + MIN_GAP_X;
@@ -226,7 +253,7 @@
         return { positions: positions, width: contentW, height: contentH };
     }
 
-    /** Prefer Edit-flow layouts as column order; fall back to kind columns. */
+    /** Prefer Edit-flow layouts; fall back to kind columns. */
     function layout(topology, width, height, savedLayouts) {
         return layoutFlowColumns(topology, width, height, savedLayouts);
     }

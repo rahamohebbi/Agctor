@@ -237,4 +237,37 @@ public static class ScenarioFlowGraphProjector
             StringComparer.Ordinal);
         return clone;
     }
+
+    /// <summary>
+    /// Write live-graph (canonical-id) positions back onto flow.ui.nodeLayouts (flow node ids).
+    /// Same Edit-flow document — never a second layout store.
+    /// </summary>
+    public static ScenarioFlowDocument ApplyCanonicalLayouts(
+        ScenarioFlowDocument flow,
+        IReadOnlyDictionary<string, ScenarioFlowNodeLayout> canonicalLayouts)
+    {
+        var projection = Project(flow) ?? throw new ArgumentException("Flow has no nodes.");
+        var canonToFlow = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (flowId, canon) in projection.FlowIdToCanonical)
+        {
+            // First flow id wins if two map to the same mailbox (should not happen for scene-video).
+            if (!canonToFlow.ContainsKey(canon)) canonToFlow[canon] = flowId;
+        }
+
+        var clone = ScenarioFlowDocument.Clone(flow)!;
+        clone.Ui ??= new ScenarioFlowUi();
+        var layouts = clone.Ui.NodeLayouts != null
+            ? new Dictionary<string, ScenarioFlowNodeLayout>(clone.Ui.NodeLayouts, StringComparer.Ordinal)
+            : new Dictionary<string, ScenarioFlowNodeLayout>(StringComparer.Ordinal);
+
+        foreach (var (canon, point) in canonicalLayouts)
+        {
+            if (string.IsNullOrWhiteSpace(canon)) continue;
+            if (!canonToFlow.TryGetValue(canon.Trim(), out var flowId)) continue;
+            layouts[flowId] = new ScenarioFlowNodeLayout { X = point.X, Y = point.Y };
+        }
+
+        clone.Ui.NodeLayouts = layouts;
+        return clone;
+    }
 }
