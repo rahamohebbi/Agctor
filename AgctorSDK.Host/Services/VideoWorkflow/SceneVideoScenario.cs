@@ -137,6 +137,11 @@ public sealed class SceneVideoScenario(
         if (mode is not ("new" or "continue") || (mode == "new" && !string.IsNullOrWhiteSpace(input.WorkspaceId)) ||
             (mode == "continue" && string.IsNullOrWhiteSpace(input.WorkspaceId)))
             throw new ArgumentException("Choose New story without a workspace, or Continue an existing story with a workspace.");
+        // Replace-at-slot is only for continue; ContinuityMedia chooses final mix vs original previous clip.
+        if (input.ReplaceClipIndex != null && (mode != "continue" || input.ReplaceClipIndex is < 1 or > 24))
+            throw new ArgumentException("Replace clip index is a 1–24 film slot used only when continuing a story.");
+        if (input.ContinuityMedia is not (null or "final" or "original"))
+            throw new ArgumentException("Continuity media must be final (New mix when present) or original.");
         if (string.IsNullOrWhiteSpace(input.RequestId) || input.RequestId.Length > 128 ||
             input.WorkspaceId?.Length > 100 || string.IsNullOrWhiteSpace(input.Prompt) || input.Prompt.Length > 12000 ||
             input.TotalSeconds is < 1 or > 360 || input.ClipSeconds is < 1 or > 15 ||
@@ -161,6 +166,7 @@ public sealed class SceneVideoScenario(
             Instructions = config.TryGetProperty("instructions", out var guidance) ? guidance.GetString()! : "" };
         // Preserve existing-client hashes for requests that specified a workspace before story modes existed.
         var serialized = input.StoryMode == null && mode == "continue" && input.AudioModel == null && input.SpeechLanguage == null && input.ProjectId == null && input.NarrationMode == null
+            && input.ReplaceClipIndex == null && input.ContinuityMedia == null
             ? JsonSerializer.Serialize(new { scenarioId, input = new { input.RequestId, input.WorkspaceId, input.Prompt, input.TotalSeconds, input.ClipSeconds, input.Model, input.ReviewPlan } })
             : JsonSerializer.Serialize(new { scenarioId, input });
         return await runs.CreateAsync(new AgentRun { RequestId = input.RequestId, ScenarioId = scenarioId,
