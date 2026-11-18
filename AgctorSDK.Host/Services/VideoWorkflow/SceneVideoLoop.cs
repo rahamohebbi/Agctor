@@ -239,7 +239,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (run.Phase == "project")
         {
             var project = await production!.EnsureProjectAsync(run.Id, state.StoryId!, state.Input.StoryMode!, state.StoryName!, ct,
-                state.Input.ProjectId, state.Input.ReplaceClipIndex, ContinuityMedia(state));
+                state.Input.ProjectId, state.Input.ReplaceClipIndex, ContinuityMedia(state), state.Input.KeepLaterClips);
             if (state.Input.ProjectId != null && project.ProjectId != state.Input.ProjectId)
                 throw new InvalidOperationException("The studio returned a different project for this sequence.");
             if (string.IsNullOrWhiteSpace(project.ProjectId)) throw new InvalidOperationException("Missing project identity.");
@@ -439,7 +439,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     state.Current > 0 ? $"{run.Id}-{state.Current}-{state.Clips[state.Current - 1].RenderAttempt}" : null,
                     state.Input.StoryMode ?? (state.Input.WorkspaceId == null ? "new" : "continue"), state.ProjectId, clip.ReplacesJobKey,
                     state.SpeechReviewEnabled ? SpeechDirection(state, clip) : null, SceneBoundaryGuidance.Instruction(state, clip),
-                    ContinuityMedia(state), FilmSlot(state)), ct);
+                    ContinuityMedia(state), FilmSlot(state), state.Input.KeepLaterClips), ct);
                 clip.SubmittedAt ??= DateTimeOffset.UtcNow; clip.ProviderJobId = job.Id;
                 run.Phase = "poll"; clip.Status = "rendering";
                 return AcceptJob(run, state, job, label);
