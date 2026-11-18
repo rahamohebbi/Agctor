@@ -8,10 +8,12 @@ public sealed record StartSceneVideoRun(string RequestId, string? WorkspaceId, s
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? SpeechLanguage = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ProjectId = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? NarrationMode = null,
-    /// <summary>1-based film slot for continue. Cynelo trims later clips (or replaces that slot) so the new take lands here instead of appending past it.</summary>
+    /// <summary>1-based film slot for continue. Cynelo lands the new take here instead of appending past a stale slot.</summary>
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? ReplaceClipIndex = null,
     /// <summary>Previous-clip media for continuity: <c>final</c> prefers New mix / improved audio-video; <c>original</c> uses the raw take. Continue defaults to final when omitted.</summary>
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ContinuityMedia = null);
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ContinuityMedia = null,
+    /// <summary>With <see cref="ReplaceClipIndex"/>: true keeps film clips after that slot; omit/false asks Cynelo to trim from N onward (delete-from-here).</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] bool? KeepLaterClips = null);
 public sealed class SceneVideoState
 {
     public StartSceneVideoRun Input { get; set; } = null!;
@@ -129,8 +131,10 @@ public sealed record SceneRenderRequest(string RunId, string WorkspaceId, string
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? BoundaryInstruction = null,
     /// <summary>When set, Cynelo chains from final mix / improved media for the previous film clip.</summary>
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? ContinuityMedia = null,
-    /// <summary>1-based film slot this take must occupy after trim/replace (usually equals ReplaceClipIndex for the first clip of a continue).</summary>
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? ReplaceClipIndex = null);
+    /// <summary>1-based film slot this take must occupy (usually equals ReplaceClipIndex for the first clip of a continue).</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] int? ReplaceClipIndex = null,
+    /// <summary>When true with ReplaceClipIndex, keep later film clips; omit/false means trim from the slot onward.</summary>
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] bool? KeepLaterClips = null);
 public sealed record SceneRenderJob(string Id, string Status, string? VideoUrl = null, string? LastFrameUrl = null,
     string? Error = null, SceneRenderReferences? References = null, SceneRenderProgress? Progress = null);
 public sealed record SceneRenderReferences(int Selected, int Available, int Designs);
@@ -178,7 +182,7 @@ public sealed record SceneVideoDelivery(string VideoUrl);
 public interface ISceneVideoProduction
 {
     Task<SceneVideoProject> EnsureProjectAsync(string runId, string storyId, string mode, string name, CancellationToken ct,
-        string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null);
+        string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null);
     Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct);
     /// <summary>Recheck shifts the ending samples inside the same window. The default repeats the unshifted read.</summary>
     Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) => EvidenceAsync(key, ct);

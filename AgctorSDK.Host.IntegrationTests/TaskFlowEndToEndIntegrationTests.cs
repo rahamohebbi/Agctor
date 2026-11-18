@@ -6,6 +6,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 using System.IO;
 using System.Linq;
@@ -91,6 +92,11 @@ public class TaskFlowEndToEndIntegrationTests : IClassFixture<AgctorWebApplicati
 
             builder.ConfigureServices(services =>
             {
+                // Hosted TaskFlow must use the fast no-op executor so it cannot race
+                // the manual SimpleTaskExecutor path and leave tasks stuck Running.
+                services.RemoveAll<ITaskExecutor>();
+                services.AddSingleton<ITaskExecutor, SimpleTaskExecutor>();
+
                 // Replace goal store
                 var gDesc = services.Single(d => d.ServiceType == typeof(IGoalStore));
                 services.Remove(gDesc);

@@ -1053,12 +1053,38 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("completed", run.Status);
         Assert.Equal(2, production.RequestedReplaceClipIndex);
         Assert.Equal("final", production.RequestedContinuityMedia);
+        Assert.Null(production.RequestedKeepLaterClips);
         Assert.NotEmpty(renderer.Requests);
         Assert.All(renderer.Requests, r => {
             Assert.Equal("final", r.ContinuityMedia);
             Assert.Equal(2 + (r.ClipNumber - 1), r.ReplaceClipIndex);
+            Assert.Null(r.KeepLaterClips);
         });
         Assert.Equal(2, renderer.Requests[0].ReplaceClipIndex);
+    }
+    [Fact]
+    public async Task Continue_keep_later_replace_forwards_to_project_and_render()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.StoryId = "story"; state.StoryName = "Keep later replace";
+        state.Input = state.Input with { StoryMode = "continue", ReplaceClipIndex = 2, ContinuityMedia = "final",
+            KeepLaterClips = true, ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Keep later ready");
+        for (var i = 0; i < 30 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(2, production.RequestedReplaceClipIndex);
+        Assert.Equal("final", production.RequestedContinuityMedia);
+        Assert.True(production.RequestedKeepLaterClips);
+        Assert.NotEmpty(renderer.Requests);
+        Assert.All(renderer.Requests, r => {
+            Assert.Equal("final", r.ContinuityMedia);
+            Assert.Equal(2 + (r.ClipNumber - 1), r.ReplaceClipIndex);
+            Assert.True(r.KeepLaterClips);
+        });
     }
     [Fact]
     public async Task Unavailable_visual_review_does_not_block_speech_and_neither_approval_skips_the_other()
@@ -1321,7 +1347,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public bool CloudNarration;
         public Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(CloudNarration);
         public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
-        public string? RequestedProject; public int? RequestedReplaceClipIndex; public string? RequestedContinuityMedia;
+        public string? RequestedProject; public int? RequestedReplaceClipIndex; public string? RequestedContinuityMedia; public bool? RequestedKeepLaterClips;
         public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");
         public SceneMotionSummary? EndingMotion;
@@ -1338,8 +1364,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) { AudioChoice=choice; return FinishAsync(run, project, keys, ct); }
         public List<IReadOnlyList<string>> Deliveries = [];
         public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct,
-            string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null) {
+            string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
             RequestedProject = projectId; RequestedReplaceClipIndex = replaceClipIndex; RequestedContinuityMedia = continuityMedia;
+            RequestedKeepLaterClips = keepLaterClips;
             return Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         }
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]), EndingMotion: EndingMotion));

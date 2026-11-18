@@ -142,6 +142,9 @@ public sealed class SceneVideoScenario(
             throw new ArgumentException("Replace clip index is a 1–24 film slot used only when continuing a story.");
         if (input.ContinuityMedia is not (null or "final" or "original"))
             throw new ArgumentException("Continuity media must be final (New mix when present) or original.");
+        // Keep-later only makes sense with a replace slot; omit/false keeps the trim-from-N path.
+        if (input.KeepLaterClips != null && input.ReplaceClipIndex == null)
+            throw new ArgumentException("Keep later clips requires a replace clip index.");
         if (string.IsNullOrWhiteSpace(input.RequestId) || input.RequestId.Length > 128 ||
             input.WorkspaceId?.Length > 100 || string.IsNullOrWhiteSpace(input.Prompt) || input.Prompt.Length > 12000 ||
             input.TotalSeconds is < 1 or > 360 || input.ClipSeconds is < 1 or > 15 ||
@@ -166,7 +169,7 @@ public sealed class SceneVideoScenario(
             Instructions = config.TryGetProperty("instructions", out var guidance) ? guidance.GetString()! : "" };
         // Preserve existing-client hashes for requests that specified a workspace before story modes existed.
         var serialized = input.StoryMode == null && mode == "continue" && input.AudioModel == null && input.SpeechLanguage == null && input.ProjectId == null && input.NarrationMode == null
-            && input.ReplaceClipIndex == null && input.ContinuityMedia == null
+            && input.ReplaceClipIndex == null && input.ContinuityMedia == null && input.KeepLaterClips == null
             ? JsonSerializer.Serialize(new { scenarioId, input = new { input.RequestId, input.WorkspaceId, input.Prompt, input.TotalSeconds, input.ClipSeconds, input.Model, input.ReviewPlan } })
             : JsonSerializer.Serialize(new { scenarioId, input });
         return await runs.CreateAsync(new AgentRun { RequestId = input.RequestId, ScenarioId = scenarioId,

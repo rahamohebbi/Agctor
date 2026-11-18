@@ -6,9 +6,9 @@ namespace AgctorSDK.Host.Services.VideoWorkflow;
 public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOptionsMonitor<SceneVideoOptions> options) : ISceneVideoProduction
 {
     public Task<SceneVideoProject> EnsureProjectAsync(string runId, string storyId, string mode, string name, CancellationToken ct,
-        string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null) =>
+        string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) =>
         Send<SceneVideoProject>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/project",
-            new { storyId, mode, name, projectId, replaceClipIndex, continuityMedia }, ct);
+            new { storyId, mode, name, projectId, replaceClipIndex, continuityMedia, keepLaterClips }, ct);
     public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) =>
         Send<SceneVideoEvidence>(HttpMethod.Get, $"jobs/{Uri.EscapeDataString(key)}/evidence", null, ct);
     public Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) =>

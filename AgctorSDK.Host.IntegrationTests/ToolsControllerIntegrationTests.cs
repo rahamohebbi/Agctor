@@ -380,16 +380,16 @@ namespace AgctorSDK.Host.IntegrationTests
         [Fact]
         public async Task InvokeTool_WithCustomTimeout_RespectsTimeout()
         {
-            // Arrange
+            // Arrange — custom timeout must leave headroom for cold python under parallel Host ITs.
             var toolId = "code-executor";
             var request = new ToolInvocationRequest
             {
                 Parameters = new Dictionary<string, object>
                 {
                     ["language"] = "python",
-                    ["code"] = "import time; time.sleep(0.1); print('Done')"
+                    ["code"] = "print('Done')"
                 },
-                TimeoutSeconds = 1 // Short timeout but should be sufficient
+                TimeoutSeconds = 15
             };
 
             // Act

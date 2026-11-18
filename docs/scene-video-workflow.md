@@ -73,10 +73,11 @@ Optional continue fields (Cynelo Agentic → Agctor start, then Agctor → Cynel
 
 | Field | Values | Purpose |
 | --- | --- | --- |
-| `replaceClipIndex` | `1`–`24` | Film slot the new take must occupy. Cynelo trims later clips (or replaces that slot) so continue does **not** append past it (e.g. deleted clip 2 regenerates as clip 2, not clip 3). |
-| `continuityMedia` | `final` (default for continue) or `original` | Previous-clip continuity uses New mix / improved audio-video when present (`final`), never the wrong Original speech/BGM unless `original` is explicit. Studio Original/New mix toggle stays preview-only. |
+| `replaceClipIndex` | `1`–`24` | Film slot the new take must occupy so continue does **not** append past a stale slot (e.g. regenerating clip 2 lands as clip 2, not clip 3). |
+| `continuityMedia` | `final` (default for continue) or `original` | Previous-clip continuity uses New mix / improved audio-video when present (`final`), never the wrong Original speech/BGM unless `original` is explicit. Studio Original/New mix toggle stays preview-only. Continuity for slot N always chains from the final mix of N−1 when `final`. |
+| `keepLaterClips` | `true` / omit / `false` | Only with `replaceClipIndex`. `true` = replace slot N in place and **keep** clips N+1…end. Omit/`false` = Cynelo trims from N onward (delete-from-here / open slot restart). |
 
-`PUT sequences/{run}/project` and `PUT jobs/{key}` forward `replaceClipIndex` / `continuityMedia` so receipts and film prep share the same intent. Omit both for ordinary append-after-last continue.
+`PUT sequences/{run}/project` and `PUT jobs/{key}` forward `replaceClipIndex` / `continuityMedia` / `keepLaterClips` so receipts and film prep share the same intent. Omit all three for ordinary append-after-last continue.
 
 New-story admission first persists the run with an `initialize` phase. The worker provisions a Cynelo-owned story using its stable run ID, then checkpoints the resolved workspace ID, story ID and initial revision before planning. The unique workspace lock is updated in the same transaction as the run checkpoint. A lost provisioning response or restart reconnects to the same empty story; retrying admission with the same request ID returns the same run. The new story name is taken from the first 80 characters of the prompt without a model call. This step does not submit video or clear the current Cynelo film. The project actor then provisions a stable project before planning; it never clears the open editor.
 
