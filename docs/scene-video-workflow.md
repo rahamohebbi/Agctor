@@ -69,6 +69,15 @@ New sequences provision an isolated saved Cynelo project automatically. Continui
 
 For a fresh story, send `storyMode: "new"` and omit `workspaceId`. To append shots to an existing story, send `storyMode: "continue"` and its `workspaceId`. Combining `new` with an existing workspace or omitting the workspace for `continue` is rejected. For older callers, omitting the mode while providing a workspace preserves the previous continuation behavior; omitting both defaults to a fresh story.
 
+Optional continue fields (Cynelo Agentic → Agctor start, then Agctor → Cynelo project/render):
+
+| Field | Values | Purpose |
+| --- | --- | --- |
+| `replaceClipIndex` | `1`–`24` | Film slot the new take must occupy. Cynelo trims later clips (or replaces that slot) so continue does **not** append past it (e.g. deleted clip 2 regenerates as clip 2, not clip 3). |
+| `continuityMedia` | `final` (default for continue) or `original` | Previous-clip continuity uses New mix / improved audio-video when present (`final`), never the wrong Original speech/BGM unless `original` is explicit. Studio Original/New mix toggle stays preview-only. |
+
+`PUT sequences/{run}/project` and `PUT jobs/{key}` forward `replaceClipIndex` / `continuityMedia` so receipts and film prep share the same intent. Omit both for ordinary append-after-last continue.
+
 New-story admission first persists the run with an `initialize` phase. The worker provisions a Cynelo-owned story using its stable run ID, then checkpoints the resolved workspace ID, story ID and initial revision before planning. The unique workspace lock is updated in the same transaction as the run checkpoint. A lost provisioning response or restart reconnects to the same empty story; retrying admission with the same request ID returns the same run. The new story name is taken from the first 80 characters of the prompt without a model call. This step does not submit video or clear the current Cynelo film. The project actor then provisions a stable project before planning; it never clears the open editor.
 
 `GET /api/agent-runs/stories` lists the configured Cynelo studio’s connected stories for the continuation selector. Each entry contains `workspaceId`, `storyId`, and `name`.

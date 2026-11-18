@@ -1038,6 +1038,29 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.All(renderer.Requests,r=>Assert.Equal(project,r.ProjectId));
     }
     [Fact]
+    public async Task Continue_replace_slot_forwards_final_mix_to_project_and_render()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.StoryId = "story"; state.StoryName = "Replace slot";
+        state.Input = state.Input with { StoryMode = "continue", ReplaceClipIndex = 2, ContinuityMedia = "final",
+            ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Replace slot ready");
+        for (var i = 0; i < 30 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(2, production.RequestedReplaceClipIndex);
+        Assert.Equal("final", production.RequestedContinuityMedia);
+        Assert.NotEmpty(renderer.Requests);
+        Assert.All(renderer.Requests, r => {
+            Assert.Equal("final", r.ContinuityMedia);
+            Assert.Equal(2 + (r.ClipNumber - 1), r.ReplaceClipIndex);
+        });
+        Assert.Equal(2, renderer.Requests[0].ReplaceClipIndex);
+    }
+    [Fact]
     public async Task Unavailable_visual_review_does_not_block_speech_and_neither_approval_skips_the_other()
     {
         critic.Throw = true; production.Speech = new("uncertain",null,.1,"unclear","Speech is unclear");
@@ -1298,7 +1321,8 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public bool CloudNarration;
         public Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(CloudNarration);
         public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
-        public string? RequestedProject; public int SpeechCalls; public SceneAudioPlan? AudioPlan;
+        public string? RequestedProject; public int? RequestedReplaceClipIndex; public string? RequestedContinuityMedia;
+        public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");
         public SceneMotionSummary? EndingMotion;
         public bool Shifted;
@@ -1313,8 +1337,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) { AudioCalls++; AudioPlan=plan; return Task.FromResult(new SceneAudioDraft(AudioAvailable, "Compared audio", JsonSerializer.SerializeToElement(new { }))); }
         public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) { AudioChoice=choice; return FinishAsync(run, project, keys, ct); }
         public List<IReadOnlyList<string>> Deliveries = [];
-        public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct, string? projectId = null) {
-            RequestedProject = projectId;
+        public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct,
+            string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null) {
+            RequestedProject = projectId; RequestedReplaceClipIndex = replaceClipIndex; RequestedContinuityMedia = continuityMedia;
             return Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         }
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]), EndingMotion: EndingMotion));

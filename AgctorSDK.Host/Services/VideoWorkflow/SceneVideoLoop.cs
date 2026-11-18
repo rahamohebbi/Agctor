@@ -32,6 +32,12 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     };
     public static SceneVideoState State(AgentRun run) => run.State.Deserialize<SceneVideoState>()!;
     public static string RenderKey(AgentRun run, SceneVideoState state) => $"{run.Id}-{state.Current + 1}-{state.Clips[state.Current].RenderAttempt}";
+    /// <summary>Continue prefers the playback-final previous clip (New mix) unless the caller asked for original.</summary>
+    public static string ContinuityMedia(SceneVideoState state) =>
+        state.Input.ContinuityMedia ?? (state.Input.StoryMode == "continue" ? "final" : "original");
+    /// <summary>Film slot for this run clip when replace-at-slot was requested; otherwise null (append).</summary>
+    public static int? FilmSlot(SceneVideoState state) =>
+        state.Input.ReplaceClipIndex is { } slot ? slot + state.Current : null;
     public async Task StepAsync(AgentRunLease lease, CancellationToken ct)
     {
         var run = lease.Run; var state = State(run); var role = Role(run);
@@ -232,7 +238,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         }
         if (run.Phase == "project")
         {
-            var project = await production!.EnsureProjectAsync(run.Id, state.StoryId!, state.Input.StoryMode!, state.StoryName!, ct, state.Input.ProjectId);
+            var project = await production!.EnsureProjectAsync(run.Id, state.StoryId!, state.Input.StoryMode!, state.StoryName!, ct,
+                state.Input.ProjectId, state.Input.ReplaceClipIndex, ContinuityMedia(state));
             if (state.Input.ProjectId != null && project.ProjectId != state.Input.ProjectId)
                 throw new InvalidOperationException("The studio returned a different project for this sequence.");
             if (string.IsNullOrWhiteSpace(project.ProjectId)) throw new InvalidOperationException("Missing project identity.");
@@ -431,7 +438,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     state.StoryId, state.WorkspaceRevision,
                     state.Current > 0 ? $"{run.Id}-{state.Current}-{state.Clips[state.Current - 1].RenderAttempt}" : null,
                     state.Input.StoryMode ?? (state.Input.WorkspaceId == null ? "new" : "continue"), state.ProjectId, clip.ReplacesJobKey,
-                    state.SpeechReviewEnabled ? SpeechDirection(state, clip) : null, SceneBoundaryGuidance.Instruction(state, clip)), ct);
+                    state.SpeechReviewEnabled ? SpeechDirection(state, clip) : null, SceneBoundaryGuidance.Instruction(state, clip),
+                    ContinuityMedia(state), FilmSlot(state)), ct);
                 clip.SubmittedAt ??= DateTimeOffset.UtcNow; clip.ProviderJobId = job.Id;
                 run.Phase = "poll"; clip.Status = "rendering";
                 return AcceptJob(run, state, job, label);

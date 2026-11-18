@@ -102,6 +102,42 @@ public sealed class SceneVideoRunApiTests
         Assert.Empty(await factory.Services.GetRequiredService<ISceneVideoStoryGateway>().ListAsync(default));
     }
     [Fact]
+    public async Task Continue_accepts_replace_slot_and_final_mix_continuity()
+    {
+        await using var factory = new Factory(); using var http = factory.CreateClient();
+        var memory = factory.Services.GetRequiredService<ISceneMemoryStore>();
+        var workspace = await memory.CreateAsync("Replace slot story");
+        var request = new StartSceneVideoRun(Guid.NewGuid().ToString(), workspace.Id, "Redo the second clip from the final mix.",
+            StoryMode: "continue", ReplaceClipIndex: 2, ContinuityMedia: "final", ProjectId: Guid.NewGuid().ToString("N"));
+        using var response = await http.PostAsJsonAsync("/api/scenarios/scene-video-chain/runs", request);
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var run = (await response.Content.ReadFromJsonAsync<AgentRun>())!;
+        var state = SceneVideoLoop.State(run);
+        Assert.Equal(2, state.Input.ReplaceClipIndex);
+        Assert.Equal("final", state.Input.ContinuityMedia);
+        Assert.Equal("final", SceneVideoLoop.ContinuityMedia(state));
+        Assert.Equal(2, SceneVideoLoop.FilmSlot(state));
+        var replay = await http.PostAsJsonAsync("/api/scenarios/scene-video-chain/runs", request);
+        Assert.Equal(run.Id, (await replay.Content.ReadFromJsonAsync<AgentRun>())!.Id);
+    }
+    [Theory]
+    [InlineData("new", 2, "final")]
+    [InlineData("continue", 0, "final")]
+    [InlineData("continue", 25, "final")]
+    [InlineData("continue", 2, "mixed")]
+    public async Task Invalid_replace_slot_or_continuity_is_rejected(string mode, int? slot, string? media)
+    {
+        await using var factory = new Factory(); using var http = factory.CreateClient();
+        string? workspace = null;
+        if (mode == "continue") {
+            workspace = (await factory.Services.GetRequiredService<ISceneMemoryStore>().CreateAsync("Reject")).Id;
+        }
+        var response = await http.PostAsJsonAsync("/api/scenarios/scene-video-chain/runs",
+            new StartSceneVideoRun(Guid.NewGuid().ToString(), workspace, "A quiet beach.", StoryMode: mode,
+                ReplaceClipIndex: slot, ContinuityMedia: media));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+    [Fact]
     public async Task Different_new_requests_receive_different_empty_stories()
     {
         await using var factory = new Factory(); using var http = factory.CreateClient();
@@ -170,7 +206,9 @@ public sealed class SceneVideoRunApiTests
     }
 
     private sealed class Production : ISceneVideoProduction {
-        public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct, string? projectId = null) => Task.FromResult(new SceneVideoProject(projectId ?? "project"));
+        public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct,
+            string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null) =>
+            Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["a", "b", "c"], Opening: new(["a", "b", "c"], [0, .5, 1]), Ending: new(["a", "b", "c"], [8.5, 9.25, 9.95])));
         public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Clip audio ready", JsonSerializer.SerializeToElement(new { }), "version-" + keys.Count));
         public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Audio ready", JsonSerializer.SerializeToElement(new { })));
