@@ -39,7 +39,8 @@ namespace AgctorSDK.Agents.Tasks
         public async Task ExecuteAsync(ProjectTask task, CancellationToken cancellationToken = default)
         {
             if (task == null) throw new ArgumentNullException(nameof(task));
-            if (task.Status is CoreTaskStatus.Completed or CoreTaskStatus.Running) return;
+            // TaskFlowEngine marks Running before Invoke; only skip already-finished work.
+            if (task.Status is CoreTaskStatus.Completed) return;
 
             task.Status = CoreTaskStatus.Running;
 
