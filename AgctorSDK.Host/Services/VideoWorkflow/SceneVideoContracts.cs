@@ -205,9 +205,15 @@ public sealed record SceneNarrationPlan(string Model, string Voice, string Langu
 /// <summary>Where and how long this clip’s narration should sit. Speed is applied by the narrator from the target, unless PaceOverride is set.</summary>
 public sealed record SceneNarrationWindow(double? TargetSeconds = null, double StartSeconds = 0.2, double? PaceOverride = null);
 public sealed record SceneSpeechWord(string Text, double StartSeconds, double EndSeconds);
+/// <summary>
+/// Status is language/transcript evidence. TimingStatus is word clocks only:
+/// ready (words present), untimed (finished pass, no usable clocks), unavailable (timing failed),
+/// skipped (person continued without clocks — durable, do not re-prompt).
+/// </summary>
 public sealed record SceneSpeechReport(string Status, string? Language, double Confidence, string Transcript, string Summary,
     IReadOnlyList<SceneSpeechIssue>? Issues = null,
-    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SceneSpeechWord>? Words = null);
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<SceneSpeechWord>? Words = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? TimingStatus = null);
 // UTF-16 offsets into the original transcript. Zero length denotes missing expected words.
 public sealed record SceneSpeechIssue(int Start, int Length, string Reason);
 public sealed record SceneSpeechUnderstanding(bool Understood, IReadOnlyList<SceneSpeechIssue> Issues, bool Available = true);

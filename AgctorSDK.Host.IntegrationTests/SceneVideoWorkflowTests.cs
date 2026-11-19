@@ -1108,6 +1108,62 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Single(renderer.Requests);
     }
     [Fact]
+    public async Task Untimed_speech_offers_skip_timing_and_continues_without_another_inspect()
+    {
+        // Detected language without word clocks: continue without timing must not re-prompt forever.
+        critic.Throw = true;
+        production.Speech = new("uncertain", null, .2, "hmm unclear", "Speech is unclear");
+        var run = await SpeechRun();
+        for (var i = 0; i < 30 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("continuity", run.Question!.Kind);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "accept", null));
+        run = await ActorTick(run.Id);
+        Assert.Equal("speech-review", run.Question!.Kind);
+        Assert.Equal(SceneSpeechTiming.Untimed, SceneVideoLoop.State(run).Clips[0].Speech!.TimingStatus);
+        Assert.Contains(run.Question.Choices, c => c.Id == "skip-timing");
+        Assert.Contains("Word timing is unavailable", run.Question.Prompt);
+        var calls = production.SpeechCalls;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "skip-timing", null));
+        run = await ActorTick(run.Id);
+        var clip = SceneVideoLoop.State(run).Clips[0];
+        Assert.Equal(SceneSpeechTiming.Skipped, clip.Speech!.TimingStatus);
+        Assert.True(clip.SpeechAccepted);
+        Assert.Equal("keep-original", clip.AudioDecision);
+        Assert.Equal(1, SceneVideoLoop.State(run).Current);
+        Assert.Equal(calls, production.SpeechCalls);
+    }
+    [Fact]
+    public async Task Project_attention_retry_offers_continue_and_regenerate_not_retry_only()
+    {
+        // Durable Cynelo 409 → retry question must include continue/regenerate (CLRM-48 sheet), not Retry alone.
+        var workspace = await memory.CreateAsync("Project attention timing");
+        var speech = SceneSpeechTiming.Normalize(new("uncertain", null, .2, "hmm unclear", "Speech is unclear"));
+        var state = new SceneVideoState {
+            Input = new("prompt", workspace.Id, "A traveller arrives home.", 15, 15),
+            WorkspaceRevision = ScenePromptReducer.Revision(workspace), Model = "fake",
+            SpeechReviewEnabled = true, ExpectedSpeechLanguage = "en", ProductionEnabled = true,
+            Clips = [new SceneVideoClip {
+                ShotId = "shot-1", DurationSeconds = 15, Status = "completed",
+                VisualAccepted = true, ChecksVersion = 1, Speech = speech,
+                VideoUrl = "https://cynelo.test/clip.mp4"
+            }]
+        };
+        var choices = new AgentChoice[] {
+            new("retry", "Retry this step"), new("continue", "Continue without word timing"),
+            new("regenerate", "Regenerate this clip"), new("cancel", "Stop here") };
+        var run = await runs.CreateAsync(new() {
+            RequestId = Guid.NewGuid().ToString(), RequestHash = "project-attention", WorkspaceId = workspace.Id,
+            Workflow = "scene-video", ScenarioId = "scene-video-chain", Phase = "speech-check", Status = "waiting",
+            Question = new("q-retry", "retry", HttpSceneVideoProduction.ConflictMessage(null), choices),
+            State = JsonSerializer.SerializeToElement(state)
+        });
+        Assert.Equal(new[] { "retry", "continue", "regenerate", "cancel" }, run.Question!.Choices.Select(c => c.Id));
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "continue", null));
+        run = await ActorTick(run.Id);
+        Assert.Equal(SceneSpeechTiming.Skipped, SceneVideoLoop.State(run).Clips[0].Speech!.TimingStatus);
+        Assert.True(SceneVideoLoop.State(run).Clips[0].SpeechAccepted);
+    }
+    [Fact]
     public async Task Visual_acceptance_requires_separate_audio_choice_even_after_machine_pass_and_restart()
     {
         critic.Throw = true;
@@ -1443,7 +1499,7 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         renderer.Intervention=new("ComfyUI is not responding. Start ComfyUI, then check again.","comfyui_unavailable");
         run=await Tick(run.Id);
         Assert.Equal(renderer.Intervention.Message,run.Question!.Prompt);
-        Assert.Equal(new[] { "retry", "restart" }, run.Question.Choices.Select(c => c.Id));
+        Assert.Equal(new[] { "retry", "restart", "cancel" }, run.Question.Choices.Select(c => c.Id));
         var questionId=run.Question.Id;
         MakeDue(run.Id); run=await Tick(run.Id);
         Assert.Equal(questionId,run.Question!.Id); Assert.Empty(renderer.Requests);

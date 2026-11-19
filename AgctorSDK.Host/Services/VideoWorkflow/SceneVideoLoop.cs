@@ -624,7 +624,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         clip.ExpectedSpeechText = Dedicated(state) ? clip.NarrationText : SceneSpeechTextReview.Expected(clip);
         if (clip.Speech != null) return; // Persisted evidence is reused after actor restarts and human decisions.
         try {
-            clip.Speech = await production!.InspectSpeechAsync(RenderKey(run, state), ct);
+            clip.Speech = SceneSpeechTiming.Normalize(await production!.InspectSpeechAsync(RenderKey(run, state), ct));
             await SaveSpeechMomentAsync(run, state, clip, ct);
             var heard = clip.Speech;
             var matches = heard.Status == "detected" && heard.Confidence >= .85 && heard.Language == state.ExpectedSpeechLanguage;
@@ -632,12 +632,12 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             if (!string.IsNullOrWhiteSpace(heard.Transcript)) {
                 var review = await SceneSpeechTextReview.Evaluate(audio!, clip.Prompt + "\n" + clip.SpeechInstruction,
                     expectedWords, state.Model, heard, ct);
-                clip.Speech = heard with { Issues = review.Issues };
+                clip.Speech = SceneSpeechTiming.Normalize(heard with { Issues = review.Issues });
                 if (expectedWords.Length > 0 && !SceneNativeSpeech.Matches(expectedWords, heard.Transcript)) {
                     matches = false;
-                    clip.Speech = clip.Speech with { Status = "uncertain", Summary = "The recognized words do not match the requested dialogue. Listen to the clip and check the transcript before deciding." };
+                    clip.Speech = SceneSpeechTiming.Normalize(clip.Speech with { Status = "uncertain", Summary = "The recognized words do not match the requested dialogue. Listen to the clip and check the transcript before deciding." });
                 } else if (review.Status != "passed") {
-                    if (matches) clip.Speech = clip.Speech with { Status = "uncertain", Summary = "The detected language matches, but the Audio Engineer could not confidently understand or verify the words." };
+                    if (matches) clip.Speech = SceneSpeechTiming.Normalize(clip.Speech with { Status = "uncertain", Summary = "The detected language matches, but the Audio Engineer could not confidently understand or verify the words." });
                     matches = false;
                 }
             }
@@ -647,7 +647,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (Exception ex) {
             log.LogWarning(ex, "Speech inspection unavailable for {RunId}", run.Id);
-            clip.Speech = new("unavailable", null, 0, "", "Speech inspection was unavailable. Listen before deciding.");
+            clip.Speech = SceneSpeechTiming.Normalize(new("unavailable", null, 0, "", "Speech inspection was unavailable. Listen before deciding."));
             clip.SpeechVerified = false; clip.SpeechAccepted = false; // Planned replacement is not verified audio.
         }
     }
@@ -666,12 +666,20 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             clip.SpeechAccepted = false; // Also correct old checkpoints that treated deferred narration as a pass.
             if (state.AudioEnabled && state.ProductionEnabled) return AdvanceClip(run, state, label);
             if (!clip.AudioReviewRequired || clip.AudioDecision == "replace-with-narration") return AdvanceClip(run, state, label);
+            var dedicated = new List<AgentChoice> {
+                new("replace", "Replace speech with approved narration"), new("narration", "Review or revise the narration"),
+                new("recheck", "Recheck original speech") };
+            if (SceneSpeechTiming.OfferSkip(clip.Speech)) dedicated.Add(new("skip-timing", "Continue without word timing"));
+            dedicated.Add(new("cancel", "Stop here"));
             Ask(run, "speech-review", $"{label}: Visuals are approved. You are hearing the original H3 audio. Separate narration is planned, but it has not been generated or verified yet. Confirm replacement to continue, review the narration script, or recheck the original speech. You will review the final narration before delivery.",
-                [new("replace", "Replace speech with approved narration"), new("narration", "Review or revise the narration"), new("recheck", "Recheck original speech"), new("cancel", "Stop here")]);
+                dedicated);
             return "Visuals approved. Waiting for your audio decision; the next clip has not started.";
         }
         if (!state.SpeechReviewEnabled || (clip.SpeechAccepted && (!clip.AudioReviewRequired || clip.AudioDecision == "keep-original"))) return AdvanceClip(run, state, label);
         var choices = new List<AgentChoice> { new("accept", "Approve this audio"), new("recheck", "Check speech again · no new render") };
+        // Untimed/unavailable clocks are durable until skip or a successful timing pass — do not only offer Retry.
+        if (SceneSpeechTiming.OfferSkip(clip.Speech))
+            choices.Add(new("skip-timing", "Continue without word timing"));
         if (clip.SpeechRetries < 2) {
             choices.Add(new("english", "Regenerate with English speech"));
             choices.Add(new("none", "Regenerate without speech"));
@@ -679,7 +687,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         }
         if (state.AudioEnabled) choices.Add(new("narration", "Replace with narration · keep video"));
         choices.Add(new("cancel", "Stop here"));
-        Ask(run, "speech-review", $"{label}: Visuals are approved. {clip.Speech!.Summary} Expected: {LanguageName(state.ExpectedSpeechLanguage)}. Listen before deciding. Regenerating creates a new video take and may change its visuals. Enter a language and optional exact dialogue for a correction.", choices);
+        var timingNote = SceneSpeechTiming.OfferSkip(clip.Speech)
+            ? " Word timing is unavailable; you can continue without it, or check speech again."
+            : "";
+        Ask(run, "speech-review", $"{label}: Visuals are approved. {clip.Speech!.Summary} Expected: {LanguageName(state.ExpectedSpeechLanguage)}. Listen before deciding.{timingNote} Regenerating creates a new video take and may change its visuals. Enter a language and optional exact dialogue for a correction.", choices);
         return "Speech needs your decision.";
     }
     private static IReadOnlyList<AgentChoice> VisualChoices(SceneVideoState state, SceneVideoClip clip)
@@ -934,6 +945,15 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     state.NarrationReturnPhase = "review-wait"; run.Phase = "narration-plan"; break;
                 }
                 if (question.Kind == "speech-review" && reply.Choice == "recheck") { state.Clips[state.Current].Speech = null; state.Clips[state.Current].SpeechAccepted = false; state.Clips[state.Current].SpeechVerified = null; state.Clips[state.Current].AudioDecision = null; run.Phase = "speech-check"; break; }
+                // Durable skip: keep transcript evidence, drop clocks, do not re-ask for timing alone.
+                // Cynelo accepts skip-timing, continue-untimed, or continue for the same advance.
+                if (question.Kind == "speech-review" && SceneSpeechTiming.IsSkipChoice(reply.Choice)) {
+                    var timed = state.Clips[state.Current];
+                    timed.Speech = SceneSpeechTiming.MarkSkipped(timed.Speech);
+                    timed.SpeechAccepted = true;
+                    timed.AudioDecision = "keep-original";
+                    ReviewChecks(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}"); break;
+                }
                 if (question.Kind == "speech-review" && reply.Choice == "accept") {
                     state.Clips[state.Current].SpeechAccepted = true;
                     state.Clips[state.Current].AudioDecision = "keep-original";
@@ -1037,6 +1057,32 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             case "timeout": state.Clips[state.Current].WaitExtendedAt = DateTimeOffset.UtcNow; break;
             case "render-failed":
                 state.Clips[state.Current].RenderAttempt++; ResetRender(state.Clips[state.Current]); run.Phase = "submit"; break;
+            case "retry":
+                // Default retry clears the question and re-runs the phase.
+                // continue / skip-timing / continue-untimed unstick speech clocks without looping (CLRM-48/49).
+                if (SceneSpeechTiming.IsSkipChoice(reply.Choice) && state.Current < state.Clips.Count) {
+                    var clip = state.Clips[state.Current];
+                    clip.Speech = SceneSpeechTiming.MarkSkipped(clip.Speech);
+                    if (clip.VisualAccepted) {
+                        clip.SpeechAccepted = true;
+                        if (!Dedicated(state)) clip.AudioDecision ??= "keep-original";
+                        ReviewChecks(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}");
+                    }
+                    else run.Phase = "speech-check";
+                }
+                else if (reply.Choice == "regenerate" && state.Current < state.Clips.Count) {
+                    var target = state.Clips[state.Current];
+                    if (target.SpeechRetries >= 2) throw new InvalidOperationException("Speech correction limit reached.");
+                    target.ReplacesJobKey = RenderKey(run, state);
+                    target.SpeechRetries++; target.RenderAttempt++;
+                    ResetRender(target);
+                    target.ChecksVersion = Math.Max(target.ChecksVersion, 1);
+                    target.Speech = null; target.Continuity = null; target.Accepted = false;
+                    target.VisualAccepted = false; target.SpeechAccepted = false; target.SpeechVerified = null;
+                    target.AudioDecision = null; target.AudioReviewRequired = false;
+                    target.VideoUrl = null; target.LastFrameUrl = null; target.Status = "ready"; run.Phase = "submit";
+                }
+                break;
         }
         if (run.Question?.Id == question.Id) run.Question = null;
         run.Reply = null;
@@ -1088,10 +1134,24 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     private static readonly IReadOnlyList<AgentChoice> PlanningChoices = [
         new("retry", "Retry failed check · keep checked sections"), new("reset-plan", "Start this shot’s planning over"),
         new("revise-shot", "Revise this shot’s instructions"), new("cancel", "Stop here")];
-    private static IReadOnlyList<AgentChoice> RecoveryChoices(AgentRun run, SceneVideoState state) =>
-        state.Current < state.Clips.Count && run.Phase is "submit" or "poll"
-            ? [new("retry", "Reconnect and retry"), new("restart", "Start this clip over · keep completed clips")]
-            : [new("retry", "Retry this step")];
+    private static IReadOnlyList<AgentChoice> RecoveryChoices(AgentRun run, SceneVideoState state)
+    {
+        // Always offer Stop — Retry-only recovery is what left sequences waiting for hours.
+        if (state.Current < state.Clips.Count && run.Phase is "submit" or "poll")
+            return [new("retry", "Reconnect and retry"), new("restart", "Start this clip over · keep completed clips"), new("cancel", "Stop here")];
+        var choices = new List<AgentChoice> { new("retry", "Retry this step") };
+        var clip = state.Current < state.Clips.Count ? state.Clips[state.Current] : null;
+        // On speech-check / untimed recovery, Cynelo sheet expects continue (+ regenerate), not Retry alone.
+        // speech-review uses skip-timing; retry questions use continue (same durable advance).
+        if (run.Phase == "speech-check" || run.Phase is "project" or "clip-audio-process" or "audio-process" ||
+            SceneSpeechTiming.OfferSkip(clip?.Speech))
+            choices.Add(new("continue", "Continue without word timing"));
+        if (clip != null && state.SpeechReviewEnabled && clip.SpeechRetries < 2 &&
+            run.Phase is "speech-check" or "project" or "clip-audio-process" or "clip-audio-plan" or "clip-audio-check")
+            choices.Add(new("regenerate", "Regenerate this clip"));
+        choices.Add(new("cancel", "Stop here"));
+        return choices;
+    }
 
     private static void ResetRender(SceneVideoClip clip)
     {

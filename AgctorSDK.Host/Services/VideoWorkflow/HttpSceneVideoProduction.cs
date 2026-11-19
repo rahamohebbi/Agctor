@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace AgctorSDK.Host.Services.VideoWorkflow;
@@ -39,10 +40,38 @@ public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOption
         using var request = new HttpRequestMessage(method, options.CurrentValue.RendererBaseUrl!.TrimEnd('/') + "/" + path);
         if (body != null) request.Content = JsonContent.Create(body);
         using var response = await http.SendAsync(request, ct);
-        // Bodies can contain provider details. Only expose a fixed, actionable message.
+        // Bodies can contain provider details. Map known codes; never publish raw upstream text.
         if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
-            throw new SceneRenderInterventionException("The story’s project needs attention. Check its saved clips in Cynelo, then retry. Existing projects are preserved.");
+        {
+            var code = await ReadConflictCode(response, ct);
+            throw new SceneRenderInterventionException(ConflictMessage(code), code);
+        }
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<T>(cancellationToken: ct) ?? throw new InvalidOperationException("Missing studio result.");
     }
+
+    private static async Task<string?> ReadConflictCode(HttpResponseMessage response, CancellationToken ct)
+    {
+        try
+        {
+            var detail = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: ct);
+            return detail.ValueKind == JsonValueKind.Object && detail.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
+                ? code.GetString() : null;
+        }
+        catch (JsonException) { return null; }
+        catch (NotSupportedException) { return null; }
+    }
+
+    /// <summary>Same code vocabulary Cynelo SceneMemoryException uses on production routes.</summary>
+    internal static string ConflictMessage(string? code) => code switch
+    {
+        "audio_changed" => "This audio draft belongs to a different version of the film. Review the clip in Cynelo, then retry or continue without word timing if clocks are stuck.",
+        "audio_approval_changed" => "The approved clip audio no longer matches this take. Review its audio again in Cynelo.",
+        "audio_script_changed" => "Approved narration changed. Review a revised clip before assembly.",
+        "music_unavailable" => "Matching music is not configured. Preserve the original background, or set up the music service, then retry.",
+        "narration_cloud_unavailable" => "Cloud narration is not configured. Choose the local voice, or set up ElevenLabs, then retry.",
+        "film_not_empty" => "This is a new story. Open a new Cynelo project, or choose Continue a story to extend the existing film.",
+        "story_film_mismatch" => "Open the Cynelo film for this story, then retry. Existing clips will be kept.",
+        _ => "The story’s project needs attention. Check its saved clips in Cynelo, then retry. Existing projects are preserved."
+    };
 }
