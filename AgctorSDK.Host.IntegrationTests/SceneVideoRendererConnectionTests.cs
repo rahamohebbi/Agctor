@@ -94,6 +94,60 @@ public sealed class SceneVideoRendererConnectionTests
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new SceneRenderJob("job", "running")) });
         }
     }
+    [Fact]
+    public async Task Production_audio_and_finish_forward_replace_slot_fields_in_camel_case()
+    {
+        var recorder = new ProductionRecorder();
+        var production = new HttpSceneVideoProduction(new Clients(recorder), new Settings());
+        var plan = new SceneAudioPlan(true, "Shared music");
+
+        await production.PrepareClipAudioAsync("run-1", "proj-1", ["run-1-1-1"], plan, default, 2, "final", true);
+        await production.PrepareAudioAsync("run-1", "proj-1", ["run-1-1-1"], plan, default, 2, "final", true);
+        await production.FinishAudioAsync("run-1", "proj-1", ["run-1-1-1"], "original", default, 2, "final", true);
+        await production.FinishAsync("run-1", "proj-1", ["run-1-1-1"], default, 2, "final", false);
+
+        Assert.Equal(4, recorder.Payloads.Count);
+        foreach (var (path, body) in recorder.Payloads)
+        {
+            Assert.True(body.TryGetProperty("replaceClipIndex", out var slot), path);
+            Assert.Equal(2, slot.GetInt32());
+            Assert.True(body.TryGetProperty("continuityMedia", out var media), path);
+            Assert.Equal("final", media.GetString());
+            Assert.True(body.TryGetProperty("keepLaterClips", out _), path);
+        }
+        Assert.True(recorder.Payloads[0].Body.GetProperty("preview").GetBoolean());
+        Assert.True(recorder.Payloads[0].Body.GetProperty("keepLaterClips").GetBoolean());
+        Assert.True(recorder.Payloads[1].Body.GetProperty("keepLaterClips").GetBoolean());
+        Assert.True(recorder.Payloads[2].Body.GetProperty("keepLaterClips").GetBoolean());
+        Assert.False(recorder.Payloads[3].Body.GetProperty("keepLaterClips").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Production_409_maps_conflict_code_and_preserves_code_on_exception()
+    {
+        var production = new HttpSceneVideoProduction(new Clients(new RecoveryConflict("wrong_clip")), new Settings());
+        var error = await Assert.ThrowsAsync<SceneRenderInterventionException>(() =>
+            production.PrepareClipAudioAsync("run-1", "proj-1", ["run-1-1-1"], new SceneAudioPlan(true, "Music"), default, 2, "final", true));
+        Assert.Equal("wrong_clip", error.Code);
+        Assert.Contains("target film slot", error.Message);
+        Assert.DoesNotContain("private upstream detail", error.Message);
+    }
+
+    private sealed class ProductionRecorder : HttpMessageHandler
+    {
+        public List<(string Path, System.Text.Json.JsonElement Body)> Payloads { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var body = await request.Content!.ReadFromJsonAsync<System.Text.Json.JsonElement>(cancellationToken: ct);
+            var path = request.RequestUri!.AbsolutePath;
+            Payloads.Add((path, body));
+            object response = path.EndsWith("/audio", StringComparison.Ordinal)
+                ? new SceneAudioDraft(true, "Audio ready", System.Text.Json.JsonSerializer.SerializeToElement(new { }), "v1")
+                : new SceneVideoDelivery("https://cynelo.test/finished.mp4");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(response) };
+        }
+    }
+
     private sealed class Clients(HttpMessageHandler handler) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);

@@ -68,8 +68,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch (SceneRenderInterventionException ex)
         {
+            log.LogWarning("Scene video run {RunId} paused for intervention during {Phase}: code={InterventionCode}",
+                run.Id, run.Phase, ex.Code ?? "(none)");
             summary = ex.Message;
-            Ask(run, "retry", summary, RecoveryChoices(run, state));
+            Ask(run, "retry", summary, RecoveryChoices(run, state), ex.Code);
         }
         catch (ScenePromptInterpretationException ex) when (run.Phase == "plan-review")
         {
@@ -132,7 +134,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (run.Phase == "clip-audio-process")
         {
             var previewClip = state.Clips[state.Current];
-            previewClip.AudioPreview = await production!.PrepareClipAudioAsync(run.Id, state.ProjectId!, audioKeys.Take(state.Current + 1).ToArray(), state.AudioPlan!, ct);
+            previewClip.AudioPreview = await production!.PrepareClipAudioAsync(run.Id, state.ProjectId!, audioKeys.Take(state.Current + 1).ToArray(), state.AudioPlan!, ct,
+                state.Input.ReplaceClipIndex, ContinuityMedia(state), state.Input.KeepLaterClips);
             if (previewClip.AudioPreview.ImprovedAvailable && string.IsNullOrWhiteSpace(previewClip.AudioPreview.PreviewVersion))
                 throw new InvalidOperationException("Missing immutable audio preview version.");
             run.Phase = "clip-audio-check";
@@ -161,7 +164,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         }
         if (run.Phase == "audio-process")
         {
-            state.AudioDraft = await production!.PrepareAudioAsync(run.Id, state.ProjectId!, audioKeys, state.AudioPlan!, ct);
+            state.AudioDraft = await production!.PrepareAudioAsync(run.Id, state.ProjectId!, audioKeys, state.AudioPlan!, ct,
+                state.Input.ReplaceClipIndex, ContinuityMedia(state), state.Input.KeepLaterClips);
             run.Phase = "audio-review";
             return state.AudioDraft.Summary;
         }
@@ -251,8 +255,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             if (state.Clips.Any(c => !c.Accepted || c.VideoUrl == null)) throw new InvalidOperationException("Unapproved clips cannot be assembled.");
             var keys = state.Clips.Select((c, i) => $"{run.Id}-{i + 1}-{c.RenderAttempt}").ToArray();
             var result = state.AudioEnabled
-                ? await production!.FinishAudioAsync(run.Id, state.ProjectId!, keys, state.AudioChoice ?? throw new InvalidOperationException("Audio approval is required."), ct)
-                : await production!.FinishAsync(run.Id, state.ProjectId!, keys, ct);
+                ? await production!.FinishAudioAsync(run.Id, state.ProjectId!, keys, state.AudioChoice ?? throw new InvalidOperationException("Audio approval is required."), ct,
+                    state.Input.ReplaceClipIndex, ContinuityMedia(state), state.Input.KeepLaterClips)
+                : await production!.FinishAsync(run.Id, state.ProjectId!, keys, ct,
+                    state.Input.ReplaceClipIndex, ContinuityMedia(state), state.Input.KeepLaterClips);
             if (!HttpSceneVideoRenderer.ValidArtifactUrl(result.VideoUrl)) throw new InvalidOperationException("Missing final video.");
             state.FinalVideoUrl = result.VideoUrl; run.Status = "completed";
             return "Your finished video is ready to watch and download.";
@@ -548,10 +554,11 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         {
             log.LogWarning(ex, "Could not observe rendering for waiting run {RunId}", run.Id);
             var choices = RecoveryChoices(run, state);
+            var code = ex is SceneRenderInterventionException interventionEx ? interventionEx.Code : null;
             var prompt = ex is SceneRenderInterventionException intervention ? intervention.Message
                 : $"{label}: The existing render could not be reached. Reconnect and retry, or start this clip over. Completed clips are preserved.";
-            if (run.Question?.Kind == "retry" && (run.Question.Prompt != prompt || !run.Question.Choices.SequenceEqual(choices)))
-                Ask(run, "retry", prompt, choices);
+            if (run.Question?.Kind == "retry" && (run.Question.Prompt != prompt || run.Question.Code != code || !run.Question.Choices.SequenceEqual(choices)))
+                Ask(run, "retry", prompt, choices, code);
             summary = ex is SceneRenderInterventionException
                 ? $"{label}: {ex.Message} Status checks continue; no new render was submitted."
                 : $"{label}: Could not refresh Cynelo's status. The last known result is preserved. Status checks will retry automatically; no new render was submitted.";
@@ -746,18 +753,32 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     private static string AdvanceClip(AgentRun run, SceneVideoState state, string label)
     {
         var reviewed = state.Clips[state.Current];
-        if (state.AudioEnabled && state.ProductionEnabled &&
+        if (state.AudioEnabled && state.ProductionEnabled && !reviewed.KeepOriginalAudio &&
             (reviewed.ApprovedAudioVersion == null || reviewed.ApprovedAudioVersion != reviewed.AudioPreview?.PreviewVersion)) {
             run.Phase = "clip-audio-plan";
             return "Visuals approved. Preparing this clip’s improved audio for you to hear before continuing.";
         }
-        if (reviewed.AudioReviewRequired && !(Dedicated(state) ? reviewed.AudioDecision == "replace-with-narration" : reviewed.SpeechAccepted && reviewed.AudioDecision == "keep-original"))
+        if (reviewed.AudioReviewRequired && !reviewed.KeepOriginalAudio && !(Dedicated(state) ? reviewed.AudioDecision == "replace-with-narration" : reviewed.SpeechAccepted && reviewed.AudioDecision == "keep-original"))
             throw new InvalidOperationException("An explicit audio decision is still required.");
         state.Clips[state.Current].Accepted = true;
         state.Current++;
         if (state.Current == state.Clips.Count)
-        { if (state.ProductionEnabled) { run.Phase = state.AudioEnabled ? "audio-plan" : "finish"; run.Status = "running"; return state.AudioEnabled ? "All clips are approved. The Director is asking the Audio Engineer to prepare the story soundtrack." : "All clips are approved. Preparing your finished video."; }
-          run.Status = "completed"; return $"All {state.Clips.Count} clips are ready ({state.Input.TotalSeconds} seconds)."; }
+        {
+            if (state.ProductionEnabled)
+            {
+                if (state.AudioEnabled && state.Clips.All(c => c.KeepOriginalAudio))
+                {
+                    state.AudioChoice = "original";
+                    run.Phase = "finish";
+                    run.Status = "running";
+                    return "All clips are approved with original audio. Preparing your finished video.";
+                }
+                run.Phase = state.AudioEnabled ? "audio-plan" : "finish";
+                run.Status = "running";
+                return state.AudioEnabled ? "All clips are approved. The Director is asking the Audio Engineer to prepare the story soundtrack." : "All clips are approved. Preparing your finished video.";
+            }
+            run.Status = "completed"; return $"All {state.Clips.Count} clips are ready ({state.Input.TotalSeconds} seconds).";
+        }
         run.Phase = "prepare";
         return $"{label} is ready. Continuing from its last frame into the next clip.";
     }
@@ -1059,8 +1080,22 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                 state.Clips[state.Current].RenderAttempt++; ResetRender(state.Clips[state.Current]); run.Phase = "submit"; break;
             case "retry":
                 // Default retry clears the question and re-runs the phase.
+                // keep-original bypasses a failing soundtrack step without looping.
+                if (reply.Choice == "keep-original") {
+                    if (run.Phase == "audio-process") {
+                        state.AudioChoice = "original";
+                        run.Phase = "finish";
+                    }
+                    else if (run.Phase == "clip-audio-process" && state.Current < state.Clips.Count) {
+                        var clip = state.Clips[state.Current];
+                        clip.KeepOriginalAudio = true;
+                        clip.AudioDecision = "keep-original";
+                        if (!Dedicated(state)) clip.SpeechAccepted = true;
+                        AdvanceClip(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}");
+                    }
+                }
                 // continue / skip-timing / continue-untimed unstick speech clocks without looping (CLRM-48/49).
-                if (SceneSpeechTiming.IsSkipChoice(reply.Choice) && state.Current < state.Clips.Count) {
+                else if (SceneSpeechTiming.IsSkipChoice(reply.Choice) && state.Current < state.Clips.Count) {
                     var clip = state.Clips[state.Current];
                     clip.Speech = SceneSpeechTiming.MarkSkipped(clip.Speech);
                     if (clip.VisualAccepted) {
@@ -1141,13 +1176,16 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             return [new("retry", "Reconnect and retry"), new("restart", "Start this clip over · keep completed clips"), new("cancel", "Stop here")];
         var choices = new List<AgentChoice> { new("retry", "Retry this step") };
         var clip = state.Current < state.Clips.Count ? state.Clips[state.Current] : null;
-        // On speech-check / untimed recovery, Cynelo sheet expects continue (+ regenerate), not Retry alone.
-        // speech-review uses skip-timing; retry questions use continue (same durable advance).
-        if (run.Phase == "speech-check" || run.Phase is "project" or "clip-audio-process" or "audio-process" ||
-            SceneSpeechTiming.OfferSkip(clip?.Speech))
+        // Offer keep-original on soundtrack processing conflicts so the run can advance without looping.
+        if (run.Phase is "clip-audio-process" or "audio-process")
+            choices.Add(new("keep-original", "Keep original audio"));
+        // Only offer word-timing skip on speech-check or when the current clip actually has untimed/unavailable speech
+        // (never unconditionally on project/audio-process conflicts).
+        if (run.Phase == "speech-check" ||
+            (run.Phase is not ("project" or "clip-audio-process" or "audio-process") && SceneSpeechTiming.OfferSkip(clip?.Speech)))
             choices.Add(new("continue", "Continue without word timing"));
         if (clip != null && state.SpeechReviewEnabled && clip.SpeechRetries < 2 &&
-            run.Phase is "speech-check" or "project" or "clip-audio-process" or "clip-audio-plan" or "clip-audio-check")
+            run.Phase is "speech-check" or "clip-audio-process" or "clip-audio-plan" or "clip-audio-check")
             choices.Add(new("regenerate", "Regenerate this clip"));
         choices.Add(new("cancel", "Stop here"));
         return choices;
@@ -1157,6 +1195,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     {
         clip.Boundary = null;
         clip.AudioPreview = null; clip.AudioPreviewReview = null; clip.ApprovedAudioVersion = null;
+        clip.KeepOriginalAudio = false;
         clip.SubmittedAt = null; clip.WaitExtendedAt = null; clip.ProviderJobId = null;
         clip.LastCheckedAt = null; clip.LastCheckSucceeded = null; clip.RendererStatus = null;
         clip.Progress = null;
@@ -1169,8 +1208,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         } : null;
     private static string ProgressSummary(SceneVideoClip clip) => clip.Progress is { Percent: { } percent } progress
         ? $" Estimated progress: {percent}% — {progress.Stage}." : "";
-    private static void Ask(AgentRun run, string kind, string prompt, IReadOnlyList<AgentChoice> choices)
-    { run.Status = "waiting"; run.Question = new(Guid.NewGuid().ToString("N"), kind, prompt, choices); }
+    private static void Ask(AgentRun run, string kind, string prompt, IReadOnlyList<AgentChoice> choices, string? code = null)
+    { run.Status = "waiting"; run.Question = new(Guid.NewGuid().ToString("N"), kind, prompt, choices, Code: code); }
 }
 
 internal static class WorkflowText

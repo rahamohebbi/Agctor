@@ -102,6 +102,8 @@ public sealed class SceneVideoClip
     public SceneAudioDraft? AudioPreview { get; set; }
     public SceneContinuityReport? AudioPreviewReview { get; set; }
     public string? ApprovedAudioVersion { get; set; }
+    /// <summary>Explicitly keeps the clip's original audio when per-clip soundtrack processing fails.</summary>
+    public bool KeepOriginalAudio { get; set; }
     public string? NarrationText { get; set; }
     // Version zero preserves the request body of already-submitted legacy takes.
     public int NativeSpeechVersion { get; set; }
@@ -186,10 +188,14 @@ public interface ISceneVideoProduction
     Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct);
     /// <summary>Recheck shifts the ending samples inside the same window. The default repeats the unshifted read.</summary>
     Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) => EvidenceAsync(key, ct);
-    Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct);
-    Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
-    Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => throw new NotSupportedException("Clip audio production is not configured.");
-    Task<SceneVideoDelivery> FinishAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, string choice, CancellationToken ct) => throw new NotSupportedException("Audio production is not configured.");
+    Task<SceneVideoDelivery> FinishAsync(string runId, string projectId, IReadOnlyList<string> keys, CancellationToken ct,
+        int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null);
+    Task<SceneAudioDraft> PrepareAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+        int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => throw new NotSupportedException("Audio production is not configured.");
+    Task<SceneAudioDraft> PrepareClipAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+        int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => throw new NotSupportedException("Clip audio production is not configured.");
+    Task<SceneVideoDelivery> FinishAudioAsync(string runId, string projectId, IReadOnlyList<string> keys, string choice, CancellationToken ct,
+        int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => throw new NotSupportedException("Audio production is not configured.");
     Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(false);
     Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(["kokoro"]);
     Task<SceneSpeechReport> InspectSpeechAsync(string key, CancellationToken ct) => throw new NotSupportedException("Speech inspection is not configured.");

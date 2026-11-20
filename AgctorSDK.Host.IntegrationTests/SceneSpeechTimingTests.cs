@@ -54,4 +54,18 @@ public sealed class SceneSpeechTimingTests
         Assert.Contains("ElevenLabs", HttpSceneVideoProduction.ConflictMessage("narration_cloud_unavailable"));
         Assert.Contains("different version", HttpSceneVideoProduction.ConflictMessage("audio_changed"));
     }
+
+    [Theory]
+    [InlineData("film_changed", "film changed")]
+    [InlineData("wrong_clip", "target film slot")]
+    [InlineData("clip_not_ready", "not ready")]
+    [InlineData("project_conflict", "conflicts with the saved Cynelo project")]
+    [InlineData("wrong_previous", "previous clip")]
+    [InlineData("changed_prompt", "prompt changed")]
+    public void Known_project_and_clip_conflict_codes_do_not_fall_back_to_generic_copy(string code, string expected)
+    {
+        var message = HttpSceneVideoProduction.ConflictMessage(code);
+        Assert.Contains(expected, message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("project needs attention", message);
+    }
 }

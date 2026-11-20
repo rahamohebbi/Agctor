@@ -1086,6 +1086,136 @@ public sealed class SceneVideoWorkflowTests : IDisposable
             Assert.True(r.KeepLaterClips);
         });
     }
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Continue_replace_slot_with_audio_forwards_intent_to_audio_and_finish(bool keepLater)
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.StoryId = "story"; state.StoryName = "Replace slot audio";
+        state.Input = state.Input with { StoryMode = "continue", TotalSeconds = 15, ClipSeconds = 15,
+            ReplaceClipIndex = 2, ContinuityMedia = "final", KeepLaterClips = keepLater,
+            ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Replace slot audio ready");
+        run = await ReachFinalAudioReview(run);
+        Assert.Equal("audio-review", run.Question!.Kind);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "improved", null));
+        for (var i = 0; i < 10 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(2, production.RequestedReplaceClipIndex);
+        Assert.Equal("final", production.RequestedContinuityMedia);
+        Assert.Equal(keepLater, production.RequestedKeepLaterClips);
+        Assert.Equal((2, "final", keepLater), production.LastClipAudioReplace);
+        Assert.Equal((2, "final", keepLater), production.LastAudioReplace);
+        Assert.Equal((2, "final", keepLater), production.LastFinishReplace);
+    }
+
+    [Fact]
+    public async Task Clip_audio_process_conflict_offers_keep_original_not_word_timing_and_completes_without_loop()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.StoryId = "story"; state.StoryName = "Stuck replace clip";
+        state.Input = state.Input with { StoryMode = "continue", TotalSeconds = 15, ClipSeconds = 15,
+            ReplaceClipIndex = 2, ContinuityMedia = "final", KeepLaterClips = true,
+            ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Replace clip ready");
+        production.ClipAudioError = new SceneRenderInterventionException(HttpSceneVideoProduction.ConflictMessage("wrong_clip"), "wrong_clip");
+
+        for (var i = 0; i < 30 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("clip-audio-process", run.Phase);
+        Assert.Equal("retry", run.Question!.Kind);
+        Assert.Equal("wrong_clip", run.Question.Code);
+        Assert.DoesNotContain(run.Question.Choices, c => c.Id == "continue");
+        Assert.Equal(new[] { "retry", "keep-original", "cancel" }, run.Question.Choices.Select(c => c.Id));
+
+        var previewCalls = production.PreviewCalls;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "keep-original", null));
+        for (var i = 0; i < 15 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(previewCalls, production.PreviewCalls);
+        Assert.Equal(0, production.AudioCalls);
+        Assert.Equal("original", production.AudioChoice);
+        Assert.Single(production.Deliveries);
+        Assert.Equal((2, "final", true), production.LastFinishReplace);
+    }
+
+    [Fact]
+    public async Task Audio_process_conflict_offers_keep_original_not_word_timing_and_advances_to_finish()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.StoryId = "story"; state.StoryName = "Final audio conflict";
+        state.Input = state.Input with { StoryMode = "continue", TotalSeconds = 15, ClipSeconds = 15,
+            ReplaceClipIndex = 2, ContinuityMedia = "final", ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Ready");
+        production.AudioError = new SceneRenderInterventionException(HttpSceneVideoProduction.ConflictMessage("film_changed"), "film_changed");
+
+        for (var i = 0; i < 40; i++) {
+            run = await ActorTick(run.Id);
+            if (run.Status != "waiting") continue;
+            if (run.Question!.Kind == "clip-audio-review") {
+                await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "approve", null));
+                continue;
+            }
+            break;
+        }
+
+        Assert.Equal("audio-process", run.Phase);
+        Assert.Equal("retry", run.Question!.Kind);
+        Assert.Equal("film_changed", run.Question.Code);
+        Assert.Equal(1, SceneVideoLoop.State(run).Current);
+        Assert.DoesNotContain(run.Question.Choices, c => c.Id == "continue");
+        Assert.Equal(new[] { "retry", "keep-original", "cancel" }, run.Question.Choices.Select(c => c.Id));
+
+        var audioCalls = production.AudioCalls;
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "keep-original", null));
+        for (var i = 0; i < 10 && !run.IsTerminal; i++) run = await ActorTick(run.Id);
+
+        Assert.Equal("completed", run.Status);
+        Assert.Equal(audioCalls, production.AudioCalls);
+        Assert.Equal("original", production.AudioChoice);
+        Assert.Single(production.Deliveries);
+    }
+
+    [Fact]
+    public async Task Project_phase_conflict_does_not_offer_word_timing_skip()
+    {
+        var run = await ProductionRun(false);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.StoryId = "story"; state.StoryName = "Project conflict";
+        state.Input = state.Input with { StoryMode = "continue", TotalSeconds = 15, ClipSeconds = 15,
+            ReplaceClipIndex = 2, ContinuityMedia = "final", ProjectId = Guid.NewGuid().ToString("N") };
+        lease.Run.Phase = "project";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Ready");
+        production.ProjectError = new SceneRenderInterventionException(HttpSceneVideoProduction.ConflictMessage("project_conflict"), "project_conflict");
+
+        run = await ActorTick(run.Id);
+        Assert.Equal("project", run.Phase);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("retry", run.Question!.Kind);
+        Assert.Equal("project_conflict", run.Question.Code);
+        Assert.DoesNotContain(run.Question.Choices, c => c.Id == "continue");
+        Assert.Equal(new[] { "retry", "cancel" }, run.Question.Choices.Select(c => c.Id));
+    }
+
     [Fact]
     public async Task Unavailable_visual_review_does_not_block_speech_and_neither_approval_skips_the_other()
     {
@@ -1411,22 +1541,41 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         public Task<SceneVideoEvidence> EvidenceAsync(string key, bool recheck, CancellationToken ct) { Shifted = recheck; return EvidenceAsync(key, ct); }
         public Task<SceneSpeechReport> InspectSpeechAsync(string key,CancellationToken ct) { SpeechCalls++; return Task.FromResult(Speech); }
         public int PreviewCalls; public bool PreviewAvailable = true;
-        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) {
+        public Exception? ProjectError; public Exception? ClipAudioError; public Exception? AudioError;
+        public (int? ReplaceClipIndex, string? ContinuityMedia, bool? KeepLaterClips) LastClipAudioReplace;
+        public (int? ReplaceClipIndex, string? ContinuityMedia, bool? KeepLaterClips) LastAudioReplace;
+        public (int? ReplaceClipIndex, string? ContinuityMedia, bool? KeepLaterClips) LastFinishReplace;
+        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
             PreviewCalls++; AudioPlan = plan;
+            LastClipAudioReplace = (replaceClipIndex, continuityMedia, keepLaterClips);
+            if (ClipAudioError != null) throw ClipAudioError;
             return Task.FromResult(new SceneAudioDraft(PreviewAvailable, "Clip audio prepared", JsonSerializer.SerializeToElement(new { }), PreviewAvailable ? "version-" + keys.Count : null));
         }
         public bool AudioAvailable = true; public int AudioCalls; public string? AudioChoice;
-        public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) { AudioCalls++; AudioPlan=plan; return Task.FromResult(new SceneAudioDraft(AudioAvailable, "Compared audio", JsonSerializer.SerializeToElement(new { }))); }
-        public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) { AudioChoice=choice; return FinishAsync(run, project, keys, ct); }
+        public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
+            AudioCalls++; AudioPlan=plan;
+            LastAudioReplace = (replaceClipIndex, continuityMedia, keepLaterClips);
+            if (AudioError != null) throw AudioError;
+            return Task.FromResult(new SceneAudioDraft(AudioAvailable, "Compared audio", JsonSerializer.SerializeToElement(new { })));
+        }
+        public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
+            AudioChoice=choice; return FinishAsync(run, project, keys, ct, replaceClipIndex, continuityMedia, keepLaterClips);
+        }
         public List<IReadOnlyList<string>> Deliveries = [];
         public Task<SceneVideoProject> EnsureProjectAsync(string run, string story, string mode, string name, CancellationToken ct,
             string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
             RequestedProject = projectId; RequestedReplaceClipIndex = replaceClipIndex; RequestedContinuityMedia = continuityMedia;
             RequestedKeepLaterClips = keepLaterClips;
+            if (ProjectError != null) throw ProjectError;
             return Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         }
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["start", "middle", "end"], Opening: new(["o1", "o2", "o3"], [0, .5, 1]), Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]), EndingMotion: EndingMotion));
-        public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct) {
+        public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) {
+            LastFinishReplace = (replaceClipIndex, continuityMedia, keepLaterClips);
             Deliveries.Add(keys); return Task.FromResult(new SceneVideoDelivery("https://cynelo.test/finished.mp4"));
         }
     }
