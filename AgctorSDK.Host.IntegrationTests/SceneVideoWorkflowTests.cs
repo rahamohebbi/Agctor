@@ -1501,6 +1501,59 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Null(await runs.ClaimAsync(TimeSpan.FromMinutes(1),monitors:SceneVideoLoop.WaitMonitors));
     }
     [Fact]
+    public async Task Stuck_narration_revision_returns_to_the_script()
+    {
+        var run = await SpeechRun();
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.Input = state.Input with { NarrationMode = "dedicated" };
+        state.NarrationReturnPhase = "review-wait";
+        state.ProjectId = "project";
+        state.Clips = [new SceneVideoClip {
+            ShotId = run.Id + "-1", Prompt = "A fox kneels in a rooftop garden.", DurationSeconds = 15,
+            NarrationText = "The garden was waiting.", Status = "completed", VisualAccepted = true,
+            VideoUrl = "https://cynelo.test/clip.mp4" }];
+        lease.Run.Phase = "review-wait";
+        lease.Run.Status = "waiting";
+        lease.Run.Failures = 3;
+        lease.Run.Question = new(Guid.NewGuid().ToString("N"), "retry",
+            "The current step could not be completed safely (Attempt 3/3.) Your saved work is preserved. Retry this step when ready.",
+            [new("retry", "Retry this step"), new("cancel", "Stop here")]);
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "waiting", "Stuck after revise");
+        await runs.ReplyAsync(run.Id, (await runs.GetAsync(run.Id))!.Revision, new(lease.Run.Question.Id, "retry", null));
+        run = await ActorTick(run.Id);
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("narration-review", run.Question!.Kind);
+        Assert.Contains(run.Question.Choices, choice => choice.Id == "revise");
+        Assert.DoesNotContain("could not be completed safely", run.Summary + run.Question.Prompt);
+    }
+    [Fact]
+    public async Task Narration_revision_keeps_its_phase_when_the_voice_list_fails()
+    {
+        var run = await SpeechRun();
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.Input = state.Input with { NarrationMode = "dedicated", TotalSeconds = 15, ClipSeconds = 15 };
+        state.NarrationReturnPhase = "review-wait";
+        state.ProjectId = "project";
+        state.Clips = [new SceneVideoClip {
+            ShotId = run.Id + "-1", Prompt = "A fox kneels in a rooftop garden.", DurationSeconds = 15,
+            Status = "completed", VisualAccepted = true, VideoUrl = "https://cynelo.test/clip.mp4" }];
+        lease.Run.Phase = "narration-plan";
+        lease.Run.Status = "running";
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Revise narration");
+        production.NarrationModelsError = new InvalidOperationException("Missing studio result.");
+        run = await ActorTick(run.Id);
+        Assert.Equal("narration-plan", run.Phase);
+        Assert.Equal("running", run.Status);
+        Assert.Null(run.Question);
+    }
+    [Fact]
     public async Task Structured_routes_survive_restart_and_are_scoped_to_the_run()
     {
         var run = await ProductionRun();
@@ -1531,8 +1584,11 @@ public sealed class SceneVideoWorkflowTests : IDisposable
     private sealed class Production : ISceneVideoProduction
     {
         public bool CloudNarration;
+        public Exception? NarrationModelsError;
         public Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(CloudNarration);
-        public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
+        public Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) =>
+            NarrationModelsError != null ? Task.FromException<IReadOnlyList<string>>(NarrationModelsError)
+            : Task.FromResult<IReadOnlyList<string>>(CloudNarration ? ["kokoro", "eleven_multilingual_v2"] : ["kokoro"]);
         public string? RequestedProject; public int? RequestedReplaceClipIndex; public string? RequestedContinuityMedia; public bool? RequestedKeepLaterClips;
         public int SpeechCalls; public SceneAudioPlan? AudioPlan;
         public SceneSpeechReport Speech = new("detected","en",.98,"Hello my friend","English speech");

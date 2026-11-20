@@ -41,7 +41,8 @@ public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOption
     public async Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct)
     {
         try { return await Send<string[]>(HttpMethod.Get, "narration-models", null, ct); }
-        catch (HttpRequestException) { return ["kokoro"]; } // Older studios still offer the local voice.
+        // A missing or unreadable voice list must not abandon the revision. The local voice still works.
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException) { return ["kokoro"]; }
     }
     private async Task<T> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {

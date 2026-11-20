@@ -119,6 +119,13 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     {
         if (run.Phase != "poll" && ++run.Steps > 512)
         { run.Status = "failed"; return "The workflow reached its step limit. Completed clips remain available."; }
+        if (run.Phase == "review-wait")
+        {
+            // review-wait only holds a decision. A narration revision that failed after
+            // moving here has no step to retry, so send it back to the script.
+            if (state.NarrationReturnPhase != null) run.Phase = "narration-plan";
+            else return ReviewChecks(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}");
+        }
         var audioKeys = state.Clips.Select((c, i) => $"{run.Id}-{i + 1}-{c.RenderAttempt}").ToArray();
         if (run.Phase is "clip-audio-plan" or "audio-plan")
         {
@@ -205,13 +212,15 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             for (var i = 0; i < scripts.Count; i++)
                 if (state.Clips[i].ApprovedAudioVersion == null) state.Clips[i].NarrationText = scripts[i];
             if (state.NarrationReturnPhase != null) {
-                run.Phase = state.NarrationReturnPhase;
+                // Stay on narration-plan until the question exists. Moving to review-wait
+                // first made every retry fail as an unknown phase.
                 var models = await production!.NarrationModelsAsync(ct);
                 var narrationChoices = new List<AgentChoice>();
                 if (models.Contains("kokoro")) narrationChoices.Add(new("approve", "Approve · Kokoro local voice"));
                 if (models.Contains("eleven_multilingual_v2")) narrationChoices.Add(new("approve-cloud", "Approve · ElevenLabs cloud voice (paid)"));
                 narrationChoices.Add(new("revise", "Revise narration"));
                 narrationChoices.Add(new("cancel", "Stop here"));
+                run.Phase = state.NarrationReturnPhase;
                 Ask(run, "narration-review", "Review the exact narration for each clip and choose a voice. Cloud narration sends these words to ElevenLabs and uses your configured account. Your video frames are kept.", narrationChoices);
             } else run.Phase = "plan-review";
             return "The narration script is ready. You will approve the exact words before rendering.";
