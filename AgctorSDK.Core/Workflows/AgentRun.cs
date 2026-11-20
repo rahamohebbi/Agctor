@@ -35,7 +35,8 @@ public sealed class AgentRun
 public sealed record AgentChoice(string Id, string Label,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] bool? Disabled = null);
 public sealed record AgentQuestion(string Id, string Kind, string Prompt, IReadOnlyList<AgentChoice> Choices,
-    bool AllowFreeText = true);
+    bool AllowFreeText = true,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Code = null);
 public sealed record AgentReply(string QuestionId, string? Choice, string? Text);
 public sealed record AgentMessageRoute(string From, string To, string Phase, string ExchangeId,
     string FromKind = "agent", string ToKind = "agent", string? FromDetail = null, string? ToDetail = null,

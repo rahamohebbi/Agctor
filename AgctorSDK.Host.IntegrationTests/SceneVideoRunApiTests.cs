@@ -231,10 +231,14 @@ public sealed class SceneVideoRunApiTests
             string? projectId = null, int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) =>
             Task.FromResult(new SceneVideoProject(projectId ?? "project"));
         public Task<SceneVideoEvidence> EvidenceAsync(string key, CancellationToken ct) => Task.FromResult(new SceneVideoEvidence(["a", "b", "c"], Opening: new(["a", "b", "c"], [0, .5, 1]), Ending: new(["a", "b", "c"], [8.5, 9.25, 9.95])));
-        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Clip audio ready", JsonSerializer.SerializeToElement(new { }), "version-" + keys.Count));
-        public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct) => Task.FromResult(new SceneAudioDraft(true, "Audio ready", JsonSerializer.SerializeToElement(new { })));
-        public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct) => FinishAsync(run, project, keys, ct);
-        public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct) => Task.FromResult(new SceneVideoDelivery("https://example.test/finished.mp4"));
+        public Task<SceneAudioDraft> PrepareClipAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => Task.FromResult(new SceneAudioDraft(true, "Clip audio ready", JsonSerializer.SerializeToElement(new { }), "version-" + keys.Count));
+        public Task<SceneAudioDraft> PrepareAudioAsync(string run, string project, IReadOnlyList<string> keys, SceneAudioPlan plan, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => Task.FromResult(new SceneAudioDraft(true, "Audio ready", JsonSerializer.SerializeToElement(new { })));
+        public Task<SceneVideoDelivery> FinishAudioAsync(string run, string project, IReadOnlyList<string> keys, string choice, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => FinishAsync(run, project, keys, ct, replaceClipIndex, continuityMedia, keepLaterClips);
+        public Task<SceneVideoDelivery> FinishAsync(string run, string project, IReadOnlyList<string> keys, CancellationToken ct,
+            int? replaceClipIndex = null, string? continuityMedia = null, bool? keepLaterClips = null) => Task.FromResult(new SceneVideoDelivery("https://example.test/finished.mp4"));
     }
     private sealed class Audio : ISceneAudioEngineer {
         public Task<SceneAudioPlan> PlanAsync(string prompt, string model, CancellationToken ct) => Task.FromResult(new SceneAudioPlan(false, "Balance original audio"));
