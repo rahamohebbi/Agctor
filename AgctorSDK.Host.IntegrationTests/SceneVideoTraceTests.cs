@@ -154,6 +154,39 @@ public sealed class SceneVideoTraceTests : IDisposable
         Assert.DoesNotContain(await Store.EventsAsync(lease.Run.Id),
             e => e.Route is { From: "Director", To: "Audio production" or "Speech inspection" or "Video rendering" });
     }
+    [Fact]
+    public async Task Audio_discovery_endpoints_trace_to_audio_production_under_audio_engineer()
+    {
+        var lease = await Lease("audio-discovery");
+        using var http = new HttpClient(new SceneVideoTraceHandler("cynelo") { InnerHandler = new Handler(req => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    req.RequestUri!.AbsolutePath.EndsWith("/narration-models") ? "[\"kokoro\",\"eleven_multilingual_v2\"]" : "true",
+                    Encoding.UTF8, "application/json")
+            })) });
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.AudioEngineer, NullLogger.Instance))
+            Assert.Equal("[\"kokoro\",\"eleven_multilingual_v2\"]",
+                await (await http.GetAsync("http://cynelo/api/agctor/render/narration-models")).Content.ReadAsStringAsync());
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.Director, NullLogger.Instance))
+        using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+            Assert.Equal("true",
+                await (await http.GetAsync("http://cynelo/api/agctor/render/matching-music-available")).Content.ReadAsStringAsync());
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.Render, NullLogger.Instance))
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => http.GetAsync("http://cynelo/api/agctor/render/matching-music-available"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => http.GetAsync("http://cynelo/api/agctor/render/narration-models"));
+        }
+
+        var routes = (await Store.EventsAsync(lease.Run.Id)).Where(e => e.Route != null).Select(e => e.Route!).ToArray();
+        Assert.Equal(4, routes.Length);
+        Assert.Contains(routes, r => r.From == SceneVideoRoles.AudioEngineer && r.To == "Audio production" && r.Operation == "Check available narration voices" && r.Outcome == "started");
+        Assert.Contains(routes, r => r.From == SceneVideoRoles.AudioEngineer && r.To == "Audio production" && r.Operation == "Check matching music availability" && r.Outcome == "started");
+        Assert.DoesNotContain(routes, r => r.To == "Video rendering");
+    }
     [Theory]
     [InlineData("save")]
     [InlineData("cancel")]

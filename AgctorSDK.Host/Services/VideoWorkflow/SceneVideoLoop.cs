@@ -96,7 +96,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             else run.DueAt = DateTimeOffset.UtcNow.AddSeconds(Math.Min(30, Math.Pow(2, run.Failures)));
         }
         run.State = JsonSerializer.SerializeToElement(state);
-        await runs.SaveAsync(lease, role, polling && run.Status == "running" ? "observation" : run.Status, run.Question?.Prompt ?? summary, ct, role == "Director" ? null : new(role, "Director", dispatchedPhase, exchangeId));
+        await runs.SaveAsync(lease, role, polling && run.Status == "running" ? "observation" : run.Status,
+            run.Status == "waiting" ? run.Question?.Prompt ?? summary : summary, ct, role == "Director" ? null : new(role, "Director", dispatchedPhase, exchangeId));
     }
 
     // Map validated categories to public copy. Model output and transport exception text are untrusted.
@@ -121,10 +122,14 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         { run.Status = "failed"; return "The workflow reached its step limit. Completed clips remain available."; }
         if (run.Phase == "review-wait")
         {
-            // review-wait only holds a decision. A narration revision that failed after
-            // moving here has no step to retry, so send it back to the script.
-            if (state.NarrationReturnPhase != null) run.Phase = "narration-plan";
-            else return ReviewChecks(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}");
+            // review-wait only holds a decision under the Director mailbox. Return after
+            // switching to narration-plan so the Audio Engineer mailbox runs the script step.
+            if (state.NarrationReturnPhase != null)
+            {
+                run.Phase = "narration-plan";
+                return "Returning to the narration script.";
+            }
+            return ReviewChecks(run, state, $"Clip {state.Current + 1}/{state.Clips.Count}");
         }
         var audioKeys = state.Clips.Select((c, i) => $"{run.Id}-{i + 1}-{c.RenderAttempt}").ToArray();
         if (run.Phase is "clip-audio-plan" or "audio-plan")
@@ -726,8 +731,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (prior.Boundary == null) {
             SceneVideoEvidence? evidence = null; SceneContinuityReport? report = null;
             try {
-                evidence = await production!.EvidenceAsync(key, ct);
-                report = await critic!.CheckAsync(prior.VideoPrompt ?? prior.Prompt, evidence, null, ct);
+                using (SceneVideoTrace.SwitchRole(SceneVideoRoles.VisualCritic)) {
+                    evidence = await production!.EvidenceAsync(key, ct);
+                    report = await critic!.CheckAsync(prior.VideoPrompt ?? prior.Prompt, evidence, null, ct);
+                }
             } catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception ex) { log.LogWarning(ex, "Boundary inspection unavailable for {RunId}", run.Id); }
             if (evidence?.Ending?.Valid() == true && report?.Ending is { } ending && ending.Valid()) {
@@ -1218,7 +1225,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
     private static string ProgressSummary(SceneVideoClip clip) => clip.Progress is { Percent: { } percent } progress
         ? $" Estimated progress: {percent}% — {progress.Stage}." : "";
     private static void Ask(AgentRun run, string kind, string prompt, IReadOnlyList<AgentChoice> choices, string? code = null)
-    { run.Status = "waiting"; run.Question = new(Guid.NewGuid().ToString("N"), kind, prompt, choices, Code: code); }
+    { run.Status = "waiting"; run.Reply = null; run.Question = new(Guid.NewGuid().ToString("N"), kind, prompt, choices, Code: code); }
 }
 
 internal static class WorkflowText

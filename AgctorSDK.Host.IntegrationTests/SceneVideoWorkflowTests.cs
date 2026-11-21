@@ -1524,11 +1524,102 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         await runs.SaveAsync(lease, "test", "waiting", "Stuck after revise");
         await runs.ReplyAsync(run.Id, (await runs.GetAsync(run.Id))!.Revision, new(lease.Run.Question.Id, "retry", null));
         run = await ActorTick(run.Id);
+        Assert.Equal(0, run.Failures);
         run = await ActorTick(run.Id);
+        Assert.Equal(0, run.Failures);
+        Assert.Equal("narration-plan", run.Phase);
+        run = await ActorTick(run.Id);
+        Assert.Equal(0, run.Failures);
         Assert.Equal("waiting", run.Status);
         Assert.Equal("narration-review", run.Question!.Kind);
         Assert.Contains(run.Question.Choices, choice => choice.Id == "revise");
         Assert.DoesNotContain("could not be completed safely", run.Summary + run.Question.Prompt);
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "approve", "{\"softness\":0.5,\"accent\":null,\"paceOverride\":null}"));
+        run = await ActorTick(run.Id);
+        Assert.Equal(0, run.Failures);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("narration-background", run.Question!.Kind);
+    }
+    [Fact]
+    public async Task Traced_http_narration_approval_advances_without_retry_loop()
+    {
+        var run = await SpeechRun();
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        state.Input = state.Input with { NarrationMode = "dedicated" };
+        state.NarrationReturnPhase = "review-wait";
+        state.ProjectId = "project";
+        state.Clips = [new SceneVideoClip {
+            ShotId = run.Id + "-1", Prompt = "A fox kneels in a rooftop garden.", DurationSeconds = 15,
+            NarrationText = "Are you waiting for the moon, too?", Status = "completed", VisualAccepted = true,
+            Speech = production.Speech, VideoUrl = "https://cynelo.test/clip.mp4" }];
+        lease.Run.Phase = "review-wait";
+        lease.Run.Status = "waiting";
+        lease.Run.Failures = 3;
+        lease.Run.Question = new(Guid.NewGuid().ToString("N"), "retry",
+            "The current step could not be completed safely (Attempt 3/3.) Your saved work is preserved. Retry this step when ready.",
+            [new("retry", "Retry this step"), new("cancel", "Stop here")]);
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "waiting", "Stuck after revise");
+
+        var httpProduction = new HttpSceneVideoProduction(
+            new TracedClientFactory(req => new(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    req.RequestUri!.AbsolutePath.EndsWith("/narration-models") ? "[\"kokoro\",\"eleven_multilingual_v2\"]" : "true",
+                    System.Text.Encoding.UTF8, "application/json")
+            }),
+            new TracedOptionsMonitor("http://cynelo.test/api/agctor/render"));
+        var tracedLoop = new SceneVideoLoop(runs, memory, planner, interpreter, renderer, options,
+            NullLogger<SceneVideoLoop>.Instance, production: httpProduction, critic: critic, audio: audio);
+
+        async Task<AgentRun> TracedTick(string id)
+        {
+            using var runtime = new InMemoryActorRuntime();
+            await runtime.InitializeAsync(new Dictionary<string, object>());
+            var worker = new SceneVideoWorker(runs, tracedLoop, runtime, options, NullLogger<SceneVideoWorker>.Instance);
+            var claimed = await runs.ClaimAsync(TimeSpan.FromMinutes(1), monitors: SceneVideoLoop.WaitMonitors);
+            Assert.NotNull(claimed);
+            await worker.ExecuteLeaseAsync(claimed!, default);
+            return (await runs.GetAsync(id))!;
+        }
+
+        await runs.ReplyAsync(run.Id, (await runs.GetAsync(run.Id))!.Revision, new(lease.Run.Question.Id, "retry", null));
+        run = await TracedTick(run.Id);
+        run = await TracedTick(run.Id);
+        run = await TracedTick(run.Id);
+        Assert.Equal(0, run.Failures);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("narration-review", run.Question!.Kind);
+        Assert.Contains(run.Question.Choices, c => c.Id == "approve");
+        Assert.Contains(run.Question.Choices, c => c.Id == "approve-cloud");
+
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "approve", "{\"softness\":0.5,\"accent\":null,\"paceOverride\":null}"));
+        run = await TracedTick(run.Id);
+        Assert.Equal(0, run.Failures);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("narration-background", run.Question!.Kind);
+
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "preserve", null));
+        run = await TracedTick(run.Id);
+        Assert.Equal(0, run.Failures);
+        Assert.Equal("running", run.Status);
+        Assert.Equal("clip-audio-plan", run.Phase);
+    }
+    private sealed class TracedClientFactory(Func<HttpRequestMessage, HttpResponseMessage> respond) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(new SceneVideoTraceHandler("cynelo") { InnerHandler = new StubHandler(respond) });
+    }
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) => Task.FromResult(respond(request));
+    }
+    private sealed class TracedOptionsMonitor(string baseUrl) : IOptionsMonitor<SceneVideoOptions>
+    {
+        public SceneVideoOptions CurrentValue { get; } = new() { RendererBaseUrl = baseUrl };
+        public SceneVideoOptions Get(string? name) => CurrentValue;
+        public IDisposable? OnChange(Action<SceneVideoOptions, string?> listener) => null;
     }
     [Fact]
     public async Task Narration_revision_keeps_its_phase_when_the_voice_list_fails()
