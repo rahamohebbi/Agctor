@@ -113,6 +113,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             "The scene model could not link an action or sound to a valid participant after correction attempts",
         ScenePromptInterpretationException => "The scene model returned an inconsistent plan after correction attempts",
         ScenePromptValidationException => "Scene Memory could not validate the saved shot’s identities or relationships",
+        SceneVideoPlanException => "The scene planner could not match the requested clip count after correction attempts",
         HttpRequestException => "The required service could not be reached or returned an error",
         TimeoutException or OperationCanceledException => "The current step took too long to respond",
         _ => "The current step could not be completed safely"
@@ -563,6 +564,20 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             {
                 // Reconcile completion before applying a waiting deadline: elapsed time does not imply the job is unfinished.
                 var job = await CheckJobAsync(run, state, ct);
+                if (job.Status == "running" && job.Progress?.Stage is "Processing video" or "Saving video")
+                    clip.FinalizingSinceAt ??= DateTimeOffset.UtcNow;
+                else
+                    clip.FinalizingSinceAt = null;
+                var finalizingMinutes = Math.Clamp(options.CurrentValue.FinalizingTimeoutMinutes, 1, 60);
+                var finalizingBaseline = clip.FinalizingSinceAt is { } finSince
+                    ? (clip.WaitExtendedAt > finSince ? clip.WaitExtendedAt.Value : finSince)
+                    : (DateTimeOffset?)null;
+                if (job.Status == "running" && finalizingBaseline != null && DateTimeOffset.UtcNow - finalizingBaseline.Value > TimeSpan.FromMinutes(finalizingMinutes))
+                {
+                    Ask(run, "timeout", $"{label}: The renderer finished, but Cynelo has been saving and preparing this clip for over {finalizingMinutes} minutes. Keep waiting for the same job or start this clip over?", [new("wait", "Keep waiting"), new("restart", "Start this clip over · keep completed clips")]);
+                    ScheduleObservation(run);
+                    return "Clip finalization time limit reached.";
+                }
                 if (job.Status is "queued" or "running" && DateTimeOffset.UtcNow - (clip.WaitExtendedAt ?? clip.SubmittedAt)
                     > TimeSpan.FromMinutes(Math.Clamp(options.CurrentValue.RenderTimeoutMinutes, 1, 240)))
                 {
@@ -1414,7 +1429,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         clip.Boundary = null;
         clip.AudioPreview = null; clip.AudioPreviewReview = null; clip.ApprovedAudioVersion = null;
         clip.KeepOriginalAudio = false;
-        clip.SubmittedAt = null; clip.WaitExtendedAt = null; clip.ProviderJobId = null;
+        clip.SubmittedAt = null; clip.WaitExtendedAt = null; clip.FinalizingSinceAt = null; clip.ProviderJobId = null;
         clip.LastCheckedAt = null; clip.LastCheckSucceeded = null; clip.RendererStatus = null;
         clip.Progress = null;
     }

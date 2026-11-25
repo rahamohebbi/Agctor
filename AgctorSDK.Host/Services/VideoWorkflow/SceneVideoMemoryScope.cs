@@ -10,11 +10,13 @@ public static class SceneVideoMemoryScope
         var intent = state.Input.Prompt + "\n" + state.Clarifications;
         var ids = workspace.Entities.Where(e => SceneVideoPromptBuilder.NamesEntity(intent, e))
             .Select(e => e.Id).ToHashSet(StringComparer.Ordinal);
+        var allPrompts = workspace.Prompts ?? [];
+        var eligiblePrompts = EligibleHistoricalPrompts(allPrompts, state);
         var previousShots = state.Clips.Take(completedClips ?? state.Current).Select(c => c.ShotId).ToHashSet(StringComparer.Ordinal);
-        foreach (var shot in workspace.Prompts ?? [])
+        foreach (var shot in allPrompts)
             if (previousShots.Contains(shot.Id)) ids.UnionWith(SceneVideoPromptBuilder.Participants(workspace, shot.Id).Select(e => e.Id));
         // Only an explicit continuation can opt into the previous story scene when no identity was named.
-        if (ids.Count == 0 && (state.Input.StoryMode == "continue" || System.Text.RegularExpressions.Regex.IsMatch(intent, @"^\s*(?:continue|resume)\s+(?:(?:the|our)\s+)?(?:previous|last|story|scene)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) && workspace.Prompts?.LastOrDefault() is { } previous)
+        if (ids.Count == 0 && (state.Input.StoryMode == "continue" || System.Text.RegularExpressions.Regex.IsMatch(intent, @"^\s*(?:continue|resume)\s+(?:(?:the|our)\s+)?(?:previous|last|story|scene)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) && eligiblePrompts.LastOrDefault() is { } previous)
         {
             previousShots.Add(previous.Id);
             ids.UnionWith(SceneVideoPromptBuilder.Participants(workspace, previous.Id).Select(e => e.Id));
@@ -27,12 +29,26 @@ public static class SceneVideoMemoryScope
             History = workspace.History.Where(f => ids.Contains(f.EntityId) &&
                 (f.RelatedEntityId == null || ids.Contains(f.RelatedEntityId)) &&
                 (!f.IsEvent || (f.ParticipantIds ?? []).All(ids.Contains))).ToArray(),
-            Prompts = workspace.Prompts?.Where(p => previousShots.Contains(p.Id)).Select(p => p with {
+            Prompts = allPrompts.Where(p => previousShots.Contains(p.Id)).Select(p => p with {
                 DesignSnapshots = p.DesignSnapshots?.Where(e => ids.Contains(e.Id)).ToArray(),
                 KnownEntityIds = p.KnownEntityIds?.Where(ids.Contains).ToArray(),
                 IntroducedEntityIds = p.IntroducedEntityIds?.Where(ids.Contains).ToArray()
             }).ToArray()
         };
+    }
+
+    private static IReadOnlyList<ScenePromptRecord> EligibleHistoricalPrompts(IReadOnlyList<ScenePromptRecord> prompts, SceneVideoState state)
+    {
+        if (prompts.Count == 0) return prompts;
+        if (!string.IsNullOrWhiteSpace(state.PriorFilmBoundary?.ShotId))
+        {
+            for (var i = prompts.Count - 1; i >= 0; i--)
+                if (string.Equals(prompts[i].Id, state.PriorFilmBoundary.ShotId, StringComparison.Ordinal))
+                    return prompts.Take(i + 1).ToArray();
+        }
+        if (state.Input.ReplaceClipIndex is { } slot && slot >= 1)
+            return slot == 1 ? [] : prompts.Take(Math.Min(slot - 1, prompts.Count)).ToArray();
+        return prompts;
     }
 
     public static void Validate(SceneWorkspace workspace, SceneWorkspace scoped, ScenePromptPreview preview)

@@ -116,4 +116,83 @@ public sealed class SceneShotParticipantIsolationTests
         Assert.DoesNotContain("Raha", draft.Prompt);
         Assert.DoesNotContain(draft.Entities, e => e.Id is "raha" or "ryan" or "sword");
     }
+
+    [Fact]
+    public void Replace_clip_scope_excludes_deleted_or_replaced_later_shot_and_uses_prior_boundary_shot()
+    {
+        var workspace = Forest();
+        workspace = workspace with
+        {
+            Prompts = workspace.Prompts!.Append(new("deleted-three", "Zoom into the moon with Cynelo inscribed in a heart.", "Clip 1/1", "test", 8, 7, At,
+                "Video sequence", DesignSnapshots: workspace.Entities)).ToArray()
+        };
+        var state = new SceneVideoState
+        {
+            Input = new("request", workspace.Id, "Continue smoothly and zoom into the moon.", StoryMode: "continue", ReplaceClipIndex: 3),
+            PriorFilmBoundary = new("two", "two-1", At, "gemma4:latest", [13.5, 14.25, 14.75],
+                new("observed", "Standing on the wooden bridge.", "Still.", "None.", "Stopped.", "Eye level."))
+        };
+        var scoped = SceneVideoMemoryScope.Select(workspace, state);
+        Assert.NotNull(scoped.Prompts);
+        Assert.Contains(scoped.Prompts!, p => p.Id == "two");
+        Assert.DoesNotContain(scoped.Prompts!, p => p.Id == "deleted-three");
+    }
+
+    [Fact]
+    public async Task Planner_self_corrects_clip_count_mismatch_and_coalesces_single_clip_fragments()
+    {
+        var workspace = Forest();
+        var state = new SceneVideoState
+        {
+            Input = new("request", workspace.Id, "Smoothly zoom into the moon. 5 seconds total.", TotalSeconds: 5, ClipSeconds: 5),
+            Model = "gemma4:latest"
+        };
+
+        // Case 1: Model returns 3 clips on attempt 1, then corrects to 1 clip on attempt 2.
+        var calls1 = 0;
+        var planner1 = new OllamaSceneVideoPlanner(new FakePlannerClientFactory(_ =>
+        {
+            calls1++;
+            var content = calls1 == 1
+                ? """{"clips":["Beat 1.","Beat 2.","Beat 3."],"question":"","choices":[]}"""
+                : """{"clips":["Smooth continuous 5-second camera tilt and zoom toward the moon."],"question":"","choices":[]}""";
+            return JsonSerializer.Serialize(new { done_reason = "stop", message = new { content } });
+        }));
+        var result1 = await planner1.PlanAsync(workspace, state, [5], default);
+        Assert.Equal(2, calls1);
+        Assert.Single(result1.Clips);
+        Assert.Contains("5-second", result1.Clips[0]);
+
+        // Case 2: Model stubbornly returns 2 fragments for a single 5s clip on both attempts -> gracefully coalesced into 1 clip.
+        var calls2 = 0;
+        var planner2 = new OllamaSceneVideoPlanner(new FakePlannerClientFactory(_ =>
+        {
+            calls2++;
+            var content = """{"clips":["Camera tilts smoothly up from the rooftop.","Camera zooms steadily into the glowing moon."],"question":"","choices":[]}""";
+            return JsonSerializer.Serialize(new { done_reason = "stop", message = new { content } });
+        }));
+        var result2 = await planner2.PlanAsync(workspace, state, [5], default);
+        Assert.Equal(2, calls2);
+        Assert.Single(result2.Clips);
+        Assert.Contains("Camera tilts smoothly up", result2.Clips[0]);
+        Assert.Contains("glowing moon", result2.Clips[0]);
+
+        // Case 3: Multi-clip mismatch after retry throws SceneVideoPlanException.
+        var planner3 = new OllamaSceneVideoPlanner(new FakePlannerClientFactory(_ =>
+            JsonSerializer.Serialize(new { done_reason = "stop", message = new { content = """{"clips":["Only one."],"question":"","choices":[]}""" } })));
+        await Assert.ThrowsAsync<SceneVideoPlanException>(() => planner3.PlanAsync(workspace, state, [15, 15], default));
+    }
+
+    private sealed class FakePlannerClientFactory(Func<HttpRequestMessage, string> respond) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(new Handler(respond));
+        private sealed class Handler(Func<HttpRequestMessage, string> respond) : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+                Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(respond(request), System.Text.Encoding.UTF8, "application/json")
+                });
+        }
+    }
 }

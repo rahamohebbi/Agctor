@@ -74,6 +74,8 @@ public sealed class SceneVideoClip
     public int RenderAttempt { get; set; } = 1;
     public DateTimeOffset? SubmittedAt { get; set; }
     public DateTimeOffset? WaitExtendedAt { get; set; }
+    /// <summary>When the clip entered post-render saving/processing after the GPU renderer finished.</summary>
+    public DateTimeOffset? FinalizingSinceAt { get; set; }
     public DateTimeOffset? LastCheckedAt { get; set; }
     public bool? LastCheckSucceeded { get; set; }
     public string? RendererStatus { get; set; }
@@ -160,6 +162,8 @@ public sealed class SceneVideoOptions
     public int PollSeconds { get; set; } = 5;
     public int WaitingPollSeconds { get; set; } = 30;
     public int RenderTimeoutMinutes { get; set; } = 45;
+    /// <summary>Maximum minutes to wait once the renderer finished and Cynelo is saving/processing the clip before prompting the user.</summary>
+    public int FinalizingTimeoutMinutes { get; set; } = 5;
     /// <summary>Must finish and checkpoint before the specialist's eight-minute mailbox timeout.</summary>
     public double PlanCheckTimeoutSeconds { get; set; } = 360;
 }

@@ -1948,6 +1948,49 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("existing-job", SceneVideoLoop.State(run).Clips[0].ProviderJobId);
         Assert.Empty(renderer.Requests);
     }
+
+    [Fact]
+    public async Task Clip_stuck_in_post_render_processing_prompts_user_after_finalizing_timeout()
+    {
+        renderer.ReportQueued = true;
+        var run = await Create(seconds: 15);
+        for (var i = 0; i < 10 && run.Phase != "poll"; i++) run = await Tick(run.Id);
+        Assert.Equal("poll", run.Phase);
+        // Align ProviderJobId with the fake Renderer.GetAsync job id ("existing-job").
+        MakeDue(run.Id);
+        var setupLease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var setupState = SceneVideoLoop.State(setupLease.Run);
+        setupState.Clips[0].ProviderJobId = "existing-job";
+        setupLease.Run.State = JsonSerializer.SerializeToElement(setupState);
+        await runs.SaveAsync(setupLease, "test", "running", "Aligned fake job id");
+
+        renderer.PollStatus = "running";
+        renderer.PollProgress = new(null, "Processing video", "The renderer finished. Cynelo is saving and preparing the clip.", DateTimeOffset.UtcNow, true);
+
+        // First poll records FinalizingSinceAt and keeps running.
+        MakeDue(run.Id);
+        run = await Tick(run.Id);
+        Assert.Equal("running", run.Status);
+        var state = SceneVideoLoop.State(run);
+        Assert.NotNull(state.Clips[0].FinalizingSinceAt);
+
+        // Backdate FinalizingSinceAt past FinalizingTimeoutMinutes (5m) while SubmittedAt is recent (< 45m).
+        MakeDue(run.Id);
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        state = SceneVideoLoop.State(lease.Run);
+        state.Clips[0].SubmittedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
+        state.Clips[0].FinalizingSinceAt = DateTimeOffset.UtcNow.AddMinutes(-6);
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "running", "Simulated finalizing stall");
+
+        MakeDue(run.Id);
+        run = await Tick(run.Id);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("timeout", run.Question!.Kind);
+        Assert.Contains("saving and preparing", run.Question.Prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(run.Question.Choices, c => c.Id == "wait");
+        Assert.Contains(run.Question.Choices, c => c.Id == "restart");
+    }
     private sealed class Renderer : ISceneVideoRenderer
     {
         public List<string> ResetKeys = [];
