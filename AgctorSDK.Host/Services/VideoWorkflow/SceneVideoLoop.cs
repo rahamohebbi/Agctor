@@ -149,8 +149,17 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             if (run.Phase == "clip-audio-plan" && state.Current < state.Clips.Count)
             {
                 var activeClip = state.Clips[state.Current];
+                var prevMusic = state.Current > 0
+                    ? state.Clips[state.Current - 1].TimelineCues?.Cues
+                        .FirstOrDefault(c => c.TrackKind == "audio" && c.TrackIndex == 1 &&
+                            (string.Equals(c.Kind, "music", StringComparison.OrdinalIgnoreCase) || string.Equals(c.Kind, "original-bed", StringComparison.OrdinalIgnoreCase)))
+                    : null;
+                var prevMusicDesc = prevMusic == null ? null : (!string.IsNullOrWhiteSpace(prevMusic.Prompt) ? prevMusic.Prompt : prevMusic.Label);
                 var arranged = await audio!.ArrangeTimelineAsync(state.Input.Prompt, activeClip.Prompt, activeClip.DurationSeconds,
-                    activeClip.VisualCues, activeClip.Speech, state.Model, ct, activeClip.StripOriginalVocals ? null : activeClip.ExpectedSpeechText);
+                    activeClip.VisualCues, activeClip.Speech, state.Model, ct,
+                    activeClip.StripOriginalVocals ? null : activeClip.ExpectedSpeechText,
+                    previousMusicDescription: prevMusicDesc,
+                    continuousMusic: state.MusicContinuity ?? state.AudioPlan.ContinuousMusic);
                 if (arranged is { Cues.Count: > 0 })
                     activeClip.TimelineCues = arranged;
             }
@@ -381,6 +390,7 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         {
             var workspace = await UnchangedAsync(run, state, ct);
             if (workspace == null) return "Scene Memory changed.";
+            await LoadPriorFilmBoundaryAsync(run, state, workspace, ct);
             var durations = new List<int>();
             for (var left = state.Input.TotalSeconds; left > 0; left -= state.Input.ClipSeconds)
                 durations.Add(Math.Min(left, state.Input.ClipSeconds));
@@ -451,6 +461,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             {
                 var workspace = await UnchangedAsync(run, state, ct);
                 if (workspace == null) return "Scene Memory changed.";
+                if (state.Current == 0)
+                    await LoadPriorFilmBoundaryAsync(run, state, workspace, ct);
                 if (state.ProductionEnabled && state.Current > 0 && !clip.BoundaryBypass &&
                     !await PrepareBoundaryAsync(run, state, ct)) return "The previous clip’s ending needs review before continuing.";
                 var prompt = clip.Prompt + (string.IsNullOrWhiteSpace(state.Clarifications) ? "" : "\nCreator clarifications: " + state.Clarifications);
@@ -828,6 +840,35 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (clip.VisualRetries < 2) choices.Add(new("regenerate", "Regenerate this clip · keep earlier clips"));
         choices.Add(new("cancel", "Stop here")); return choices;
     }
+    private async Task LoadPriorFilmBoundaryAsync(AgentRun run, SceneVideoState state, SceneWorkspace workspace, CancellationToken ct)
+    {
+        if (state.PriorFilmBoundary != null) return;
+        if (!string.Equals(state.Input?.StoryMode, "continue", StringComparison.OrdinalIgnoreCase)) return;
+        if (state.Input?.ReplaceClipIndex == 1) return;
+        var prompts = workspace.Prompts;
+        if (prompts == null || prompts.Count == 0) return;
+        var prevIndex = state.Input?.ReplaceClipIndex is { } slot && slot > 1
+            ? Math.Min(slot - 2, prompts.Count - 1)
+            : prompts.Count - 1;
+        if (prevIndex < 0) return;
+        var prevShot = prompts[prevIndex];
+        try
+        {
+            var boundaries = await memory.ReadBoundariesAsync(run.WorkspaceId, prevShot.Id, null, ct);
+            var observed = boundaries
+                .Where(b => b.Ending is { Status: "observed" } e && e.Valid())
+                .OrderByDescending(b => b.ObservedAt)
+                .FirstOrDefault();
+            if (observed != null)
+                state.PriorFilmBoundary = observed;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Could not load prior film boundary for continuation run {RunId}", run.Id);
+        }
+    }
+
     private async Task<bool> PrepareBoundaryAsync(AgentRun run, SceneVideoState state, CancellationToken ct)
     {
         var prior = state.Clips[state.Current - 1];

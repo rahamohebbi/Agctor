@@ -95,6 +95,24 @@ public sealed class SceneAudioEngineerTests
         await Assert.ThrowsAsync<InvalidOperationException>(()=>Agent(new Handler("{\"scripts\":[\"Missing second clip\"]}")).NarrationAsync("Story","fake",clips,default));
         await Assert.ThrowsAsync<InvalidOperationException>(()=>Agent(new Handler("{\"scripts\":[\"\",\"\"]}")).NarrationAsync("Story","fake",clips,default));
     }
+
+    [Fact]
+    public async Task ArrangeTimeline_carries_previous_music_description_and_continuity_rule()
+    {
+        var handler = new Handler("""{"summary":"Continued waltz","cues":[{"trackKind":"audio","trackIndex":1,"startMs":0,"durationMs":15000,"label":"Playful Waltz continuation","kind":"music","prompt":"Continue playful celesta and strings waltz"}]}""");
+        var plan = await Agent(handler).ArrangeTimelineAsync(
+            "Fox watches the moon", "Camera zooms toward the moon", 15,
+            null, null, "fake", default,
+            expectedSpeechText: null,
+            previousMusicDescription: "Playful Waltz Music (Celesta, Strings, Piano)",
+            continuousMusic: true);
+        Assert.NotNull(plan);
+        Assert.Single(plan!.Cues);
+        Assert.Contains("MUSIC CONTINUITY RULE", handler.Request);
+        Assert.Contains("Playful Waltz Music (Celesta, Strings, Piano)", handler.Request);
+        Assert.Contains("continuousMusic", handler.Request);
+        Assert.Contains("previousMusicDescription", handler.Request);
+    }
     private static OllamaSceneAudioEngineer Agent(Handler handler)
     {
         var clients = new Mock<IHttpClientFactory>();

@@ -57,6 +57,8 @@ public sealed class SceneVideoState
     /// <summary>When set, replaces the measured pace for narration. Empty means match the original window.</summary>
     public double? NarrationPaceOverride { get; set; }
     public string ExpectedSpeechLanguage { get; set; } = "auto";
+    /// <summary>Observed ending boundary of the immediately preceding clip in the film when continuing a story (Clip 1 of a continue run).</summary>
+    public SceneBoundaryObservation? PriorFilmBoundary { get; set; }
 }
 public sealed class SceneVideoClip
 {
@@ -253,7 +255,7 @@ public interface ISceneAudioEngineer
     Task<string> SpeechLanguageAsync(string prompt, string model, CancellationToken ct) => Task.FromResult("unknown");
     Task<SceneClipTimelinePlan?> ArrangeTimelineAsync(string storyPrompt, string clipPrompt, int durationSeconds,
         SceneVisualCueReport? visualCues, SceneSpeechReport? measuredSpeech, string model, CancellationToken ct,
-        string? expectedSpeechText = null) =>
+        string? expectedSpeechText = null, string? previousMusicDescription = null, bool continuousMusic = false) =>
         Task.FromResult<SceneClipTimelinePlan?>(null);
 }
 public interface ISceneVideoCritic

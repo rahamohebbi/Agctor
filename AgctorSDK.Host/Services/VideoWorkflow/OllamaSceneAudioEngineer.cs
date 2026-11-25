@@ -81,7 +81,7 @@ public sealed class OllamaSceneAudioEngineer(IHttpClientFactory clients) : IScen
 
     public async Task<SceneClipTimelinePlan?> ArrangeTimelineAsync(string storyPrompt, string clipPrompt, int durationSeconds,
         SceneVisualCueReport? visualCues, SceneSpeechReport? measuredSpeech, string model, CancellationToken ct,
-        string? expectedSpeechText = null)
+        string? expectedSpeechText = null, string? previousMusicDescription = null, bool continuousMusic = false)
     {
         try
         {
@@ -119,12 +119,15 @@ public sealed class OllamaSceneAudioEngineer(IHttpClientFactory clients) : IScen
                 "When speechFlagged is true and expectedSpeechText is null/empty, the clip had hallucinated speech on a silent shot: do NOT add any speech track cue. " +
                 "Only use visualCues 'lip-sync' timestamps when measuredSpeech.Words is absent (silent/unvoiced clips). " +
                 "Only add SFX cues on audio tracks 2..3 when a specific 'action-hit' visual cue exists; do not invent speculative SFX. " +
+                "MUSIC CONTINUITY RULE: When previousMusicDescription is provided or continuousMusic is true, keep Audio track 1 musically cohesive—smoothly continuing and evolving the previous clip's established instruments, key, tempo, and mood rather than switching to an unrelated genre, unless the clip explicitly calls for a new musical style. " +
                 "Assign distinct Kokoro voices for different speakers (af_heart, af_bella, am_adam, am_michael, bf_emma, bm_george). " +
                 "All startMs >= 0, durationMs >= 250, and startMs + durationMs <= clipDurationMs. Never invent dialogue beyond the scene. Return JSON matching the schema.",
                 JsonSerializer.Serialize(new {
                     story = storyPrompt,
                     clip = clipPrompt,
                     clipDurationMs = maxMs,
+                    continuousMusic,
+                    previousMusicDescription = string.IsNullOrWhiteSpace(previousMusicDescription) ? null : previousMusicDescription.Trim(),
                     visualCues = filteredVisualCues,
                     expectedSpeechText = canonicalExpected,
                     speechFlagged,

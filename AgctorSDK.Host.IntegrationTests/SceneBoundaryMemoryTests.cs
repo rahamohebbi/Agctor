@@ -42,5 +42,27 @@ public sealed class SceneBoundaryMemoryTests : IDisposable
         Assert.DoesNotContain("SECRET OLD POSITION", instruction);
         Assert.Contains("unverified", instruction);
     }
+
+    [Fact]
+    public void Continue_run_clip_one_uses_prior_film_observed_boundary_guidance()
+    {
+        var priorBoundary = new SceneBoundaryObservation(
+            "prev-shot-2", "prev-run-2-1", DateTimeOffset.UtcNow, "vision-model", [13.5, 14.25, 14.95],
+            new("observed", "Fox beside glowing moonflower", "Looking up toward balcony", "Blue scarf around neck", "Garden bloomed", "Low angle medium shot"),
+            MediaDurationSeconds: 15);
+        var clip3 = new SceneVideoClip { ShotId = "run-3-1", VideoPrompt = "Camera rises to the moon", Prompt = "Camera rises to the moon" };
+        var state = new SceneVideoState
+        {
+            Current = 0,
+            Clips = [clip3],
+            Input = new("r3", "w", "Zoom to the moon", StoryMode: "continue"),
+            PriorFilmBoundary = priorBoundary,
+        };
+        var instruction = SceneBoundaryGuidance.Instruction(state, clip3);
+        Assert.NotNull(instruction);
+        Assert.Contains("CONTINUE THE OBSERVED MOVEMENT", instruction);
+        Assert.Contains("Fox beside glowing moonflower", instruction);
+        Assert.Contains("Lock frame 1", instruction);
+    }
     public void Dispose() { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
 }

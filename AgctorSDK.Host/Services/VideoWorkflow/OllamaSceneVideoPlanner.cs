@@ -14,8 +14,12 @@ public sealed class OllamaSceneVideoPlanner(IHttpClientFactory clients) : IScene
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
         var current = workspace.History.Where(f => !f.IsEvent).GroupBy(f => (f.EntityId, f.Property))
             .Select(g => g.OrderBy(f => f.Sequence).Last()).Where(f => !f.Removed).ToArray();
+        var priorEnding = state.PriorFilmBoundary?.Ending is { Status: "observed" } observedEnd && observedEnd.Valid()
+            ? observedEnd
+            : null;
         var context = JsonSerializer.Serialize(new { task = state.Input.Prompt, clarifications = state.Clarifications,
-            durations, spokenLanguage = state.ExpectedSpeechLanguage, narrationMode = state.Input.NarrationMode, entities = workspace.Entities, facts = current, recentEvents = workspace.History.Where(f => f.IsEvent).TakeLast(20) });
+            durations, spokenLanguage = state.ExpectedSpeechLanguage, narrationMode = state.Input.NarrationMode,
+            priorClipEnding = priorEnding, entities = workspace.Entities, facts = current, recentEvents = workspace.History.Where(f => f.IsEvent).TakeLast(20) });
         if (context.Length > 60000) throw new ArgumentException("This scene is too large for the planner's context budget. Use a smaller workspace.");
         using var http = clients.CreateClient("SceneVideoPlanner");
         using var response = await http.PostAsJsonAsync(OllamaRuntimeConfiguration.GetApiUrlWithTrailingSlash() + "api/chat", new
@@ -29,6 +33,7 @@ public sealed class OllamaSceneVideoPlanner(IHttpClientFactory clients) : IScene
                     You are the scene-video planner. Split the requested action into consecutive clip prompts, one for each supplied duration.
                     Return JSON {clips:[string], question:string, choices:[string]}. Use an empty question and choices when clear.
                     Each clip describes ONLY its next chronological action; never restart or repeat previous action.
+                    When priorClipEnding is provided, Clip 1 MUST continue directly from that observed position, pose, held objects, motion direction, and camera framing—never reset the location, teleport characters, or replay completed actions.
                     Scene Memory is available context, not a required cast list. Use only characters, props and locations
                     called for by the requested story or its explicit continuation. A linked library design alone is never
                     permission to introduce it. Do not import unrelated earlier scenes, dialogue, animals or weapons.
