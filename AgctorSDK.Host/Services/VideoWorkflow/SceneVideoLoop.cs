@@ -440,7 +440,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     // A contradictory frame-difference summary cannot stay "observed". The model is not upgraded the other way.
                     if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                     clip.Boundary = new(clip.ShotId, RenderKey(run, state), DateTimeOffset.UtcNow,
-                        clip.Continuity.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
+                        clip.Continuity.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds,
+                        evidence.OpeningCamera, evidence.EndingCamera);
                     await SaveBoundaryAsync(run.WorkspaceId, clip.Boundary, ct);
                 }
                 clip.VisualAccepted = clip.Continuity.Status == "passed";
@@ -886,7 +887,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
             catch (Exception ex) { log.LogWarning(ex, "Boundary inspection unavailable for {RunId}", run.Id); }
             if (evidence?.Ending?.Valid() == true && report?.Ending is { } ending && ending.Valid()) {
                 if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
-                prior.Boundary = new(prior.ShotId, key, DateTimeOffset.UtcNow, report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
+                prior.Boundary = new(prior.ShotId, key, DateTimeOffset.UtcNow, report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds,
+                    evidence.OpeningCamera, evidence.EndingCamera);
                 await SaveBoundaryAsync(run.WorkspaceId, prior.Boundary, ct);
             }
         }
@@ -1253,7 +1255,8 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
                     if (evidence.Ending?.Valid() == true && report.Ending is { } ending && ending.Valid()) {
                         if (evidence.EndingMotion is { Consistent: false }) ending = ending with { Status = "uncertain" };
                         previous.Boundary = new(previous.ShotId, $"{run.Id}-{state.Current}-{previous.RenderAttempt}", DateTimeOffset.UtcNow,
-                            report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds);
+                            report.Model ?? "configured-vision-model", evidence.Ending.Seconds, ending, evidence.DurationSeconds,
+                            evidence.OpeningCamera, evidence.EndingCamera);
                         await SaveBoundaryAsync(run.WorkspaceId, previous.Boundary, ct);
                     }
                 } else throw new InvalidOperationException("Choose how to continue from the saved ending.");

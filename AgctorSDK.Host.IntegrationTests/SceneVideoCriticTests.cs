@@ -83,6 +83,35 @@ public sealed class SceneVideoCriticTests
             Opening: new(["a", "b", "c"], [0, 0, 1]), Ending: new(["a", "b", "c"], [2, 3, 4])), null, default);
         Assert.Equal("uncertain", result.Status); Assert.Null(result.Ending);
     }
+
+    [Fact]
+    public async Task Abrupt_camera_direction_reversal_across_cut_flags_concern_even_if_model_returns_passed()
+    {
+        var handler = new Handler(_ => {
+            var ending = new {
+                status = "observed", position = "Balcony", motion = "Tilting down", heldObjects = "None",
+                completedActions = "Shot ended", camera = "Wide",
+                cameraTrack = new { movement = "tilt-down", direction = "downward", speed = "slow", framing = "wide", transitionGuidance = "Hold steady" }
+            };
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                Content = JsonContent(new { status = "passed", summary = "Looks okay", concerns = Array.Empty<string>(), transitionStatus = "passed", ending })
+            });
+        });
+        var current = new SceneVideoEvidence(
+            ["start", "middle", "end"],
+            PreviousExpected: true,
+            Opening: new(["o1", "o2", "o3"], [0, .75, 1.5]),
+            Ending: new(["e1", "e2", "e3"], [13.5, 14.25, 14.95]),
+            PreviousEnding: new(["p1", "p2", "p3"], [13.5, 14.25, 14.95]),
+            OpeningCamera: new("tilt-down", 0.0, 0.14, 0.0, "moderate", 0.92, true),
+            EndingCamera: new("tilt-down", 0.0, 0.10, 0.0, "slow", 0.90, true),
+            PreviousEndingCamera: new("tilt-up", 0.0, -0.12, 0.0, "slow", 0.95, true));
+        var result = await new OllamaSceneVideoCritic(new Factory(handler)).CheckAsync("Continue upward toward moon", current, null, default);
+        Assert.Equal("concerns", result.Status);
+        Assert.Equal("concerns", result.TransitionStatus);
+        Assert.Contains(result.Concerns, c => c.Contains("Camera movement reversed", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("tilt-down", result.Ending!.CameraTrack!.Movement);
+    }
     private static StringContent JsonContent(object report) => new(JsonSerializer.Serialize(new { message = new { content = JsonSerializer.Serialize(report) } }));
     private sealed class Factory(HttpMessageHandler handler) : IHttpClientFactory { public HttpClient CreateClient(string name) => new(handler, false); }
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler {

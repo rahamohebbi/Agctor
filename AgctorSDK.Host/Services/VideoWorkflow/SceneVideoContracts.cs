@@ -185,7 +185,10 @@ public sealed record SceneBoundaryFrames(IReadOnlyList<string> Frames, IReadOnly
 }
 public sealed record SceneVideoEvidence(IReadOnlyList<string> Frames, string? PreviousFrame = null, bool PreviousExpected = false,
     SceneBoundaryFrames? Opening = null, SceneBoundaryFrames? Ending = null, SceneBoundaryFrames? PreviousEnding = null, double? DurationSeconds = null,
-    SceneMotionSummary? EndingMotion = null);
+    SceneMotionSummary? EndingMotion = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] SceneCameraMotionEvidence? OpeningCamera = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] SceneCameraMotionEvidence? EndingCamera = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] SceneCameraMotionEvidence? PreviousEndingCamera = null);
 /// <summary>Frame-difference of the three ending stills. Not optical flow.</summary>
 public sealed record SceneMotionSummary(double Change, string Direction, bool Consistent);
 public sealed record SceneVideoProject(string ProjectId, bool? ContinuousMusic = null);

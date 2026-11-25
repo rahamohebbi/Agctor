@@ -64,5 +64,45 @@ public sealed class SceneBoundaryMemoryTests : IDisposable
         Assert.Contains("Fox beside glowing moonflower", instruction);
         Assert.Contains("Lock frame 1", instruction);
     }
+
+    [Fact]
+    public async Task Camera_track_and_measured_camera_trajectory_roundtrip_and_drive_transition_guidance()
+    {
+        var store = new SqliteSceneMemoryStore(path);
+        var workspace = await store.CreateAsync("Skyline");
+        workspace = await store.ApplyPromptAsync(workspace.Id, new("shot-2", ScenePromptReducer.Revision(workspace),
+            "Slow tilt up from balcony to skyline", "Clip 2", "plan-model", new([], [], []), DurationSeconds: 15));
+
+        var camTrack = new SceneCameraTrack("tilt-up", "slowly tilting upward toward the full moon", "slow", "wide balcony skyline",
+            "Continue the gentle upward tilt toward the moon before slowly zooming in.");
+        var openCam = new SceneCameraMotionEvidence("static", 0.0, 0.0, 0.0, "still", 1.0, true);
+        var endCam = new SceneCameraMotionEvidence("tilt-up", 0.0, -0.11, 0.01, "slow", 0.94, true);
+        var obs = new SceneBoundaryObservation("shot-2", "run-2-1", DateTimeOffset.UtcNow, "vision-model", [13.5, 14.25, 14.95],
+            new("observed", "Balcony railing with fox looking up", "Camera rising gently", "None", "Skyline revealed", "Wide low-angle", camTrack),
+            MediaDurationSeconds: 15, OpeningCamera: openCam, EndingCamera: endCam);
+
+        await store.SaveBoundaryAsync(workspace.Id, obs);
+        store = new SqliteSceneMemoryStore(path);
+        var loaded = Assert.Single(await store.ReadBoundariesAsync(workspace.Id, "shot-2", "run-2-1"));
+        Assert.Equal("tilt-up", loaded.Ending.CameraTrack!.Movement);
+        Assert.Equal("slow", loaded.Ending.CameraTrack.Speed);
+        Assert.Equal("tilt-up", loaded.EndingCamera!.Movement);
+        Assert.Equal(-0.11, loaded.EndingCamera.TiltY);
+
+        var clip3 = new SceneVideoClip { ShotId = "run-3-1", VideoPrompt = "Zoom to moon", Prompt = "Zoom to moon" };
+        var state = new SceneVideoState
+        {
+            Current = 0,
+            Clips = [clip3],
+            Input = new("r3", workspace.Id, "Smooth zoom into moon", StoryMode: "continue"),
+            PriorFilmBoundary = loaded,
+        };
+        var instruction = SceneBoundaryGuidance.Instruction(state, clip3);
+        Assert.NotNull(instruction);
+        Assert.Contains("CAMERA MOVEMENT TRANSITION", instruction);
+        Assert.Contains("tilt-up", instruction);
+        Assert.Contains("Continue the gentle upward tilt toward the moon", instruction);
+        Assert.Contains("Never abruptly reverse camera direction", instruction);
+    }
     public void Dispose() { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools(); if (File.Exists(path)) File.Delete(path); }
 }
