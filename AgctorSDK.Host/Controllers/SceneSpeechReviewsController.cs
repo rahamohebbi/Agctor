@@ -1,3 +1,4 @@
+using AgctorSDK.Core.SceneMemory;
 using AgctorSDK.Core.Workflows;
 using AgctorSDK.Host.Services.VideoWorkflow;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ namespace AgctorSDK.Host.Controllers;
 
 /// <summary>Read-only specialist review of the exact preview transcript. Never approves or rerenders a run.</summary>
 [ApiController]
-public sealed class SceneSpeechReviewsController(IAgentRunStore runs, ISceneAudioEngineer audio) : ControllerBase
+public sealed class SceneSpeechReviewsController(IAgentRunStore runs, ISceneAudioEngineer audio, ISceneMemoryStore? memory = null) : ControllerBase
 {
     public sealed record ReviewRequest(string Transcript, int? Clip = null, string? AudioVersion = null);
 
@@ -23,12 +24,18 @@ public sealed class SceneSpeechReviewsController(IAgentRunStore runs, ISceneAudi
         if (request.Clip is { } index) {
             if (index < 0 || index >= state.Clips.Count) return BadRequest();
             var clip = state.Clips[index];
+            var workspace = memory != null && !string.IsNullOrWhiteSpace(run.WorkspaceId)
+                ? await memory.GetAsync(run.WorkspaceId, ct)
+                : null;
             expected = request.AudioVersion == "improved" && !string.IsNullOrWhiteSpace(clip.NarrationText)
-                ? clip.NarrationText : SceneSpeechTextReview.Expected(clip);
+                ? clip.NarrationText
+                : !string.IsNullOrWhiteSpace(clip.ExpectedSpeechText)
+                    ? clip.ExpectedSpeechText!
+                    : SceneSpeechTextReview.Expected(clip, workspace);
             context = System.Text.Json.JsonSerializer.Serialize(new { scene = clip.Prompt, correction = clip.SpeechInstruction, expectedSpeech = expected });
         }
         var result = await SceneSpeechTextReview.Evaluate(audio, context, expected, state.Model,
-            new("detected", null, 0, request.Transcript, "Preview transcript; text review only."), ct);
+            new("detected", null, 0, request.Transcript, "Preview transcript; text review only."), ct, state.ExpectedSpeechLanguage);
         return Ok(result);
     }
 }

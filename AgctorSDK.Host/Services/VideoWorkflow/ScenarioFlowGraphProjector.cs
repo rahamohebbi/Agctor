@@ -127,6 +127,12 @@ public static class ScenarioFlowGraphProjector
              endpoint.Equals("You", StringComparison.OrdinalIgnoreCase)))
             return "Human";
 
+        if (flowIds.Contains(SceneVideoRoles.DialogueSupervisor) && LooksLikeDialogue(endpoint))
+            return SceneVideoRoles.DialogueSupervisor;
+
+        if (flowIds.Contains(SceneVideoRoles.VoiceActor) && LooksLikeVoice(endpoint))
+            return SceneVideoRoles.VoiceActor;
+
         if (flowIds.Contains("Audio Engineer") && LooksLikeAudio(endpoint))
             return "Audio Engineer";
 
@@ -162,17 +168,33 @@ public static class ScenarioFlowGraphProjector
         ("Editor", SceneVideoRoles.Editor),
         ("Planner", SceneVideoRoles.Planner),
         ("Audio Engineer", SceneVideoRoles.AudioEngineer),
+        ("Dialogue Supervisor", SceneVideoRoles.DialogueSupervisor),
+        ("Dialogue", SceneVideoRoles.DialogueSupervisor),
+        ("Voice Actor", SceneVideoRoles.VoiceActor),
+        ("Voice", SceneVideoRoles.VoiceActor),
         ("Director", SceneVideoRoles.Director),
         ("Video rendering", "Video rendering"),
         ("Frame sampler", "Frame sampler"),
         ("Audio production", "Audio production"),
         ("Speech inspection", "Speech inspection"),
+        ("Voice synthesis", "Voice synthesis"),
         ("Project storage", "Project storage"),
         ("Story storage", "Story storage"),
         ("Film assembly", "Film assembly"),
         ("Scene Memory", "Scene Memory"),
         ("ComfyUI", "Video rendering")
     ];
+
+    static bool LooksLikeDialogue(string endpoint) =>
+        endpoint.Contains("Dialogue", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Speech", StringComparison.OrdinalIgnoreCase);
+
+    static bool LooksLikeVoice(string endpoint) =>
+        endpoint.Contains("Voice", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Narrat", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("ADR", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("Kokoro", StringComparison.OrdinalIgnoreCase) ||
+        endpoint.Contains("ElevenLabs", StringComparison.OrdinalIgnoreCase);
 
     static bool LooksLikeAudio(string endpoint) =>
         endpoint.Contains("Audio", StringComparison.OrdinalIgnoreCase) ||

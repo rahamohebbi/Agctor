@@ -101,6 +101,8 @@ public sealed class SceneVideoTopologyTests
             new() { Id = "Human", Kind = "human", Detail = "human" },
             new() { Id = "Director", Kind = "agent", Detail = "Actor mailbox" },
             new() { Id = "Audio Engineer", Kind = "agent", Detail = "Actor mailbox" },
+            new() { Id = "Dialogue Supervisor", Kind = "agent", Detail = "Actor mailbox" },
+            new() { Id = "Voice Actor", Kind = "agent", Detail = "Actor mailbox" },
             new() { Id = "Visual critic", Kind = "agent", Detail = "Actor mailbox", Aliases = ["Continuity critic"] },
             new() { Id = "Planner", Kind = "agent", Detail = "Actor mailbox" },
             new() { Id = "Project agent", Kind = "agent", Detail = "Actor mailbox" },

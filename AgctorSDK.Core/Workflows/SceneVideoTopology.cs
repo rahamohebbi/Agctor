@@ -59,7 +59,7 @@ public static class SceneVideoTopologyValidator
 {
     public static readonly string[] RequiredAgents =
     [
-        "Director", "Audio Engineer", "Visual critic", "Planner",
+        "Director", "Audio Engineer", "Dialogue Supervisor", "Voice Actor", "Visual critic", "Planner",
         "Project agent", "Render agent", "Scene Memory agent", "Editor agent"
     ];
 

@@ -8,6 +8,8 @@ public static class SceneVideoRoles
 {
     public const string Director = "Director";
     public const string AudioEngineer = "Audio Engineer";
+    public const string DialogueSupervisor = "Dialogue Supervisor";
+    public const string VoiceActor = "Voice Actor";
     public const string Planner = "Planner";
     public const string Project = "Project agent";
     public const string Memory = "Scene Memory agent";
@@ -18,11 +20,13 @@ public static class SceneVideoRoles
     /// <summary>Stable display/mailbox names for the fixed roster (run-scoped actors).</summary>
     public static readonly string[] Agents =
     [
-        Director, AudioEngineer, Planner, Project, Memory, Render, VisualCritic, Editor
+        Director, AudioEngineer, DialogueSupervisor, VoiceActor, Planner, Project, Memory, Render, VisualCritic, Editor
     ];
 
     public static readonly string[] DirectorTools = [];
-    public static readonly string[] AudioEngineerTools = ["Audio production", "Speech inspection", "Ollama"];
+    public static readonly string[] AudioEngineerTools = ["Audio production", "Ollama"];
+    public static readonly string[] DialogueSupervisorTools = ["Speech inspection", "Scene Memory", "Ollama"];
+    public static readonly string[] VoiceActorTools = ["Voice synthesis", "Audio production", "Ollama"];
     public static readonly string[] PlannerTools = ["Ollama", "Scene Memory"];
     public static readonly string[] ProjectTools = ["Project storage"];
     public static readonly string[] MemoryTools = ["Scene Memory", "Story storage"];
@@ -30,9 +34,16 @@ public static class SceneVideoRoles
     public static readonly string[] VisualCriticTools = ["Ollama", "Frame sampler"];
     public static readonly string[] EditorTools = ["Film assembly"];
 
+    /// <summary>Phases executed only inside the Dialogue Supervisor mailbox.</summary>
+    public static bool OwnsDialogueWork(string phase) => phase is
+        "speech-intent" or "speech-check";
+
+    /// <summary>Phases executed only inside the Voice Actor mailbox.</summary>
+    public static bool OwnsVoiceWork(string phase) => phase is
+        "narration-plan" or "speech-repair";
+
     /// <summary>Phases executed only inside the Audio Engineer mailbox.</summary>
     public static bool OwnsAudioWork(string phase) => phase is
-        "narration-plan" or "speech-intent" or "speech-check" or
         "audio-plan" or "audio-process" or "audio-review" or
         "clip-audio-plan" or "clip-audio-process" or "clip-audio-check";
 
@@ -40,8 +51,11 @@ public static class SceneVideoRoles
     public static bool OwnsDirectorAudioAsk(string phase) => phase is
         "audio-decision" or "clip-audio-decision";
 
-    public static bool NeedsAudioWaitingObserver(AgentRun run) =>
+    public static bool NeedsDialogueWaitingObserver(AgentRun run) =>
         run.Status == "waiting" && run.Reply == null && run.Question?.Kind == "continuity";
+
+    public static bool NeedsAudioWaitingObserver(AgentRun run) =>
+        NeedsDialogueWaitingObserver(run);
 
     public static bool NeedsRenderWaitingObserver(AgentRun run) =>
         run.Status == "waiting" && run.Reply == null &&
@@ -67,16 +81,18 @@ public static class SceneVideoRoles
                 _ => Director // audio decisions, render continue/timeout replies, cancel, conflict, …
             };
         }
-        if (NeedsAudioWaitingObserver(run)) return AudioEngineer;
+        if (NeedsDialogueWaitingObserver(run)) return DialogueSupervisor;
         if (NeedsRenderWaitingObserver(run)) return Render;
         if (NeedsPlannerWaitingObserver(run)) return Planner;
         return run.Phase switch
         {
+            _ when OwnsDialogueWork(run.Phase) => DialogueSupervisor,
+            _ when OwnsVoiceWork(run.Phase) => VoiceActor,
             _ when OwnsAudioWork(run.Phase) => AudioEngineer,
             _ when OwnsDirectorAudioAsk(run.Phase) => Director,
             "plan" or "plan-review" => Planner,
             "project" => Project,
-            "critic" => VisualCritic,
+            "critic" or "clip-cue-sync" => VisualCritic,
             "finish" => Editor,
             "prepare" or "commit" or "initialize" => Memory,
             "submit" or "poll" or "reset-render" => Render,
@@ -88,6 +104,8 @@ public static class SceneVideoRoles
     {
         Director => DirectorTools,
         AudioEngineer => AudioEngineerTools,
+        DialogueSupervisor => DialogueSupervisorTools,
+        VoiceActor => VoiceActorTools,
         Planner => PlannerTools,
         Project => ProjectTools,
         Memory => MemoryTools,
@@ -106,7 +124,7 @@ public static class SceneVideoRoles
     }
 
     public static bool IsAudioTool(string tool) =>
-        tool is "Audio production" or "Speech inspection";
+        tool is "Audio production" or "Speech inspection" or "Voice synthesis";
 
     /// <summary>True when this role may invoke the named capability (tool / llm / memory).</summary>
     public static bool MayInvoke(string role, string tool)

@@ -44,6 +44,19 @@ public sealed class HttpSceneVideoProduction(IHttpClientFactory clients, IOption
         // A missing or unreadable voice list must not abandon the revision. The local voice still works.
         catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException) { return ["kokoro"]; }
     }
+    public async Task<SceneCueFrames?> CueFramesAsync(string key, CancellationToken ct)
+    {
+        try { return await Send<SceneCueFrames>(HttpMethod.Get, $"jobs/{Uri.EscapeDataString(key)}/cue-frames", null, ct); }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException) { return null; }
+    }
+    public async Task SyncTimelineAsync(string runId, SceneTimelineSyncRequest request, CancellationToken ct)
+    {
+        try { await Send<JsonElement>(HttpMethod.Put, $"sequences/{Uri.EscapeDataString(runId)}/timeline", request, ct); }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException)
+        {
+            log?.LogWarning(ex, "Multi-track timeline sync unavailable for run {RunId}", runId);
+        }
+    }
     private async Task<T> Send<T>(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         using var http = clients.CreateClient("SceneVideoProduction");

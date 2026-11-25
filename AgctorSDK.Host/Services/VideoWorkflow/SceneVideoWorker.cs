@@ -115,6 +115,8 @@ public sealed class SceneVideoWorker(IAgentRunStore store, SceneVideoLoop loop, 
     {
         SceneVideoRoles.Director => "scene-director-" + runId,
         SceneVideoRoles.AudioEngineer => "scene-audio-" + runId,
+        SceneVideoRoles.DialogueSupervisor => "scene-dialogue-" + runId,
+        SceneVideoRoles.VoiceActor => "scene-voice-" + runId,
         SceneVideoRoles.Planner => "scene-planner-" + runId,
         SceneVideoRoles.Project => "scene-project-" + runId,
         SceneVideoRoles.Memory => "scene-memory-" + runId,

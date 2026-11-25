@@ -28,7 +28,11 @@ public sealed class SceneVideoScenario(
             ["critic"] = SceneVideoRoles.VisualCritic,
             ["editor"] = SceneVideoRoles.Editor,
             ["audio-engineer"] = SceneVideoRoles.AudioEngineer,
-            ["audio"] = SceneVideoRoles.AudioEngineer
+            ["audio"] = SceneVideoRoles.AudioEngineer,
+            ["dialogue-supervisor"] = SceneVideoRoles.DialogueSupervisor,
+            ["dialogue"] = SceneVideoRoles.DialogueSupervisor,
+            ["voice-actor"] = SceneVideoRoles.VoiceActor,
+            ["voice"] = SceneVideoRoles.VoiceActor
         };
 
     public static string? RoleSlug(ScenarioFlowNode node)

@@ -10,7 +10,9 @@ public sealed class SceneVideoRolesTests
     public void Tool_matrix_is_exclusive_per_agent()
     {
         Assert.Empty(SceneVideoRoles.DirectorTools);
-        Assert.Equal(["Audio production", "Speech inspection", "Ollama"], SceneVideoRoles.AudioEngineerTools);
+        Assert.Equal(["Audio production", "Ollama"], SceneVideoRoles.AudioEngineerTools);
+        Assert.Equal(["Speech inspection", "Scene Memory", "Ollama"], SceneVideoRoles.DialogueSupervisorTools);
+        Assert.Equal(["Voice synthesis", "Audio production", "Ollama"], SceneVideoRoles.VoiceActorTools);
         Assert.Equal(["Ollama", "Scene Memory"], SceneVideoRoles.PlannerTools);
         Assert.Equal(["Project storage"], SceneVideoRoles.ProjectTools);
         Assert.Equal(["Scene Memory", "Story storage"], SceneVideoRoles.MemoryTools);
@@ -22,7 +24,14 @@ public sealed class SceneVideoRolesTests
         Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.Director, "Video rendering"));
         Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.Director, "Ollama"));
         Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.AudioEngineer, "Audio production"));
+        Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.AudioEngineer, "Speech inspection"));
         Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.AudioEngineer, "Video rendering"));
+        Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.DialogueSupervisor, "Speech inspection"));
+        Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.DialogueSupervisor, "Scene Memory"));
+        Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.DialogueSupervisor, "Audio production"));
+        Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.VoiceActor, "Voice synthesis"));
+        Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.VoiceActor, "Audio production"));
+        Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.VoiceActor, "Speech inspection"));
         Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.Planner, "Ollama · gemma4:latest"));
         Assert.False(SceneVideoRoles.MayInvoke(SceneVideoRoles.Planner, "Film assembly"));
         Assert.True(SceneVideoRoles.MayInvoke(SceneVideoRoles.Render, "Video rendering"));
@@ -36,6 +45,11 @@ public sealed class SceneVideoRolesTests
 
     [Theory]
     [InlineData("audio-plan", SceneVideoRoles.AudioEngineer)]
+    [InlineData("clip-audio-plan", SceneVideoRoles.AudioEngineer)]
+    [InlineData("speech-intent", SceneVideoRoles.DialogueSupervisor)]
+    [InlineData("speech-check", SceneVideoRoles.DialogueSupervisor)]
+    [InlineData("narration-plan", SceneVideoRoles.VoiceActor)]
+    [InlineData("speech-repair", SceneVideoRoles.VoiceActor)]
     [InlineData("audio-decision", SceneVideoRoles.Director)]
     [InlineData("plan", SceneVideoRoles.Planner)]
     [InlineData("project", SceneVideoRoles.Project)]
@@ -81,8 +95,19 @@ public sealed class SceneVideoRolesTests
 
     [Theory]
     [InlineData("audio-plan")]
-    [InlineData("narration-plan")]
-    [InlineData("speech-check")]
+    [InlineData("clip-audio-plan")]
     public void Audio_engineer_owns_audio_work_phases(string phase) =>
         Assert.True(SceneVideoRoles.OwnsAudioWork(phase));
+
+    [Theory]
+    [InlineData("speech-intent")]
+    [InlineData("speech-check")]
+    public void Dialogue_supervisor_owns_speech_verification_phases(string phase) =>
+        Assert.True(SceneVideoRoles.OwnsDialogueWork(phase));
+
+    [Theory]
+    [InlineData("narration-plan")]
+    [InlineData("speech-repair")]
+    public void Voice_actor_owns_voice_and_adr_phases(string phase) =>
+        Assert.True(SceneVideoRoles.OwnsVoiceWork(phase));
 }

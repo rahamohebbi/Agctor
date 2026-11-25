@@ -111,9 +111,11 @@ public sealed class SceneVideoTraceHandler(string category) : DelegatingHandler
             (target, operation) = path switch {
                 _ when path.EndsWith("/speech") => ("Speech inspection", "Inspect saved clip speech"),
                 _ when path.EndsWith("/evidence") => ("Frame sampler", "Read sampled video frames"),
+                _ when path.EndsWith("/cue-frames") => ("Frame sampler", "Sample frames for lip-sync & cue timing"),
                 _ when path.EndsWith("/audio") => ("Audio production", "Prepare story audio tracks"),
+                _ when path.EndsWith("/timeline") => ("Audio production", "Arrange multi-track audio timeline"),
                 _ when path.EndsWith("/matching-music-available") => ("Audio production", "Check matching music availability"),
-                _ when path.EndsWith("/narration-models") => ("Audio production", "Check available narration voices"),
+                _ when path.EndsWith("/narration-models") => ("Voice synthesis", "Check available narration voices"),
                 _ when path.EndsWith("/finish") => ("Film assembly", "Assemble approved film"),
                 _ when path.EndsWith("/project") => ("Project storage", "Prepare story project"),
                 _ when path.Contains("/stories") => ("Story storage", request.Method == HttpMethod.Get ? "List stories" : "Prepare story memory"),

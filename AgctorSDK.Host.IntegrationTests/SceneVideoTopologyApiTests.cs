@@ -28,6 +28,9 @@ public sealed class SceneVideoTopologyApiTests
         Assert.Contains(topo.Nodes, n => n.Id == "Director" && n.Kind == "agent");
         Assert.Contains(topo.Nodes, n => n.Id == "Visual critic" && n.Aliases != null && n.Aliases.Contains("Continuity critic"));
         Assert.Contains(topo.Nodes, n => n.Id == "Audio Engineer");
+        Assert.Contains(topo.Nodes, n => n.Id == "Dialogue Supervisor" && n.Kind == "agent");
+        Assert.Contains(topo.Nodes, n => n.Id == "Voice Actor" && n.Kind == "agent");
+        Assert.Contains(topo.Nodes, n => n.Id == "Voice synthesis" && n.Kind == "tool");
         Assert.Contains(topo.Nodes, n => n.Id == "Video rendering" && n.Kind == "tool");
         Assert.DoesNotContain(topo.Nodes, n => n.Kind == "model");
         Assert.DoesNotContain(topo.Edges, e => e.From == "Director" && topo.Nodes.Any(n => n.Id == e.To && n.Kind is "tool" or "llm" or "memory"));
@@ -112,6 +115,9 @@ public sealed class SceneVideoTopologyApiTests
         Assert.Contains("Human", nodes);
         Assert.Contains("Director", nodes);
         Assert.Contains("Audio Engineer", nodes);
+        Assert.Contains("Dialogue Supervisor", nodes);
+        Assert.Contains("Voice Actor", nodes);
+        Assert.Contains("Voice synthesis", nodes);
         Assert.Contains("Output", nodes);
         // Expanded default flow includes specialists + capabilities as the single picture.
         Assert.Contains("Render agent", nodes);

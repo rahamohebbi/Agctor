@@ -65,4 +65,33 @@ public sealed class SceneSpeechTextReviewTests
         store.Verify(s => s.GetAsync(run.Id, default), Times.Exactly(2));
         store.VerifyNoOtherCalls();
     }
+
+    [Fact]
+    public async Task Expected_reads_planned_dialogue_from_scene_memory_and_classifies_hallucination_vs_mismatch()
+    {
+        var clip = new SceneVideoClip { ShotId = "shot-1", Prompt = "Quiet moonlit ocean." };
+        var workspace = new AgctorSDK.Core.SceneMemory.SceneWorkspace("ws-1", "Moon", DateTimeOffset.UtcNow, [], [], [
+            new AgctorSDK.Core.SceneMemory.ScenePromptRecord(
+                "shot-1", clip.Prompt, "Clip 1/1", "test", 1, 1, DateTimeOffset.UtcNow,
+                TimedEvents: [
+                    new AgctorSDK.Core.SceneMemory.SceneTimedEvent(
+                        "ev-1", "dialogue", "Planned line", new(1000, 4000), [], "planned", null, "Stay close to the light.")
+                ])
+        ]);
+
+        Assert.Equal("Stay close to the light.", SceneSpeechTextReview.Expected(clip, workspace));
+
+        var audio = new Mock<ISceneAudioEngineer>();
+        audio.Setup(a => a.ReviewSpeechAsync(It.IsAny<string>(), "test", It.IsAny<SceneSpeechReport>(), default))
+            .ReturnsAsync(new SceneSpeechUnderstanding(false, [new(0, 47, "Unrelated dialogue")]));
+
+        var hallucinated = await SceneSpeechTextReview.Evaluate(audio.Object, clip.Prompt, "", "test",
+            new("detected", "en", .95, "Fits in a collage, sometimes no need to sin alone", ""), default);
+        Assert.Equal("hallucinated-speech", hallucinated.Diagnosis);
+        Assert.Equal("Dialogue Supervisor", hallucinated.Reviewer);
+
+        var mismatched = await SceneSpeechTextReview.Evaluate(audio.Object, clip.Prompt, "Stay close to the light.", "test",
+            new("detected", "en", .95, "Fits in a collage, sometimes no need to sin alone", ""), default);
+        Assert.Equal("mismatched-dialogue", mismatched.Diagnosis);
+    }
 }

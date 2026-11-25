@@ -1663,6 +1663,75 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         var answer=Assert.Single(await reopened.EventsAsync(run.Id,events.Last().Sequence));
         Assert.Equal("Human",answer.Route!.From); Assert.Equal("Director",answer.Route.To);
     }
+
+    [Fact]
+    public async Task Hallucinated_speech_does_not_pollute_scene_memory_and_routes_to_voice_actor_vocal_strip()
+    {
+        audio.Understood = false;
+        production.Speech = new("detected", "en", .95, "Fits in a collage, sometimes no need to sin alone", "Speech detected",
+            Words: [new("Fits", 1.0, 1.4), new("alone", 3.5, 4.0)]);
+        var run = await SpeechRun("none");
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Audio enabled");
+
+        for (var i = 0; i < 25 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("speech-review", run.Question!.Kind);
+        Assert.Contains(run.Question.Choices, c => c.Id == "strip-vocals");
+
+        // Gibberish must NOT be persisted as confirmed dialogue in Scene Memory.
+        var ws = await memory.GetAsync(run.WorkspaceId);
+        Assert.DoesNotContain(ws?.Prompts?.SelectMany(p => p.TimedEvents ?? []) ?? [],
+            e => e.Status == "confirmed" && (e.Dialogue?.Contains("collage") ?? false));
+
+        // Choosing strip-vocals routes through Voice Actor (speech-repair) then Audio Engineer (clip-audio-plan).
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "strip-vocals", null));
+        run = await ActorTick(run.Id);
+        Assert.Equal("speech-repair", run.Phase);
+        Assert.Equal(SceneVideoRoles.VoiceActor, SceneVideoRoles.Owner(run));
+        run = await ActorTick(run.Id);
+        Assert.Equal("clip-audio-plan", run.Phase);
+        Assert.Equal(SceneVideoRoles.AudioEngineer, SceneVideoRoles.Owner(run));
+        var updated = SceneVideoLoop.State(run);
+        Assert.True(updated.Clips[0].StripOriginalVocals);
+        Assert.Equal("", updated.Clips[0].NarrationText);
+        Assert.Equal("repaired-vocal-strip", updated.Clips[0].SpeechDiagnosis);
+
+        var events = await runs.EventsAsync(run.Id);
+        Assert.Contains(events, e => e.Agent == SceneVideoRoles.DialogueSupervisor);
+        Assert.Contains(events, e => e.Agent == SceneVideoRoles.VoiceActor);
+    }
+
+    [Fact]
+    public async Task Mismatched_dialogue_routes_to_voice_actor_adr_grounded_in_expected_text()
+    {
+        planner.Spoken = "The traveller says: \"Stay close to the lantern.\"";
+        production.Speech = new("detected", "en", .96, "Fits in a collage sometimes.", "Speech detected");
+        var run = await SpeechRun("en");
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.AudioEnabled = true;
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Audio enabled");
+
+        for (var i = 0; i < 25 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
+        Assert.Equal("speech-review", run.Question!.Kind);
+        Assert.Contains(run.Question.Choices, c => c.Id == "adr-repair");
+        Assert.Contains("Stay close to the lantern.", run.Question.Prompt);
+
+        await runs.ReplyAsync(run.Id, run.Revision, new(run.Question.Id, "adr-repair", null));
+        run = await ActorTick(run.Id);
+        Assert.Equal("speech-repair", run.Phase);
+        Assert.Equal(SceneVideoRoles.VoiceActor, SceneVideoRoles.Owner(run));
+        run = await ActorTick(run.Id);
+        Assert.Equal("waiting", run.Status);
+        Assert.Equal("narration-review", run.Question!.Kind);
+        var updated = SceneVideoLoop.State(run);
+        Assert.Equal("Stay close to the lantern.", updated.Clips[0].NarrationText);
+        Assert.Equal("repaired-adr", updated.Clips[0].SpeechDiagnosis);
+    }
     private sealed class Audio : ISceneAudioEngineer {
         public Task<IReadOnlyList<string>> NarrationAsync(string prompt,string model,IReadOnlyList<SceneVideoClip> clips,CancellationToken ct)=>Task.FromResult<IReadOnlyList<string>>(clips.Select(_=>"A journey begins.").ToArray());
         public string Language="unknown";

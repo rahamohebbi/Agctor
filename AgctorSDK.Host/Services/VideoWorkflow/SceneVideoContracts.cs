@@ -96,6 +96,10 @@ public sealed class SceneVideoClip
     public bool SpeechAccepted { get; set; }
     public bool? SpeechVerified { get; set; }
     public string? ExpectedSpeechText { get; set; }
+    /// <summary>Dialogue Supervisor diagnosis: matched | hallucinated-speech | mismatched-dialogue | uncertain | repaired-vocal-strip | repaired-adr.</summary>
+    public string? SpeechDiagnosis { get; set; }
+    /// <summary>True when Voice Actor strips unintended hallucinated vocals via RoFormer while preserving the background bed.</summary>
+    public bool StripOriginalVocals { get; set; }
     public bool AudioReviewRequired { get; set; }
     // Explicit human disposition; a planned replacement is not evidence of verified speech.
     public string? AudioDecision { get; set; }
@@ -107,6 +111,10 @@ public sealed class SceneVideoClip
     public string? NarrationText { get; set; }
     // Version zero preserves the request body of already-submitted legacy takes.
     public int NativeSpeechVersion { get; set; }
+    /// <summary>Timestamped visual cues (lip-sync onset, action hits) observed by Visual Critic.</summary>
+    public SceneVisualCueReport? VisualCues { get; set; }
+    /// <summary>Multi-track audio (1..3) and speech (1..3) cues arranged by Audio Engineer from Visual Critic cues.</summary>
+    public SceneClipTimelinePlan? TimelineCues { get; set; }
 }
 public sealed record SceneVideoPlan(IReadOnlyList<string> Clips, string? Question = null, IReadOnlyList<string>? Choices = null);
 public interface ISceneVideoPlanner
@@ -199,7 +207,17 @@ public interface ISceneVideoProduction
     Task<bool> MatchingMusicAvailableAsync(CancellationToken ct) => Task.FromResult(false);
     Task<IReadOnlyList<string>> NarrationModelsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<string>>(["kokoro"]);
     Task<SceneSpeechReport> InspectSpeechAsync(string key, CancellationToken ct) => throw new NotSupportedException("Speech inspection is not configured.");
+    Task<SceneCueFrames?> CueFramesAsync(string key, CancellationToken ct) => Task.FromResult<SceneCueFrames?>(null);
+    Task SyncTimelineAsync(string runId, SceneTimelineSyncRequest request, CancellationToken ct) => Task.CompletedTask;
 }
+public sealed record SceneCueFrames(IReadOnlyList<string> Frames, IReadOnlyList<double> Seconds, double DurationSeconds);
+public sealed record SceneVisualCue(double StartSeconds, double EndSeconds, string Kind, string Subject, string Description, double Confidence = 0.8);
+public sealed record SceneVisualCueReport(IReadOnlyList<SceneVisualCue> Cues, string Summary, string? Model = null);
+public sealed record SceneTimelineSyncAnchor(string Mode, long ObservedMs, double Confidence, string? Description = null, string? VerifiedBy = null);
+public sealed record SceneTimelineCue(string TrackKind, int TrackIndex, long StartMs, long DurationMs, string Label, string Kind,
+    string? Prompt = null, string? Speaker = null, string? Voice = null, string? Model = null, double GainDb = 0, int? ClipSlot = null, SceneTimelineSyncAnchor? SyncAnchor = null);
+public sealed record SceneClipTimelinePlan(IReadOnlyList<SceneTimelineCue> Cues, string Summary, string? VisualSyncNotes = null);
+public sealed record SceneTimelineSyncRequest(string ProjectId, int? ClipSlot, IReadOnlyList<SceneTimelineCue> Cues, bool ReplaceClipCues = true, bool RenderMix = false);
 public sealed record SceneAudioPlan(bool ContinuousMusic, string Summary, string? Separator = null, SceneNarrationPlan? Narration = null, IReadOnlyList<SceneAudioApproval>? Approved = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? BackgroundMusic = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] SceneAudioMix? Mix = null,
@@ -233,8 +251,14 @@ public interface ISceneAudioEngineer
     async Task<SceneSpeechUnderstanding> ReviewSpeechAsync(string prompt, string model, SceneSpeechReport speech, CancellationToken ct) =>
         new(await SpeechUnderstoodAsync(prompt, model, speech, ct), []);
     Task<string> SpeechLanguageAsync(string prompt, string model, CancellationToken ct) => Task.FromResult("unknown");
+    Task<SceneClipTimelinePlan?> ArrangeTimelineAsync(string storyPrompt, string clipPrompt, int durationSeconds,
+        SceneVisualCueReport? visualCues, SceneSpeechReport? measuredSpeech, string model, CancellationToken ct,
+        string? expectedSpeechText = null) =>
+        Task.FromResult<SceneClipTimelinePlan?>(null);
 }
 public interface ISceneVideoCritic
 {
     Task<SceneContinuityReport> CheckAsync(string prompt, SceneVideoEvidence current, SceneVideoEvidence? previous, CancellationToken ct);
+    Task<SceneVisualCueReport> InspectCuesAsync(string prompt, SceneCueFrames cueFrames, string? expectedDialogue, CancellationToken ct) =>
+        Task.FromResult(new SceneVisualCueReport([], "Visual cue timing was not configured."));
 }

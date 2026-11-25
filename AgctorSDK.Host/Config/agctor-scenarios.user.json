@@ -12,6 +12,7 @@
         "LLMAgent"
       ],
       "personaAgentIds": [],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": null,
         "curator": null,
@@ -37,6 +38,7 @@
         "SessionCoordinatorAgent"
       ],
       "personaAgentIds": [],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": null,
         "curator": null,
@@ -105,6 +107,7 @@
         "visual-intake",
         "diagram-creator"
       ],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": "person-extractor",
         "curator": "memory-curator",
@@ -477,6 +480,7 @@
         "visual-intake",
         "memory-curator"
       ],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": "visual-intake",
         "curator": "memory-curator",
@@ -692,6 +696,7 @@
         "person-extractor",
         "person-query"
       ],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": null,
         "curator": null,
@@ -898,6 +903,7 @@
         "fitness-coach",
         "visual-intake"
       ],
+      "ragProviderId": null,
       "personaBindings": {
         "extractor": "person-extractor",
         "curator": "memory-curator",
@@ -1190,36 +1196,746 @@
               "y": 164.51752970728333
             },
             "n_3g8zdmai": {
-              "x": -59.55349119590579,
-              "y": 112.32889265009142
+              "x": -1.3806252703110218,
+              "y": -85.00259372496517
             },
             "n_2g5asdod": {
-              "x": 133.08411926328856,
-              "y": 116.88070318568845
+              "x": 257.41436212387345,
+              "y": 6.238193484067093
             },
             "n_r5v0z426": {
-              "x": 9.94200415015317,
-              "y": 175.02798747950303
+              "x": 68.11487007574792,
+              "y": 80.3544997966724
             },
             "n_coach_p3": {
-              "x": -15.79312332494922,
-              "y": 450.7983590567446
+              "x": 46.94232032029999,
+              "y": 524.9402470011302
             },
             "n_style_p3": {
-              "x": 1.1554909059628695,
-              "y": 287.42326281401915
+              "x": 51.34384582216224,
+              "y": 301.1109959729826
             },
             "n_fitness_p3": {
-              "x": -6.123845949203326,
-              "y": 360.08715215548483
+              "x": 36.079997957600675,
+              "y": 414.8380847913387
             },
             "n_visual_p3": {
-              "x": 7.0659058754671875,
-              "y": 229.8976837520256
+              "x": 59.535549651493824,
+              "y": 197.95963971444417
             },
             "n_i02xj4ob": {
               "x": 365.1779439668905,
               "y": 311.9721148495064
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "scene-video-chain",
+      "displayName": "Scene Memory \u2014 video sequence",
+      "description": "Plan a sequence from your prompt with specialist agents (Director, Planner, Project, Memory, Render, Visual critic, Editor, Audio Engineer). Maintain Scene Memory and ask Cynelo to render consecutive clips.",
+      "kind": "declarative",
+      "handler": null,
+      "agentTypes": [],
+      "personaAgentIds": [],
+      "ragProviderId": null,
+      "personaBindings": {
+        "extractor": null,
+        "curator": null,
+        "query": null
+      },
+      "modelDefaults": {
+        "generation": null,
+        "llmRouting": null,
+        "decisionRouting": null
+      },
+      "flow": {
+        "schemaVersion": "1.0",
+        "graphId": "scene-video-chain",
+        "name": "Scene video sequence",
+        "status": null,
+        "createdAtUtc": null,
+        "updatedAtUtc": null,
+        "outputPolicy": "first_non_empty",
+        "sessionLoopCap": null,
+        "nodes": [
+          {
+            "id": "input",
+            "type": "ChatInput",
+            "label": "Your idea",
+            "config": {}
+          },
+          {
+            "id": "director",
+            "type": "AgentLoop",
+            "label": "Director",
+            "config": {
+              "workflow": "scene-video",
+              "maxAttempts": 3,
+              "role": "director",
+              "instructions": "Keep identities, locations, props and actions consistent across clips. Ask the creator when essential story intent is unclear."
+            }
+          },
+          {
+            "id": "planner",
+            "type": "AgentLoop",
+            "label": "Planner",
+            "config": {
+              "workflow": "scene-video",
+              "role": "planner"
+            }
+          },
+          {
+            "id": "project",
+            "type": "AgentLoop",
+            "label": "Project",
+            "config": {
+              "workflow": "scene-video",
+              "role": "project"
+            }
+          },
+          {
+            "id": "memory",
+            "type": "AgentLoop",
+            "label": "Memory agent",
+            "config": {
+              "workflow": "scene-video",
+              "role": "memory"
+            }
+          },
+          {
+            "id": "render",
+            "type": "AgentLoop",
+            "label": "Render",
+            "config": {
+              "workflow": "scene-video",
+              "role": "render"
+            }
+          },
+          {
+            "id": "visual-critic",
+            "type": "AgentLoop",
+            "label": "Visual critic",
+            "config": {
+              "workflow": "scene-video",
+              "role": "visual-critic"
+            }
+          },
+          {
+            "id": "editor",
+            "type": "AgentLoop",
+            "label": "Editor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "editor"
+            }
+          },
+          {
+            "id": "audio-engineer",
+            "type": "AgentLoop",
+            "label": "Audio Engineer",
+            "config": {
+              "workflow": "scene-video",
+              "role": "audio-engineer"
+            }
+          },
+          {
+            "id": "dialogue-supervisor",
+            "type": "AgentLoop",
+            "label": "Dialogue Supervisor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "dialogue-supervisor"
+            }
+          },
+          {
+            "id": "voice-actor",
+            "type": "AgentLoop",
+            "label": "Voice Actor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "voice-actor"
+            }
+          },
+          {
+            "id": "ollama",
+            "type": "Capability",
+            "label": "Ollama",
+            "config": {
+              "kind": "llm",
+              "detail": "Planning / review model",
+              "ownerRole": "planner"
+            }
+          },
+          {
+            "id": "scene-memory",
+            "type": "Capability",
+            "label": "Scene Memory",
+            "config": {
+              "kind": "memory",
+              "detail": "Recorded facts",
+              "ownerRole": "memory"
+            }
+          },
+          {
+            "id": "audio-production",
+            "type": "Capability",
+            "label": "Audio production",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "audio-engineer"
+            }
+          },
+          {
+            "id": "speech-inspection",
+            "type": "Capability",
+            "label": "Speech inspection",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "dialogue-supervisor"
+            }
+          },
+          {
+            "id": "voice-synthesis",
+            "type": "Capability",
+            "label": "Voice synthesis",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "voice-actor"
+            }
+          },
+          {
+            "id": "frame-sampler",
+            "type": "Capability",
+            "label": "Frame sampler",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "render"
+            }
+          },
+          {
+            "id": "video-rendering",
+            "type": "Capability",
+            "label": "Video rendering",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "render"
+            }
+          },
+          {
+            "id": "project-storage",
+            "type": "Capability",
+            "label": "Project storage",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "project"
+            }
+          },
+          {
+            "id": "story-storage",
+            "type": "Capability",
+            "label": "Story storage",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "memory"
+            }
+          },
+          {
+            "id": "film-assembly",
+            "type": "Capability",
+            "label": "Film assembly",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "editor"
+            }
+          },
+          {
+            "id": "output",
+            "type": "Output",
+            "label": "Finished video with reviewed audio",
+            "config": {}
+          }
+        ],
+        "edges": [
+          {
+            "id": "start",
+            "fromNodeId": "input",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "finish",
+            "fromNodeId": "director",
+            "toNodeId": "output",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-planner",
+            "fromNodeId": "director",
+            "toNodeId": "planner",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "planner-director",
+            "fromNodeId": "planner",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-project",
+            "fromNodeId": "director",
+            "toNodeId": "project",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "project-director",
+            "fromNodeId": "project",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-memory",
+            "fromNodeId": "director",
+            "toNodeId": "memory",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "memory-director",
+            "fromNodeId": "memory",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-render",
+            "fromNodeId": "director",
+            "toNodeId": "render",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "render-director",
+            "fromNodeId": "render",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-visual",
+            "fromNodeId": "director",
+            "toNodeId": "visual-critic",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "visual-director",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-editor",
+            "fromNodeId": "director",
+            "toNodeId": "editor",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "editor-director",
+            "fromNodeId": "editor",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "audio-request",
+            "fromNodeId": "director",
+            "toNodeId": "audio-engineer",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "audio-report",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-dialogue",
+            "fromNodeId": "director",
+            "toNodeId": "dialogue-supervisor",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "dialogue-director",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "director-voice",
+            "fromNodeId": "director",
+            "toNodeId": "voice-actor",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "voice-director",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "director",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "planner-ollama",
+            "fromNodeId": "planner",
+            "toNodeId": "ollama",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "visual-ollama",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "ollama",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "audio-ollama",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "ollama",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "dialogue-ollama",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "ollama",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "voice-ollama",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "ollama",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "planner-memory-cap",
+            "fromNodeId": "planner",
+            "toNodeId": "scene-memory",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "dialogue-memory-cap",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "scene-memory",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "memory-store",
+            "fromNodeId": "memory",
+            "toNodeId": "scene-memory",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "memory-story",
+            "fromNodeId": "memory",
+            "toNodeId": "story-storage",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "project-storage-e",
+            "fromNodeId": "project",
+            "toNodeId": "project-storage",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "render-video",
+            "fromNodeId": "render",
+            "toNodeId": "video-rendering",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "render-frames",
+            "fromNodeId": "render",
+            "toNodeId": "frame-sampler",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "visual-frames",
+            "fromNodeId": "visual-critic",
+            "toNodeId": "frame-sampler",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "audio-prod",
+            "fromNodeId": "audio-engineer",
+            "toNodeId": "audio-production",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "dialogue-speech",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "speech-inspection",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "voice-synth",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "voice-synthesis",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "voice-prod",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "audio-production",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          },
+          {
+            "id": "editor-film",
+            "fromNodeId": "editor",
+            "toNodeId": "film-assembly",
+            "mode": "sequential",
+            "condition": null,
+            "conditionMatch": null,
+            "llmRoutingHint": null,
+            "loopConfig": null
+          }
+        ],
+        "ui": {
+          "nodeLayouts": {
+            "input": {
+              "x": -170.30003454251448,
+              "y": 131.35258049068148
+            },
+            "director": {
+              "x": 202.03358742649556,
+              "y": 433.1332034038193
+            },
+            "dialogue-supervisor": {
+              "x": 709.6839404105673,
+              "y": -230.0
+            },
+            "voice-actor": {
+              "x": 709.6839404105673,
+              "y": -90.0
+            },
+            "audio-engineer": {
+              "x": 709.6839404105673,
+              "y": 52.4140762947586
+            },
+            "visual-critic": {
+              "x": 716.193704122932,
+              "y": 283.2814303304203
+            },
+            "planner": {
+              "x": 728.6138304416513,
+              "y": 425.0166513881792
+            },
+            "project": {
+              "x": 716.193704122932,
+              "y": 565.1993566560982
+            },
+            "render": {
+              "x": 713.0886725432522,
+              "y": 702.2770303443373
+            },
+            "memory": {
+              "x": 714.6411883330921,
+              "y": 845.5647671919362
+            },
+            "editor": {
+              "x": 711.5361567534122,
+              "y": 1026.1128829956929
+            },
+            "speech-inspection": {
+              "x": 1325.6219844846423,
+              "y": -230.0
+            },
+            "voice-synthesis": {
+              "x": 1330.0,
+              "y": -110.0
+            },
+            "audio-production": {
+              "x": 1334.639126327178,
+              "y": 40.0
+            },
+            "ollama": {
+              "x": 1359.0121586109435,
+              "y": 331.0808310478026
+            },
+            "frame-sampler": {
+              "x": 1348.2824110371437,
+              "y": 464.1426116558258
+            },
+            "project-storage": {
+              "x": 1343.8971650497488,
+              "y": 613.6798451863966
+            },
+            "video-rendering": {
+              "x": 1304.5036085512459,
+              "y": 762.5353604443314
+            },
+            "story-storage": {
+              "x": 1329.868784965036,
+              "y": 908.6207184952862
+            },
+            "scene-memory": {
+              "x": 1311.5102406351643,
+              "y": 1063.9696876058968
+            },
+            "film-assembly": {
+              "x": 1262.9564713827403,
+              "y": 1228.8569943537684
+            },
+            "output": {
+              "x": -189.78784994326787,
+              "y": 700.0654666156972
             }
           }
         }

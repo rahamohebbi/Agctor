@@ -137,6 +137,24 @@
             }
           },
           {
+            "id": "dialogue-supervisor",
+            "type": "AgentLoop",
+            "label": "Dialogue Supervisor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "dialogue-supervisor"
+            }
+          },
+          {
+            "id": "voice-actor",
+            "type": "AgentLoop",
+            "label": "Voice Actor",
+            "config": {
+              "workflow": "scene-video",
+              "role": "voice-actor"
+            }
+          },
+          {
             "id": "ollama",
             "type": "Capability",
             "label": "Ollama",
@@ -173,7 +191,17 @@
             "config": {
               "kind": "tool",
               "detail": "Cynelo API",
-              "ownerRole": "audio-engineer"
+              "ownerRole": "dialogue-supervisor"
+            }
+          },
+          {
+            "id": "voice-synthesis",
+            "type": "Capability",
+            "label": "Voice synthesis",
+            "config": {
+              "kind": "tool",
+              "detail": "Cynelo API",
+              "ownerRole": "voice-actor"
             }
           },
           {
@@ -330,6 +358,30 @@
             "mode": "sequential"
           },
           {
+            "id": "director-dialogue",
+            "fromNodeId": "director",
+            "toNodeId": "dialogue-supervisor",
+            "mode": "sequential"
+          },
+          {
+            "id": "dialogue-director",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
+            "id": "director-voice",
+            "fromNodeId": "director",
+            "toNodeId": "voice-actor",
+            "mode": "sequential"
+          },
+          {
+            "id": "voice-director",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "director",
+            "mode": "sequential"
+          },
+          {
             "id": "planner-ollama",
             "fromNodeId": "planner",
             "toNodeId": "ollama",
@@ -348,8 +400,26 @@
             "mode": "sequential"
           },
           {
+            "id": "dialogue-ollama",
+            "fromNodeId": "dialogue-supervisor",
+            "toNodeId": "ollama",
+            "mode": "sequential"
+          },
+          {
+            "id": "voice-ollama",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "ollama",
+            "mode": "sequential"
+          },
+          {
             "id": "planner-memory-cap",
             "fromNodeId": "planner",
+            "toNodeId": "scene-memory",
+            "mode": "sequential"
+          },
+          {
+            "id": "dialogue-memory-cap",
+            "fromNodeId": "dialogue-supervisor",
             "toNodeId": "scene-memory",
             "mode": "sequential"
           },
@@ -396,9 +466,21 @@
             "mode": "sequential"
           },
           {
-            "id": "audio-speech",
-            "fromNodeId": "audio-engineer",
+            "id": "dialogue-speech",
+            "fromNodeId": "dialogue-supervisor",
             "toNodeId": "speech-inspection",
+            "mode": "sequential"
+          },
+          {
+            "id": "voice-synth",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "voice-synthesis",
+            "mode": "sequential"
+          },
+          {
+            "id": "voice-prod",
+            "fromNodeId": "voice-actor",
+            "toNodeId": "audio-production",
             "mode": "sequential"
           },
           {
@@ -417,6 +499,14 @@
             "director": {
               "x": 0,
               "y": 420
+            },
+            "dialogue-supervisor": {
+              "x": 280,
+              "y": -280
+            },
+            "voice-actor": {
+              "x": 280,
+              "y": -140
             },
             "audio-engineer": {
               "x": 280,
@@ -446,13 +536,17 @@
               "x": 280,
               "y": 840
             },
+            "speech-inspection": {
+              "x": 560,
+              "y": -280
+            },
+            "voice-synthesis": {
+              "x": 560,
+              "y": -140
+            },
             "audio-production": {
               "x": 560,
               "y": 0
-            },
-            "speech-inspection": {
-              "x": 560,
-              "y": 140
             },
             "ollama": {
               "x": 560,

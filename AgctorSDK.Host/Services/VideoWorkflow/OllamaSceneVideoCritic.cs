@@ -70,5 +70,74 @@ public sealed class OllamaSceneVideoCritic(IHttpClientFactory clients) : ISceneV
         catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
         { return Unavailable(); }
     }
+
+    public async Task<SceneVisualCueReport> InspectCuesAsync(string prompt, SceneCueFrames cueFrames, string? expectedDialogue, CancellationToken ct)
+    {
+        if (cueFrames.Frames is not { Count: >= 2 } || cueFrames.Seconds.Count != cueFrames.Frames.Count ||
+            cueFrames.Frames.Any(f => string.IsNullOrWhiteSpace(f) || f.Length > 8_000_000))
+            return new([], "No sampled frames available for visual cue timing.");
+        try
+        {
+            var model = OllamaRuntimeConfiguration.GetVisionModel();
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(Math.Clamp(OllamaRuntimeConfiguration.GetVisionTimeoutSeconds(), 10, 300)));
+            using var http = clients.CreateClient("SceneVideoPlanner");
+            using var response = await http.PostAsJsonAsync(OllamaRuntimeConfiguration.GetApiUrlWithTrailingSlash() + "api/chat", new {
+                model, stream = false, think = false,
+                format = new {
+                    type = "object", required = new[] { "summary", "cues" }, additionalProperties = false,
+                    properties = new {
+                        summary = new { type = "string" },
+                        cues = new {
+                            type = "array", maxItems = 12,
+                            items = new {
+                                type = "object", additionalProperties = false,
+                                required = new[] { "startSeconds", "endSeconds", "kind", "subject", "description", "confidence" },
+                                properties = new {
+                                    startSeconds = new { type = "number" },
+                                    endSeconds = new { type = "number" },
+                                    kind = new { type = "string", @enum = new[] { "lip-sync", "action-hit", "ambient-shift" } },
+                                    subject = new { type = "string" },
+                                    description = new { type = "string" },
+                                    confidence = new { type = "number" }
+                                }
+                            }
+                        }
+                    }
+                },
+                messages = new object[] {
+                    new { role = "system", content = "You are the Visual Critic collaborating with the Director and Audio Engineer to locate precise timestamps for sound and lip-sync placement. Inspect the ordered timestamped frames of a single clip. Identify: (1) kind='lip-sync' when a character's mouth opens or speaking pose begins/ends so speech starts accurately on screen, (2) kind='action-hit' for discrete physical impacts/gestures that warrant SFX (footsteps, drops, door closes, blooms), and (3) kind='ambient-shift' for mood/lighting/camera transitions that cue background music. All timestamps must be within [0, durationSeconds] with endSeconds > startSeconds. Report only visually supported moments; return an empty cues list if none are clear. Return JSON matching the schema." },
+                    new { role = "user", content = $"Clip duration: {cueFrames.DurationSeconds:F2}s.\nFrame timestamps (seconds): {JsonSerializer.Serialize(cueFrames.Seconds)}.\nClip description:\n{prompt}\nExpected dialogue (if any):\n{expectedDialogue ?? "(none)"}", images = cueFrames.Frames.ToArray() }
+                },
+                options = new { temperature = 0, num_predict = 1200 }
+            }, deadline.Token);
+            response.EnsureSuccessStatusCode();
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: deadline.Token);
+            var report = JsonSerializer.Deserialize<SceneVisualCueReport>(
+                body.GetProperty("message").GetProperty("content").GetString()!,
+                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (report == null || report.Cues == null) return new([], "Visual cue timing returned no structured cues.", model);
+            var maxSec = Math.Max(0.5, cueFrames.DurationSeconds);
+            var valid = report.Cues
+                .Where(c => double.IsFinite(c.StartSeconds) && double.IsFinite(c.EndSeconds) &&
+                            c.StartSeconds >= 0 && c.StartSeconds < maxSec &&
+                            c.Kind is "lip-sync" or "action-hit" or "ambient-shift" &&
+                            !string.IsNullOrWhiteSpace(c.Description))
+                .Select(c => c with {
+                    StartSeconds = Math.Round(Math.Clamp(c.StartSeconds, 0, maxSec - 0.1), 3),
+                    EndSeconds = Math.Round(Math.Clamp(Math.Max(c.StartSeconds + 0.25, c.EndSeconds), 0.25, maxSec), 3),
+                    Confidence = double.IsFinite(c.Confidence) ? Math.Clamp(c.Confidence, 0, 1) : 0.7,
+                    Subject = (c.Subject ?? "").Trim(),
+                    Description = c.Description.Trim()
+                })
+                .OrderBy(c => c.StartSeconds)
+                .Take(12)
+                .ToArray();
+            return new(valid, string.IsNullOrWhiteSpace(report.Summary) ? $"Observed {valid.Length} visual audio cue(s)." : report.Summary.Trim(), model);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+        { return new([], "Visual cue timing was unavailable."); }
+    }
     private static SceneContinuityReport Unavailable() => new("unavailable", "Automatic visual review was unavailable. Your saved clip is preserved.", []);
 }

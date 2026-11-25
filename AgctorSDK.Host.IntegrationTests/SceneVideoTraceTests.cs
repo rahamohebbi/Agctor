@@ -148,11 +148,11 @@ public sealed class SceneVideoTraceTests : IDisposable
             Assert.Equal(7, await SceneVideoTrace.InvokeAsync("Audio production", "tool", "Cynelo API", "Prepare", () => Task.FromResult(7)));
         using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.Director, NullLogger.Instance))
         {
-            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.AudioEngineer))
+            using (SceneVideoTrace.SwitchRole(SceneVideoRoles.DialogueSupervisor))
                 Assert.Equal(3, await SceneVideoTrace.InvokeAsync("Speech inspection", "tool", "Cynelo API", "Inspect", () => Task.FromResult(3)));
         }
         Assert.DoesNotContain(await Store.EventsAsync(lease.Run.Id),
-            e => e.Route is { From: "Director", To: "Audio production" or "Speech inspection" or "Video rendering" });
+            e => e.Route is { From: "Director", To: "Audio production" or "Speech inspection" or "Voice synthesis" or "Video rendering" });
     }
     [Fact]
     public async Task Audio_discovery_endpoints_trace_to_audio_production_under_audio_engineer()
@@ -166,7 +166,7 @@ public sealed class SceneVideoTraceTests : IDisposable
                     Encoding.UTF8, "application/json")
             })) });
 
-        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.AudioEngineer, NullLogger.Instance))
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.VoiceActor, NullLogger.Instance))
             Assert.Equal("[\"kokoro\",\"eleven_multilingual_v2\"]",
                 await (await http.GetAsync("http://cynelo/api/agctor/render/narration-models")).Content.ReadAsStringAsync());
 
@@ -183,9 +183,39 @@ public sealed class SceneVideoTraceTests : IDisposable
 
         var routes = (await Store.EventsAsync(lease.Run.Id)).Where(e => e.Route != null).Select(e => e.Route!).ToArray();
         Assert.Equal(4, routes.Length);
-        Assert.Contains(routes, r => r.From == SceneVideoRoles.AudioEngineer && r.To == "Audio production" && r.Operation == "Check available narration voices" && r.Outcome == "started");
+        Assert.Contains(routes, r => r.From == SceneVideoRoles.VoiceActor && r.To == "Voice synthesis" && r.Operation == "Check available narration voices" && r.Outcome == "started");
         Assert.Contains(routes, r => r.From == SceneVideoRoles.AudioEngineer && r.To == "Audio production" && r.Operation == "Check matching music availability" && r.Outcome == "started");
         Assert.DoesNotContain(routes, r => r.To == "Video rendering");
+    }
+    [Fact]
+    public async Task Cue_sync_and_timeline_endpoints_enforce_visual_critic_and_audio_engineer_boundaries()
+    {
+        var lease = await Lease("cue-timeline");
+        using var http = new HttpClient(new SceneVideoTraceHandler("cynelo") { InnerHandler = new Handler(_ =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{}", Encoding.UTF8, "application/json")
+            })) });
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.VisualCritic, NullLogger.Instance))
+            Assert.True((await http.GetAsync("http://cynelo/api/agctor/render/jobs/run-1-1/cue-frames")).IsSuccessStatusCode);
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.AudioEngineer, NullLogger.Instance))
+        {
+            Assert.True((await http.PutAsync("http://cynelo/api/agctor/render/sequences/run-1/timeline",
+                new StringContent("{}", Encoding.UTF8, "application/json"))).IsSuccessStatusCode);
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                http.GetAsync("http://cynelo/api/agctor/render/jobs/run-1-1/cue-frames"));
+        }
+
+        using (SceneVideoTrace.Begin(Store, lease, SceneVideoRoles.VisualCritic, NullLogger.Instance))
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                http.PutAsync("http://cynelo/api/agctor/render/sequences/run-1/timeline",
+                    new StringContent("{}", Encoding.UTF8, "application/json")));
+
+        var routes = (await Store.EventsAsync(lease.Run.Id)).Where(e => e.Route != null).Select(e => e.Route!).ToArray();
+        Assert.Contains(routes, r => r.From == SceneVideoRoles.VisualCritic && r.To == "Frame sampler" && r.Outcome == "started");
+        Assert.Contains(routes, r => r.From == SceneVideoRoles.AudioEngineer && r.To == "Audio production" && r.Outcome == "started");
     }
     [Theory]
     [InlineData("save")]
