@@ -993,6 +993,12 @@ public sealed class SceneVideoWorkflowTests : IDisposable
     public async Task Ambiguous_story_language_asks_before_render_and_honors_human_language()
     {
         var run=await SpeechRun("auto");
+        // Seed a prompt that actually requests speech without naming its language.
+        var lease=(await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state=SceneVideoLoop.State(lease.Run);
+        state.Input=state.Input with { Prompt="A traveller crosses a bridge and greets the watchman." };
+        lease.Run.State=JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease,"test","ready","Speech prompt seeded");
         for(var i=0;i<5 && run.Status!="waiting";i++) run=await ActorTick(run.Id);
         Assert.Equal("speech-intent",run.Question!.Kind); Assert.Empty(renderer.Requests);
         audio.Language="es";
@@ -1002,6 +1008,29 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         Assert.Equal("plan",run.Phase); Assert.Empty(renderer.Requests);
         run=await ActorTick(run.Id);
         Assert.Contains("Spanish",planner.Clarifications);
+    }
+
+    [Theory]
+    [InlineData("Smoothly zoom into the moon. The video should be only 5 seconds.")]
+    [InlineData("Smoothly zoom into the moon, and the words \"Cynelo\" appear inscribed inside a heart on its surface.")]
+    [InlineData("A fox watches the moonflower bloom without speech.")]
+    public async Task Visual_only_prompt_without_speech_skips_language_confirmation_and_sets_none(string promptText)
+    {
+        var run = await SpeechRun("auto");
+        var lease = (await runs.ClaimAsync(TimeSpan.FromMinutes(1)))!;
+        var state = SceneVideoLoop.State(lease.Run);
+        state.Input = state.Input with { Prompt = promptText };
+        lease.Run.State = JsonSerializer.SerializeToElement(state);
+        await runs.SaveAsync(lease, "test", "ready", "Visual-only prompt seeded");
+
+        // Advance through project -> speech-intent -> plan: must NEVER ask speech-intent.
+        for (var i = 0; i < 6 && run.Phase is "project" or "speech-intent"; i++)
+            run = await ActorTick(run.Id);
+
+        Assert.NotEqual("waiting", run.Status);
+        Assert.Null(run.Question);
+        Assert.Equal("none", SceneVideoLoop.State(run).ExpectedSpeechLanguage);
+        Assert.Equal("plan", run.Phase);
     }
     [Fact]
     public async Task Speech_quality_corrections_stop_after_two_new_takes()
@@ -1680,6 +1709,9 @@ public sealed class SceneVideoWorkflowTests : IDisposable
         for (var i = 0; i < 25 && run.Status != "waiting"; i++) run = await ActorTick(run.Id);
         Assert.Equal("speech-review", run.Question!.Kind);
         Assert.Contains(run.Question.Choices, c => c.Id == "strip-vocals");
+        // No-speech clips must NOT offer nonsensical English-speech or enter-a-language options.
+        Assert.DoesNotContain(run.Question.Choices, c => c.Id is "english" or "correct");
+        Assert.Contains("No speech was requested", run.Question.Prompt);
 
         // Gibberish must NOT be persisted as confirmed dialogue in Scene Memory.
         var ws = await memory.GetAsync(run.WorkspaceId);

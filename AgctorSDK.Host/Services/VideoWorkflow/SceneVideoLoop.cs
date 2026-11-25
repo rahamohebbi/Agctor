@@ -311,12 +311,23 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         if (run.Phase == "speech-intent")
         {
             if (state.ExpectedSpeechLanguage == "auto")
-                state.ExpectedSpeechLanguage = await IdentifySpeechLanguage(state.Input.Prompt, state.Model, ct);
+            {
+                if (!Dedicated(state) && !SceneNativeSpeech.RequestsSpeech(state.Input.Prompt))
+                {
+                    state.ExpectedSpeechLanguage = "none";
+                }
+                else
+                {
+                    state.ExpectedSpeechLanguage = await IdentifySpeechLanguage(state.Input.Prompt, state.Model, ct);
+                }
+            }
             run.Phase = "plan";
             if (state.ExpectedSpeechLanguage == "unknown")
                 Ask(run, "speech-intent", "The story requests speech, but its language is unclear. Choose English, no speech, or enter the intended language and optional dialogue.",
                     [new("english", "English"), new("none", "No speech"), new("correct", "Use the language I enter")]);
-            return "Dialogue Supervisor checked the intended spoken language.";
+            return state.ExpectedSpeechLanguage == "none"
+                ? "No spoken dialogue requested in prompt; proceeding without speech."
+                : "Dialogue Supervisor checked the intended spoken language.";
         }
         if (run.Phase == "initialize")
         {
@@ -817,12 +828,15 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         // Untimed/unavailable clocks are durable until skip or a successful timing pass — do not only offer Retry.
         if (SceneSpeechTiming.OfferSkip(clip.Speech))
             choices.Add(new("skip-timing", "Continue without word timing"));
+        var noSpeechExpected = state.ExpectedSpeechLanguage == "none" && string.IsNullOrWhiteSpace(clip.ExpectedSpeechText);
         if (clip.SpeechRetries < 2) {
-            choices.Add(new("english", "Regenerate with English speech"));
+            if (!noSpeechExpected)
+                choices.Add(new("english", "Regenerate with English speech"));
             choices.Add(new("none", "Regenerate without speech"));
-            choices.Add(new("correct", "Regenerate with my language / dialogue"));
+            if (!noSpeechExpected)
+                choices.Add(new("correct", "Regenerate with my language / dialogue"));
         }
-        if (state.AudioEnabled) choices.Add(new("narration", "Replace with narration · keep video"));
+        if (state.AudioEnabled && !noSpeechExpected) choices.Add(new("narration", "Replace with narration · keep video"));
         choices.Add(new("cancel", "Stop here"));
         var timingNote = SceneSpeechTiming.OfferSkip(clip.Speech)
             ? " Word timing is unavailable; you can continue without it, or check speech again."
@@ -830,7 +844,10 @@ public sealed class SceneVideoLoop(IAgentRunStore runs, ISceneMemoryStore memory
         var expectedNote = !string.IsNullOrWhiteSpace(clip.ExpectedSpeechText)
             ? $" Expected dialogue (Scene Memory): “{clip.ExpectedSpeechText}”."
             : "";
-        Ask(run, "speech-review", $"{label}: Visuals are approved. {clip.Speech!.Summary} Expected: {LanguageName(state.ExpectedSpeechLanguage)}.{expectedNote} Listen before deciding.{timingNote} Regenerating creates a new video take and may change its visuals. Enter a language and optional exact dialogue for a correction.", choices);
+        var promptText = noSpeechExpected
+            ? $"{label}: Visuals are approved. {clip.Speech!.Summary} No speech was requested for this clip. Listen before deciding.{timingNote} You can remove any unintended vocals while keeping the video, approve as-is, or regenerate without speech."
+            : $"{label}: Visuals are approved. {clip.Speech!.Summary} Expected: {LanguageName(state.ExpectedSpeechLanguage)}.{expectedNote} Listen before deciding.{timingNote} Regenerating creates a new video take and may change its visuals. Enter a language and optional exact dialogue for a correction.";
+        Ask(run, "speech-review", promptText, choices);
         return "Speech needs your decision.";
     }
     private static IReadOnlyList<AgentChoice> VisualChoices(SceneVideoState state, SceneVideoClip clip)

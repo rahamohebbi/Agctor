@@ -14,6 +14,24 @@ public static partial class SceneNativeSpeech
     [GeneratedRegex(@"[\p{L}\p{N}]+", RegexOptions.CultureInvariant)]
     private static partial Regex Tokens();
 
+    [GeneratedRegex(@"\b(?:no\s+(?:speech|dialogue|talking|voices?|narration|spoken\s+words)|without\s+(?:any\s+)?(?:speech|dialogue|talking|voices?|narration)|silent(?:\s+(?:clip|video|shot|scene))?|instrumental\s+only|music\s+only|mute\s+speech)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ForbidsSpeech();
+    [GeneratedRegex(@"\b(?:dialogue|narration|narrator|voiceover|voice-over|voice\s+over|monologue|conversation|speaks?|speaking|spoken|says?|saying|whispers?|whispering|shouts?|shouting|yells?|yelling|asks?|asking|replies?|replying|answers?|answering|tells?\s+(?:him|her|them|us|the)|sings?|singing|greets?|greeting|announces?|talks?|talking)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SpeechVerbOrNoun();
+
+    /// <summary>
+    /// True only when the creator's prompt actually requests spoken dialogue, voiceover, or narration.
+    /// Visual text on signs/surfaces (e.g. 'the words "Cynelo" appear inscribed on the moon') does NOT count as speech.
+    /// </summary>
+    public static bool RequestsSpeech(string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt)) return false;
+        if (ForbidsSpeech().IsMatch(prompt)) return false;
+        if (Dialogue().IsMatch(prompt)) return true;
+        if (QuotedSpeech().IsMatch(prompt)) return true;
+        return SpeechVerbOrNoun().IsMatch(prompt);
+    }
+
     public static string LanguageName(string code)
     {
         if (code == "none") return "no speech";
